@@ -3,6 +3,8 @@ name: Bootstrap npm lockfile
 on:
   push:
     branches: [main]
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,6 @@ concurrency:
 jobs:
   lockfile:
     name: Generate public npm lockfile once
-    if: hashFiles('package-lock.json') == ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,16 +25,29 @@ jobs:
         with:
           ref: main
 
+      - name: Skip when lockfile already exists
+        id: state
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
+        if: steps.state.outputs.needed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
 
       - name: Generate lockfile
+        if: steps.state.outputs.needed == 'true'
         run: npm install --package-lock-only --ignore-scripts --registry=https://registry.npmjs.org
 
       - name: Commit generated lockfile
+        if: steps.state.outputs.needed == 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
