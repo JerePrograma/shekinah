@@ -1,0 +1,37 @@
+---
+import { getEntry, render } from 'astro:content';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs.astro';
+import PageHero from '@/components/layout/PageHero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+
+const page = await getEntry('pages', 'terms-and-conditions');
+if (!page) throw new Error('No se encontró el contenido legal.');
+const { Content } = await render(page);
+---
+
+<BaseLayout title={page.data.title} description={page.data.description}>
+  <PageHero
+    eyebrow="Información legal"
+    title={page.data.title}
+    description={page.data.description}
+  />
+  <div class="section">
+    <Breadcrumbs items={[{ label: 'Inicio', href: '/' }, { label: 'Términos y condiciones' }]} />
+    <article class="reading prose legal">
+      <p class="notice">
+        Este texto fue recuperado de la página legal publicada. Se adaptaron únicamente las
+        referencias a funciones que ya no existen en el sitio estático.
+      </p>
+      <Content />
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .notice {
+    padding: var(--space-4);
+    border: 1px solid var(--color-gold-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-cream);
+  }
+</style>

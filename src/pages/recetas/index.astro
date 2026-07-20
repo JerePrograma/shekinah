@@ -1,0 +1,41 @@
+---
+import { getCollection } from 'astro:content';
+import ContentCard from '@/components/cards/ContentCard.astro';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs.astro';
+import PageHero from '@/components/layout/PageHero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+
+const recipes = await getCollection('recipes');
+---
+
+<BaseLayout
+  title="Recetas"
+  description="Recetas recuperadas de Shekinah, editadas para preservar la información comprobada."
+>
+  <PageHero
+    eyebrow="Tu brújula en la cocina"
+    title="Recetas"
+    description="Preparaciones recuperadas para aprovechar cacao, semillas, hierbas y otros ingredientes botánicos."
+    image="/images/culinary-kitchen.webp"
+    imageAlt="Cocina lista para elaborar preparaciones artesanales."
+  />
+  <section class="section">
+    <Breadcrumbs items={[{ label: 'Inicio', href: '/' }, { label: 'Recetas' }]} />
+    <div class="container grid grid--2">
+      {
+        recipes.map((recipe) => (
+          <ContentCard
+            href={`/${recipe.data.slug}/`}
+            title={recipe.data.title}
+            description={recipe.data.description}
+            image={recipe.data.image}
+            imageAlt={recipe.data.imageAlt}
+            meta={
+              recipe.data.instructions.length > 0 ? 'Paso a paso recuperado' : 'Contenido parcial'
+            }
+          />
+        ))
+      }
+    </div>
+  </section>
+</BaseLayout>

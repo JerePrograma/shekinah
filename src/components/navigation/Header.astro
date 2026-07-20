@@ -1,0 +1,187 @@
+---
+import { navigation } from '@/data/navigation';
+
+const currentPath = Astro.url.pathname;
+---
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="Shekinah, inicio">
+      <img src="/images/brand-horizontal.webp" alt="Shekinah" width="600" height="162" />
+    </a>
+
+    <button
+      class="menu-toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="primary-navigation"
+      data-menu-toggle
+    >
+      <span class="sr-only">Abrir menú</span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </button>
+
+    <nav id="primary-navigation" class="primary-navigation" aria-label="Navegación principal">
+      <ul>
+        {
+          navigation.map((item) => {
+            const isCurrent =
+              item.href === '/'
+                ? currentPath === '/'
+                : currentPath === item.href || currentPath.startsWith(item.href);
+            return (
+              <li>
+                <a href={item.href} aria-current={isCurrent ? 'page' : undefined}>
+                  {item.label}
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
+  const nav = document.querySelector<HTMLElement>('#primary-navigation');
+
+  toggle?.addEventListener('click', () => {
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    nav?.classList.toggle('is-open', !expanded);
+  });
+</script>
+
+<style>
+  .site-header {
+    position: sticky;
+    z-index: 100;
+    top: 0;
+    border-bottom: 1px solid rgb(216 208 193 / 0.8);
+    background: rgb(255 253 248 / 0.94);
+    backdrop-filter: blur(0.75rem);
+  }
+
+  .header-inner {
+    display: flex;
+    min-height: var(--header-height);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+  }
+
+  .brand {
+    display: inline-flex;
+    width: min(16rem, 55vw);
+    align-items: center;
+  }
+
+  .brand img {
+    width: 100%;
+    height: auto;
+  }
+
+  .primary-navigation ul {
+    display: flex;
+    gap: clamp(0.65rem, 2vw, 1.4rem);
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .primary-navigation a {
+    position: relative;
+    padding-block: 0.8rem;
+    color: var(--color-forest);
+    font-size: 0.95rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .primary-navigation a::after {
+    position: absolute;
+    right: 0;
+    bottom: 0.45rem;
+    left: 0;
+    height: 2px;
+    background: var(--color-gold);
+    content: '';
+    transform: scaleX(0);
+    transition: transform 160ms ease;
+  }
+
+  .primary-navigation a:hover::after,
+  .primary-navigation a[aria-current='page']::after {
+    transform: scaleX(1);
+  }
+
+  .menu-toggle {
+    display: none;
+    width: 2.8rem;
+    height: 2.8rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-forest);
+    cursor: pointer;
+  }
+
+  .menu-toggle span:not(.sr-only) {
+    width: 1.15rem;
+    height: 2px;
+    background: currentColor;
+  }
+
+  @media (max-width: 48rem) {
+    .menu-toggle {
+      display: inline-flex;
+    }
+
+    .primary-navigation {
+      position: absolute;
+      top: calc(100% + 1px);
+      right: 0;
+      left: 0;
+      display: none;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-paper);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .primary-navigation.is-open {
+      display: block;
+    }
+
+    .primary-navigation ul {
+      width: min(calc(100% - 2rem), var(--content));
+      flex-direction: column;
+      align-items: stretch;
+      margin-inline: auto;
+      padding-block: var(--space-4);
+    }
+
+    .primary-navigation a {
+      display: block;
+      padding: 0.8rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .primary-navigation a:hover,
+    .primary-navigation a[aria-current='page'] {
+      background: var(--color-cream);
+    }
+
+    .primary-navigation a::after {
+      display: none;
+    }
+  }
+</style>

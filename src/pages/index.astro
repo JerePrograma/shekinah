@@ -1,0 +1,334 @@
+---
+import { getCollection } from 'astro:content';
+import ContentCard from '@/components/cards/ContentCard.astro';
+import PageHero from '@/components/layout/PageHero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+
+const posts = (await getCollection('posts'))
+  .sort((a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf())
+  .slice(0, 2);
+
+const recipes = (await getCollection('recipes')).slice(0, 2);
+
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: site.name,
+  description: site.description,
+  email: site.email,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: 'Moreno 2575',
+    addressLocality: 'Mar del Plata',
+    postalCode: '7600',
+    addressRegion: 'Buenos Aires',
+    addressCountry: 'AR',
+  },
+  url: new URL('/', Astro.site).toString(),
+  logo: new URL('/images/brand-emblem.png', Astro.site).toString(),
+};
+---
+
+<BaseLayout title="Shekinah" description={site.description} jsonLd={organizationJsonLd}>
+  <PageHero
+    eyebrow="Origen, aroma y cocina"
+    title="Tesoros botánicos para una cocina con historia"
+    description="Especias, hierbas, semillas y recetas para explorar sabores auténticos sin perder de vista su origen."
+    image="/images/about-spice-shop.webp"
+    imageAlt="Interior de un herbolario con estantes llenos de frascos de especias."
+  >
+    <div class="cluster hero-actions">
+      <a class="button" href="/tienda/">Explorar el catálogo</a>
+      <a class="button button--secondary" href="/recetas/">Ver recetas</a>
+    </div>
+  </PageHero>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Guía del viajero</p>
+          <h2>Sabores que conectan territorios</h2>
+        </div>
+        <p class="lead">
+          La identidad recuperada de Shekinah combina herbolario, tienda gourmet y contenidos
+          prácticos para aprender a usar cada ingrediente.
+        </p>
+      </div>
+
+      <div class="grid grid--3 feature-grid">
+        <article class="feature-card">
+          <img
+            src="/images/about-spice-shop.webp"
+            alt="Selección de especias del mundo."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div>
+            <h3>El mercado del mundo</h3>
+            <p>Familias de especias, hierbas, cacao, semillas y complementos gourmet.</p>
+            <a href="/tienda/">Conocer el catálogo</a>
+          </div>
+        </article>
+        <article class="feature-card">
+          <img
+            src="/images/about-spice-shop.webp"
+            alt="Mapa antiguo acompañado por frascos de especias."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div>
+            <h3>Historias y usos</h3>
+            <p>Contexto cultural y gastronómico para cocinar con más intención.</p>
+            <a href="/blog/">Leer el blog</a>
+          </div>
+        </article>
+        <article class="feature-card">
+          <img
+            src="/images/culinary-kitchen.webp"
+            alt="Cocina preparada para elaborar recetas artesanales."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div>
+            <h3>Recetas</h3>
+            <p>Preparaciones recuperadas y editadas con límites de evidencia explícitos.</p>
+            <a href="/recetas/">Abrir el recetario</a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--muted">
+    <div class="container split">
+      <img
+        class="split__image"
+        src="/images/about-spice-shop.webp"
+        alt="Herbolario con frascos ordenados y una persona detrás del mostrador."
+        width="1800"
+        height="870"
+        loading="lazy"
+      />
+      <div>
+        <p class="eyebrow">Nuestra esencia</p>
+        <h2>Amor por el origen</h2>
+        <p class="lead">
+          Shekinah propone acercar ingredientes botánicos con respeto por la tierra, atención a la
+          calidad y una mirada que une bienestar y alta cocina.
+        </p>
+        <p>
+          La reconstrucción conserva esa promesa y reemplaza la infraestructura anterior por un
+          sitio estático, rápido y mantenible.
+        </p>
+        <a class="button button--secondary" href="/nosotros/">Conocer la historia</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Últimas publicaciones</p>
+          <h2>Del herbolario a la mesa</h2>
+        </div>
+        <a class="button button--secondary" href="/blog/">Ver todas</a>
+      </div>
+      <div class="grid grid--2">
+        {
+          posts.map((post) => (
+            <ContentCard
+              href={`/${post.data.slug}/`}
+              title={post.data.title}
+              description={post.data.description}
+              image={post.data.image}
+              imageAlt={post.data.imageAlt}
+              meta={post.data.publishedAt.toLocaleDateString('es-AR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            />
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section recipes-band">
+    <div class="container">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Recetario</p>
+          <h2>Preparaciones para experimentar</h2>
+        </div>
+        <a class="button" href="/recetas/">Ver recetario</a>
+      </div>
+      <div class="grid grid--2">
+        {
+          recipes.map((recipe) => (
+            <ContentCard
+              href={`/${recipe.data.slug}/`}
+              title={recipe.data.title}
+              description={recipe.data.description}
+              image={recipe.data.image}
+              imageAlt={recipe.data.imageAlt}
+              meta="Receta recuperada"
+            />
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section evidence-stats" aria-labelledby="evidence-title">
+    <div class="container">
+      <p class="eyebrow">Señales recuperadas</p>
+      <h2 id="evidence-title">Una presencia comercial con historia</h2>
+      <div class="stats-grid">
+        <div>
+          <strong>+1.200</strong>
+          <span>envíos a todo el país informados en el sitio original</span>
+        </div>
+        <div>
+          <strong>+790</strong>
+          <span>ventas en Mercado Libre informadas en el sitio original</span>
+        </div>
+        <div>
+          <strong>100%</strong>
+          <span>sitio actual sin base de datos ni plataforma de terceros</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero-actions {
+    margin-top: var(--space-5);
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--space-6);
+    margin-bottom: var(--space-6);
+  }
+
+  .section-heading h2,
+  .section-heading p {
+    margin-bottom: 0;
+  }
+
+  .feature-card {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-paper);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .feature-card img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+
+  .feature-card div {
+    padding: var(--space-5);
+  }
+
+  .feature-card h3 {
+    margin-bottom: var(--space-3);
+  }
+
+  .feature-card p {
+    color: var(--color-muted);
+  }
+
+  .feature-card a {
+    font-weight: 800;
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: var(--space-7);
+    align-items: center;
+  }
+
+  .split__image {
+    width: 100%;
+    min-height: 25rem;
+    border-radius: var(--radius-lg);
+    object-fit: cover;
+    box-shadow: var(--shadow-md);
+  }
+
+  .recipes-band {
+    background: var(--color-forest);
+  }
+
+  .recipes-band h2,
+  .recipes-band .lead {
+    color: white;
+  }
+
+  .evidence-stats {
+    background:
+      linear-gradient(rgb(255 253 248 / 0.93), rgb(255 253 248 / 0.93)),
+      url('/images/about-spice-shop.webp') center / cover;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-5);
+  }
+
+  .stats-grid div {
+    padding: var(--space-5);
+    border-left: 0.25rem solid var(--color-gold);
+    background: rgb(246 240 228 / 0.78);
+  }
+
+  .stats-grid strong,
+  .stats-grid span {
+    display: block;
+  }
+
+  .stats-grid strong {
+    color: var(--color-forest);
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    line-height: 1;
+  }
+
+  .stats-grid span {
+    margin-top: var(--space-3);
+    color: var(--color-muted);
+  }
+
+  @media (max-width: 52rem) {
+    .section-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .split,
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .split__image {
+      min-height: 18rem;
+    }
+  }
+</style>

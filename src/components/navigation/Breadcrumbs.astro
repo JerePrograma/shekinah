@@ -1,0 +1,37 @@
+---
+interface Item {
+  label: string;
+  href?: string;
+}
+
+interface Props {
+  items: Item[];
+}
+
+const { items } = Astro.props;
+const itemList = items.map((item, index) => ({
+  '@type': 'ListItem',
+  position: index + 1,
+  name: item.label,
+  ...(item.href ? { item: new URL(item.href, Astro.site).toString() } : {}),
+}));
+---
+
+<nav class="container" aria-label="Migas de pan">
+  <ol class="breadcrumbs">
+    {
+      items.map((item) => (
+        <li>{item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}</li>
+      ))
+    }
+  </ol>
+</nav>
+<script
+  is:inline
+  type="application/ld+json"
+  set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemList,
+  })}
+/>

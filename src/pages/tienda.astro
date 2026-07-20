@@ -1,0 +1,88 @@
+---
+import { getEntry, render } from 'astro:content';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs.astro';
+import PageHero from '@/components/layout/PageHero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+
+const page = await getEntry('pages', 'tienda');
+if (!page) throw new Error('No se encontró el contenido de Tienda.');
+const { Content } = await render(page);
+---
+
+<BaseLayout title={page.data.title} description={page.data.description}>
+  <PageHero
+    eyebrow="Catálogo informativo"
+    title={page.data.title}
+    description={page.data.description}
+    image="/images/culinary-kitchen.webp"
+    imageAlt="Frascos de especias y condimentos sobre una mesada."
+  >
+    <div class="cluster">
+      <a class="button" href={`mailto:${site.email}?subject=Consulta%20de%20productos%20Shekinah`}>
+        Consultar disponibilidad
+      </a>
+    </div>
+  </PageHero>
+
+  <div class="section">
+    <Breadcrumbs items={[{ label: 'Inicio', href: '/' }, { label: 'Tienda' }]} />
+    <article class="reading prose">
+      <Content />
+    </article>
+
+    <section class="container catalogue" aria-labelledby="catalogue-title">
+      <h2 id="catalogue-title">Familias corroboradas</h2>
+      <div class="grid grid--3">
+        <article class="card">
+          <img
+            class="card__media"
+            src="/images/about-spice-shop.webp"
+            alt="Frascos con especias variadas."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div class="card__body">
+            <h3>Especias</h3>
+            <p>Ingredientes aromáticos para cocina dulce, salada e infusiones.</p>
+          </div>
+        </article>
+        <article class="card">
+          <img
+            class="card__media"
+            src="/images/about-spice-shop.webp"
+            alt="Ramas frescas de romero."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div class="card__body">
+            <h3>Hierbas</h3>
+            <p>Perfiles frescos y tradicionales para platos, aceites y bebidas.</p>
+          </div>
+        </article>
+        <article class="card">
+          <img
+            class="card__media"
+            src="/images/about-spice-shop.webp"
+            alt="Colección de especias de distintos orígenes."
+            width="1024"
+            height="1024"
+            loading="lazy"
+          />
+          <div class="card__body">
+            <h3>Cacao y semillas</h3>
+            <p>Bases secas mencionadas en el recetario artesanal recuperado.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+</BaseLayout>
+
+<style>
+  .catalogue {
+    margin-top: var(--space-8);
+  }
+</style>

@@ -1,0 +1,108 @@
+---
+import { footerNavigation } from '@/data/navigation';
+import { site } from '@/data/site';
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <section aria-labelledby="footer-brand">
+      <img
+        class="footer-logo"
+        src="/images/brand-lockup.webp"
+        alt="Shekinah, herbolario y tienda gourmet"
+        width="1200"
+        height="670"
+        loading="lazy"
+      />
+      <h2 id="footer-brand" class="sr-only">Shekinah</h2>
+      <p>{site.description}</p>
+    </section>
+
+    <nav aria-label="Navegación de pie de página">
+      <h2>Explorar</h2>
+      <ul>
+        {
+          footerNavigation.map((item) => (
+            <li>
+              <a href={item.href}>{item.label}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+
+    <section aria-labelledby="footer-contact">
+      <h2 id="footer-contact">Contacto público</h2>
+      <p>
+        <a href={`mailto:${site.email}`}>{site.email}</a>
+      </p>
+      <p class="footer-small">{site.address}</p>
+    </section>
+  </div>
+
+  <div class="container footer-bottom">
+    <p>© {year} Shekinah. Sitio estático reconstruido a partir de evidencia recuperada.</p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    padding-top: var(--space-8);
+    background: var(--color-forest);
+    color: rgb(255 255 255 / 0.82);
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr 1fr;
+    gap: var(--space-7);
+  }
+
+  .footer-logo {
+    width: min(21rem, 100%);
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius-sm);
+  }
+
+  .site-footer h2 {
+    color: white;
+    font-size: 1.2rem;
+  }
+
+  .site-footer a {
+    color: white;
+  }
+
+  .site-footer ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .site-footer li + li {
+    margin-top: 0.55rem;
+  }
+
+  .footer-small {
+    font-size: 0.9rem;
+  }
+
+  .footer-bottom {
+    margin-top: var(--space-7);
+    padding-block: var(--space-4);
+    border-top: 1px solid rgb(255 255 255 / 0.15);
+    font-size: 0.82rem;
+  }
+
+  .footer-bottom p {
+    margin: 0;
+  }
+
+  @media (max-width: 48rem) {
+    .footer-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

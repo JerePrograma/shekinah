@@ -1,0 +1,120 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs.astro';
+import PageHero from '@/components/layout/PageHero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+
+type Entry = CollectionEntry<'posts'> | CollectionEntry<'recipes'>;
+
+export async function getStaticPaths() {
+  const [posts, recipes] = await Promise.all([getCollection('posts'), getCollection('recipes')]);
+  return [...posts, ...recipes].map((entry) => ({
+    params: { slug: entry.data.slug },
+    props: { entry },
+  }));
+}
+
+interface Props {
+  entry: Entry;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const isRecipe = entry.collection === 'recipes';
+
+const jsonLd = isRecipe
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'Recipe',
+      name: entry.data.title,
+      description: entry.data.description,
+      image: [new URL(entry.data.image, Astro.site).toString()],
+      datePublished: entry.data.publishedAt.toISOString(),
+      author: { '@type': 'Organization', name: 'Shekinah' },
+      recipeIngredient: entry.data.ingredients,
+      ...(entry.data.instructions.length > 0
+        ? {
+            recipeInstructions: entry.data.instructions.map((text, index) => ({
+              '@type': 'HowToStep',
+              position: index + 1,
+              text,
+            })),
+          }
+        : {}),
+    }
+  : {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: entry.data.title,
+      description: entry.data.description,
+      datePublished: entry.data.publishedAt.toISOString(),
+      dateModified: entry.data.updatedAt.toISOString(),
+      image: new URL(entry.data.image, Astro.site).toString(),
+      mainEntityOfPage: new URL(Astro.url.pathname, Astro.site).toString(),
+      author: { '@type': 'Organization', name: 'Shekinah' },
+    };
+
+const eyebrow = isRecipe
+  ? 'Receta'
+  : entry.data.publishedAt.toLocaleDateString('es-AR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+---
+
+<BaseLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  image={entry.data.image}
+  type="article"
+  publishedAt={entry.data.publishedAt}
+  updatedAt={entry.data.updatedAt}
+  jsonLd={jsonLd}
+>
+  <PageHero
+    {eyebrow}
+    title={entry.data.title}
+    description={entry.data.description}
+    image={entry.data.image}
+    imageAlt={entry.data.imageAlt}
+  />
+  <div class="section">
+    <Breadcrumbs
+      items={[
+        { label: 'Inicio', href: '/' },
+        { label: isRecipe ? 'Recetas' : 'Blog', href: isRecipe ? '/recetas/' : '/blog/' },
+        { label: entry.data.title },
+      ]}
+    />
+    <article class="reading prose">
+      {
+        isRecipe && (
+          <aside class="ingredients" aria-labelledby="ingredients-title">
+            <h2 id="ingredients-title">Ingredientes recuperados</h2>
+            <ul>
+              {entry.data.ingredients.map((ingredient) => (
+                <li>{ingredient}</li>
+              ))}
+            </ul>
+          </aside>
+        )
+      }
+      <Content />
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .ingredients {
+    margin-bottom: var(--space-7);
+    padding: var(--space-5);
+    border: 1px solid var(--color-gold-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-cream);
+  }
+
+  .ingredients h2 {
+    font-size: 1.7rem;
+  }
+</style>
