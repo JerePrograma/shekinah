@@ -1,5 +1,7 @@
 # Shekinah
 
+[![CI](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml/badge.svg)](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml)
+
 Sitio estático de Shekinah, reconstruido desde una instalación recuperada y publicado como proyecto Astro independiente. El resultado no ejecuta ni necesita WordPress, PHP, base de datos, Docker, Hostinger, LiteSpeed ni un backend persistente.
 
 ## Arquitectura
