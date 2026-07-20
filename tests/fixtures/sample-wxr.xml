@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wp="http://wordpress.org/export/1.2/">
+  <channel>
+    <title>Ejemplo saneado</title>
+    <language>es-AR</language>
+    <wp:wxr_version>1.2</wp:wxr_version>
+    <item>
+      <title><![CDATA[Página de prueba]]></title>
+      <content:encoded><![CDATA[<p>Contenido &amp; evidencia</p>]]></content:encoded>
+      <wp:post_id>42</wp:post_id>
+      <wp:post_date>2026-01-02 03:04:05</wp:post_date>
+      <wp:post_modified>2026-01-03 03:04:05</wp:post_modified>
+      <wp:post_name>pagina-de-prueba</wp:post_name>
+      <wp:status>publish</wp:status>
+      <wp:post_parent>0</wp:post_parent>
+      <wp:post_type>page</wp:post_type>
+      <wp:postmeta>
+        <wp:meta_key>_wp_page_template</wp:meta_key>
+        <wp:meta_value>default</wp:meta_value>
+      </wp:postmeta>
+    </item>
+  </channel>
+</rss>
