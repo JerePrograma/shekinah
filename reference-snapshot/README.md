@@ -1,29 +1,22 @@
 # Snapshot WordPress de referencia
 
-Esta carpeta es el destino del snapshot público generado desde la restauración WordPress local.
+Captura pública generada desde la restauración WordPress local y preparada para Cloudflare Pages.
 
-## Estado actual
+- Fecha UTC: 2026-07-21T18:32:42.553Z
+- Origen: restauración WordPress local (no versionada)
+- Destino canónico: https://shekinah-7dl.pages.dev
+- Páginas: 14
+- Redirecciones: 0
+- Recursos HTTP: 68
+- Recursos externos localizados: 26
+- Imágenes: 29
+- Archivos: 88
+- Bytes: 87549179
+- Formularios visibles: 14
+- Errores HTTP: 0
+- Errores de consola: 0
+- Páginas no recuperables: 0
 
-Mientras no existan `site/index.html` y `manifest.json`, el snapshot no fue generado y el build de producción debe fallar. La aplicación Astro anterior no se usa como sustituto silencioso.
+El contenido desplegable está en `site/`. Los inventarios públicos sanitizados están en `data/`, las capturas en `screenshots/` y la integridad SHA-256 en `manifest.json`.
 
-## Contenido versionable
-
-- HTML renderizado;
-- CSS y JavaScript frontend requeridos;
-- fuentes, imágenes, fondos, `srcset`, audio, video y documentos públicos usados;
-- recursos externos localizados;
-- redirecciones, robots, sitemap y 404;
-- inventarios públicos sanitizados;
-- capturas de referencia;
-- manifiesto con tamaños y SHA-256.
-
-## Exclusiones
-
-- SQL y backups;
-- `.env` y `wp-config.php`;
-- PHP ejecutable;
-- usuarios, hashes, correos privados, sesiones y tokens;
-- salts y claves;
-- logs y datos administrativos.
-
-El archivo se reemplaza automáticamente con conteos reales al completar una captura válida.
+No se versionan SQL, usuarios, credenciales, sesiones, logs, `.env`, `wp-config.php` ni endpoints administrativos.

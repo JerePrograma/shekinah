@@ -12,6 +12,8 @@ pre-wordpress-reference-YYYYMMDD-HHMMSS
 
 La etiqueta apunta al `main` limpio y actualizado previo a la captura. Solo se publica después de que las verificaciones locales aprueben.
 
+Para esta migración, el punto previo seleccionado es `pre-wordpress-reference-20260721-173405`, que apunta a `8deba8911da82b48b6c91a5c23cd49000b0c457a`.
+
 ## Reglas
 
 - no usar `force push`;

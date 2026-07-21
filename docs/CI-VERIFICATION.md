@@ -2,26 +2,15 @@
 
 Fecha de actualización: **2026-07-21**.
 
-## Estado actual
+## Estado previo a publicación
 
-No existe un run de GitHub Actions que valide el snapshot WordPress real, porque `reference-snapshot/manifest.json` aún no está versionado.
+- Commit base: `8deba8911da82b48b6c91a5c23cd49000b0c457a`.
+- Tag de rollback: `pre-wordpress-reference-20260721-173405`.
+- Snapshot real: generado y aprobado localmente.
+- Commit del snapshot: pendiente.
+- CI del snapshot: pendiente.
+- Deployment del mismo SHA: pendiente.
 
-Cualquier ejecución verde anterior corresponde a la implementación Astro transitoria y no satisface el criterio de aceptación actual.
+El CI anterior del commit base no valida este snapshot. Este documento se actualizará únicamente con las URLs y conclusiones reales de los workflows posteriores a la publicación.
 
-## Evidencia requerida
-
-Para cerrar esta verificación deben registrarse:
-
-- SHA de `main` que contiene el snapshot;
-- tag `pre-wordpress-reference-*`;
-- fecha y URL del run CI;
-- `npm ci` aprobado con Node 24/npm 11;
-- verificación requerida del manifiesto;
-- build desde `reference-snapshot/site`;
-- unit tests y E2E aprobados;
-- auditorías aprobadas;
-- URL y resultado del workflow Cloudflare;
-- verificación del dominio estable;
-- coincidencia del SHA entre CI y deployment.
-
-El script maestro genera una versión local preliminar de este documento. La evidencia remota debe agregarse únicamente después de que los workflows terminen.
+GitHub todavía no contiene `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID`; por lo tanto, se espera que el workflow de deployment se bloquee explícitamente hasta configurar ambos secretos.

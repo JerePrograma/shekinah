@@ -4,14 +4,22 @@ import { access, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 const required = process.argv.includes('--required');
-const snapshotBase = path.resolve('reference-snapshot');
+const snapshotRootArgumentIndex = process.argv.indexOf('--snapshot-root');
+if (snapshotRootArgumentIndex >= 0 && !process.argv[snapshotRootArgumentIndex + 1]) {
+  throw new Error('--snapshot-root requiere una ruta.');
+}
+const snapshotBase = path.resolve(
+  snapshotRootArgumentIndex >= 0
+    ? process.argv[snapshotRootArgumentIndex + 1]
+    : 'reference-snapshot',
+);
 const snapshotRoot = path.join(snapshotBase, 'site');
 const manifestPath = path.join(snapshotBase, 'manifest.json');
-const expectedProductionOrigin = new URL(
-  process.env.SITE_URL ?? 'https://shekinah-7dl.pages.dev',
-).origin;
+const expectedProductionOrigin = new URL(process.env.SITE_URL ?? 'https://shekinah-7dl.pages.dev')
+  .origin;
 const requiredDataFiles = [
   'categories.json',
+  'forms.json',
   'navigation.json',
   'plugins.json',
   'public-settings.json',
@@ -46,6 +54,17 @@ function sha256(body) {
   return createHash('sha256').update(body).digest('hex');
 }
 
+function isSafeRelativePath(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    !path.posix.isAbsolute(value) &&
+    !/^[A-Za-z]:/u.test(value) &&
+    !value.split('/').includes('..') &&
+    !value.includes('\\')
+  );
+}
+
 function failMissingSnapshot() {
   const message =
     'Falta el snapshot WordPress obligatorio: no existe reference-snapshot/site/index.html. Ejecute scripts/Run-FullMigration.ps1 contra la restauración local y publique el resultado.';
@@ -53,7 +72,9 @@ function failMissingSnapshot() {
     process.stderr.write(`${message}\n`);
     process.exitCode = 2;
   } else {
-    process.stdout.write('Snapshot WordPress todavía no generado; verificación opcional omitida.\n');
+    process.stdout.write(
+      'Snapshot WordPress todavía no generado; verificación opcional omitida.\n',
+    );
   }
 }
 
@@ -85,6 +106,9 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
     if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
       errors.push('el manifiesto no contiene archivos del sitio');
     }
+    if (!Array.isArray(manifest.snapshotFiles) || manifest.snapshotFiles.length === 0) {
+      errors.push('el manifiesto no contiene hashes de data/ y screenshots/');
+    }
     if ((manifest.httpErrors?.length ?? 0) > 0) {
       errors.push(`el manifiesto registra ${manifest.httpErrors.length} errores HTTP`);
     }
@@ -106,12 +130,18 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
 
   const actualFiles = await walk(snapshotRoot);
   if (actualFiles.length > maxFiles) {
-    errors.push(`el snapshot contiene ${actualFiles.length} archivos; máximo permitido ${maxFiles}`);
+    errors.push(
+      `el snapshot contiene ${actualFiles.length} archivos; máximo permitido ${maxFiles}`,
+    );
   }
 
   if (manifest?.files) {
     const expected = new Map();
     for (const record of manifest.files) {
+      if (!isSafeRelativePath(record.path)) {
+        errors.push(`${record.path}: ruta de sitio inválida en el manifiesto`);
+        continue;
+      }
       if (expected.has(record.path)) errors.push(`${record.path}: duplicado en el manifiesto`);
       expected.set(record.path, record);
     }
@@ -136,6 +166,10 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
   if (Array.isArray(manifest?.snapshotFiles) && manifest.snapshotFiles.length > 0) {
     const expected = new Map();
     for (const record of manifest.snapshotFiles) {
+      if (!isSafeRelativePath(record.path)) {
+        errors.push(`${record.path}: ruta auxiliar inválida en el manifiesto`);
+        continue;
+      }
       if (expected.has(record.path)) {
         errors.push(`${record.path}: auxiliar duplicado en el manifiesto`);
       }
@@ -155,8 +189,8 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
       }
       if (record.bytes !== body.length) errors.push(`${relative}: tamaño auxiliar distinto`);
       if (record.sha256 !== sha256(body)) errors.push(`${relative}: SHA-256 auxiliar distinto`);
-      if (relative.startsWith('screenshots/') && body.length > 90 * 1024 * 1024) {
-        errors.push(`${relative}: captura supera 90 MiB`);
+      if (relative.startsWith('screenshots/') && body.length > maxAssetBytes) {
+        errors.push(`${relative}: captura supera 25 MiB`);
       }
       expected.delete(relative);
     }
@@ -164,11 +198,37 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
   }
 
   for (const page of manifest?.pages ?? []) {
+    if (
+      typeof page.route !== 'string' ||
+      !page.route.startsWith('/') ||
+      page.route.includes('..')
+    ) {
+      errors.push(`${page.route}: ruta de página inválida`);
+    }
+    if (
+      !isSafeRelativePath(page.htmlPath) ||
+      !(await exists(path.join(snapshotRoot, page.htmlPath)))
+    ) {
+      errors.push(`${page.route}: htmlPath inválido o faltante`);
+    }
     for (const viewport of ['mobile', 'tablet', 'desktop']) {
       const screenshot = page.screenshots?.[viewport];
-      if (!screenshot || !(await exists(path.resolve(screenshot)))) {
+      const screenshotPath =
+        screenshot && isSafeRelativePath(screenshot) ? path.resolve(snapshotBase, screenshot) : '';
+      if (
+        !screenshotPath ||
+        !screenshotPath.startsWith(`${snapshotBase}${path.sep}`) ||
+        !(await exists(screenshotPath))
+      ) {
         errors.push(`${page.route}: falta captura ${viewport}`);
       }
+    }
+  }
+
+  const sitePaths = new Set((manifest?.files ?? []).map((record) => record.path));
+  for (const resource of manifest?.resources ?? []) {
+    if (!isSafeRelativePath(resource.path) || !sitePaths.has(resource.path)) {
+      errors.push(`${resource.path}: recurso sin archivo íntegro asociado`);
     }
   }
 
@@ -199,7 +259,10 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
   for (const file of await walk(snapshotBase)) {
     const relative = path.relative(snapshotBase, file).replaceAll(path.sep, '/');
     const extension = path.extname(file).toLowerCase();
-    if (forbiddenNames.has(path.basename(file).toLowerCase()) || forbiddenExtensions.has(extension)) {
+    if (
+      forbiddenNames.has(path.basename(file).toLowerCase()) ||
+      forbiddenExtensions.has(extension)
+    ) {
       errors.push(`${relative}: archivo prohibido`);
     }
     if (relative.endsWith('.map')) errors.push(`${relative}: sourcemap no permitido`);

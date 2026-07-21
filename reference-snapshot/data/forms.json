@@ -1,0 +1,478 @@
+[
+  {
+    "route": "/",
+    "action": "/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/inicio/",
+    "action": "/inicio/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/nosotros/",
+    "action": "/nosotros/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/tienda/",
+    "action": "/tienda/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/blog/",
+    "action": "/blog/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/recetas/",
+    "action": "/recetas/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/chocolate-casero/",
+    "action": "/chocolate-casero/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/receta-barra-de-cereal/",
+    "action": "/receta-barra-de-cereal/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+    "action": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+    "action": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/terms-and-conditions/",
+    "action": "/terms-and-conditions/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/terminos-condiciones/",
+    "action": "/terminos-condiciones/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/hello-world/",
+    "action": "/hello-world/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  },
+  {
+    "route": "/category/uncategorized/",
+    "action": "/category/uncategorized/",
+    "method": "GET",
+    "fields": [
+      {
+        "name": "group",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "id",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "tags",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "metadata.plugin",
+        "type": "hidden",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      }
+    ],
+    "processingMigrated": false,
+    "classification": "static-interface-only"
+  }
+]

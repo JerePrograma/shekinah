@@ -8,6 +8,7 @@ export default [
     ignores: [
       'dist/**',
       '.astro/**',
+      '.migration-work/**',
       'node_modules/**',
       'playwright-report/**',
       'reference-snapshot/**',

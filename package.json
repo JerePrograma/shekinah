@@ -13,7 +13,7 @@
     "check": "astro check",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check . --end-of-line auto",
     "install:browsers": "playwright install chromium",
     "install:browsers:ci": "playwright install --with-deps chromium",
     "capture:wordpress": "node scripts/wordpress-reference/capture.mjs",
@@ -26,12 +26,13 @@
     "preview": "node scripts/wordpress-reference/serve.mjs --root dist",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:powershell": "pwsh -NoLogo -NoProfile -File tests/powershell/migration-tools.smoke.ps1",
     "test:e2e": "playwright test",
     "test:fidelity": "playwright test -c playwright.fidelity.config.ts",
     "audit:output": "node scripts/audit-output.mjs",
     "audit:secrets": "node scripts/audit-secrets.mjs",
-    "verify": "npm run check && npm run lint && npm run format:check && npm run verify:snapshot:required && npm run build && npm run test:unit && npm run test:e2e && npm run audit:output && npm run audit:secrets",
-    "deploy": "npm run verify && wrangler pages deploy dist --project-name shekinah --branch main"
+    "verify": "npm run check && npm run lint && npm run format:check && npm run verify:snapshot:required && npm run build && npm run test:unit && npm run test:powershell && npm run test:e2e && npm run audit:output && npm run audit:secrets",
+    "deploy": "npm run verify && node scripts/deploy-cloudflare.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.3",

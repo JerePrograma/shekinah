@@ -11,10 +11,10 @@ Repositorio de migración de la representación pública recuperada desde WordPr
 - Destino: Cloudflare Pages, proyecto `shekinah`.
 - Dominio estable: `https://shekinah-7dl.pages.dev`.
 - Infraestructura de captura, verificación, CI y despliegue: versionada.
-- Snapshot WordPress real: **todavía no versionado** mientras no existan `reference-snapshot/manifest.json` y `reference-snapshot/site/index.html`.
+- Snapshot WordPress real: **generado y verificado localmente**; contiene 14 páginas, 68 recursos y 88 archivos de sitio.
 - La implementación Astro existente se conserva únicamente como referencia transitoria; `npm run build` ya no puede desplegarla como sustituto del snapshot recuperado.
 
-La migración no está finalizada hasta publicar el snapshot, obtener CI verde, desplegar el mismo SHA y verificar producción.
+La publicación remota, CI y Cloudflare se registran en `docs/MIGRATION-STATUS.md`; no se declara cierre mientras esos estados no correspondan al mismo SHA.
 
 ## Arquitectura final
 
@@ -41,14 +41,21 @@ Producción no requiere WordPress, PHP, MariaDB, Docker, Hostinger ni Node.js.
 - npm 11 o superior.
 - Restauración WordPress indicada en la documentación.
 
-El script maestro intenta activar Node 24 mediante `nvm-windows` o instalar la versión LTS mediante `winget`, pero siempre vuelve a comprobar las versiones y se detiene si sigue activo Node 22.
+El script maestro activa una instalación existente de Node 24, contempla `nvm-windows` y solo permite a `winget` actualizar un paquete LTS ya instalado. Nunca afirma un cambio de versión sin volver a comprobar Node y npm, y se detiene si sigue activo Node 22.
 
 ## Flujo completo local
 
 ```powershell
 Set-Location 'C:\laburo\shekinah'
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Run-FullMigration.ps1 -Publish -WaitForRemote
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass `
+    -File .\scripts\Run-FullMigration.ps1 `
+    -RepositoryRoot 'C:\laburo\shekinah' `
+    -WorkRoot 'C:\laburo\shekinah-wordpress-reference' `
+    -OriginalBackupRoot 'C:\Users\Jerem\Downloads\shekinah.orig' `
+    -OriginalAuditRoot 'C:\Users\Jerem\Downloads\shekinah-original-audit' `
+    -ProjectName 'shekinah-original-reference' `
+    -Publish `
+    -WaitForRemote
 ```
 
 El script lee `LOCAL_PORT` desde `C:\laburo\shekinah-wordpress-reference\.env`; no presupone el puerto 8081.
@@ -63,6 +70,7 @@ npm run verify:snapshot:required
 npm run build
 npm run preview
 npm run test:unit
+npm run test:powershell
 npm run test:e2e
 npm run test:fidelity
 npm run audit:output
@@ -72,6 +80,9 @@ npm run deploy
 ```
 
 `npm run build`, `npm run verify` y CI fallan deliberadamente si falta el snapshot real.
+`npm run capture:wordpress` exige `--source`; la ejecución recomendada es el archivo PowerShell, que obtiene esa URL exclusivamente desde `LOCAL_PORT`.
+
+Cada ejecución guarda un log ignorado por Git en `.migration-work/full-migration-YYYYMMDD-HHMMSS.log`. Ante un fallo, el script detiene el flujo, preserva la captura candidata y termina con el primer error real, las últimas 100 líneas y los estados Git/Compose.
 
 ## Estructura relevante
 

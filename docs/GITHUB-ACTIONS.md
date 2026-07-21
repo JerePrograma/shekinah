@@ -11,15 +11,17 @@ Se ejecuta en cada push a `main` y manualmente. Usa Node.js 24 desde `.nvmrc`, `
 Orden bloqueante:
 
 1. `npm ci`;
-2. `npm run check`;
-3. `npm run lint`;
-4. `npm run format:check`;
-5. `npm run verify:snapshot:required`;
-6. `npm run build`;
-7. `npm run test:unit`;
-8. `npm run test:e2e`;
-9. `npm run audit:output`;
-10. `npm run audit:secrets`.
+2. `npm run install:browsers:ci`;
+3. `npm run verify:snapshot:required`;
+4. `npm run check`;
+5. `npm run lint`;
+6. `npm run format:check`;
+7. `npm run build`;
+8. `npm run test:unit`;
+9. `npm run test:powershell`;
+10. `npm run test:e2e`;
+11. `npm run audit:output`;
+12. `npm run audit:secrets`.
 
 La captura contra WordPress no ocurre en CI porque GitHub Actions no tiene acceso al Docker ni al `localhost` del usuario. CI verifica el snapshot versionado y sus hashes.
 
@@ -29,7 +31,7 @@ Mientras falte `reference-snapshot/site/index.html`, el fallo esperado es delibe
 
 Archivo: `.github/workflows/deploy-cloudflare.yml`.
 
-Se ejecuta automáticamente únicamente después de un CI exitoso de `main`, o manualmente. Resuelve y despliega el mismo SHA validado.
+Se ejecuta automáticamente únicamente mediante `workflow_run`, después de un CI exitoso de `main`. No expone un `workflow_dispatch` que permita omitir la aprobación del SHA.
 
 Secuencia:
 

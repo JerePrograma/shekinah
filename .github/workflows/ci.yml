@@ -32,7 +32,12 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Chromium
-        run: npm exec -- playwright install --with-deps chromium
+        run: npm run install:browsers:ci
+
+      - name: Require and verify versioned WordPress snapshot
+        run: npm run verify:snapshot:required
+        env:
+          SITE_URL: https://shekinah-7dl.pages.dev
 
       - name: Validate transition source
         run: npm run check
@@ -43,11 +48,6 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Require and verify versioned WordPress snapshot
-        run: npm run verify:snapshot:required
-        env:
-          SITE_URL: https://shekinah-7dl.pages.dev
-
       - name: Build deployable dist
         run: npm run build
         env:
@@ -55,6 +55,9 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit
+
+      - name: Parse and smoke-test PowerShell migration
+        run: npm run test:powershell
 
       - name: Run static browser tests
         run: npm run test:e2e
@@ -70,7 +73,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload validated static build
-        if: always() && hashFiles('dist/**') != ''
+        if: success() && hashFiles('dist/**') != ''
         uses: actions/upload-artifact@v7
         with:
           name: shekinah-dist-${{ github.sha }}

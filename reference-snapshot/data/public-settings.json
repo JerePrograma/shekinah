@@ -1,0 +1,17 @@
+{
+  "blogname": "shekinah-7dl.pages.dev",
+  "blogdescription": "",
+  "permalink_structure": "/%postname%/",
+  "show_on_front": "posts",
+  "page_on_front": "0",
+  "page_for_posts": "0",
+  "timezone_string": "",
+  "gmt_offset": "0",
+  "date_format": "F j, Y",
+  "time_format": "g:i a",
+  "posts_per_page": "10",
+  "default_comment_status": "open",
+  "blog_public": "1",
+  "template": "hostinger-ai-theme",
+  "stylesheet": "hostinger-ai-theme"
+}

@@ -1,0 +1,2129 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-21T18:32:42.553Z",
+  "source": "local-wordpress-reference",
+  "productionOrigin": "https://shekinah-7dl.pages.dev",
+  "pages": [
+    {
+      "route": "/",
+      "status": 200,
+      "title": "shekinah-7dl.pages.dev",
+      "htmlPath": "index.html",
+      "screenshots": {
+        "mobile": "screenshots/home-mobile.jpg",
+        "tablet": "screenshots/home-tablet.jpg",
+        "desktop": "screenshots/home-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/blog/",
+      "status": 200,
+      "title": "Blog – shekinah-7dl.pages.dev",
+      "htmlPath": "blog/index.html",
+      "screenshots": {
+        "mobile": "screenshots/68a120ac7e20-mobile.jpg",
+        "tablet": "screenshots/68a120ac7e20-tablet.jpg",
+        "desktop": "screenshots/68a120ac7e20-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/category/uncategorized/",
+      "status": 200,
+      "title": "Uncategorized – shekinah-7dl.pages.dev",
+      "htmlPath": "category/uncategorized/index.html",
+      "screenshots": {
+        "mobile": "screenshots/18e51aaa5f0c-mobile.jpg",
+        "tablet": "screenshots/18e51aaa5f0c-tablet.jpg",
+        "desktop": "screenshots/18e51aaa5f0c-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/chocolate-casero/",
+      "status": 200,
+      "title": "Chocolate Casero – shekinah-7dl.pages.dev",
+      "htmlPath": "chocolate-casero/index.html",
+      "screenshots": {
+        "mobile": "screenshots/670fff8c3a23-mobile.jpg",
+        "tablet": "screenshots/670fff8c3a23-tablet.jpg",
+        "desktop": "screenshots/670fff8c3a23-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "status": 200,
+      "title": "El poder del romero: memoria milenaria y frescura en tu cocina – shekinah-7dl.pages.dev",
+      "htmlPath": "el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/index.html",
+      "screenshots": {
+        "mobile": "screenshots/b50824d4609d-mobile.jpg",
+        "tablet": "screenshots/b50824d4609d-tablet.jpg",
+        "desktop": "screenshots/b50824d4609d-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "status": 200,
+      "title": "El viaje de las especias: sabor y bienestar – shekinah-7dl.pages.dev",
+      "htmlPath": "el-viaje-de-las-especias-sabor-y-bienestar/index.html",
+      "screenshots": {
+        "mobile": "screenshots/d8d94ad705e1-mobile.jpg",
+        "tablet": "screenshots/d8d94ad705e1-tablet.jpg",
+        "desktop": "screenshots/d8d94ad705e1-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/hello-world/",
+      "status": 200,
+      "title": "Hello world! – shekinah-7dl.pages.dev",
+      "htmlPath": "hello-world/index.html",
+      "screenshots": {
+        "mobile": "screenshots/71e67f47946b-mobile.jpg",
+        "tablet": "screenshots/71e67f47946b-tablet.jpg",
+        "desktop": "screenshots/71e67f47946b-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/inicio/",
+      "status": 200,
+      "title": "Inicio – shekinah-7dl.pages.dev",
+      "htmlPath": "inicio/index.html",
+      "screenshots": {
+        "mobile": "screenshots/89495638df9f-mobile.jpg",
+        "tablet": "screenshots/89495638df9f-tablet.jpg",
+        "desktop": "screenshots/89495638df9f-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/nosotros/",
+      "status": 200,
+      "title": "Nosotros – shekinah-7dl.pages.dev",
+      "htmlPath": "nosotros/index.html",
+      "screenshots": {
+        "mobile": "screenshots/8ee7cd16fa22-mobile.jpg",
+        "tablet": "screenshots/8ee7cd16fa22-tablet.jpg",
+        "desktop": "screenshots/8ee7cd16fa22-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/receta-barra-de-cereal/",
+      "status": 200,
+      "title": "Receta Barra de Cereal – shekinah-7dl.pages.dev",
+      "htmlPath": "receta-barra-de-cereal/index.html",
+      "screenshots": {
+        "mobile": "screenshots/d865b30fb5ca-mobile.jpg",
+        "tablet": "screenshots/d865b30fb5ca-tablet.jpg",
+        "desktop": "screenshots/d865b30fb5ca-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/recetas/",
+      "status": 200,
+      "title": "Recetas – shekinah-7dl.pages.dev",
+      "htmlPath": "recetas/index.html",
+      "screenshots": {
+        "mobile": "screenshots/ab57d90fafab-mobile.jpg",
+        "tablet": "screenshots/ab57d90fafab-tablet.jpg",
+        "desktop": "screenshots/ab57d90fafab-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/terminos-condiciones/",
+      "status": 200,
+      "title": "Terminos condiciones – shekinah-7dl.pages.dev",
+      "htmlPath": "terminos-condiciones/index.html",
+      "screenshots": {
+        "mobile": "screenshots/2e04e3c0021b-mobile.jpg",
+        "tablet": "screenshots/2e04e3c0021b-tablet.jpg",
+        "desktop": "screenshots/2e04e3c0021b-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/terms-and-conditions/",
+      "status": 200,
+      "title": "Términos y condiciones – shekinah-7dl.pages.dev",
+      "htmlPath": "terms-and-conditions/index.html",
+      "screenshots": {
+        "mobile": "screenshots/fb96fd571086-mobile.jpg",
+        "tablet": "screenshots/fb96fd571086-tablet.jpg",
+        "desktop": "screenshots/fb96fd571086-desktop.jpg"
+      },
+      "navigation": []
+    },
+    {
+      "route": "/tienda/",
+      "status": 200,
+      "title": "Tienda – shekinah-7dl.pages.dev",
+      "htmlPath": "tienda/index.html",
+      "screenshots": {
+        "mobile": "screenshots/adf44f38d797-mobile.jpg",
+        "tablet": "screenshots/adf44f38d797-tablet.jpg",
+        "desktop": "screenshots/adf44f38d797-desktop.jpg"
+      },
+      "navigation": []
+    }
+  ],
+  "redirects": [],
+  "resources": [
+    {
+      "url": "https://assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_ipe86yipe86yipe8-K72q7zZFiByBALNL.png",
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_ipe86yipe86yipe8-K72q7zZFiByBALNL-6392803df0b73bce.png",
+      "contentType": "image/png",
+      "bytes": 4678494,
+      "sha256": "f2a62e66be17b4cafd16098ab81cf7c86e627d0443aef2c8f9675714c76a12ff",
+      "external": true
+    },
+    {
+      "url": "https://assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_k1x2wzk1x2wzk1x2-jl25iWVmrwph1773.png",
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_k1x2wzk1x2wzk1x2-jl25iWVmrwph1773-3a8b4bad8f6e51e4.png",
+      "contentType": "image/png",
+      "bytes": 6541050,
+      "sha256": "bdfe199611c7b54716605bed17a7058f3b6086b11d2fc36552a5e1b9ed2622db",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1481391319762-47dff72954d9",
+      "path": "__external/images.unsplash.com/photo-1481391319762-47dff72954d9-4c05d48934191bf9.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1035946,
+      "sha256": "cfc45c792d7e3e401b8fac962b7933cc1faae95f8dc263e7d8d7a829dd4ee76e",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1485875106734-60e677d66adf",
+      "path": "__external/images.unsplash.com/photo-1485875106734-60e677d66adf-3b9da24774ce1138.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1760044,
+      "sha256": "0046e323e61817d51e9afc53add0cc34eab557c8639208be0ee02327b8d80973",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1498560966227-924b32ce2feb",
+      "path": "__external/images.unsplash.com/photo-1498560966227-924b32ce2feb-d23f227bc2e46b7e.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1601918,
+      "sha256": "e0c87f71036920bd91552ebee4dfa7dedbd0ac10019dacc70d98c0732504fb47",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1549212219-38c6ace46e38",
+      "path": "__external/images.unsplash.com/photo-1549212219-38c6ace46e38-4ad43ea2adf04140.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2231568,
+      "sha256": "61a31ab5f559ddbbde1515954bf8589bb56840eb7c641299380a2c1400eb4150",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1557347570-f2421ee73578",
+      "path": "__external/images.unsplash.com/photo-1557347570-f2421ee73578-d77cc6cbe0621cd4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2763876,
+      "sha256": "81c8113e5c5b465f79d0dc91654367119b63b0d6aa5f79a3b07eaf9beafbffcc",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1577730454545-414bd1e38357",
+      "path": "__external/images.unsplash.com/photo-1577730454545-414bd1e38357-e1cc804a0b5d5927.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 6645388,
+      "sha256": "32e9b3767e44e65875677be0c4f37f65e5a76217d0ac7a6b6f4d34bb4268fe55",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1586980026624-48690ef44dd7",
+      "path": "__external/images.unsplash.com/photo-1586980026624-48690ef44dd7-5096f533f826eb76.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2723513,
+      "sha256": "41f3b6718012207af360defb98424088f887b89285704cefb20909c78c7d8af6",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1590080876351-941da357bde6",
+      "path": "__external/images.unsplash.com/photo-1590080876351-941da357bde6-1a10dadea65787ef.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 12121791,
+      "sha256": "cbcd1f33fc2e827d7e9cff4b0cb22fd3c867058f211e0f9d75f9541042975253",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1596831695567-91772a11a7a3",
+      "path": "__external/images.unsplash.com/photo-1596831695567-91772a11a7a3-1ca130949f9b02e1.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 4538996,
+      "sha256": "9ce297ffac353b9376ac00f6533e3e12449f8b1346e4c27f8674316bc723b58e",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1608637568515-9480bd4b0f04",
+      "path": "__external/images.unsplash.com/photo-1608637568515-9480bd4b0f04-eefe795e32c57a63.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1935997,
+      "sha256": "4543308fc6b089cefd6d8219b9d1b0780c2a3009b52b03ae9962006e675ad621",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1611488817048-c7c283efebd1",
+      "path": "__external/images.unsplash.com/photo-1611488817048-c7c283efebd1-d07bb932ddf70931.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1747071,
+      "sha256": "63cdedd8a1ef9694a1a9e6da72a401bb7e73ce9dcb182e459b15d17037da50ed",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1611516081814-55d97d5a7488",
+      "path": "__external/images.unsplash.com/photo-1611516081814-55d97d5a7488-e22520940668fc0f.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2141685,
+      "sha256": "a58b02c84e8ab88b593868ac7a1e8e6e9588ad46e32bb6aaa99324b7d7a3cb60",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1615366105533-5b8f3255ea5d",
+      "path": "__external/images.unsplash.com/photo-1615366105533-5b8f3255ea5d-01b2ccc05ec576c4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2890455,
+      "sha256": "45a91c30d148a7568ab8f7ca45e4643754cb281e9f7f6750bb1341bb376ca395",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1621057621391-7ed446a24b41",
+      "path": "__external/images.unsplash.com/photo-1621057621391-7ed446a24b41-f77deafc807d8d93.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2378394,
+      "sha256": "e40482909522df48f7d495acade67dbb1fb83dea6897342658385fa508479f07",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1629472866652-8c95ee69e1cc",
+      "path": "__external/images.unsplash.com/photo-1629472866652-8c95ee69e1cc-9d03a099713c2c96.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 3479568,
+      "sha256": "b95558ae733143dc9138d2723f19c4f05285148b8719387b5569d2415ad085c0",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1633360821154-1935fb5671e6",
+      "path": "__external/images.unsplash.com/photo-1633360821154-1935fb5671e6-3eee12b5d0d3bad4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 962722,
+      "sha256": "e544cba0c33ce60ae0813f7a6ada5a617f9463917a5169e30d26dd38572a276d",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1671957195566-e3b140b4576f",
+      "path": "__external/images.unsplash.com/photo-1671957195566-e3b140b4576f-4111c3e5b1cdea80.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 5782485,
+      "sha256": "d629f542f9dadbaf4e128092ec6b4c5f8531b7a9d670e610a2e55a9492250291",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1683234192998-ea6aac947b18",
+      "path": "__external/images.unsplash.com/photo-1683234192998-ea6aac947b18-3c871113b1460a44.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1067065,
+      "sha256": "4fd1964f79de3884bf05215acce0334e154a50c8a1977fed5b814843f4059252",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1701540747569-46bf364bbbb0",
+      "path": "__external/images.unsplash.com/photo-1701540747569-46bf364bbbb0-b939e1c7bce598f5.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 5464003,
+      "sha256": "c762940be723e807d92f8e65a829732583818f7c79b3f679b8512122b4f76d9e",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f36b.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f36b-38b964f5012bacd0.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 905,
+      "sha256": "722690e067662a1d548507f54afcbb9e05b1bd85e7a8a8215d38398e5c2e1e27",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f469-200d-1f373.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f469-200d-1f373-f95587778fd477b3.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 3616,
+      "sha256": "20abd146f26bde674ee7ca0e7748b7311caa73ea8b108cf5b9f7a5a6bbd8e522",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f48e.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f48e-9ef757cb9fee4884.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 301,
+      "sha256": "6e7a1458d222e42798409e0e827860aa1cdff49188b5fd8bb249eae14d38e532",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f6d2.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6d2-af94d4e782c4c641.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 1305,
+      "sha256": "28c4d030b552ee0bd9d39f6a90192fd74ba9433d9eb332d569e43f14f9888898",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f6e0.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6e0-9a6f1c494b65ede5.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 1020,
+      "sha256": "bc6a532248377af0314ba7588a7486aa5bd3c8b3de07e8087e0b6a16f85f2c6c",
+      "external": true
+    },
+    {
+      "url": "/wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription.css?ver=1784555620",
+      "path": "wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription-83f2f0d750af.css",
+      "contentType": "text/css",
+      "bytes": 3842,
+      "sha256": "bf4a8bc9902e145d850327136db3343d196709966ca31d78b4fc16e82cd47e2b",
+      "external": false
+    },
+    {
+      "url": "/wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription-view.js?ver=1784555620",
+      "path": "wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription-view-83f2f0d750af.js",
+      "contentType": "text/javascript",
+      "bytes": 5998,
+      "sha256": "9c1afefb7e675d365d776ace1f36d52f59b77dbf2a6f0977ca34239478b5799e",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/css/style.min.css?ver=2.0.29",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/css/style.min-74036d54cf0f.css",
+      "contentType": "text/css",
+      "bytes": 16120,
+      "sha256": "be23304efd877c0ac44272af5ad00d9613cc07aead998fbc7b1a785522e4e01e",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Catamaran-Variable.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Catamaran-Variable.ttf",
+      "contentType": "font/ttf",
+      "bytes": 182868,
+      "sha256": "9af2d7ca97d4ec9166f8079482fbdabe2d86ed2bfbb288a2af390ba884ac7b75",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Caudex-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Caudex-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 437116,
+      "sha256": "aff046a4a3bded9339fa7a571a5b5dff4f513ff0efdc87f02fa9acf6382dc101",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Cormorant-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Cormorant-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 379468,
+      "sha256": "e6d68b0f96426f3c595493f66ad0d3045070c7ba15fdad6d8ea1f15c0f9e48b9",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Bold.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Bold.ttf",
+      "contentType": "font/ttf",
+      "bytes": 71852,
+      "sha256": "3edb1342cebb1b19c3e3fee912497961006e29bf58486ba0404c33c54c463435",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-BoldItalic.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-BoldItalic.ttf",
+      "contentType": "font/ttf",
+      "bytes": 73392,
+      "sha256": "13435a428d5f0bfa65f38ff107bf259987ffd63d0701a2e6b930569ba678ba62",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Italic.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Italic.ttf",
+      "contentType": "font/ttf",
+      "bytes": 73576,
+      "sha256": "2f10bab37037592b6dd6f5aa3cf72dac337991895ac758ff32db236674d34679",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Medium.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Medium.ttf",
+      "contentType": "font/ttf",
+      "bytes": 71764,
+      "sha256": "418ce314f345540ffabeb91fb58c9a3cd83cb2df850ff32313c833e4604740c0",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-MediumItalic.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-MediumItalic.ttf",
+      "contentType": "font/ttf",
+      "bytes": 73288,
+      "sha256": "dde10d12991574eae30c2e4f4dd59fec47c168d8673e05ea0a33e583e95d0dc2",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 56352,
+      "sha256": "7a73e6aa8107e0046eae5dd713bf4752d93e689f57d51c45b1545acddfd71be3",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/DMSerifDisplay-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSerifDisplay-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 72220,
+      "sha256": "98c1cc2ebdc2323110809e5c2a56049fc612b07c129c3b714fe4239ff9fc7df3",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/FiraSans-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/FiraSans-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 440984,
+      "sha256": "3dabf3d48bf4599f95cffd92f99ea426a014d5311f52a5eb5ec3af265e97cd97",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Gruppo-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Gruppo-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 75280,
+      "sha256": "3d6e059b401cb55b0d250784b665473761b4ded49f04c530d5de4ef1e814aa52",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/IBMPlexMono-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/IBMPlexMono-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 133796,
+      "sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Junge-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Junge-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 67292,
+      "sha256": "a13464b8ccc5e4729f9012e152505dc2fba0ec02e77e26f9914562f36c8d1928",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Lato-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Lato-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 75152,
+      "sha256": "e82542aed8293f49fc83c4aaea566b1f6b4fc7a9ab5da11e6fb9bc0973b5324b",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Manrope-Variable.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Manrope-Variable.ttf",
+      "contentType": "font/ttf",
+      "bytes": 167160,
+      "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Montserrat-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Montserrat-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 330948,
+      "sha256": "f5a3f02c4a72f1da11c6dadf4fd78c07b2f145a34ed46eb875ed0da28cbd348c",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/NunitoSans-Variable.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/NunitoSans-Variable.ttf",
+      "contentType": "font/ttf",
+      "bytes": 569372,
+      "sha256": "585d07756a7f5cca34de3e622a23f5e98d60efc96ac9c9e7c6bc251fea040854",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/OpenSans-Variable.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/OpenSans-Variable.ttf",
+      "contentType": "font/ttf",
+      "bytes": 529700,
+      "sha256": "177359dff5017066301cff7264b86851b60b68628636255015d1db37b54b344d",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/PlayfairDisplay-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/PlayfairDisplay-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 193380,
+      "sha256": "b8a7be4d413eb9a46f0bea81afda217023b209211a3c6a132173f67a030aaa23",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Poppins-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Poppins-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 158240,
+      "sha256": "707fdc5c8bab57a90061c6a8ed7b70d5ffb82fc810e994e79f90bace890c255a",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Prata-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Prata-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 96948,
+      "sha256": "574345a3423feeb31f801fef6a127cd4a1e38f744212c73b83f0ab881d34b14a",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Prompt-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Prompt-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 162640,
+      "sha256": "af61baae845e12945e146e6144bcb02e47f91bffa229b65c332f576ba5b2bc74",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/ProstoOne-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/ProstoOne-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 69504,
+      "sha256": "f7a78d412215da8c912cabbe380d568cb5e4523ab300f764ad967f99b9a27d73",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Roboto-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Roboto-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 146004,
+      "sha256": "dbd285b518e398832f6f4a736109c355ce25a49546bfce41bab256c9ef7e56eb",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/TitilliumWeb-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/TitilliumWeb-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 57392,
+      "sha256": "486e78be7ca7596376418b5120443ee1a359e95488da17f7a88282d82f34d51c",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/fonts/Trirong-Regular.ttf",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Trirong-Regular.ttf",
+      "contentType": "font/ttf",
+      "bytes": 191384,
+      "sha256": "f4e9ce4767c0003c6bf02c8cefd127f6668a2e03b6f9c608ff7bf155faec9cd9",
+      "external": false
+    },
+    {
+      "url": "/wp-content/themes/hostinger-ai-theme/assets/js/front-scripts.min.js?ver=2.0.29",
+      "path": "wp-content/themes/hostinger-ai-theme/assets/js/front-scripts.min-74036d54cf0f.js",
+      "contentType": "text/javascript",
+      "bytes": 44215,
+      "sha256": "010d4010f30d29e4a4f41979021802ef5ddf1c76e9f92e85a1ba520a1fb5e759",
+      "external": false
+    },
+    {
+      "url": "/wp-content/uploads/2026/07/generated-bY9wDNnLL9ezhBOF.png",
+      "path": "wp-content/uploads/2026/07/generated-bY9wDNnLL9ezhBOF.png",
+      "contentType": "image/png",
+      "bytes": 3147861,
+      "sha256": "365da7d8f8091d1177f06eb2de91dc5bc578dd12d9eb31491af039a0f1777bb9",
+      "external": false
+    },
+    {
+      "url": "/wp-content/uploads/2026/07/generated-Y15LhwVxcX9b4RuR.png",
+      "path": "wp-content/uploads/2026/07/generated-Y15LhwVxcX9b4RuR.png",
+      "contentType": "image/png",
+      "bytes": 3147861,
+      "sha256": "5c7d1489a2c2bad0dc87d2c0844020001b30d07471219e335f7ea4f92184bd33",
+      "external": false
+    },
+    {
+      "url": "/wp-content/uploads/2026/07/untitled-2DOwWMgtzthWRbby.jpg",
+      "path": "wp-content/uploads/2026/07/untitled-2DOwWMgtzthWRbby.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 14126,
+      "sha256": "a3f70a26b3fc6d8b1d6d3f2009a33681f2c597a94677a76680fc9fada8d25698",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/blocks/navigation/style.min.css?ver=7.0.2",
+      "path": "wp-includes/blocks/navigation/style.min-f5d816c69632.css",
+      "contentType": "text/css",
+      "bytes": 20709,
+      "sha256": "8970a41c9eb07af6f38cde8079663efdec36fe89b9d71033b5e8686567107dea",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/dist/hooks.min.js?ver=7496969728ca0f95732d",
+      "path": "wp-includes/js/dist/hooks.min-830134e4ff20.js",
+      "contentType": "text/javascript",
+      "bytes": 5050,
+      "sha256": "cce388fed1a82ebd20ce7d9601e4b6c83a425ea201c333d71b1183ee887cc090",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/dist/i18n.min.js?ver=781d11515ad3d91786ec",
+      "path": "wp-includes/js/dist/i18n.min-3f61b0ffa7ea.js",
+      "contentType": "text/javascript",
+      "bytes": 5732,
+      "sha256": "558ae0ec83cc88de0929fde86b87c231246aafa9c961ebffb3257b05f62ca5cf",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/dist/script-modules/block-library/navigation/view.min.js?ver=96a846e1d7b789c39ab9",
+      "path": "wp-includes/js/dist/script-modules/block-library/navigation/view.min-f4b7288ef9ad.js",
+      "contentType": "text/javascript",
+      "bytes": 3053,
+      "sha256": "caf7ad56bd767d2bb8c5b78dfd3c2c4e005e7d01abca7314fbaffed99c7df69d",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/dist/script-modules/interactivity/index.min.js?ver=efaa5193bbad9c60ffd1",
+      "path": "wp-includes/js/dist/script-modules/interactivity/index.min-807c8c611c34.js",
+      "contentType": "text/javascript",
+      "bytes": 40106,
+      "sha256": "726ac59577c8aeeec94c61bfb7791a709e401b5d871d35c39a65cd948f6124e3",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+      "path": "wp-includes/js/jquery/jquery-migrate.min-980d59b819ac.js",
+      "contentType": "text/javascript",
+      "bytes": 13577,
+      "sha256": "5274f11e6fb32ae0cf2dfb9f8043272865c397a7c4223b4cfa7d50ea52fbde89",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/jquery/jquery.min.js?ver=3.7.1",
+      "path": "wp-includes/js/jquery/jquery.min-987b483024e9.js",
+      "contentType": "text/javascript",
+      "bytes": 87553,
+      "sha256": "cb6f2d32c49d1c2b25e9ffc9aaafa3f83075346c01bcd4ae6eb187392a4292cf",
+      "external": false
+    },
+    {
+      "url": "/wp-includes/js/wp-emoji-release.min.js?ver=7.0.2",
+      "path": "wp-includes/js/wp-emoji-release.min-f5d816c69632.js",
+      "contentType": "text/javascript",
+      "bytes": 22752,
+      "sha256": "063840b4b3f5869e0f0d078bab8bd29cfb3a59ee85e8e3edbbec35a8fe846fd3",
+      "external": false
+    }
+  ],
+  "externalResources": [
+    {
+      "url": "https://assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_ipe86yipe86yipe8-K72q7zZFiByBALNL.png",
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_ipe86yipe86yipe8-K72q7zZFiByBALNL-6392803df0b73bce.png",
+      "contentType": "image/png",
+      "bytes": 4678494,
+      "sha256": "f2a62e66be17b4cafd16098ab81cf7c86e627d0443aef2c8f9675714c76a12ff",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1671957195566-e3b140b4576f",
+      "path": "__external/images.unsplash.com/photo-1671957195566-e3b140b4576f-4111c3e5b1cdea80.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 5782485,
+      "sha256": "d629f542f9dadbaf4e128092ec6b4c5f8531b7a9d670e610a2e55a9492250291",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1596831695567-91772a11a7a3",
+      "path": "__external/images.unsplash.com/photo-1596831695567-91772a11a7a3-1ca130949f9b02e1.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 4538996,
+      "sha256": "9ce297ffac353b9376ac00f6533e3e12449f8b1346e4c27f8674316bc723b58e",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1701540747569-46bf364bbbb0",
+      "path": "__external/images.unsplash.com/photo-1701540747569-46bf364bbbb0-b939e1c7bce598f5.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 5464003,
+      "sha256": "c762940be723e807d92f8e65a829732583818f7c79b3f679b8512122b4f76d9e",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1557347570-f2421ee73578",
+      "path": "__external/images.unsplash.com/photo-1557347570-f2421ee73578-d77cc6cbe0621cd4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2763876,
+      "sha256": "81c8113e5c5b465f79d0dc91654367119b63b0d6aa5f79a3b07eaf9beafbffcc",
+      "external": true
+    },
+    {
+      "url": "https://assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_k1x2wzk1x2wzk1x2-jl25iWVmrwph1773.png",
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_k1x2wzk1x2wzk1x2-jl25iWVmrwph1773-3a8b4bad8f6e51e4.png",
+      "contentType": "image/png",
+      "bytes": 6541050,
+      "sha256": "bdfe199611c7b54716605bed17a7058f3b6086b11d2fc36552a5e1b9ed2622db",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1577730454545-414bd1e38357",
+      "path": "__external/images.unsplash.com/photo-1577730454545-414bd1e38357-e1cc804a0b5d5927.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 6645388,
+      "sha256": "32e9b3767e44e65875677be0c4f37f65e5a76217d0ac7a6b6f4d34bb4268fe55",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1615366105533-5b8f3255ea5d",
+      "path": "__external/images.unsplash.com/photo-1615366105533-5b8f3255ea5d-01b2ccc05ec576c4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2890455,
+      "sha256": "45a91c30d148a7568ab8f7ca45e4643754cb281e9f7f6750bb1341bb376ca395",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f48e.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f48e-9ef757cb9fee4884.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 301,
+      "sha256": "6e7a1458d222e42798409e0e827860aa1cdff49188b5fd8bb249eae14d38e532",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f469-200d-1f373.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f469-200d-1f373-f95587778fd477b3.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 3616,
+      "sha256": "20abd146f26bde674ee7ca0e7748b7311caa73ea8b108cf5b9f7a5a6bbd8e522",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f6e0.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6e0-9a6f1c494b65ede5.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 1020,
+      "sha256": "bc6a532248377af0314ba7588a7486aa5bd3c8b3de07e8087e0b6a16f85f2c6c",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f6d2.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6d2-af94d4e782c4c641.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 1305,
+      "sha256": "28c4d030b552ee0bd9d39f6a90192fd74ba9433d9eb332d569e43f14f9888898",
+      "external": true
+    },
+    {
+      "url": "https://s.w.org/images/core/emoji/17.0.2/svg/1f36b.svg",
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f36b-38b964f5012bacd0.svg",
+      "contentType": "image/svg+xml",
+      "bytes": 905,
+      "sha256": "722690e067662a1d548507f54afcbb9e05b1bd85e7a8a8215d38398e5c2e1e27",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1481391319762-47dff72954d9",
+      "path": "__external/images.unsplash.com/photo-1481391319762-47dff72954d9-4c05d48934191bf9.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1035946,
+      "sha256": "cfc45c792d7e3e401b8fac962b7933cc1faae95f8dc263e7d8d7a829dd4ee76e",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1586980026624-48690ef44dd7",
+      "path": "__external/images.unsplash.com/photo-1586980026624-48690ef44dd7-5096f533f826eb76.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2723513,
+      "sha256": "41f3b6718012207af360defb98424088f887b89285704cefb20909c78c7d8af6",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1608637568515-9480bd4b0f04",
+      "path": "__external/images.unsplash.com/photo-1608637568515-9480bd4b0f04-eefe795e32c57a63.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1935997,
+      "sha256": "4543308fc6b089cefd6d8219b9d1b0780c2a3009b52b03ae9962006e675ad621",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1611516081814-55d97d5a7488",
+      "path": "__external/images.unsplash.com/photo-1611516081814-55d97d5a7488-e22520940668fc0f.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2141685,
+      "sha256": "a58b02c84e8ab88b593868ac7a1e8e6e9588ad46e32bb6aaa99324b7d7a3cb60",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1590080876351-941da357bde6",
+      "path": "__external/images.unsplash.com/photo-1590080876351-941da357bde6-1a10dadea65787ef.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 12121791,
+      "sha256": "cbcd1f33fc2e827d7e9cff4b0cb22fd3c867058f211e0f9d75f9541042975253",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1633360821154-1935fb5671e6",
+      "path": "__external/images.unsplash.com/photo-1633360821154-1935fb5671e6-3eee12b5d0d3bad4.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 962722,
+      "sha256": "e544cba0c33ce60ae0813f7a6ada5a617f9463917a5169e30d26dd38572a276d",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1683234192998-ea6aac947b18",
+      "path": "__external/images.unsplash.com/photo-1683234192998-ea6aac947b18-3c871113b1460a44.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1067065,
+      "sha256": "4fd1964f79de3884bf05215acce0334e154a50c8a1977fed5b814843f4059252",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1498560966227-924b32ce2feb",
+      "path": "__external/images.unsplash.com/photo-1498560966227-924b32ce2feb-d23f227bc2e46b7e.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1601918,
+      "sha256": "e0c87f71036920bd91552ebee4dfa7dedbd0ac10019dacc70d98c0732504fb47",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1611488817048-c7c283efebd1",
+      "path": "__external/images.unsplash.com/photo-1611488817048-c7c283efebd1-d07bb932ddf70931.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1747071,
+      "sha256": "63cdedd8a1ef9694a1a9e6da72a401bb7e73ce9dcb182e459b15d17037da50ed",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1485875106734-60e677d66adf",
+      "path": "__external/images.unsplash.com/photo-1485875106734-60e677d66adf-3b9da24774ce1138.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 1760044,
+      "sha256": "0046e323e61817d51e9afc53add0cc34eab557c8639208be0ee02327b8d80973",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1549212219-38c6ace46e38",
+      "path": "__external/images.unsplash.com/photo-1549212219-38c6ace46e38-4ad43ea2adf04140.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2231568,
+      "sha256": "61a31ab5f559ddbbde1515954bf8589bb56840eb7c641299380a2c1400eb4150",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1621057621391-7ed446a24b41",
+      "path": "__external/images.unsplash.com/photo-1621057621391-7ed446a24b41-f77deafc807d8d93.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 2378394,
+      "sha256": "e40482909522df48f7d495acade67dbb1fb83dea6897342658385fa508479f07",
+      "external": true
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1629472866652-8c95ee69e1cc",
+      "path": "__external/images.unsplash.com/photo-1629472866652-8c95ee69e1cc-9d03a099713c2c96.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 3479568,
+      "sha256": "b95558ae733143dc9138d2723f19c4f05285148b8719387b5569d2415ad085c0",
+      "external": true
+    }
+  ],
+  "files": [
+    {
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_ipe86yipe86yipe8-K72q7zZFiByBALNL-6392803df0b73bce.png",
+      "bytes": 4678494,
+      "sha256": "f2a62e66be17b4cafd16098ab81cf7c86e627d0443aef2c8f9675714c76a12ff"
+    },
+    {
+      "path": "__external/assets.zyrosite.com/JF4xk7bPD36skEJg/gemini_generated_image_k1x2wzk1x2wzk1x2-jl25iWVmrwph1773-3a8b4bad8f6e51e4.png",
+      "bytes": 6541050,
+      "sha256": "bdfe199611c7b54716605bed17a7058f3b6086b11d2fc36552a5e1b9ed2622db"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1481391319762-47dff72954d9-4c05d48934191bf9.jpg",
+      "bytes": 1035946,
+      "sha256": "cfc45c792d7e3e401b8fac962b7933cc1faae95f8dc263e7d8d7a829dd4ee76e"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1485875106734-60e677d66adf-3b9da24774ce1138.jpg",
+      "bytes": 1760044,
+      "sha256": "0046e323e61817d51e9afc53add0cc34eab557c8639208be0ee02327b8d80973"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1498560966227-924b32ce2feb-d23f227bc2e46b7e.jpg",
+      "bytes": 1601918,
+      "sha256": "e0c87f71036920bd91552ebee4dfa7dedbd0ac10019dacc70d98c0732504fb47"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1549212219-38c6ace46e38-4ad43ea2adf04140.jpg",
+      "bytes": 2231568,
+      "sha256": "61a31ab5f559ddbbde1515954bf8589bb56840eb7c641299380a2c1400eb4150"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1557347570-f2421ee73578-d77cc6cbe0621cd4.jpg",
+      "bytes": 2763876,
+      "sha256": "81c8113e5c5b465f79d0dc91654367119b63b0d6aa5f79a3b07eaf9beafbffcc"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1577730454545-414bd1e38357-e1cc804a0b5d5927.jpg",
+      "bytes": 6645388,
+      "sha256": "32e9b3767e44e65875677be0c4f37f65e5a76217d0ac7a6b6f4d34bb4268fe55"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1586980026624-48690ef44dd7-5096f533f826eb76.jpg",
+      "bytes": 2723513,
+      "sha256": "41f3b6718012207af360defb98424088f887b89285704cefb20909c78c7d8af6"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1590080876351-941da357bde6-1a10dadea65787ef.jpg",
+      "bytes": 12121791,
+      "sha256": "cbcd1f33fc2e827d7e9cff4b0cb22fd3c867058f211e0f9d75f9541042975253"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1596831695567-91772a11a7a3-1ca130949f9b02e1.jpg",
+      "bytes": 4538996,
+      "sha256": "9ce297ffac353b9376ac00f6533e3e12449f8b1346e4c27f8674316bc723b58e"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1608637568515-9480bd4b0f04-eefe795e32c57a63.jpg",
+      "bytes": 1935997,
+      "sha256": "4543308fc6b089cefd6d8219b9d1b0780c2a3009b52b03ae9962006e675ad621"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1611488817048-c7c283efebd1-d07bb932ddf70931.jpg",
+      "bytes": 1747071,
+      "sha256": "63cdedd8a1ef9694a1a9e6da72a401bb7e73ce9dcb182e459b15d17037da50ed"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1611516081814-55d97d5a7488-e22520940668fc0f.jpg",
+      "bytes": 2141685,
+      "sha256": "a58b02c84e8ab88b593868ac7a1e8e6e9588ad46e32bb6aaa99324b7d7a3cb60"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1615366105533-5b8f3255ea5d-01b2ccc05ec576c4.jpg",
+      "bytes": 2890455,
+      "sha256": "45a91c30d148a7568ab8f7ca45e4643754cb281e9f7f6750bb1341bb376ca395"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1621057621391-7ed446a24b41-f77deafc807d8d93.jpg",
+      "bytes": 2378394,
+      "sha256": "e40482909522df48f7d495acade67dbb1fb83dea6897342658385fa508479f07"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1629472866652-8c95ee69e1cc-9d03a099713c2c96.jpg",
+      "bytes": 3479568,
+      "sha256": "b95558ae733143dc9138d2723f19c4f05285148b8719387b5569d2415ad085c0"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1633360821154-1935fb5671e6-3eee12b5d0d3bad4.jpg",
+      "bytes": 962722,
+      "sha256": "e544cba0c33ce60ae0813f7a6ada5a617f9463917a5169e30d26dd38572a276d"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1671957195566-e3b140b4576f-4111c3e5b1cdea80.jpg",
+      "bytes": 5782485,
+      "sha256": "d629f542f9dadbaf4e128092ec6b4c5f8531b7a9d670e610a2e55a9492250291"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1683234192998-ea6aac947b18-3c871113b1460a44.jpg",
+      "bytes": 1067065,
+      "sha256": "4fd1964f79de3884bf05215acce0334e154a50c8a1977fed5b814843f4059252"
+    },
+    {
+      "path": "__external/images.unsplash.com/photo-1701540747569-46bf364bbbb0-b939e1c7bce598f5.jpg",
+      "bytes": 5464003,
+      "sha256": "c762940be723e807d92f8e65a829732583818f7c79b3f679b8512122b4f76d9e"
+    },
+    {
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f36b-38b964f5012bacd0.svg",
+      "bytes": 905,
+      "sha256": "722690e067662a1d548507f54afcbb9e05b1bd85e7a8a8215d38398e5c2e1e27"
+    },
+    {
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f469-200d-1f373-f95587778fd477b3.svg",
+      "bytes": 3616,
+      "sha256": "20abd146f26bde674ee7ca0e7748b7311caa73ea8b108cf5b9f7a5a6bbd8e522"
+    },
+    {
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f48e-9ef757cb9fee4884.svg",
+      "bytes": 301,
+      "sha256": "6e7a1458d222e42798409e0e827860aa1cdff49188b5fd8bb249eae14d38e532"
+    },
+    {
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6d2-af94d4e782c4c641.svg",
+      "bytes": 1305,
+      "sha256": "28c4d030b552ee0bd9d39f6a90192fd74ba9433d9eb332d569e43f14f9888898"
+    },
+    {
+      "path": "__external/s.w.org/images/core/emoji/17.0.2/svg/1f6e0-9a6f1c494b65ede5.svg",
+      "bytes": 1020,
+      "sha256": "bc6a532248377af0314ba7588a7486aa5bd3c8b3de07e8087e0b6a16f85f2c6c"
+    },
+    {
+      "path": "404.html",
+      "bytes": 96221,
+      "sha256": "1d96e4092f2ba0c07f12c6d571419909902e26f5d6c082a7778eb27610c45cc7"
+    },
+    {
+      "path": "blog/index.html",
+      "bytes": 96773,
+      "sha256": "653a517a4695f9b1dfa3458d4e45bb0b04d8555bbee50c33f6a07b38ed6d0467"
+    },
+    {
+      "path": "category/uncategorized/index.html",
+      "bytes": 103279,
+      "sha256": "f7535a30797bcb35f7a862784d8ea27f9dc61ed55765152875306d4eab384778"
+    },
+    {
+      "path": "chocolate-casero/index.html",
+      "bytes": 109893,
+      "sha256": "c19e4b8b31c1b5f38b24655760a98548bb5743046155bf1537ed901ad03c67cb"
+    },
+    {
+      "path": "el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/index.html",
+      "bytes": 100932,
+      "sha256": "8fc3da60a4ef6b4044e058b09c4a6c212942ed1157d0a8ade8ff019e35b1067c"
+    },
+    {
+      "path": "el-viaje-de-las-especias-sabor-y-bienestar/index.html",
+      "bytes": 101311,
+      "sha256": "9c748bc2b6d674335f66e6912f773ba1e73cbc2fdbdfba942ca87a54afcca21b"
+    },
+    {
+      "path": "hello-world/index.html",
+      "bytes": 99128,
+      "sha256": "a6e5d4874b6b8d98a8fdf70353f3096a434cffe6374966e00354113c17886004"
+    },
+    {
+      "path": "index.html",
+      "bytes": 95899,
+      "sha256": "22d3a4c1e7814f5760baef7099d1dee6c215268550714db7d7a1695b1fe5ea6d"
+    },
+    {
+      "path": "inicio/index.html",
+      "bytes": 99001,
+      "sha256": "a6ccb92a544509b7e297f26c6540f071f6a0e46e384d6361f91118fbeeb7d84a"
+    },
+    {
+      "path": "nosotros/index.html",
+      "bytes": 99031,
+      "sha256": "0b931038886f00d9bc4b4878370f8a17bf8632b3689a0e454809753994194f37"
+    },
+    {
+      "path": "receta-barra-de-cereal/index.html",
+      "bytes": 100599,
+      "sha256": "778ff3c615a4bd585543b32c64c2dd7133041078ec43982f0dc203ebdd779fcb"
+    },
+    {
+      "path": "recetas/index.html",
+      "bytes": 98843,
+      "sha256": "f597e5dde8b8f65d1a2d6b7c4766562d92405c8003d7c9f06b70340e3462c872"
+    },
+    {
+      "path": "robots.txt",
+      "bytes": 123,
+      "sha256": "6a804219ff2678da95ac2a9b27c29bf909c8d802a911283423a92fce6456ce9b"
+    },
+    {
+      "path": "terminos-condiciones/index.html",
+      "bytes": 108134,
+      "sha256": "d3630432e05711eb02f92aba284e36194471b16c31bec358cf115cac58b2bc3d"
+    },
+    {
+      "path": "terms-and-conditions/index.html",
+      "bytes": 105771,
+      "sha256": "6cceeaf5f75f91b97937d09e20b5dd208bf9b5115f1c06d5af8c0ca2fd935ba2"
+    },
+    {
+      "path": "tienda/index.html",
+      "bytes": 96783,
+      "sha256": "0db16c813a34e297e6871c2655b918c25a9aeb7b91b2859abedaed1f56233055"
+    },
+    {
+      "path": "wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription-83f2f0d750af.css",
+      "bytes": 3842,
+      "sha256": "bf4a8bc9902e145d850327136db3343d196709966ca31d78b4fc16e82cd47e2b"
+    },
+    {
+      "path": "wp-content/plugins/hostinger-reach/frontend/dist/blocks/subscription-view-83f2f0d750af.js",
+      "bytes": 5998,
+      "sha256": "9c1afefb7e675d365d776ace1f36d52f59b77dbf2a6f0977ca34239478b5799e"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/css/style.min-74036d54cf0f.css",
+      "bytes": 16120,
+      "sha256": "be23304efd877c0ac44272af5ad00d9613cc07aead998fbc7b1a785522e4e01e"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Catamaran-Variable.ttf",
+      "bytes": 182868,
+      "sha256": "9af2d7ca97d4ec9166f8079482fbdabe2d86ed2bfbb288a2af390ba884ac7b75"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Caudex-Regular.ttf",
+      "bytes": 437116,
+      "sha256": "aff046a4a3bded9339fa7a571a5b5dff4f513ff0efdc87f02fa9acf6382dc101"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Cormorant-Regular.ttf",
+      "bytes": 379468,
+      "sha256": "e6d68b0f96426f3c595493f66ad0d3045070c7ba15fdad6d8ea1f15c0f9e48b9"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Bold.ttf",
+      "bytes": 71852,
+      "sha256": "3edb1342cebb1b19c3e3fee912497961006e29bf58486ba0404c33c54c463435"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-BoldItalic.ttf",
+      "bytes": 73392,
+      "sha256": "13435a428d5f0bfa65f38ff107bf259987ffd63d0701a2e6b930569ba678ba62"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Italic.ttf",
+      "bytes": 73576,
+      "sha256": "2f10bab37037592b6dd6f5aa3cf72dac337991895ac758ff32db236674d34679"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Medium.ttf",
+      "bytes": 71764,
+      "sha256": "418ce314f345540ffabeb91fb58c9a3cd83cb2df850ff32313c833e4604740c0"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-MediumItalic.ttf",
+      "bytes": 73288,
+      "sha256": "dde10d12991574eae30c2e4f4dd59fec47c168d8673e05ea0a33e583e95d0dc2"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSans-Regular.ttf",
+      "bytes": 56352,
+      "sha256": "7a73e6aa8107e0046eae5dd713bf4752d93e689f57d51c45b1545acddfd71be3"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/DMSerifDisplay-Regular.ttf",
+      "bytes": 72220,
+      "sha256": "98c1cc2ebdc2323110809e5c2a56049fc612b07c129c3b714fe4239ff9fc7df3"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/FiraSans-Regular.ttf",
+      "bytes": 440984,
+      "sha256": "3dabf3d48bf4599f95cffd92f99ea426a014d5311f52a5eb5ec3af265e97cd97"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Gruppo-Regular.ttf",
+      "bytes": 75280,
+      "sha256": "3d6e059b401cb55b0d250784b665473761b4ded49f04c530d5de4ef1e814aa52"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/IBMPlexMono-Regular.ttf",
+      "bytes": 133796,
+      "sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Junge-Regular.ttf",
+      "bytes": 67292,
+      "sha256": "a13464b8ccc5e4729f9012e152505dc2fba0ec02e77e26f9914562f36c8d1928"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Lato-Regular.ttf",
+      "bytes": 75152,
+      "sha256": "e82542aed8293f49fc83c4aaea566b1f6b4fc7a9ab5da11e6fb9bc0973b5324b"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Manrope-Variable.ttf",
+      "bytes": 167160,
+      "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Montserrat-Regular.ttf",
+      "bytes": 330948,
+      "sha256": "f5a3f02c4a72f1da11c6dadf4fd78c07b2f145a34ed46eb875ed0da28cbd348c"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/NunitoSans-Variable.ttf",
+      "bytes": 569372,
+      "sha256": "585d07756a7f5cca34de3e622a23f5e98d60efc96ac9c9e7c6bc251fea040854"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/OpenSans-Variable.ttf",
+      "bytes": 529700,
+      "sha256": "177359dff5017066301cff7264b86851b60b68628636255015d1db37b54b344d"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/PlayfairDisplay-Regular.ttf",
+      "bytes": 193380,
+      "sha256": "b8a7be4d413eb9a46f0bea81afda217023b209211a3c6a132173f67a030aaa23"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Poppins-Regular.ttf",
+      "bytes": 158240,
+      "sha256": "707fdc5c8bab57a90061c6a8ed7b70d5ffb82fc810e994e79f90bace890c255a"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Prata-Regular.ttf",
+      "bytes": 96948,
+      "sha256": "574345a3423feeb31f801fef6a127cd4a1e38f744212c73b83f0ab881d34b14a"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Prompt-Regular.ttf",
+      "bytes": 162640,
+      "sha256": "af61baae845e12945e146e6144bcb02e47f91bffa229b65c332f576ba5b2bc74"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/ProstoOne-Regular.ttf",
+      "bytes": 69504,
+      "sha256": "f7a78d412215da8c912cabbe380d568cb5e4523ab300f764ad967f99b9a27d73"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Roboto-Regular.ttf",
+      "bytes": 146004,
+      "sha256": "dbd285b518e398832f6f4a736109c355ce25a49546bfce41bab256c9ef7e56eb"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/TitilliumWeb-Regular.ttf",
+      "bytes": 57392,
+      "sha256": "486e78be7ca7596376418b5120443ee1a359e95488da17f7a88282d82f34d51c"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/fonts/Trirong-Regular.ttf",
+      "bytes": 191384,
+      "sha256": "f4e9ce4767c0003c6bf02c8cefd127f6668a2e03b6f9c608ff7bf155faec9cd9"
+    },
+    {
+      "path": "wp-content/themes/hostinger-ai-theme/assets/js/front-scripts.min-74036d54cf0f.js",
+      "bytes": 44215,
+      "sha256": "010d4010f30d29e4a4f41979021802ef5ddf1c76e9f92e85a1ba520a1fb5e759"
+    },
+    {
+      "path": "wp-content/uploads/2026/07/generated-bY9wDNnLL9ezhBOF.png",
+      "bytes": 3147861,
+      "sha256": "365da7d8f8091d1177f06eb2de91dc5bc578dd12d9eb31491af039a0f1777bb9"
+    },
+    {
+      "path": "wp-content/uploads/2026/07/generated-Y15LhwVxcX9b4RuR.png",
+      "bytes": 3147861,
+      "sha256": "5c7d1489a2c2bad0dc87d2c0844020001b30d07471219e335f7ea4f92184bd33"
+    },
+    {
+      "path": "wp-content/uploads/2026/07/untitled-2DOwWMgtzthWRbby.jpg",
+      "bytes": 14126,
+      "sha256": "a3f70a26b3fc6d8b1d6d3f2009a33681f2c597a94677a76680fc9fada8d25698"
+    },
+    {
+      "path": "wp-includes/blocks/navigation/style.min-f5d816c69632.css",
+      "bytes": 20709,
+      "sha256": "8970a41c9eb07af6f38cde8079663efdec36fe89b9d71033b5e8686567107dea"
+    },
+    {
+      "path": "wp-includes/js/dist/hooks.min-830134e4ff20.js",
+      "bytes": 5050,
+      "sha256": "cce388fed1a82ebd20ce7d9601e4b6c83a425ea201c333d71b1183ee887cc090"
+    },
+    {
+      "path": "wp-includes/js/dist/i18n.min-3f61b0ffa7ea.js",
+      "bytes": 5732,
+      "sha256": "558ae0ec83cc88de0929fde86b87c231246aafa9c961ebffb3257b05f62ca5cf"
+    },
+    {
+      "path": "wp-includes/js/dist/script-modules/block-library/navigation/view.min-f4b7288ef9ad.js",
+      "bytes": 3053,
+      "sha256": "caf7ad56bd767d2bb8c5b78dfd3c2c4e005e7d01abca7314fbaffed99c7df69d"
+    },
+    {
+      "path": "wp-includes/js/dist/script-modules/interactivity/index.min-807c8c611c34.js",
+      "bytes": 40106,
+      "sha256": "726ac59577c8aeeec94c61bfb7791a709e401b5d871d35c39a65cd948f6124e3"
+    },
+    {
+      "path": "wp-includes/js/jquery/jquery-migrate.min-980d59b819ac.js",
+      "bytes": 13577,
+      "sha256": "5274f11e6fb32ae0cf2dfb9f8043272865c397a7c4223b4cfa7d50ea52fbde89"
+    },
+    {
+      "path": "wp-includes/js/jquery/jquery.min-987b483024e9.js",
+      "bytes": 87553,
+      "sha256": "cb6f2d32c49d1c2b25e9ffc9aaafa3f83075346c01bcd4ae6eb187392a4292cf"
+    },
+    {
+      "path": "wp-includes/js/wp-emoji-release.min-f5d816c69632.js",
+      "bytes": 22752,
+      "sha256": "063840b4b3f5869e0f0d078bab8bd29cfb3a59ee85e8e3edbbec35a8fe846fd3"
+    },
+    {
+      "path": "wp-sitemap-posts-page-1.xml",
+      "bytes": 1286,
+      "sha256": "4fdc78e3fdb12a1481ce779c5165a37317e5acc25da53d896bfa0d9d406abc51"
+    },
+    {
+      "path": "wp-sitemap-posts-post-1.xml",
+      "bytes": 606,
+      "sha256": "65ef77bb49c29e4a6cb410f14cd0d48038cb282ac21673436ab3805f258c55dd"
+    },
+    {
+      "path": "wp-sitemap-taxonomies-category-1.xml",
+      "bytes": 274,
+      "sha256": "d4dfed6ccf89d71cd6fb77ee99c95082a48ea1630bdc0d6ff34102886fa71c92"
+    },
+    {
+      "path": "wp-sitemap.xml",
+      "bytes": 489,
+      "sha256": "1e428e9a3a494e89a2495c85b20e6348dd45ef8879c50090982d2d54adb81901"
+    }
+  ],
+  "snapshotFiles": [
+    {
+      "path": "data/categories.json",
+      "bytes": 85,
+      "sha256": "82b865ba0bd2f1d388f983a07f8c2d861b94b1e5d25b644cf2663e7e6dc3dd95"
+    },
+    {
+      "path": "data/forms.json",
+      "bytes": 9507,
+      "sha256": "55574e6bc023bcac1f3b05e3e9c11d9757f2a8d0a5e634bffeb5c63166005231"
+    },
+    {
+      "path": "data/navigation.json",
+      "bytes": 254,
+      "sha256": "717a5a2e8671cb5c03202dcf7a5f8c8cfe60c23b625f63e9e9ee584863303226"
+    },
+    {
+      "path": "data/plugins.json",
+      "bytes": 993,
+      "sha256": "ebf92916b5ed0957e82c73984de790bb1165b42d32dfd9e76dbe68855eaa1489"
+    },
+    {
+      "path": "data/public-settings.json",
+      "bytes": 460,
+      "sha256": "a5cb43b1d50165a4cd2f69fea23815086c478dc299d8c198cd6ec1a1ca6d23b9"
+    },
+    {
+      "path": "data/published-content.json",
+      "bytes": 3335,
+      "sha256": "a31a02af07dd15a3b405e8a8f2144c93a234ccd55b0a4e7cd34035fb89ecf75c"
+    },
+    {
+      "path": "data/tags.json",
+      "bytes": 5,
+      "sha256": "2af13b6fc19ae4f83bbecc6598261de0421ca49d0708480663af9e4830a14060"
+    },
+    {
+      "path": "data/themes.json",
+      "bytes": 488,
+      "sha256": "12989329fb5267fb0aba717a1250c405b99e8afc491f1b442263c41fe0e30918"
+    },
+    {
+      "path": "screenshots/18e51aaa5f0c-desktop.jpg",
+      "bytes": 138783,
+      "sha256": "d4ed3ee7aba6f26a336e5cc4ac802150cd59bd7b618614a0f1a0a3357500ffc5"
+    },
+    {
+      "path": "screenshots/18e51aaa5f0c-mobile.jpg",
+      "bytes": 123224,
+      "sha256": "7a20a221b3a21a77f6d8883fadd40d8bd739f5787f25a285d25b9ae48ede5c3d"
+    },
+    {
+      "path": "screenshots/18e51aaa5f0c-tablet.jpg",
+      "bytes": 129676,
+      "sha256": "692a250cab9795f327d530267e35f732eab1aed5b4e5f3796cb3a56e4d195b97"
+    },
+    {
+      "path": "screenshots/2e04e3c0021b-desktop.jpg",
+      "bytes": 796431,
+      "sha256": "7677c92dc688878ca36e6c3b01bc056683a87fa59ee266483a8127494d6a1216"
+    },
+    {
+      "path": "screenshots/2e04e3c0021b-mobile.jpg",
+      "bytes": 704686,
+      "sha256": "ebcdad902fb5d5b11140a13e22d3c3a808f7cfff338d47c4c939a9b03d8cc775"
+    },
+    {
+      "path": "screenshots/2e04e3c0021b-tablet.jpg",
+      "bytes": 733143,
+      "sha256": "1984ac6da30c4f8e4594ddfe20de723d306a1a360f1fba592f72395f65eb75a3"
+    },
+    {
+      "path": "screenshots/670fff8c3a23-desktop.jpg",
+      "bytes": 17951444,
+      "sha256": "1e45eecce45866d20a73276b3f4dca6eda854b09668370f2d54ede925ffa4082"
+    },
+    {
+      "path": "screenshots/670fff8c3a23-mobile.jpg",
+      "bytes": 13755837,
+      "sha256": "1148f5dc6b47c9fca0761fb68599b252d0266be811e422efd4d745b6d9e2f3fc"
+    },
+    {
+      "path": "screenshots/670fff8c3a23-tablet.jpg",
+      "bytes": 18372878,
+      "sha256": "7c10b57716546b7fcf72e6e69653ae4e10d52471a131671aa1f84dd7352ee4ff"
+    },
+    {
+      "path": "screenshots/68a120ac7e20-desktop.jpg",
+      "bytes": 43159,
+      "sha256": "6747ba07634cbdb275837c457b560a80cd0fdbd8a63ac293dfb768fd9a0571be"
+    },
+    {
+      "path": "screenshots/68a120ac7e20-mobile.jpg",
+      "bytes": 30125,
+      "sha256": "06db0f895308958c090c48667274381072f372be218f8cdeeb0c449c0af6e110"
+    },
+    {
+      "path": "screenshots/68a120ac7e20-tablet.jpg",
+      "bytes": 37240,
+      "sha256": "01d68408d16172774a5d0d26363e1d3276b95973df06ef9ea568dd53c4654f51"
+    },
+    {
+      "path": "screenshots/71e67f47946b-desktop.jpg",
+      "bytes": 57224,
+      "sha256": "e4dc705ad428699c25bb10402a28a7a97986345d52a8d02d167447e090357626"
+    },
+    {
+      "path": "screenshots/71e67f47946b-mobile.jpg",
+      "bytes": 37597,
+      "sha256": "05500c7af9ed7547e8cbcb874cbe5337ecf16acd179ae12e9753371692766a04"
+    },
+    {
+      "path": "screenshots/71e67f47946b-tablet.jpg",
+      "bytes": 46918,
+      "sha256": "00b903f1079aa72ba5159a144db648b54f85adf7804305e9ffb748ad4cecea33"
+    },
+    {
+      "path": "screenshots/89495638df9f-desktop.jpg",
+      "bytes": 14764525,
+      "sha256": "35e728e67efe5b04447a88eccd47a62e41b6d84ca9f08655c4ec3d2a2c99a535"
+    },
+    {
+      "path": "screenshots/89495638df9f-mobile.jpg",
+      "bytes": 5202537,
+      "sha256": "fa8170512ad2b53b459e0273b8345e860e8399bfae7f24463a71708dbf08c64b"
+    },
+    {
+      "path": "screenshots/89495638df9f-tablet.jpg",
+      "bytes": 14725296,
+      "sha256": "b6df49fe3c79428adb041237c98a7684b46497055604490c32f1be5fc379adbb"
+    },
+    {
+      "path": "screenshots/8ee7cd16fa22-desktop.jpg",
+      "bytes": 9823397,
+      "sha256": "81257be85338fd3b75bb0d0c804b5318b688957ffe596c7f06aa34ce169c2105"
+    },
+    {
+      "path": "screenshots/8ee7cd16fa22-mobile.jpg",
+      "bytes": 3882476,
+      "sha256": "a495bb65e5f428792f8399493bcb1d3020b3c86263557a8e327b1acb4ca7dcb6"
+    },
+    {
+      "path": "screenshots/8ee7cd16fa22-tablet.jpg",
+      "bytes": 9802970,
+      "sha256": "4931605ee32f7ce534d59c14565be9f44989213654b050b4f9bb337a50ac1045"
+    },
+    {
+      "path": "screenshots/ab57d90fafab-desktop.jpg",
+      "bytes": 2774410,
+      "sha256": "f72f05d9688e4d8042a03728d78d9247e9950b2ec607b4d4bd843c5a2d3618f8"
+    },
+    {
+      "path": "screenshots/ab57d90fafab-mobile.jpg",
+      "bytes": 2799484,
+      "sha256": "714311afb30e418565e1c85e29ea402ce32702472af69a12eb2f10ba25179945"
+    },
+    {
+      "path": "screenshots/ab57d90fafab-tablet.jpg",
+      "bytes": 2784383,
+      "sha256": "da4ae589a7e85100ee691c58d14a7830bc9acd1ef55ce2ce3ccd22de26ed2807"
+    },
+    {
+      "path": "screenshots/adf44f38d797-desktop.jpg",
+      "bytes": 43534,
+      "sha256": "8c758b44eed1cc1c0592faea905f53e9f70f36c183ed9e0ee184124e6d54d507"
+    },
+    {
+      "path": "screenshots/adf44f38d797-mobile.jpg",
+      "bytes": 30346,
+      "sha256": "9eaf076094d1f90488b15af0b24717d1ba525e8e2826472456138c9d1ec2cade"
+    },
+    {
+      "path": "screenshots/adf44f38d797-tablet.jpg",
+      "bytes": 37560,
+      "sha256": "a95c0d828b24ff0fd26145cc4fa51c35b45750fbca29cb649f95d5eada5897da"
+    },
+    {
+      "path": "screenshots/b50824d4609d-desktop.jpg",
+      "bytes": 336709,
+      "sha256": "f19d1e7967aae4d2ccd509f1c85a9f6ff3e953328e73067bad19bb380776e4e4"
+    },
+    {
+      "path": "screenshots/b50824d4609d-mobile.jpg",
+      "bytes": 304617,
+      "sha256": "f291842f466ddb0190995c5125aa008f4d9171d156d5bdaf7462c7c909a953c6"
+    },
+    {
+      "path": "screenshots/b50824d4609d-tablet.jpg",
+      "bytes": 327793,
+      "sha256": "3ce8e32b5a39b66d73fa21951903aad6a80ad277a14cfe52a33216580df28dde"
+    },
+    {
+      "path": "screenshots/d865b30fb5ca-desktop.jpg",
+      "bytes": 13001941,
+      "sha256": "29725aebd5095b6d5758be388c40b003ff9b73b4f64b7e52173acea4d5c19297"
+    },
+    {
+      "path": "screenshots/d865b30fb5ca-mobile.jpg",
+      "bytes": 4129876,
+      "sha256": "7b2ddfcff6b7b80755ded501ec55fcaa16bc28e4de4ba6e73a4c85a36853495c"
+    },
+    {
+      "path": "screenshots/d865b30fb5ca-tablet.jpg",
+      "bytes": 13134882,
+      "sha256": "cb84b16dbbb0ea6869e2395fd6303dd5c0e0445afc2160aaf8c7a1c89ac4ab46"
+    },
+    {
+      "path": "screenshots/d8d94ad705e1-desktop.jpg",
+      "bytes": 376113,
+      "sha256": "c2b6f56de3a3fdc97371ed1159de1b968e9e054c72ba5427bc52fa4f92d2b806"
+    },
+    {
+      "path": "screenshots/d8d94ad705e1-mobile.jpg",
+      "bytes": 377048,
+      "sha256": "c5df8f90546f570e1a6b866a3065f609307ba63fac1ae0df673afe8baf0fedaf"
+    },
+    {
+      "path": "screenshots/d8d94ad705e1-tablet.jpg",
+      "bytes": 375695,
+      "sha256": "b3fe7e8e003e69a40a423d79affa3fba3b396cbe2498c12f8c417c0dc8931b7e"
+    },
+    {
+      "path": "screenshots/fb96fd571086-desktop.jpg",
+      "bytes": 645844,
+      "sha256": "b8c732f5d734e1862ceb9c76dc81231a67b49c2cba03537847583ac21c04cc72"
+    },
+    {
+      "path": "screenshots/fb96fd571086-mobile.jpg",
+      "bytes": 586896,
+      "sha256": "28faca63c9dcab9a385c19eb372d1fe7b21df44b8b451d89664c3f0add6f7a27"
+    },
+    {
+      "path": "screenshots/fb96fd571086-tablet.jpg",
+      "bytes": 611747,
+      "sha256": "194c9f4bcaec9d9cefc939abc0a63f9967016cf112f56fe51fc3cb79e5de6af7"
+    },
+    {
+      "path": "screenshots/home-desktop.jpg",
+      "bytes": 39040,
+      "sha256": "fda68c07998cc464a8a24d87d20d0d16c7537c134957b8c12e3e29a03a531961"
+    },
+    {
+      "path": "screenshots/home-mobile.jpg",
+      "bytes": 30401,
+      "sha256": "38f14ae07b5c68a0ab5cf83c357b93f899e8189fc550c62dad21f16c999361ad"
+    },
+    {
+      "path": "screenshots/home-tablet.jpg",
+      "bytes": 34155,
+      "sha256": "351350755cfaee27cdb440acafc88f3d5af0590b85f4ebbfe6b9001841334549"
+    }
+  ],
+  "dynamicFeatures": [
+    {
+      "route": "/",
+      "action": "/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/inicio/",
+      "action": "/inicio/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/nosotros/",
+      "action": "/nosotros/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/tienda/",
+      "action": "/tienda/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/blog/",
+      "action": "/blog/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/recetas/",
+      "action": "/recetas/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/chocolate-casero/",
+      "action": "/chocolate-casero/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/receta-barra-de-cereal/",
+      "action": "/receta-barra-de-cereal/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "action": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "action": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/terms-and-conditions/",
+      "action": "/terms-and-conditions/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/terminos-condiciones/",
+      "action": "/terminos-condiciones/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/hello-world/",
+      "action": "/hello-world/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    },
+    {
+      "route": "/category/uncategorized/",
+      "action": "/category/uncategorized/",
+      "method": "GET",
+      "fields": [
+        {
+          "name": "group",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "metadata.plugin",
+          "type": "hidden",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "processingMigrated": false,
+      "classification": "static-interface-only"
+    }
+  ],
+  "consoleErrors": [],
+  "httpErrors": [],
+  "unrecoverablePages": [],
+  "omittedRoutes": [
+    {
+      "route": "/terminos-condiciones/[Your%20Website%20Address]",
+      "reason": "placeholder-url"
+    }
+  ],
+  "neutralizedRequests": [],
+  "totals": {
+    "pages": 14,
+    "redirects": 0,
+    "resources": 68,
+    "externalResources": 26,
+    "files": 88,
+    "images": 29,
+    "bytes": 87549179,
+    "copiedPublicFiles": 0,
+    "forms": 14,
+    "consoleErrors": 0,
+    "httpErrors": 0,
+    "unrecoverablePages": 0
+  }
+}

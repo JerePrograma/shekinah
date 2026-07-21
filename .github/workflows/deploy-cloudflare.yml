@@ -60,7 +60,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Chromium
-        run: npm exec -- playwright install --with-deps chromium
+        run: npm run install:browsers:ci
 
       - name: Reverify production source
         run: npm run verify
@@ -73,12 +73,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_COMMIT_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
-          npm exec -- wrangler pages deploy dist \
-            --project-name shekinah \
-            --branch main \
-            --commit-hash "${{ steps.source.outputs.sha }}" 2>&1 | tee deployment.log
+          node scripts/deploy-cloudflare.mjs 2>&1 | tee deployment.log
           url=$(grep -Eo 'https://[A-Za-z0-9._-]+\.pages\.dev' deployment.log | tail -n 1 || true)
           if [[ -z "$url" ]]; then
             url='https://shekinah-7dl.pages.dev'

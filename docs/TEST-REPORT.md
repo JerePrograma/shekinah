@@ -1,60 +1,27 @@
 # Informe de pruebas
 
-Fecha de actualización: **2026-07-21**.
+Fecha: **2026-07-21**.
 
-## Estado actual
+## Resultado local
 
-Las pruebas de la antigua implementación Astro constituyen una línea base histórica, no una validación del snapshot WordPress solicitado.
+| Control                            | Resultado                                     |
+| ---------------------------------- | --------------------------------------------- |
+| PowerShell parser                  | PASS: 2 scripts, módulo y smoke test          |
+| `npm ci`                           | PASS: Node 24.18.0, npm 11.16.0, 394 paquetes |
+| `npm run check`                    | PASS: 46 archivos, 0 diagnósticos             |
+| `npm run lint`                     | PASS                                          |
+| `npm run format:check`             | PASS                                          |
+| `npm run verify:snapshot:required` | PASS: 88 archivos, 14 páginas, 68 recursos    |
+| `npm run build`                    | PASS: 88 archivos copiados a `dist/`          |
+| `npm run test:unit`                | PASS: 7/7                                     |
+| `npm run test:powershell`          | PASS                                          |
+| `npm run test:e2e`                 | PASS: 48/48                                   |
+| `npm run audit:output`             | PASS: 89 archivos, mayor 12.121.791 bytes     |
+| `npm run audit:secrets`            | PASS: 0 hallazgos                             |
+| `npm run test:fidelity`            | PASS: 42/42 en 11,4 min                       |
 
-El snapshot real todavía no está versionado. En consecuencia, aún no existen resultados válidos para:
+La fidelidad usó Chromium, `deviceScaleFactor: 1`, viewports exactos 375×812, 768×1024 y 1440×1200, `maxDiffPixels: 0` y `threshold: 0`. Las imágenes externas se fijaron con los bytes SHA-256 versionados para eliminar negociación variable del CDN.
 
-- integridad del manifiesto recuperado;
-- rutas reales del WordPress;
-- recursos reales;
-- formularios reales;
-- comparación visual contra la restauración;
-- E2E del snapshot;
-- build final de producción.
+El manifiesto registra 0 errores HTTP, 0 errores de consola y 0 páginas no recuperables. Los 14 formularios visibles conservan su interfaz y están clasificados como procesamiento no migrado.
 
-## Suite preparada
-
-### Local contra WordPress
-
-```text
-npm run verify:snapshot:required
-npm run build
-npm run test:unit
-npm run test:e2e
-npm run audit:output
-npm run audit:secrets
-WORDPRESS_REFERENCE_URL=<URL_LOCAL> npm run test:fidelity
-```
-
-Viewports fijos:
-
-```text
-375 × 812
-768 × 1024
-1440 × 1200
-```
-
-La fidelidad exige `maxDiffPixels: 0` y `threshold: 0`.
-
-### Cobertura estática
-
-- rutas críticas y redirecciones reales;
-- títulos y cuerpo visible;
-- imágenes y `srcset` cargados;
-- CSS y fuentes;
-- navegación;
-- recursos HTTP sin errores;
-- consola sin errores;
-- ausencia de conexiones externas no localizadas;
-- ausencia de localhost y dominio Hostinger;
-- canonical y `og:url`;
-- robots, sitemap y 404;
-- formularios clasificados y neutralizados.
-
-## Resultado pendiente
-
-Este archivo será reemplazado por el script maestro después de una ejecución local aprobada, con conteos reales del manifiesto. Después deberá actualizarse nuevamente con el run remoto y el SHA desplegado.
+La verificación remota se documenta por separado después de cada push.

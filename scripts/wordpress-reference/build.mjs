@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { access, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const snapshotRoot = path.resolve('reference-snapshot/site');
@@ -47,11 +48,24 @@ if (!(await exists(snapshotIndex))) {
   );
   process.exitCode = 2;
 } else {
+  const verification = spawnSync(
+    process.execPath,
+    [path.resolve('scripts/wordpress-reference/verify.mjs'), '--required'],
+    { env: process.env, stdio: 'inherit' },
+  );
+  if (verification.status !== 0) {
+    process.stderr.write(
+      `Build bloqueado: verify:snapshot:required falló con código ${verification.status ?? 'desconocido'}.\n`,
+    );
+    process.exit(verification.status ?? 3);
+  }
+
   const sourceFiles = await walk(snapshotRoot);
   const errors = [];
-  if (sourceFiles.length > maxFiles) {
+  const generatedHeaders = !(await exists(path.join(snapshotRoot, '_headers')));
+  if (sourceFiles.length + Number(generatedHeaders) > maxFiles) {
     errors.push(
-      `el snapshot contiene ${sourceFiles.length} archivos; Cloudflare Pages Free admite hasta ${maxFiles}`,
+      `el build contendría ${sourceFiles.length + Number(generatedHeaders)} archivos; Cloudflare Pages Free admite hasta ${maxFiles}`,
     );
   }
 
@@ -59,7 +73,10 @@ if (!(await exists(snapshotIndex))) {
     const relative = path.relative(snapshotRoot, file).replaceAll(path.sep, '/');
     const extension = path.extname(file).toLowerCase();
     const fileStat = await stat(file);
-    if (forbiddenNames.has(path.basename(file).toLowerCase()) || forbiddenExtensions.has(extension)) {
+    if (
+      forbiddenNames.has(path.basename(file).toLowerCase()) ||
+      forbiddenExtensions.has(extension)
+    ) {
       errors.push(`${relative}: archivo prohibido en la salida estática`);
     }
     if (relative.endsWith('.map')) errors.push(`${relative}: sourcemap no permitido`);
@@ -71,7 +88,9 @@ if (!(await exists(snapshotIndex))) {
   }
 
   if (errors.length > 0) {
-    process.stderr.write(`Build bloqueado por ${errors.length} error(es):\n- ${errors.join('\n- ')}\n`);
+    process.stderr.write(
+      `Build bloqueado por ${errors.length} error(es):\n- ${errors.join('\n- ')}\n`,
+    );
     process.exitCode = 3;
   } else {
     await rm(distRoot, { recursive: true, force: true });

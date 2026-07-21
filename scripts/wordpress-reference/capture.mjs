@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { chromium } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { access, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 function parseArguments(values) {
@@ -18,14 +18,22 @@ function parseArguments(values) {
 }
 
 const args = parseArguments(process.argv.slice(2));
-const source = new URL(args.source ?? 'http://localhost:8081');
+if (!args.source) {
+  throw new Error(
+    'Falta --source. La URL debe construirse desde LOCAL_PORT en Run-FullMigration.ps1.',
+  );
+}
+const source = new URL(args.source);
 const production = new URL(process.env.SITE_URL ?? 'https://shekinah-7dl.pages.dev');
 const output = path.resolve(args.output ?? 'reference-snapshot/site');
 const screenshots = path.resolve(args.screenshots ?? 'reference-snapshot/screenshots');
 const manifestPath = path.resolve(args.manifest ?? 'reference-snapshot/manifest.json');
 const dataRoot = path.resolve(args.metadata ?? 'reference-snapshot/data');
-const wordpressRoot = args['wordpress-root'] ? path.resolve(args['wordpress-root']) : '';
+const snapshotBase = path.dirname(manifestPath);
 const maxPages = Number(args['max-pages'] ?? 200);
+if (!Number.isSafeInteger(maxPages) || maxPages < 1) {
+  throw new Error(`--max-pages debe ser un entero positivo; recibido: ${args['max-pages']}`);
+}
 const oldHosts = new Set(['chocolate-chimpanzee-908881.hostingersite.com']);
 const seedRoutes = [
   '/',
@@ -50,39 +58,6 @@ const blockedPathPrefixes = [
   '/wp-json/wp/v2/users',
 ];
 const blockedExactResources = new Set(['/wp-admin/admin-ajax.php']);
-const publicExtensions = new Set([
-  '.avif',
-  '.css',
-  '.csv',
-  '.doc',
-  '.docx',
-  '.eot',
-  '.gif',
-  '.ico',
-  '.jpeg',
-  '.jpg',
-  '.js',
-  '.json',
-  '.mp3',
-  '.mp4',
-  '.ogg',
-  '.otf',
-  '.pdf',
-  '.png',
-  '.ppt',
-  '.pptx',
-  '.svg',
-  '.ttf',
-  '.txt',
-  '.webmanifest',
-  '.webm',
-  '.webp',
-  '.woff',
-  '.woff2',
-  '.xls',
-  '.xlsx',
-  '.xml',
-]);
 const textContentTypes = new Set([
   'application/javascript',
   'application/json',
@@ -107,6 +82,21 @@ const textExtensions = new Set([
 ]);
 const maxAssetBytes = 25 * 1024 * 1024;
 const hash = (body) => createHash('sha256').update(body).digest('hex');
+const omittedRouteMap = new Map();
+
+function recordOmitted(value, reason) {
+  if (omittedRouteMap.size >= 5000) return;
+  let route = String(value);
+  try {
+    const url = normalizeSourceUrl(value);
+    if (url.origin !== source.origin) return;
+    route = `${url.pathname}${url.search}`;
+  } catch {
+    // Preserve the malformed value without exposing the local origin.
+  }
+  route = sanitizeDiagnostic(route);
+  omittedRouteMap.set(`${route}\u0000${reason}`, { route, reason });
+}
 
 async function exists(filePath) {
   try {
@@ -114,6 +104,13 @@ async function exists(filePath) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function assertSnapshotPath(target, label) {
+  const relative = path.relative(snapshotBase, target);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`${label} debe ser una subcarpeta de ${snapshotBase}: ${target}`);
   }
 }
 
@@ -146,12 +143,42 @@ function isBlockedUrl(value) {
 }
 
 function routeFor(value) {
-  const url = normalizeSourceUrl(value);
-  if (url.origin !== source.origin || isBlockedUrl(url)) return null;
+  let url;
+  try {
+    url = normalizeSourceUrl(value);
+  } catch {
+    recordOmitted(value, 'invalid-url');
+    return null;
+  }
+  if (url.origin !== source.origin) return null;
+  if (isBlockedUrl(url)) {
+    recordOmitted(url, 'private-or-dynamic-endpoint');
+    return null;
+  }
+  if (
+    [...url.searchParams.keys()].some((key) =>
+      /^(?:_wpnonce|preview|preview_id|preview_nonce|rest_route|s)$/iu.test(key),
+    ) ||
+    url.pathname.startsWith('/author/') ||
+    /\/(?:embed|feed)\/?$/iu.test(url.pathname) ||
+    /^\/\d{4}(?:\/\d{2})?\/?$/u.test(url.pathname)
+  ) {
+    recordOmitted(url, 'preview-search-feed-or-calendar');
+    return null;
+  }
+  if (/\[(?:your|tu|su)\b|(?:your|tu|su)%20website/iu.test(url.pathname)) {
+    recordOmitted(url, 'placeholder-url');
+    return null;
+  }
   let route;
   try {
     route = decodeURI(url.pathname);
   } catch {
+    recordOmitted(url, 'invalid-path-encoding');
+    return null;
+  }
+  if (path.posix.extname(route)) {
+    recordOmitted(url, 'resource-not-page');
     return null;
   }
   if (!path.posix.extname(route) && !route.endsWith('/')) route += '/';
@@ -205,7 +232,12 @@ function safePathname(url) {
   const segments = pathname
     .split('/')
     .filter(Boolean)
-    .map((segment) => segment.replaceAll(/[<>:"|?*\u0000-\u001F]/gu, '_'))
+    .map((segment) =>
+      [...segment]
+        .map((character) => (character.codePointAt(0) < 32 ? '_' : character))
+        .join('')
+        .replaceAll(/[<>:"|?*]/gu, '_'),
+    )
     .filter((segment) => segment !== '.' && segment !== '..');
   return segments.join('/');
 }
@@ -244,7 +276,9 @@ function sanitizeDiagnostic(value) {
 
 function isTextResource(contentType, filePath) {
   const normalized = contentType.split(';')[0].trim().toLowerCase();
-  return textContentTypes.has(normalized) || textExtensions.has(path.extname(filePath).toLowerCase());
+  return (
+    textContentTypes.has(normalized) || textExtensions.has(path.extname(filePath).toLowerCase())
+  );
 }
 
 function extractCssReferences(content, baseUrl) {
@@ -258,9 +292,11 @@ function extractCssReferences(content, baseUrl) {
       // Ignore malformed CSS tokens; they remain visible in the final audit.
     }
   }
-  for (const match of content.matchAll(/@import\s+(?:url\()?\s*["']([^"']+)["']/giu)) {
+  for (const match of content.matchAll(
+    /@import\s+(?:url\(\s*)?(?:["']([^"']+)["']|([^\s;)]+))\s*\)?/giu,
+  )) {
     try {
-      references.add(new URL(match[1], baseUrl).href);
+      references.add(new URL(match[1] ?? match[2], baseUrl).href);
     } catch {
       // Ignore malformed imports.
     }
@@ -288,23 +324,25 @@ function rewriteText(content, resourceMap, relative = '', baseUrl = source) {
   if (path.extname(relative).toLowerCase() === '.css') {
     result = rewriteCss(result, baseUrl, resourceMap);
   }
-  for (const [url, local] of [...resourceMap].sort(([left], [right]) => right.length - left.length)) {
+  for (const [url, local] of [...resourceMap].sort(
+    ([left], [right]) => right.length - left.length,
+  )) {
     const parsed = new URL(url);
     const variants = new Set([
       url,
       url.replaceAll('&', '&amp;'),
-      `${parsed.pathname}${parsed.search}`,
-      `${parsed.pathname}${parsed.search}`.replaceAll('&', '&amp;'),
       `//${parsed.host}${parsed.pathname}${parsed.search}`,
     ]);
+    if (parsed.origin === source.origin) {
+      variants.add(`${parsed.pathname}${parsed.search}`);
+      variants.add(`${parsed.pathname}${parsed.search}`.replaceAll('&', '&amp;'));
+    }
     for (const variant of variants) result = result.split(variant).join(`/${local}`);
   }
 
-  const absoluteDocument =
-    relative.endsWith('.xml') || path.posix.basename(relative) === 'robots.txt';
   result = result
     .split(source.origin)
-    .join(absoluteDocument ? production.origin : '')
+    .join(production.origin)
     .replaceAll('chocolate-chimpanzee-908881.hostingersite.com', production.host)
     .replace(
       /(<link\b[^>]*rel=["']canonical["'][^>]*href=["'])\/([^"']*)/giu,
@@ -317,27 +355,10 @@ function rewriteText(content, resourceMap, relative = '', baseUrl = source) {
   return result;
 }
 
-async function copyUploads(from, to) {
-  let copied = 0;
-  for (const file of await walk(from)) {
-    const extension = path.extname(file).toLowerCase();
-    if (!publicExtensions.has(extension) || extension === '.php') continue;
-    const fileStat = await stat(file);
-    if (fileStat.size > maxAssetBytes) {
-      throw new Error(`${file} supera 25 MiB y no puede desplegarse en Cloudflare Pages.`);
-    }
-    const relative = path.relative(from, file);
-    const target = path.join(to, relative);
-    await mkdir(path.dirname(target), { recursive: true });
-    await cp(file, target, { force: true });
-    copied += 1;
-  }
-  return copied;
-}
-
 async function settlePage(page) {
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
   await page.evaluate(async () => {
+    document.documentElement.style.scrollBehavior = 'auto';
     for (const element of document.querySelectorAll('img, source, iframe, video')) {
       const source = element.getAttribute('data-src') ?? element.getAttribute('data-lazy-src');
       const sourceSet =
@@ -360,9 +381,15 @@ async function settlePage(page) {
           : new Promise((resolve) => {
               image.addEventListener('load', resolve, { once: true });
               image.addEventListener('error', resolve, { once: true });
+              setTimeout(resolve, 15_000);
             }),
       ),
     );
+    await Promise.all([...document.images].map((image) => image.decode().catch(() => undefined)));
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo(0, 0);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
 }
 
@@ -372,9 +399,11 @@ async function discoverDocument(page) {
       ...performance.getEntriesByType('resource').map((entry) => entry.name),
       ...[...document.querySelectorAll('[src]')].map((item) => item.src),
       ...[...document.querySelectorAll('[poster]')].map((item) => item.poster),
-      ...[...document.querySelectorAll(
-        'link[rel~="stylesheet"][href], link[rel~="icon"][href], link[rel="preload"][href], link[rel="modulepreload"][href], link[rel="manifest"][href]',
-      )].map((item) => item.href),
+      ...[
+        ...document.querySelectorAll(
+          'link[rel~="stylesheet"][href], link[rel~="icon"][href], link[rel="preload"][href], link[rel="modulepreload"][href], link[rel="manifest"][href]',
+        ),
+      ].map((item) => item.href),
       ...[...document.querySelectorAll('[srcset]')].flatMap((item) =>
         item.srcset
           .split(',')
@@ -386,7 +415,12 @@ async function discoverDocument(page) {
 
     for (const element of document.querySelectorAll('*')) {
       const style = getComputedStyle(element);
-      for (const property of ['backgroundImage', 'borderImageSource', 'listStyleImage', 'maskImage']) {
+      for (const property of [
+        'backgroundImage',
+        'borderImageSource',
+        'listStyleImage',
+        'maskImage',
+      ]) {
         const value = style[property];
         for (const match of value.matchAll(/url\(["']?(.*?)["']?\)/giu)) {
           try {
@@ -397,10 +431,33 @@ async function discoverDocument(page) {
         }
       }
     }
+    for (const styleElement of document.querySelectorAll('style')) {
+      const content = styleElement.textContent ?? '';
+      const references = [
+        ...[...content.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/giu)].map((match) => match[2]),
+        ...[
+          ...content.matchAll(/@import\s+(?:url\(\s*)?(?:["']([^"']+)["']|([^\s;)]+))\s*\)?/giu),
+        ].map((match) => match[1] ?? match[2]),
+      ];
+      for (const reference of references) {
+        if (!reference || /^(?:data:|blob:|#)/iu.test(reference)) continue;
+        try {
+          resources.add(new URL(reference, document.baseURI).href);
+        } catch {
+          // The output audit reports malformed CSS references.
+        }
+      }
+    }
 
     return {
       title: document.title,
       links: [...document.querySelectorAll('a[href]')].map((item) => item.href),
+      navigation: [...document.querySelectorAll('nav a[href], [role="navigation"] a[href]')].map(
+        (item) => ({
+          href: item.href,
+          label: (item.textContent ?? '').replace(/\s+/gu, ' ').trim(),
+        }),
+      ),
       resources: [...resources].filter(Boolean),
       forms: [...document.querySelectorAll('form')].map((form) => ({
         action: form.action,
@@ -417,132 +474,189 @@ async function discoverDocument(page) {
   });
 }
 
-async function localizeDocumentResources(page, resourceMap) {
+async function serializeStaticDocument(page, resourceMap, route) {
   const mappings = Object.fromEntries(resourceMap);
-  await page.evaluate((mapping) => {
-    const localFor = (value) => {
-      if (!value || /^(?:data:|blob:|#)/iu.test(value)) return null;
-      try {
-        const absolute = new URL(value, document.baseURI).href;
-        const local = mapping[absolute];
-        return local ? `/${local}` : null;
-      } catch {
-        return null;
-      }
-    };
-
-    for (const element of document.querySelectorAll('[src], [poster]')) {
-      for (const attribute of ['src', 'poster']) {
-        if (!element.hasAttribute(attribute)) continue;
-        const local = localFor(element.getAttribute(attribute));
-        if (local) element.setAttribute(attribute, local);
-      }
-    }
-    for (const element of document.querySelectorAll('link[href]')) {
-      const relationship = (element.getAttribute('rel') ?? '').toLowerCase();
-      if (!/(?:stylesheet|icon|preload|modulepreload|manifest)/u.test(relationship)) continue;
-      const local = localFor(element.getAttribute('href'));
-      if (local) element.setAttribute('href', local);
-    }
-    for (const element of document.querySelectorAll('[srcset]')) {
-      const localized = (element.getAttribute('srcset') ?? '')
-        .split(',')
-        .map((candidate) => {
-          const parts = candidate.trim().split(/\s+/u);
-          const local = localFor(parts[0]);
-          return [local ?? parts[0], ...parts.slice(1)].join(' ');
-        })
-        .join(', ');
-      element.setAttribute('srcset', localized);
-    }
-    for (const element of document.querySelectorAll('[style]')) {
-      const localized = (element.getAttribute('style') ?? '').replace(
-        /url\(\s*(["']?)(.*?)\1\s*\)/giu,
-        (full, quote, value) => {
-          const local = localFor(value.trim());
-          const delimiter = quote || '"';
-          return local ? `url(${delimiter}${local}${delimiter})` : full;
-        },
-      );
-      element.setAttribute('style', localized);
-    }
-  }, mappings);
-}
-
-async function sanitizeDocument(page) {
-  await page.evaluate(() => {
-    for (const element of document.querySelectorAll(
-      'link[rel="https://api.w.org/"], link[rel="EditURI"], link[rel="wlwmanifest"]',
-    )) {
-      element.remove();
-    }
-    for (const element of document.querySelectorAll('[src], [href], [action]')) {
-      if (element.tagName === 'FORM') continue;
-      const value =
-        element.getAttribute('src') ?? element.getAttribute('href') ?? element.getAttribute('action');
-      if (!value) continue;
-      try {
-        const url = new URL(value, document.baseURI);
-        if (
-          url.pathname.startsWith('/wp-admin') ||
-          ['/wp-login.php', '/wp-cron.php', '/xmlrpc.php', '/wp-comments-post.php'].includes(
-            url.pathname,
-          ) ||
-          url.pathname.endsWith('/admin-ajax.php')
-        ) {
-          element.remove();
+  const canonicalHref = new URL(route, production).href;
+  return page.evaluate(
+    ({ mapping, canonical }) => {
+      const root = new DOMParser().parseFromString(
+        document.documentElement.outerHTML,
+        'text/html',
+      ).documentElement;
+      const localFor = (value) => {
+        if (!value || /^(?:data:|blob:|#)/iu.test(value)) return null;
+        try {
+          const absolute = new URL(value, document.baseURI).href;
+          const local = mapping[absolute];
+          return local ? `/${local}` : null;
+        } catch {
+          return null;
         }
-      } catch {
-        // Keep malformed non-network attributes for the final audit.
+      };
+
+      for (const element of root.querySelectorAll('[src], [poster]')) {
+        for (const attribute of ['src', 'poster']) {
+          if (!element.hasAttribute(attribute)) continue;
+          const local = localFor(element.getAttribute(attribute));
+          if (local) element.setAttribute(attribute, local);
+        }
       }
-    }
-    for (const form of document.querySelectorAll('form')) {
-      const original = new URL(form.action || document.location.href, document.baseURI);
-      form.dataset.originalAction =
-        original.origin === document.location.origin
-          ? `${original.pathname}${original.search}`
-          : original.href;
-      form.dataset.originalMethod = form.method.toUpperCase();
-      form.dataset.migrationStatus = 'processing-not-migrated';
-      form.setAttribute('action', '#form-processing-not-migrated');
-      form.setAttribute('method', 'get');
-      form.setAttribute('onsubmit', 'return false');
-      for (const field of form.querySelectorAll('input[type="hidden"]')) {
-        if (/(?:nonce|token|security)/iu.test(field.name)) field.remove();
+      for (const element of root.querySelectorAll('link[href]')) {
+        const relationship = (element.getAttribute('rel') ?? '').toLowerCase();
+        if (!/(?:stylesheet|icon|preload|modulepreload|manifest)/u.test(relationship)) continue;
+        const local = localFor(element.getAttribute('href'));
+        if (local) element.setAttribute('href', local);
       }
-    }
-  });
+      for (const element of root.querySelectorAll('[srcset]')) {
+        const localized = (element.getAttribute('srcset') ?? '')
+          .split(',')
+          .map((candidate) => {
+            const parts = candidate.trim().split(/\s+/u);
+            const local = localFor(parts[0]);
+            return [local ?? parts[0], ...parts.slice(1)].join(' ');
+          })
+          .join(', ');
+        element.setAttribute('srcset', localized);
+      }
+      for (const element of root.querySelectorAll('[style]')) {
+        const localized = (element.getAttribute('style') ?? '').replace(
+          /url\(\s*(["']?)(.*?)\1\s*\)/giu,
+          (full, quote, value) => {
+            const local = localFor(value.trim());
+            const delimiter = quote || '"';
+            return local ? `url(${delimiter}${local}${delimiter})` : full;
+          },
+        );
+        element.setAttribute('style', localized);
+      }
+
+      for (const element of root.querySelectorAll(
+        'link[rel="https://api.w.org/"], link[rel="EditURI"], link[rel="wlwmanifest"], link[rel="alternate"][type*="oembed" i]',
+      )) {
+        element.remove();
+      }
+      for (const script of root.querySelectorAll('script')) {
+        const identifier = script.id.toLowerCase();
+        const content = script.textContent ?? '';
+        const scriptSource = script.getAttribute('src') ?? '';
+        if (
+          identifier === 'wp-emoji-settings' ||
+          identifier.startsWith('hostinger-reach-subscription-block-view-js') ||
+          scriptSource.includes('/wp-includes/js/wp-emoji-release') ||
+          content.includes('wpEmojiSettingsSupports') ||
+          content.includes('wp-emoji-loader.min.js')
+        ) {
+          script.remove();
+        }
+      }
+      for (const element of root.querySelectorAll('[src], [href], [action]')) {
+        if (element.tagName === 'FORM') continue;
+        const value =
+          element.getAttribute('src') ??
+          element.getAttribute('href') ??
+          element.getAttribute('action');
+        if (!value) continue;
+        try {
+          const url = new URL(value, document.baseURI);
+          if (
+            url.pathname.startsWith('/wp-admin') ||
+            ['/wp-login.php', '/wp-cron.php', '/xmlrpc.php', '/wp-comments-post.php'].includes(
+              url.pathname,
+            ) ||
+            url.pathname.endsWith('/admin-ajax.php')
+          ) {
+            element.remove();
+          }
+        } catch {
+          // Keep malformed non-network attributes for the final audit.
+        }
+      }
+      for (const anchor of root.querySelectorAll('a[href]')) {
+        const href = (anchor.getAttribute('href') ?? '').trim();
+        if (/^\[[^\]]+\]$/u.test(href) || /^(?:https?:\/\/|mailto:|tel:)trans[-_]/iu.test(href)) {
+          anchor.dataset.migrationStatus = 'link-not-configured';
+          anchor.setAttribute('href', '#link-not-configured');
+          anchor.setAttribute('aria-disabled', 'true');
+          anchor.removeAttribute('target');
+        }
+      }
+      const head = root.querySelector('head');
+      if (head) {
+        let canonicalLink = head.querySelector('link[rel="canonical"]');
+        if (!canonicalLink) {
+          canonicalLink = document.createElement('link');
+          canonicalLink.setAttribute('rel', 'canonical');
+          head.appendChild(canonicalLink);
+        }
+        canonicalLink.setAttribute('href', canonical);
+        let openGraphUrl = head.querySelector('meta[property="og:url"]');
+        if (!openGraphUrl) {
+          openGraphUrl = document.createElement('meta');
+          openGraphUrl.setAttribute('property', 'og:url');
+          head.appendChild(openGraphUrl);
+        }
+        openGraphUrl.setAttribute('content', canonical);
+      }
+      for (const form of root.querySelectorAll('form')) {
+        const original = new URL(
+          form.getAttribute('action') || document.location.href,
+          document.baseURI,
+        );
+        form.dataset.originalAction =
+          original.origin === document.location.origin
+            ? `${original.pathname}${original.search}`
+            : original.href;
+        form.dataset.originalMethod = form.method.toUpperCase();
+        form.dataset.migrationStatus = 'processing-not-migrated';
+        form.setAttribute('action', '#form-processing-not-migrated');
+        form.setAttribute('method', 'get');
+        form.setAttribute('onsubmit', 'return false');
+        for (const field of form.querySelectorAll('input[type="hidden"]')) {
+          if (/(?:nonce|token|security)/iu.test(field.name)) field.remove();
+        }
+      }
+      return `<!doctype html>\n${root.outerHTML}`;
+    },
+    { mapping: mappings, canonical: canonicalHref },
+  );
 }
 
+assertSnapshotPath(output, '--output');
+assertSnapshotPath(screenshots, '--screenshots');
+assertSnapshotPath(dataRoot, '--metadata');
 await rm(output, { recursive: true, force: true });
 await rm(screenshots, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await mkdir(screenshots, { recursive: true });
 await mkdir(dataRoot, { recursive: true });
 
-const sourceAvailable = await fetch(new URL('/inicio/', source), { redirect: 'manual' })
+const sourceAvailable = await fetch(new URL('/inicio/', source), {
+  redirect: 'manual',
+  signal: AbortSignal.timeout(60_000),
+})
   .then((response) => response.status >= 200 && response.status < 500)
   .catch(() => false);
 if (!sourceAvailable) throw new Error(`WordPress no responde en ${source.origin}.`);
 
-let copiedPublicFiles = 0;
-if (wordpressRoot) {
-  copiedPublicFiles += await copyUploads(
-    path.join(wordpressRoot, 'wp-content', 'uploads'),
-    path.join(output, 'wp-content', 'uploads'),
-  );
-}
+const copiedPublicFiles = 0;
 
 const queue = [...seedRoutes];
 const sitemapDocuments = new Set();
 
 async function collectSitemap(value) {
   const url = normalizeSourceUrl(value);
-  if (url.origin !== source.origin || sitemapDocuments.has(url.href)) return;
+  if (url.origin !== source.origin || sitemapDocuments.has(url.href)) return false;
+  if (/(?:^|[-/])users?(?:[-/.]|$)|(?:^|[-/])authors?(?:[-/.]|$)/iu.test(url.pathname)) {
+    recordOmitted(url, 'user-or-author-sitemap');
+    return false;
+  }
   sitemapDocuments.add(url.href);
-  const response = await fetch(url).catch(() => null);
-  if (!response?.ok) return;
-  const xml = await response.text();
+  const response = await fetch(url, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+  if (!response?.ok) return false;
+  const xml = (await response.text()).replace(
+    /<sitemap>\s*<loc>[^<]*(?:users?|authors?)[^<]*<\/loc>[\s\S]*?<\/sitemap>/giu,
+    '',
+  );
   const relative = safePathname(url) || 'sitemap.xml';
   const destination = path.join(output, relative);
   await mkdir(path.dirname(destination), { recursive: true });
@@ -552,10 +666,11 @@ async function collectSitemap(value) {
     if (/\.xml(?:\?|$)/iu.test(found)) await collectSitemap(found);
     else queue.push(found);
   }
+  return true;
 }
 
 for (const sitemapName of ['wp-sitemap.xml', 'sitemap-index.xml', 'sitemap.xml']) {
-  await collectSitemap(new URL(`/${sitemapName}`, source));
+  if (await collectSitemap(new URL(`/${sitemapName}`, source))) break;
 }
 
 const robotsResponse = await fetch(new URL('/robots.txt', source)).catch(() => null);
@@ -568,6 +683,20 @@ const context = await browser.newContext({
   serviceWorkers: 'block',
   viewport: { width: 1440, height: 1200 },
 });
+let activeRoute = '/';
+const neutralizedRequests = [];
+await context.route('**/*', async (route) => {
+  if (isBlockedUrl(route.request().url())) {
+    neutralizedRequests.push({
+      route: activeRoute,
+      resourceType: route.request().resourceType(),
+      url: sanitizeDiagnostic(publicValue(route.request().url())),
+    });
+    await route.fulfill({ status: 204, body: '' });
+    return;
+  }
+  await route.continue();
+});
 const page = await context.newPage();
 const seen = new Set();
 const pages = [];
@@ -579,10 +708,15 @@ const unrecoverablePages = [];
 const resourceMap = new Map();
 const resources = new Map();
 const resourceBaseUrls = new Map();
-let activeRoute = '/';
 
 page.on('console', (message) => {
   if (message.type() === 'error') {
+    if (
+      activeRoute === '/__snapshot-404__/' &&
+      /Failed to load resource:.*404 \(Not Found\)/iu.test(message.text())
+    ) {
+      return;
+    }
     consoleErrors.push({ route: activeRoute, message: sanitizeDiagnostic(message.text()) });
   }
 });
@@ -609,7 +743,10 @@ async function saveResource(value, ancestry = new Set()) {
   if (ancestry.has(requestUrl.href)) return;
 
   const nextAncestry = new Set(ancestry).add(requestUrl.href);
-  const response = await fetch(requestUrl, { redirect: 'follow' }).catch((error) => {
+  const response = await fetch(requestUrl, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(60_000),
+  }).catch((error) => {
     httpErrors.push({
       route: activeRoute,
       status: 0,
@@ -668,7 +805,7 @@ async function saveResource(value, ancestry = new Set()) {
 
   if (contentType.toLowerCase().startsWith('text/css')) {
     const css = body.toString('utf8');
-    await Promise.allSettled(
+    await Promise.all(
       extractCssReferences(css, response.url || requestUrl.href).map((dependency) =>
         saveResource(dependency, nextAncestry),
       ),
@@ -682,7 +819,10 @@ while (queue.length > 0 && seen.size < maxPages) {
   seen.add(route);
   activeRoute = route;
 
-  const initial = await fetch(new URL(route, source), { redirect: 'manual' }).catch((error) => {
+  const initial = await fetch(new URL(route, source), {
+    redirect: 'manual',
+    signal: AbortSignal.timeout(60_000),
+  }).catch((error) => {
     unrecoverablePages.push({ route, error: sanitizeDiagnostic(error.message) });
     return null;
   });
@@ -713,11 +853,25 @@ while (queue.length > 0 && seen.size < maxPages) {
     continue;
   }
 
+  const documentUrl = new URL(route, source).href;
+  const initialHtml = await initial.text();
+  const serveCapturedDocument = (requestRoute) =>
+    requestRoute.fulfill({
+      status: initial.status,
+      contentType: 'text/html; charset=utf-8',
+      body: initialHtml,
+    });
+  await page.route(documentUrl, serveCapturedDocument, { times: 1 });
   await page.setViewportSize({ width: 1440, height: 1200 });
-  const response = await page.goto(new URL(route, source).href, {
-    waitUntil: 'domcontentloaded',
-    timeout: 60_000,
-  });
+  let response;
+  try {
+    response = await page.goto(documentUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120_000,
+    });
+  } finally {
+    await page.unroute(documentUrl, serveCapturedDocument);
+  }
   if (!response || response.status() >= 400) {
     unrecoverablePages.push({
       route,
@@ -733,7 +887,7 @@ while (queue.length > 0 && seen.size < maxPages) {
     .map(routeFor)
     .filter(Boolean)
     .forEach((item) => queue.push(item));
-  await Promise.allSettled([...new Set(discovered.resources)].map((resource) => saveResource(resource)));
+  await Promise.all([...new Set(discovered.resources)].map((resource) => saveResource(resource)));
 
   for (const form of discovered.forms) {
     const actionUrl = normalizeSourceUrl(form.action || route);
@@ -750,13 +904,8 @@ while (queue.length > 0 && seen.size < maxPages) {
       classification: 'static-interface-only',
     });
   }
-  await localizeDocumentResources(page, resourceMap);
-  await sanitizeDocument(page);
-
   const htmlPath = routePath(route);
   const destination = path.join(output, htmlPath);
-  await mkdir(path.dirname(destination), { recursive: true });
-  await writeFile(destination, await page.content(), 'utf8');
 
   const shots = {};
   for (const viewport of [
@@ -766,30 +915,49 @@ while (queue.length > 0 && seen.size < maxPages) {
   ]) {
     activeRoute = route;
     await page.setViewportSize(viewport);
-    await page.goto(new URL(route, source).href, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60_000,
-    });
     await settlePage(page);
     discovered = await discoverDocument(page);
-    await Promise.allSettled(
-      [...new Set(discovered.resources)].map((resource) => saveResource(resource)),
-    );
+    await Promise.all([...new Set(discovered.resources)].map((resource) => saveResource(resource)));
     const shot = path.join(
       screenshots,
-      `${route === '/' ? 'home' : hash(route).slice(0, 12)}-${viewport.name}.png`,
+      `${route === '/' ? 'home' : hash(route).slice(0, 12)}-${viewport.name}.jpg`,
     );
-    await page.screenshot({ path: shot, fullPage: true, animations: 'disabled' });
-    shots[viewport.name] = path.relative(process.cwd(), shot).replaceAll(path.sep, '/');
+    try {
+      await page.screenshot({
+        path: shot,
+        type: 'jpeg',
+        quality: 85,
+        fullPage: true,
+        animations: 'disabled',
+        timeout: 120_000,
+      });
+    } catch (error) {
+      throw new Error(`Falló screenshot ${viewport.name} de ${route}: ${error.message}`, {
+        cause: error,
+      });
+    }
+    shots[viewport.name] = path
+      .relative(path.dirname(manifestPath), shot)
+      .replaceAll(path.sep, '/');
   }
+
+  const staticHtml = await serializeStaticDocument(page, resourceMap, route);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, staticHtml, 'utf8');
 
   pages.push({
     route,
     status: response.status(),
-    title: discovered.title,
+    title: sanitizeDiagnostic(discovered.title),
     htmlPath,
     screenshots: shots,
+    navigation: discovered.navigation,
   });
+}
+
+for (const pending of queue) {
+  const route = routeFor(pending);
+  if (route && !seen.has(route)) recordOmitted(route, 'max-pages-limit');
 }
 
 activeRoute = '/__snapshot-404__/';
@@ -800,12 +968,18 @@ const missing = await page
 if (missing?.status() === 404) {
   await settlePage(page);
   const discovered = await discoverDocument(page);
-  await Promise.allSettled([...new Set(discovered.resources)].map((resource) => saveResource(resource)));
-  await localizeDocumentResources(page, resourceMap);
-  await sanitizeDocument(page);
-  await writeFile(path.join(output, '404.html'), await page.content(), 'utf8');
+  await Promise.all([...new Set(discovered.resources)].map((resource) => saveResource(resource)));
+  await writeFile(
+    path.join(output, '404.html'),
+    await serializeStaticDocument(page, resourceMap, '/404.html'),
+    'utf8',
+  );
 } else {
-  unrecoverablePages.push({ route: '/404.html', status: missing?.status() ?? 0, error: '404 no recuperada' });
+  unrecoverablePages.push({
+    route: '/404.html',
+    status: missing?.status() ?? 0,
+    error: '404 no recuperada',
+  });
 }
 await browser.close();
 
@@ -828,7 +1002,7 @@ if (!(await exists(path.join(output, 'robots.txt')))) {
 if (
   !(await exists(path.join(output, 'sitemap.xml'))) &&
   !(await exists(path.join(output, 'sitemap-index.xml'))) &&
-  !(await exists(path.join(output, 'wp-sitemap.xml'))
+  !(await exists(path.join(output, 'wp-sitemap.xml')))
 ) {
   const urls = pages
     .filter((item) => item.status === 200)
@@ -842,7 +1016,6 @@ if (
 }
 
 for (const file of await walk(output)) {
-  const extension = path.extname(file).toLowerCase();
   if (!isTextResource('', file) && path.basename(file) !== '_redirects') continue;
   const relative = path.relative(output, file).replaceAll(path.sep, '/');
   const content = await readFile(file, 'utf8').catch(() => null);
@@ -873,6 +1046,17 @@ const uniqueHttpErrors = [
     ]),
   ).values(),
 ];
+await writeFile(path.join(dataRoot, 'forms.json'), `${JSON.stringify(forms, null, 2)}\n`, 'utf8');
+const snapshotFiles = [];
+for (const file of [...(await walk(dataRoot)), ...(await walk(screenshots))]) {
+  const body = await readFile(file);
+  snapshotFiles.push({
+    path: path.relative(snapshotBase, file).replaceAll(path.sep, '/'),
+    bytes: body.length,
+    sha256: hash(body),
+  });
+}
+snapshotFiles.sort((left, right) => left.path.localeCompare(right.path));
 const externalResources = [...resources.values()].filter((item) => item.external);
 const manifest = {
   schemaVersion: 2,
@@ -884,10 +1068,15 @@ const manifest = {
   resources: [...resources.values()].sort((left, right) => left.path.localeCompare(right.path)),
   externalResources,
   files,
+  snapshotFiles,
   dynamicFeatures: forms,
   consoleErrors: uniqueConsoleErrors,
   httpErrors: uniqueHttpErrors,
   unrecoverablePages,
+  omittedRoutes: [...omittedRouteMap.values()].sort((left, right) =>
+    left.route.localeCompare(right.route),
+  ),
+  neutralizedRequests,
   totals: {
     pages: pages.length,
     redirects: redirects.length,
@@ -929,7 +1118,7 @@ El contenido desplegable está en \`site/\`. Los inventarios públicos sanitizad
 
 No se versionan SQL, usuarios, credenciales, sesiones, logs, \`.env\`, \`wp-config.php\` ni endpoints administrativos.
 `;
-await writeFile(path.resolve('reference-snapshot/README.md'), readme, 'utf8');
+await writeFile(path.join(snapshotBase, 'README.md'), readme, 'utf8');
 
 if (!files.some((file) => file.path === 'index.html')) throw new Error('No se generó index.html.');
 process.stdout.write(`${JSON.stringify(manifest.totals, null, 2)}\n`);

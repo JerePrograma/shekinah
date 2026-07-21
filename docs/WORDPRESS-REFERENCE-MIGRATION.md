@@ -13,18 +13,23 @@ Respaldo inmutable:      C:\Users\Jerem\Downloads\shekinah.orig
 Auditoría SHA-256:       C:\Users\Jerem\Downloads\shekinah-original-audit
 ```
 
-La URL se construye con `LOCAL_PORT` leído desde `.env`. El valor histórico fue 8081, pero el script no lo presupone.
+La URL se construye con `LOCAL_PORT` leído desde `.env`. La captura local del 21 de julio de 2026 leyó `8081`; el script no lo presupone.
 
 La implementación Astro anterior no es fuente de verdad. Solo puede utilizarse para checks de código transitorio; el build publicable requiere `reference-snapshot/site/index.html`.
 
 ## Ejecución maestra
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
 Set-Location 'C:\laburo\shekinah'
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Run-FullMigration.ps1 -Publish -WaitForRemote
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass `
+    -File .\scripts\Run-FullMigration.ps1 `
+    -RepositoryRoot 'C:\laburo\shekinah' `
+    -WorkRoot 'C:\laburo\shekinah-wordpress-reference' `
+    -OriginalBackupRoot 'C:\Users\Jerem\Downloads\shekinah.orig' `
+    -OriginalAuditRoot 'C:\Users\Jerem\Downloads\shekinah-original-audit' `
+    -ProjectName 'shekinah-original-reference' `
+    -Publish `
+    -WaitForRemote
 ```
 
 Sin `-Publish`, genera y verifica el snapshot pero no confirma ni envía cambios. Sin `-WaitForRemote`, publica Git y termina sin esperar CI o Cloudflare.
@@ -52,6 +57,8 @@ Sin `-Publish`, genera y verifica el snapshot pero no confirma ni envía cambios
 19. ejecuta verificaciones, E2E y fidelidad visual a cero píxeles;
 20. confirma y publica únicamente si todo queda aprobado.
 
+La captura se genera primero bajo `.migration-work/` y solo reemplaza `reference-snapshot/` después de aprobar hashes y estructura. Si una validación posterior falla antes del commit, el snapshot anterior se restaura y la candidata fallida permanece fuera de Git para diagnóstico. El log completo queda en `.migration-work/full-migration-YYYYMMDD-HHMMSS.log`.
+
 ## Datos públicos exportados
 
 ```text
@@ -59,6 +66,7 @@ reference-snapshot/data/plugins.json
 reference-snapshot/data/themes.json
 reference-snapshot/data/published-content.json
 reference-snapshot/data/categories.json
+reference-snapshot/data/forms.json
 reference-snapshot/data/tags.json
 reference-snapshot/data/navigation.json
 reference-snapshot/data/public-settings.json

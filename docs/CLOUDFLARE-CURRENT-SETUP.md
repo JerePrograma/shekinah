@@ -9,7 +9,9 @@ Fecha de actualización: **2026-07-21**.
 - Rama: `main`.
 - Un intento anterior ejecutó `wrangler deploy` y falló por falta de entry point de Worker.
 - No existe evidencia desde este repositorio de que la integración Git nativa haya sido desactivada.
-- No existe evidencia actual de un deployment del snapshot WordPress, porque el snapshot aún no está versionado.
+- El snapshot WordPress ya fue generado y validado localmente, pero todavía no existe evidencia de su deployment.
+- GitHub no tiene configurados `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID` al 21 de julio de 2026.
+- Wrangler local no está autenticado; no se realizó una publicación paralela fuera de GitHub Actions.
 
 ## Configuración decidida
 

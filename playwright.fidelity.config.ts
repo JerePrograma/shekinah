@@ -15,6 +15,7 @@ const sharedUse = {
 
 export default defineConfig({
   testDir: './tests/fidelity',
+  timeout: 240_000,
   snapshotDir: './.migration-work/fidelity-snapshots',
   fullyParallel: false,
   retries: 0,

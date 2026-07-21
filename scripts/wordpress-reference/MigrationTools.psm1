@@ -1,25 +1,115 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Invoke-Checked {
+function Format-NativeCommand {
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [string[]]$RedactValues = @()
+    )
+
+    $rendered = @($Command) + @($Arguments | ForEach-Object {
+        $value = [string]$_
+        foreach ($secret in $RedactValues) {
+            if ($secret) { $value = $value.Replace($secret, '[redacted]') }
+        }
+        if ($value -match '[\s"'']') { '"' + $value.Replace('"', '\"') + '"' } else { $value }
+    })
+    $rendered -join ' '
+}
+
+function Protect-NativeText {
+    param([string]$Text, [string[]]$RedactValues = @())
+
+    $protected = $Text
+    foreach ($secret in $RedactValues) {
+        if ($secret) { $protected = $protected.Replace($secret, '[redacted]') }
+    }
+    $protected
+}
+
+function Invoke-NativeCapture {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Command,
         [Parameter(Mandatory)][string[]]$Arguments,
-        [string]$WorkingDirectory = ''
+        [string]$WorkingDirectory = '',
+        [switch]$AllowFailure,
+        [string[]]$RedactValues = @()
     )
 
+    $displayCommand = Format-NativeCommand -Command $Command -Arguments $Arguments -RedactValues $RedactValues
+    Write-Host "`$ $displayCommand" -ForegroundColor DarkGray
+    $stdoutPath = [IO.Path]::GetTempFileName()
+    $stderrPath = [IO.Path]::GetTempFileName()
     $previous = Get-Location
+    $exitCode = 1
     try {
         if ($WorkingDirectory) { Set-Location -LiteralPath $WorkingDirectory }
-        & $Command @Arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "Falló ($LASTEXITCODE): $Command $($Arguments -join ' ')"
+        try {
+            & $Command @Arguments 1> $stdoutPath 2> $stderrPath
+            $exitCode = $LASTEXITCODE
+        }
+        catch {
+            $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding utf8NoBOM
         }
     }
     finally {
         Set-Location -LiteralPath $previous
     }
+
+    try {
+        $stdout = if ((Get-Item -LiteralPath $stdoutPath).Length) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+        $stderr = if ((Get-Item -LiteralPath $stderrPath).Length) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    $stdout = (Protect-NativeText -Text $stdout -RedactValues $RedactValues).TrimEnd("`r", "`n")
+    $stderr = (Protect-NativeText -Text $stderr -RedactValues $RedactValues).TrimEnd("`r", "`n")
+    if ($exitCode -ne 0 -and -not $AllowFailure) {
+        $details = @($stdout, $stderr) | Where-Object { $_ }
+        $exception = [InvalidOperationException]::new(
+            "Falló el comando nativo con código ${exitCode}: $displayCommand$([Environment]::NewLine)$($details -join [Environment]::NewLine)"
+        )
+        $exception.Data['Command'] = $displayCommand
+        $exception.Data['ExitCode'] = $exitCode
+        throw $exception
+    }
+    [pscustomobject]@{
+        Command = $displayCommand
+        ExitCode = $exitCode
+        StdOut = $stdout
+        StdErr = $stderr
+        Output = (@($stdout, $stderr) | Where-Object { $_ }) -join [Environment]::NewLine
+    }
+}
+
+function Invoke-NativeCommand {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [string]$WorkingDirectory = '',
+        [string[]]$RedactValues = @()
+    )
+
+    $result = Invoke-NativeCapture -Command $Command -Arguments $Arguments -WorkingDirectory $WorkingDirectory -RedactValues $RedactValues
+    if ($result.StdOut) { Write-Host $result.StdOut }
+    if ($result.StdErr) { Write-Host $result.StdErr -ForegroundColor DarkYellow }
+    $result
+}
+
+function Invoke-Checked {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [string]$WorkingDirectory = '',
+        [string[]]$RedactValues = @()
+    )
+
+    Invoke-NativeCommand -Command $Command -Arguments $Arguments -WorkingDirectory $WorkingDirectory -RedactValues $RedactValues | Out-Null
 }
 
 function Invoke-Captured {
@@ -27,15 +117,11 @@ function Invoke-Captured {
     param(
         [Parameter(Mandatory)][string]$Command,
         [Parameter(Mandatory)][string[]]$Arguments,
-        [switch]$AllowFailure
+        [switch]$AllowFailure,
+        [string[]]$RedactValues = @()
     )
 
-    $output = & $Command @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0 -and -not $AllowFailure) {
-        throw "Falló ($exitCode): $Command $($Arguments -join ' ')`n$($output | Out-String)"
-    }
-    [pscustomobject]@{ ExitCode = $exitCode; Output = (($output | Out-String).Trim()) }
+    Invoke-NativeCapture -Command $Command -Arguments $Arguments -AllowFailure:$AllowFailure -RedactValues $RedactValues
 }
 
 function Invoke-Compose {
@@ -44,14 +130,15 @@ function Invoke-Compose {
         [Parameter(Mandatory)][hashtable]$Context,
         [Parameter(Mandatory)][string[]]$Arguments,
         [switch]$Capture,
-        [switch]$AllowFailure
+        [switch]$AllowFailure,
+        [string[]]$RedactValues = @()
     )
 
     $all = @('compose', '-p', $Context.ProjectName, '-f', $Context.ComposePath) + $Arguments
     if ($Capture) {
-        return Invoke-Captured -Command 'docker' -Arguments $all -AllowFailure:$AllowFailure
+        return Invoke-NativeCapture -Command 'docker' -Arguments $all -AllowFailure:$AllowFailure -RedactValues $RedactValues
     }
-    Invoke-Checked -Command 'docker' -Arguments $all
+    Invoke-NativeCommand -Command 'docker' -Arguments $all -RedactValues $RedactValues | Out-Null
 }
 
 function Read-DotEnv {
@@ -113,20 +200,44 @@ function Ensure-NodeToolchain {
     } else { 0 }
 
     if ($nodeMajor -lt 24) {
-        if (Get-Command nvm -ErrorAction SilentlyContinue) {
-            Invoke-Checked -Command 'nvm' -Arguments @('install', '24')
-            Invoke-Checked -Command 'nvm' -Arguments @('use', '24')
-            Update-ProcessPath
-        }
-        elseif (Get-Command winget -ErrorAction SilentlyContinue) {
-            Invoke-Checked -Command 'winget' -Arguments @(
-                'install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--silent',
-                '--accept-package-agreements', '--accept-source-agreements'
-            )
-            Update-ProcessPath
+        $node24Directory = Join-Path $env:ProgramFiles 'nodejs'
+        $node24 = Join-Path $node24Directory 'node.exe'
+        if ((Test-Path -LiteralPath $node24 -PathType Leaf) -and
+            (Get-MajorVersion ((& $node24 --version) | Out-String)) -ge 24) {
+            $env:Path = $node24Directory + [IO.Path]::PathSeparator + $env:Path
         }
         else {
-            throw 'Se requiere Node.js 24. No se encontró nvm-windows ni winget.'
+            $nvmInfo = Get-Command nvm -ErrorAction SilentlyContinue
+            $nvmCommand = if ($nvmInfo) { $nvmInfo.Source } else { '' }
+            if (-not $nvmCommand -and $env:NVM_HOME) {
+                $nvmCandidate = Join-Path $env:NVM_HOME 'nvm.exe'
+                if (Test-Path -LiteralPath $nvmCandidate -PathType Leaf) { $nvmCommand = $nvmCandidate }
+            }
+            if ($nvmCommand) {
+                Invoke-Checked -Command $nvmCommand -Arguments @('install', '24')
+                Invoke-Checked -Command $nvmCommand -Arguments @('use', '24')
+                Update-ProcessPath
+            }
+            elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+                $installed = Invoke-NativeCapture -Command 'winget' -Arguments @(
+                    'list', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget'
+                ) -AllowFailure
+                if ($installed.ExitCode -ne 0) {
+                    throw 'Se requiere Node.js 24. winget está disponible, pero el paquete OpenJS.NodeJS.LTS no está instalado; no se hará una instalación global implícita.'
+                }
+                Invoke-NativeCapture -Command 'winget' -Arguments @(
+                    'upgrade', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget',
+                    '--silent', '--accept-package-agreements', '--accept-source-agreements'
+                ) -AllowFailure | Out-Null
+                Update-ProcessPath
+                if ((Test-Path -LiteralPath $node24 -PathType Leaf) -and
+                    (Get-MajorVersion ((& $node24 --version) | Out-String)) -ge 24) {
+                    $env:Path = $node24Directory + [IO.Path]::PathSeparator + $env:Path
+                }
+            }
+            else {
+                throw 'Se requiere Node.js 24. No se encontró una instalación existente ni una herramienta segura para activarla.'
+            }
         }
     }
 
@@ -178,6 +289,16 @@ function Get-PathFingerprint {
     [pscustomobject]@{ Path = $resolved; Files = $records.Count; Fingerprint = $fingerprint }
 }
 
+function Assert-ContainerId {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Value, [string]$Service = 'container')
+
+    if ($Value -notmatch '^[a-f0-9]{12,64}$') {
+        throw "Docker devolvió un identificador inválido para ${Service}: '$Value'"
+    }
+    $Value
+}
+
 function Wait-ComposeDatabase {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Context, [int]$TimeoutSeconds = 180)
@@ -185,12 +306,13 @@ function Wait-ComposeDatabase {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $last = 'not-created'
     do {
-        $id = (Invoke-Compose -Context $Context -Arguments @('ps', '-q', 'db') -Capture).Output.Trim()
+        $id = (Invoke-Compose -Context $Context -Arguments @('ps', '-q', 'db') -Capture).StdOut.Trim()
         if ($id) {
+            Assert-ContainerId -Value $id -Service 'db' | Out-Null
             $inspect = Invoke-Captured -Command 'docker' -Arguments @(
                 'inspect', '--format', '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}', $id
             ) -AllowFailure
-            $last = $inspect.Output.Trim()
+            $last = $inspect.StdOut.Trim()
             if ($last -eq 'healthy') { return }
             $ping = Invoke-Compose -Context $Context -Arguments @(
                 'exec', '-T', 'db', 'sh', '-lc',
@@ -243,7 +365,7 @@ function Repair-WordPressDatabaseAccess {
     $sql = "CREATE DATABASE IF NOT EXISTS ``$name``; CREATE USER IF NOT EXISTS '$safeUser'@'%' IDENTIFIED BY '$safePassword'; ALTER USER '$safeUser'@'%' IDENTIFIED BY '$safePassword'; GRANT ALL PRIVILEGES ON ``$name``.* TO '$safeUser'@'%'; FLUSH PRIVILEGES;"
     Invoke-Compose -Context $Context -Arguments @(
         'exec', '-T', '-e', "MYSQL_PWD=$rootPassword", 'db', 'mariadb', '-uroot', '-e', $sql
-    )
+    ) -RedactValues @($password, $rootPassword)
     $check = Invoke-WpCli -Context $Context -Arguments @('db', 'query', 'SELECT 1;', '--skip-column-names') -AllowFailure
     if ($check.ExitCode -ne 0) { throw "No se reparó la conexión WP-CLI:`n$($check.Output)" }
     $true
@@ -259,7 +381,7 @@ function Import-WordPressDatabaseIfEmpty {
     )
 
     $tables = Invoke-WpCli -Context $Context -Arguments @('db', 'tables', '--all-tables-with-prefix') -AllowFailure
-    if ($tables.ExitCode -eq 0 -and $tables.Output.Trim()) { return $false }
+    if ($tables.ExitCode -eq 0 -and $tables.StdOut.Trim()) { return $false }
 
     if (-not $SqlPath) {
         $candidates = @(Get-ChildItem -LiteralPath $WorkRoot -File -Recurse -Filter '*.sql' -ErrorAction SilentlyContinue)
@@ -277,21 +399,22 @@ function Import-WordPressDatabaseIfEmpty {
         throw 'Faltan datos de base válidos en .env para importar el SQL.'
     }
 
-    $containerId = (Invoke-Compose -Context $Context -Arguments @('ps', '-q', 'db') -Capture).Output.Trim()
+    $containerId = (Invoke-Compose -Context $Context -Arguments @('ps', '-q', 'db') -Capture).StdOut.Trim()
     if (-not $containerId) { throw 'No se resolvió el contenedor MariaDB.' }
+    Assert-ContainerId -Value $containerId -Service 'db' | Out-Null
     $temporary = '/tmp/shekinah-reference-import.sql'
     Invoke-Checked -Command 'docker' -Arguments @('cp', $SqlPath, "$containerId`:$temporary")
     try {
         Invoke-Compose -Context $Context -Arguments @(
             'exec', '-T', '-e', "MYSQL_PWD=$password", 'db', 'sh', '-lc',
             "mariadb -u'$user' '$name' < '$temporary'"
-        )
+        ) -RedactValues @($password)
     }
     finally {
         Invoke-Compose -Context $Context -Arguments @('exec', '-T', 'db', 'rm', '-f', $temporary) -Capture -AllowFailure | Out-Null
     }
     $after = Invoke-WpCli -Context $Context -Arguments @('db', 'tables', '--all-tables-with-prefix') -AllowFailure
-    if ($after.ExitCode -ne 0 -or -not $after.Output.Trim()) {
+    if ($after.ExitCode -ne 0 -or -not $after.StdOut.Trim()) {
         throw 'El SQL se importó, pero WordPress no detecta tablas.'
     }
     $true
@@ -326,14 +449,101 @@ function Export-WpJson {
 
     $result = Invoke-WpCli -Context $Context -Arguments $Arguments -AllowFailure:$Optional
     if ($result.ExitCode -ne 0) {
-        Set-Content -LiteralPath $Destination -Value "[]`n" -Encoding utf8NoBOM
+        [IO.File]::WriteAllText($Destination, "[]`n", [Text.UTF8Encoding]::new($false))
         return @()
     }
-    $text = if ($result.Output.Trim()) { $result.Output.Trim() } else { '[]' }
+    $text = if ($result.StdOut.Trim()) { $result.StdOut.Trim() } else { '[]' }
     try { $parsed = $text | ConvertFrom-Json }
     catch { throw "WP-CLI no devolvió JSON válido para $($Arguments -join ' '):`n$text" }
-    Set-Content -LiteralPath $Destination -Value ($text + "`n") -Encoding utf8NoBOM
+    [IO.File]::WriteAllText($Destination, $text + "`n", [Text.UTF8Encoding]::new($false))
     $parsed
+}
+
+function Export-WordPressPublicData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Context,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$SourceUrl,
+        [string]$ProductionOrigin = 'https://shekinah-7dl.pages.dev'
+    )
+
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Export-WpJson -Context $Context -Arguments @(
+        'plugin', 'list', '--fields=name,status,version,update,update_version,auto_update',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination 'plugins.json') | Out-Null
+    Export-WpJson -Context $Context -Arguments @(
+        'theme', 'list', '--fields=name,status,version,update,update_version,auto_update',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination 'themes.json') | Out-Null
+    Export-WpJson -Context $Context -Arguments @(
+        'post', 'list', '--post_type=post,page,wp_navigation,wp_template,wp_template_part',
+        '--post_status=publish',
+        '--fields=ID,post_type,post_title,post_name,post_date_gmt,post_modified_gmt,post_parent,menu_order,comment_status,ping_status',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination 'published-content.json') | Out-Null
+    Export-WpJson -Context $Context -Arguments @(
+        'term', 'list', 'category', '--fields=term_id,name,slug,count,parent',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination 'categories.json') -Optional | Out-Null
+    Export-WpJson -Context $Context -Arguments @(
+        'term', 'list', 'post_tag', '--fields=term_id,name,slug,count',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination 'tags.json') -Optional | Out-Null
+
+    $menus = @(Export-WpJson -Context $Context -Arguments @(
+        'menu', 'list', '--fields=term_id,name,slug,count', '--format=json',
+        '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination '.menus.tmp.json') -Optional)
+    $classicMenus = @(
+        foreach ($menu in $menus) {
+            $slug = if ($menu.PSObject.Properties.Name -contains 'slug') { [string]$menu.slug } else { '' }
+            $items = @()
+            if ($slug) {
+                $result = Invoke-WpCli -Context $Context -Arguments @(
+                    'menu', 'item', 'list', $slug,
+                    '--fields=db_id,type,title,url,target,object,object_id,parent,position',
+                    '--format=json', '--skip-plugins', '--skip-themes'
+                ) -AllowFailure
+                if ($result.ExitCode -eq 0 -and $result.StdOut.Trim()) {
+                    try { $items = @($result.StdOut | ConvertFrom-Json) }
+                    catch { throw "WP-CLI no devolvió items de menú válidos para ${slug}." }
+                }
+            }
+            [ordered]@{ menu = $menu; items = $items }
+        }
+    )
+    $navigation = @(Export-WpJson -Context $Context -Arguments @(
+        'post', 'list', '--post_type=wp_navigation', '--post_status=publish',
+        '--fields=ID,post_title,post_name,post_date_gmt,post_modified_gmt',
+        '--format=json', '--skip-plugins', '--skip-themes'
+    ) -Destination (Join-Path $Destination '.navigation.tmp.json') -Optional)
+    $navigationJson = [ordered]@{ classicMenus = $classicMenus; navigationPosts = $navigation } |
+        ConvertTo-Json -Depth 20
+    $navigationJson = $navigationJson.Replace($SourceUrl.TrimEnd('/'), $ProductionOrigin.TrimEnd('/'))
+    $navigationJson = $navigationJson.Replace('http://chocolate-chimpanzee-908881.hostingersite.com', $ProductionOrigin.TrimEnd('/'))
+    $navigationJson = $navigationJson.Replace('https://chocolate-chimpanzee-908881.hostingersite.com', $ProductionOrigin.TrimEnd('/'))
+    Set-Content -LiteralPath (Join-Path $Destination 'navigation.json') -Value $navigationJson -Encoding utf8NoBOM
+    Remove-Item -LiteralPath (Join-Path $Destination '.menus.tmp.json'), (Join-Path $Destination '.navigation.tmp.json') -Force
+
+    $publicOptionsPhp = @'
+$names = array("blogname", "blogdescription", "permalink_structure", "show_on_front", "page_on_front", "page_for_posts", "timezone_string", "gmt_offset", "date_format", "time_format", "posts_per_page", "default_comment_status", "blog_public", "template", "stylesheet");
+$values = array();
+foreach ($names as $name) { $values[$name] = get_option($name); }
+echo wp_json_encode($values);
+'@
+    $publicOptionsResult = Invoke-WpCli -Context $Context -Arguments @(
+        'eval', $publicOptionsPhp, '--skip-plugins', '--skip-themes'
+    )
+    try { $publicOptions = $publicOptionsResult.StdOut | ConvertFrom-Json }
+    catch { throw 'WP-CLI no devolvió opciones públicas válidas.' }
+    $publicOptionsJson = $publicOptions | ConvertTo-Json -Depth 10
+    $publicOptionsJson = $publicOptionsJson.Replace($SourceUrl.TrimEnd('/'), $ProductionOrigin.TrimEnd('/'))
+    $publicOptionsJson = $publicOptionsJson.Replace('chocolate-chimpanzee-908881.hostingersite.com', ([Uri]$ProductionOrigin).Host)
+    Set-Content -LiteralPath (Join-Path $Destination 'public-settings.json') -Value $publicOptionsJson -Encoding utf8NoBOM
+
+    [pscustomobject]@{ Menus = $classicMenus.Count; NavigationPosts = $navigation.Count }
 }
 
 Export-ModuleMember -Function *

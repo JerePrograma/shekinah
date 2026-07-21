@@ -13,8 +13,8 @@ const forbidden = [
   /\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|DB_PASSWORD)\s*[:=]/giu,
 ];
 const activeDynamicEndpoints = [
-  /(?:href|src|action)=["'][^"']*(?:\/wp-admin\/|\/wp-login\.php|\/xmlrpc\.php|\/wp-cron\.php|\/wp-comments-post\.php|admin-ajax\.php)[^"']*["']/giu,
-  /<form\b[^>]*\baction=["']https?:\/\//giu,
+  /\s(?:href|src|action)=["'][^"']*(?:\/wp-admin\/|\/wp-login\.php|\/xmlrpc\.php|\/wp-cron\.php|\/wp-comments-post\.php|admin-ajax\.php)[^"']*["']/giu,
+  /<form\b[^>]*\saction=["']https?:\/\//giu,
 ];
 const textExtensions = new Set([
   '.html',
@@ -25,6 +25,25 @@ const textExtensions = new Set([
   '.txt',
   '.webmanifest',
   '.svg',
+]);
+const inferableExtensions = new Set([
+  ...textExtensions,
+  '.avif',
+  '.eot',
+  '.gif',
+  '.ico',
+  '.jpeg',
+  '.jpg',
+  '.mp3',
+  '.mp4',
+  '.otf',
+  '.pdf',
+  '.png',
+  '.ttf',
+  '.webm',
+  '.webp',
+  '.woff',
+  '.woff2',
 ]);
 
 async function exists(filePath) {
@@ -77,7 +96,9 @@ if (!(await exists(root))) {
   };
 
   if (files.length > maxFiles) {
-    report.errors.push(`dist contiene ${files.length} archivos; Cloudflare Pages Free admite ${maxFiles}`);
+    report.errors.push(
+      `dist contiene ${files.length} archivos; Cloudflare Pages Free admite ${maxFiles}`,
+    );
   }
 
   for (const file of files) {
@@ -88,6 +109,9 @@ if (!(await exists(root))) {
       report.largestFile = { path: relative, bytes: fileStat.size };
     }
     if (fileStat.size > maxAssetBytes) report.errors.push(`${relative}: supera 25 MiB`);
+    if (fileStat.size === 0 && !['_headers', '_redirects'].includes(path.basename(file))) {
+      report.errors.push(`${relative}: archivo vacío inesperado`);
+    }
     if (relative.endsWith('.map')) report.errors.push(`${relative}: sourcemap no permitido`);
     if (
       /\.(?:bak|gz|log|php|sql|tar|zip)$/iu.test(relative) ||
@@ -97,17 +121,52 @@ if (!(await exists(root))) {
     }
 
     const extension = path.extname(file).toLowerCase();
+    if (
+      !inferableExtensions.has(extension) &&
+      !['_headers', '_redirects'].includes(path.basename(file))
+    ) {
+      report.errors.push(`${relative}: tipo MIME no inferible por extensión`);
+    }
     if (!textExtensions.has(extension) && path.basename(file) !== '_redirects') continue;
     const content = await readFile(file, 'utf8').catch(() => '');
 
     for (const pattern of forbidden) {
-      if (pattern.test(content)) report.errors.push(`${relative}: contiene patrón prohibido ${pattern}`);
+      if (pattern.test(content))
+        report.errors.push(`${relative}: contiene patrón prohibido ${pattern}`);
       pattern.lastIndex = 0;
     }
     if (extension === '.html') {
       for (const pattern of activeDynamicEndpoints) {
-        if (pattern.test(content)) report.errors.push(`${relative}: endpoint dinámico activo ${pattern}`);
+        if (pattern.test(content))
+          report.errors.push(`${relative}: endpoint dinámico activo ${pattern}`);
         pattern.lastIndex = 0;
+      }
+    }
+
+    if (extension === '.css') {
+      const cssReferences = [
+        ...[...content.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/giu)].map((match) => match[1]),
+        ...[...content.matchAll(/@import\s+(?:url\(\s*)?["']?([^"')\s;]+)["']?\s*\)?/giu)].map(
+          (match) => match[1],
+        ),
+      ];
+      for (const reference of cssReferences) {
+        if (/^(?:data:|blob:|#)/iu.test(reference)) continue;
+        if (/^https?:\/\//iu.test(reference)) {
+          const url = new URL(reference);
+          if (url.hostname !== allowedProductionHost) {
+            report.errors.push(`${relative}: recurso CSS externo activo ${url.origin}`);
+            report.externalResourceOrigins.add(url.origin);
+            continue;
+          }
+        }
+        const normalized = /^https?:\/\//iu.test(reference)
+          ? `${new URL(reference).pathname}${new URL(reference).search}`
+          : reference;
+        const resolved = resolvePublicReference(file, normalized);
+        if (resolved && !(await exists(resolved))) {
+          report.errors.push(`${relative}: referencia CSS rota ${reference}`);
+        }
       }
     }
 
@@ -115,11 +174,11 @@ if (!(await exists(root))) {
     report.htmlFiles += 1;
     if (!/<title>[^<]+<\/title>/iu.test(content)) report.errors.push(`${relative}: falta título`);
 
-    const references = [
+    const resourceReferences = [
       ...content.matchAll(/\bsrc=["']([^"']+)["']/giu),
       ...content.matchAll(/\bposter=["']([^"']+)["']/giu),
       ...content.matchAll(/\bsrcset=["']([^"']+)["']/giu),
-      ...content.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/giu),
+      ...content.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/giu),
       ...content.matchAll(
         /<link\b(?=[^>]*\brel=["'](?:stylesheet|icon|preload|modulepreload)["'])[^>]*\bhref=["']([^"']+)["']/giu,
       ),
@@ -128,20 +187,40 @@ if (!(await exists(root))) {
         ? match[1].split(',').map((part) => part.trim().split(/\s+/u)[0])
         : [match[1]],
     );
+    const references = [
+      ...resourceReferences,
+      ...[...content.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/giu)].map((match) => match[1]),
+    ];
 
-    for (const reference of references) {
+    for (let reference of references) {
       if (/^https?:\/\//iu.test(reference)) {
         const url = new URL(reference);
-        if (url.hostname !== allowedProductionHost) report.externalResourceOrigins.add(url.origin);
-        continue;
+        if (url.hostname !== allowedProductionHost) {
+          report.externalResourceOrigins.add(url.origin);
+          if (resourceReferences.includes(reference)) {
+            report.errors.push(`${relative}: recurso externo activo ${url.origin}`);
+          }
+          continue;
+        }
+        reference = `${url.pathname}${url.search}${url.hash}`;
       }
       const resolved = resolvePublicReference(file, reference);
       if (!resolved) continue;
       try {
         const targetStat = await stat(resolved);
-        if (!targetStat.isFile()) report.errors.push(`${relative}: referencia inválida ${reference}`);
+        if (!targetStat.isFile())
+          report.errors.push(`${relative}: referencia inválida ${reference}`);
       } catch {
         report.errors.push(`${relative}: referencia rota ${reference}`);
+      }
+    }
+
+    if (!/<meta\b[^>]*http-equiv=["']refresh["']/iu.test(content) && relative !== '404.html') {
+      const canonical = content.match(
+        /<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/iu,
+      )?.[1];
+      if (!canonical?.startsWith(`https://${allowedProductionHost}/`)) {
+        report.errors.push(`${relative}: canonical ausente o fuera del dominio final`);
       }
     }
   }
@@ -155,6 +234,21 @@ if (!(await exists(root))) {
     !(await exists(path.join(root, 'wp-sitemap.xml')))
   ) {
     report.errors.push('falta sitemap.xml, sitemap-index.xml o wp-sitemap.xml');
+  }
+  const robotsPath = path.join(root, 'robots.txt');
+  if (await exists(robotsPath)) {
+    const robots = await readFile(robotsPath, 'utf8');
+    if (/\bSitemap:/iu.test(robots) && !robots.includes(`https://${allowedProductionHost}/`)) {
+      report.errors.push('robots.txt referencia un sitemap fuera del dominio final');
+    }
+  }
+  for (const sitemapName of ['sitemap.xml', 'sitemap-index.xml', 'wp-sitemap.xml']) {
+    const sitemapPath = path.join(root, sitemapName);
+    if (!(await exists(sitemapPath))) continue;
+    const sitemap = await readFile(sitemapPath, 'utf8');
+    if (!sitemap.includes(`https://${allowedProductionHost}/`)) {
+      report.errors.push(`${sitemapName}: no referencia el dominio final`);
+    }
   }
 
   const redirectsPath = path.join(root, '_redirects');

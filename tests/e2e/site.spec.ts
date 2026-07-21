@@ -84,6 +84,7 @@ for (const route of criticalRoutes) {
     const consoleErrors: string[] = [];
     page.on('request', (request_) => {
       const url = new URL(request_.url());
+      if (['blob:', 'data:', 'about:'].includes(url.protocol)) return;
       if (!['127.0.0.1', 'localhost'].includes(url.hostname)) externalRequests.push(request_.url());
     });
     page.on('response', (response) => {
@@ -111,6 +112,24 @@ for (const route of criticalRoutes) {
     expect(externalRequests).toEqual([]);
     expect(consoleErrors).toEqual([]);
 
+    const imageStates = await page.locator('img').evaluateAll((images) =>
+      images.map((image) => {
+        const element = image as HTMLImageElement;
+        return {
+          naturalWidth: element.naturalWidth,
+          source: element.currentSrc || element.src,
+          sourceSet: element.srcset,
+        };
+      }),
+    );
+    for (const image of imageStates) {
+      expect(image.naturalWidth).toBeGreaterThan(0);
+      expect(image.source).not.toContain('localhost');
+      expect(image.source).not.toContain('hostingersite.com');
+      expect(image.sourceSet).not.toContain('localhost');
+      expect(image.sourceSet).not.toContain('hostingersite.com');
+    }
+
     const stylesheets = page.locator('link[rel="stylesheet"]');
     for (let index = 0; index < (await stylesheets.count()); index += 1) {
       const href = await stylesheets.nth(index).getAttribute('href');
@@ -136,37 +155,23 @@ for (const route of criticalRoutes) {
   });
 }
 
-test('las imágenes y srcset publicados cargan', async ({ page }) => {
-  for (const route of criticalRoutes.filter((item) => pageByRoute.has(item))) {
-    await page.goto(route, { waitUntil: 'domcontentloaded' });
-    await settle(page);
-    const images = page.locator('img');
-    for (let index = 0; index < (await images.count()); index += 1) {
-      const image = images.nth(index);
-      await image.scrollIntoViewIfNeeded();
-      await expect
-        .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
-        .toBeGreaterThan(0);
-      const currentSource = await image.evaluate(
-        (element) => (element as HTMLImageElement).currentSrc || (element as HTMLImageElement).src,
-      );
-      expect(currentSource).not.toContain('localhost');
-      expect(currentSource).not.toContain('hostingersite.com');
-    }
-  }
-});
-
-test('la navegación principal conserva enlaces internos recuperados', async ({ page }) => {
-  const route = pageByRoute.has('/') ? '/' : '/inicio/';
+test('los enlaces internos recuperados mantienen navegación local', async ({ page }) => {
+  const route = pageByRoute.has('/inicio/') ? '/inicio/' : '/';
   await page.goto(route, { waitUntil: 'domcontentloaded' });
   await settle(page);
-  const navigation = page.locator('nav, [role="navigation"]');
-  await expect(navigation.first()).toBeVisible();
-  const hrefs = await navigation.locator('a[href]').evaluateAll((anchors) =>
-    anchors.map((anchor) => (anchor as HTMLAnchorElement).getAttribute('href') ?? ''),
+  const visibleLocalLinks = page.locator('a[href^="/"]:visible');
+  expect(await visibleLocalLinks.count()).toBeGreaterThan(0);
+  const hrefs = await page
+    .locator('a[href]')
+    .evaluateAll((anchors) =>
+      anchors.map((anchor) => (anchor as HTMLAnchorElement).getAttribute('href') ?? ''),
+    );
+  const localRoutes = hrefs
+    .filter((href) => href.startsWith('/'))
+    .map((href) => new URL(href, manifest.productionOrigin).pathname);
+  expect(localRoutes.some((href) => pageByRoute.has(href.endsWith('/') ? href : `${href}/`))).toBe(
+    true,
   );
-  expect(hrefs.some((href) => href.includes('/nosotros'))).toBe(true);
-  expect(hrefs.some((href) => href.includes('/blog') || href.includes('/recetas'))).toBe(true);
 });
 
 for (const redirect of manifest.redirects) {

@@ -15,6 +15,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 if ($SourceUrl) {
     Write-Warning '-SourceUrl se ignora deliberadamente. Run-FullMigration.ps1 lee LOCAL_PORT desde la restauración .env.'

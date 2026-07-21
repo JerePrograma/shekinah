@@ -49,12 +49,12 @@ No debe coexistir la integración Git automática con el workflow de Wrangler.
 
 ## Comando correcto
 
-```bash
-npm exec -- wrangler pages deploy dist \
-  --project-name shekinah \
-  --branch main \
-  --commit-hash <SHA_VALIDADO>
+```powershell
+$env:DEPLOY_COMMIT_SHA = '<SHA_VALIDADO>'
+npm run deploy
 ```
+
+`scripts/deploy-cloudflare.mjs` rechaza valores que no sean SHA Git completos y ejecuta el Wrangler bloqueado por `package-lock.json`. GitHub Actions es el único publicador automático.
 
 `wrangler deploy` sin `pages` corresponde a Workers y no es válido para este sitio.
 
