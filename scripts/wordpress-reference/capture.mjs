@@ -275,7 +275,8 @@ function rewriteCss(content, baseUrl, resourceMap) {
     try {
       const resolved = new URL(trimmed, baseUrl).href;
       const local = resourceMap.get(resolved) ?? resourceMap.get(normalizeSourceUrl(resolved).href);
-      return local ? `url("/${local}")` : full;
+      const delimiter = quote || '"';
+      return local ? `url(${delimiter}/${local}${delimiter})` : full;
     } catch {
       return full;
     }
@@ -457,9 +458,10 @@ async function localizeDocumentResources(page, resourceMap) {
     for (const element of document.querySelectorAll('[style]')) {
       const localized = (element.getAttribute('style') ?? '').replace(
         /url\(\s*(["']?)(.*?)\1\s*\)/giu,
-        (full, _quote, value) => {
+        (full, quote, value) => {
           const local = localFor(value.trim());
-          return local ? `url("${local}")` : full;
+          const delimiter = quote || '"';
+          return local ? `url(${delimiter}${local}${delimiter})` : full;
         },
       );
       element.setAttribute('style', localized);
@@ -841,7 +843,7 @@ if (
 
 for (const file of await walk(output)) {
   const extension = path.extname(file).toLowerCase();
-  if (!textExtensions.has(extension) && path.basename(file) !== '_redirects') continue;
+  if (!isTextResource('', file) && path.basename(file) !== '_redirects') continue;
   const relative = path.relative(output, file).replaceAll(path.sep, '/');
   const content = await readFile(file, 'utf8').catch(() => null);
   if (content === null) continue;
