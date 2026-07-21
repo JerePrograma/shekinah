@@ -8,21 +8,14 @@ Sitio estático de Shekinah reconstruido desde una instalación WordPress recupe
 
 - Rama operativa y de producción: `main`.
 - Código, contenido, medios, pruebas, automatizaciones y documentación: unificados en `main`.
-- Pull requests abiertos detectados: ninguno.
-- Build Astro: verificado previamente en GitHub Actions.
-- Pruebas Playwright: 45 recorridos aprobados en la última ejecución remota registrada.
-- Proyecto Cloudflare Pages: `shekinah`.
+- Pull requests e issues abiertos detectados: ninguno.
+- Última validación integral registrada: aprobada con Node.js 24, npm 11, pruebas unitarias y 45 pruebas Playwright.
+- Los cambios finales de consolidación deben quedar verdes en el próximo run de CI; no se presentan como verificados antes de que ese run exista.
+- Proyecto Cloudflare Pages esperado: `shekinah`.
 - Dominio estable asignado: `https://shekinah-7dl.pages.dev`.
-- Integración Git de Cloudflare: conectada a `JerePrograma/shekinah`, rama `main`.
-- Pendiente externo: corregir en Cloudflare el comando de despliegue y ejecutar/verificar el primer deploy válido.
+- Publicación pública: pendiente de configurar credenciales, ejecutar el workflow y verificar el sitio.
 
-El último fallo observado no fue del proyecto: `npm run build` terminó correctamente, pero Cloudflare intentó ejecutar `npx wrangler deploy`, comando de Workers. Para Pages debe usarse:
-
-```bash
-npx wrangler pages deploy dist --project-name shekinah --branch main
-```
-
-Estado vivo y pendientes: [`docs/MIGRATION-STATUS.md`](docs/MIGRATION-STATUS.md).
+Estado detallado: [`docs/MIGRATION-STATUS.md`](docs/MIGRATION-STATUS.md).
 
 ## Arquitectura
 
@@ -33,8 +26,24 @@ Estado vivo y pendientes: [`docs/MIGRATION-STATUS.md`](docs/MIGRATION-STATUS.md)
 - JavaScript limitado a interacciones reales, como el menú móvil.
 - Pruebas unitarias con `node:test` y pruebas funcionales con Playwright.
 - CI en GitHub Actions con Node.js 24.
-- Publicación principal mediante integración Git de Cloudflare Pages.
-- Workflow manual de GitHub Actions disponible únicamente como respaldo.
+- Despliegue de Pages con Wrangler después de un CI verde.
+
+## Flujo de publicación elegido
+
+```text
+commit en main
+  → GitHub Actions: CI
+  → npm ci + check + lint + formato + build + pruebas + auditorías
+  → CI verde
+  → GitHub Actions: Deploy Cloudflare Pages
+  → checkout del mismo SHA validado
+  → npm run verify
+  → wrangler pages deploy dist
+  → verificación HTTP
+  → shekinah-7dl.pages.dev
+```
+
+Este es el único publicador automático. Una integración Git o un Worker de Cloudflare conectado al mismo repositorio debe quedar deshabilitado o desconectado para evitar despliegues duplicados y la ejecución incorrecta de `npx wrangler deploy`.
 
 ## Contenido recuperado
 
@@ -64,7 +73,7 @@ npm ci
 npm run dev
 ```
 
-Astro mostrará la URL local, normalmente `http://localhost:4321`. El entorno local es solo para desarrollo opcional; no forma parte del despliegue productivo.
+Astro mostrará la URL local, normalmente `http://localhost:4321`. El entorno local es opcional y no forma parte del despliegue productivo.
 
 ## Validar antes de publicar
 
@@ -94,33 +103,37 @@ npm run build
 npm run preview
 ```
 
+## Configurar el primer despliegue
+
+1. Confirmar en Cloudflare que existe un proyecto **Pages** llamado `shekinah`.
+2. Si existe una integración Git automática, deshabilitar sus deployments automáticos.
+3. Si el panel muestra un recurso **Worker** con `Deploy command = npx wrangler deploy`, desconectarlo del repositorio; ese flujo no corresponde al sitio estático Pages.
+4. Crear un API Token limitado a la cuenta y con permiso de edición de Cloudflare Pages.
+5. Copiar el **Account ID** de la cuenta correcta.
+6. En GitHub, abrir **Settings → Secrets and variables → Actions**.
+7. Crear estos secretos:
+
+   ```text
+   CLOUDFLARE_API_TOKEN
+   CLOUDFLARE_ACCOUNT_ID
+   ```
+
+8. Abrir **Actions → CI → Run workflow** y ejecutar sobre `main`.
+9. Cuando CI quede verde, el workflow **Deploy Cloudflare Pages** se iniciará automáticamente.
+10. También puede ejecutarse manualmente desde **Actions → Deploy Cloudflare Pages → Run workflow**.
+11. Verificar el environment `cloudflare-pages-production` y el dominio estable.
+
+Procedimiento completo: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ## Flujo normal de edición y publicación
 
 1. Editar contenido, estilos, componentes o datos.
 2. Confirmar el cambio directamente en `main`.
 3. Revisar **GitHub → Actions → CI**.
-4. No publicar ni ignorar controles mientras CI esté rojo.
-5. Con CI verde, Cloudflare detecta el push a `main`, instala dependencias, construye `dist` y lo publica.
+4. Corregir el primer control rojo; no omitir validaciones.
+5. Con CI verde y secretos configurados, esperar **Deploy Cloudflare Pages**.
 6. Verificar `https://shekinah-7dl.pages.dev` y la ruta modificada.
-7. Confirmar que el deployment de Cloudflare corresponde al SHA de `main`.
-
-La integración Git de Cloudflare es el mecanismo principal. No deben configurarse simultáneamente los secretos del workflow manual salvo que se decida usarlo como recuperación controlada.
-
-## Configuración exacta de Cloudflare
-
-En **Workers & Pages → shekinah → Settings → Build**:
-
-| Campo | Valor |
-| --- | --- |
-| Production branch | `main` |
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler pages deploy dist --project-name shekinah --branch main` |
-| Root directory | `/` |
-| Variable `SITE_URL` | `https://shekinah-7dl.pages.dev` |
-
-Después de guardar, ejecutar **Retry deployment** sobre el último despliegue fallido o provocar un nuevo deploy con un commit válido en `main`.
-
-Procedimiento detallado: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+7. Confirmar que el deployment de Cloudflare corresponde al SHA validado.
 
 ## Edición de contenido
 
@@ -135,7 +148,7 @@ Procedimiento detallado: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 ## Estructura principal
 
 ```text
-.github/workflows/      CI y despliegue manual de respaldo
+.github/workflows/      CI y despliegue de producción
 docs/                   inventarios, informes y runbooks
 public/images/          medios finales optimizados
 scripts/migration/      extracción reproducible de evidencia
@@ -149,17 +162,17 @@ tests/                  pruebas unitarias y Playwright
 
 ## Rutas principales
 
-| Ruta | Función |
-| --- | --- |
-| `/` | Portada reconstruida desde la página Inicio |
-| `/nosotros/` | Identidad y propósito |
-| `/tienda/` | Catálogo informativo sin comercio electrónico |
-| `/blog/` | Índice de publicaciones |
-| `/recetas/` | Índice del recetario |
-| `/chocolate-casero/` | Receta recuperada |
-| `/receta-barra-de-cereal/` | Receta parcial recuperada |
-| `/terms-and-conditions/` | Información legal publicada |
-| `/404.html` | Página no encontrada |
+| Ruta                       | Función                                       |
+| -------------------------- | --------------------------------------------- |
+| `/`                        | Portada reconstruida desde la página Inicio   |
+| `/nosotros/`               | Identidad y propósito                         |
+| `/tienda/`                 | Catálogo informativo sin comercio electrónico |
+| `/blog/`                   | Índice de publicaciones                       |
+| `/recetas/`                | Índice del recetario                          |
+| `/chocolate-casero/`       | Receta recuperada                             |
+| `/receta-barra-de-cereal/` | Receta parcial recuperada                     |
+| `/terms-and-conditions/`   | Información legal publicada                   |
+| `/404.html`                | Página no encontrada                          |
 
 Mapa completo: [`docs/ROUTE-MAP.md`](docs/ROUTE-MAP.md).
 
@@ -171,7 +184,7 @@ Mapa completo: [`docs/ROUTE-MAP.md`](docs/ROUTE-MAP.md).
 - Comparación de fuentes: `docs/DATA-SOURCE-COMPARISON.md`.
 - Informe de migración: `docs/MIGRATION-REPORT.md`.
 - Estado y pendientes: `docs/MIGRATION-STATUS.md`.
-- Configuración actual de Cloudflare: `docs/CLOUDFLARE-CURRENT-SETUP.md`.
+- Configuración diagnosticada de Cloudflare: `docs/CLOUDFLARE-CURRENT-SETUP.md`.
 - Reconstrucción visual: `docs/VISUAL-RECONSTRUCTION.md`.
 - Seguridad: `docs/SECURITY-REPORT.md`.
 - Pruebas: `docs/TEST-REPORT.md`.
@@ -186,4 +199,4 @@ Mapa completo: [`docs/ROUTE-MAP.md`](docs/ROUTE-MAP.md).
 - Las imágenes remotas del diseño original se sustituyeron por medios locales recuperados para eliminar dependencias externas.
 - La receta de barras de cereal no contenía cantidades ni procedimiento completo; se conserva como contenido parcial sin inventar datos.
 - La réplica visual no es pixel perfect porque los adjuntos no incluyen capturas completas y verificables de todas las vistas.
-- El único bloqueo actual está fuera del código: corregir y verificar la configuración de despliegue en Cloudflare.
+- No existen usuarios, panel administrativo, carrito, pedidos, pagos ni base de datos.
