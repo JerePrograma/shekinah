@@ -2,12 +2,14 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/fidelity',
+  snapshotDir: './.migration-work/fidelity-snapshots',
   fullyParallel: false,
   retries: 0,
   workers: 1,
   reporter: 'line',
   use: {
     baseURL: 'http://127.0.0.1:4321',
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
   },
   webServer: {
