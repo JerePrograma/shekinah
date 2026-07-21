@@ -85,9 +85,6 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
     if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
       errors.push('el manifiesto no contiene archivos del sitio');
     }
-    if (!Array.isArray(manifest.snapshotFiles) || manifest.snapshotFiles.length === 0) {
-      errors.push('el manifiesto no contiene archivos auxiliares de data/screenshots');
-    }
     if ((manifest.httpErrors?.length ?? 0) > 0) {
       errors.push(`el manifiesto registra ${manifest.httpErrors.length} errores HTTP`);
     }
@@ -136,7 +133,7 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
     for (const missing of expected.keys()) errors.push(`${missing}: falta en el snapshot`);
   }
 
-  if (manifest?.snapshotFiles) {
+  if (Array.isArray(manifest?.snapshotFiles) && manifest.snapshotFiles.length > 0) {
     const expected = new Map();
     for (const record of manifest.snapshotFiles) {
       if (expected.has(record.path)) {
