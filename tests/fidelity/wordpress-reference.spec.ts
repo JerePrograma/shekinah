@@ -8,11 +8,11 @@ interface SnapshotManifest {
 
 const sourceOrigin = process.env.WORDPRESS_REFERENCE_URL;
 if (!sourceOrigin) throw new Error('Falta WORDPRESS_REFERENCE_URL para la comparación visual.');
-
 const manifest: SnapshotManifest = JSON.parse(
   await readFile(path.resolve('reference-snapshot/manifest.json'), 'utf8'),
 );
 const routes = manifest.pages.filter((page) => page.status === 200).map((page) => page.route);
+if (routes.length === 0) throw new Error('El manifiesto no contiene páginas 200 para comparar.');
 
 function slugForRoute(route: string) {
   return route === '/'
@@ -34,10 +34,18 @@ async function settle(page: import('@playwright/test').Page) {
     `,
   });
   await page.evaluate(async () => {
+    for (const element of document.querySelectorAll('img, source, iframe, video')) {
+      const source = element.getAttribute('data-src') ?? element.getAttribute('data-lazy-src');
+      const sourceSet =
+        element.getAttribute('data-srcset') ?? element.getAttribute('data-lazy-srcset');
+      if (source) element.setAttribute('src', source);
+      if (sourceSet) element.setAttribute('srcset', sourceSet);
+      if ('loading' in element) element.setAttribute('loading', 'eager');
+    }
     const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    for (let y = 0; y < height; y += Math.max(300, window.innerHeight * 0.75)) {
+    for (let y = 0; y <= height; y += Math.max(300, window.innerHeight * 0.75)) {
       window.scrollTo(0, y);
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 60));
     }
     window.scrollTo(0, 0);
     if (document.fonts?.ready) await document.fonts.ready;
