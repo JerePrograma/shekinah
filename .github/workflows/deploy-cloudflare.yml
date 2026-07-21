@@ -1,6 +1,10 @@
 name: Deploy Cloudflare Pages
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,6 +17,9 @@ concurrency:
 jobs:
   credentials:
     name: Check deployment configuration
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     outputs:
       configured: ${{ steps.detect.outputs.configured }}
@@ -41,20 +48,33 @@ jobs:
       - run: echo "No deployment was attempted because the required repository secrets are absent."
 
   deploy:
-    name: Deploy production build
+    name: Deploy validated production build
     needs: credentials
     if: needs.credentials.outputs.configured == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: cloudflare-pages-production
       url: ${{ steps.publish.outputs.deployment-url }}
 
     steps:
-      - name: Checkout main
+      - id: source
+        name: Resolve source commit
+        shell: bash
+        env:
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [[ -n "$WORKFLOW_RUN_SHA" ]]; then
+            echo "sha=$WORKFLOW_RUN_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ steps.source.outputs.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -81,7 +101,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npx wrangler pages deploy dist --project-name shekinah --branch main 2>&1 | tee deployment.log
+          npx wrangler pages deploy dist \
+            --project-name shekinah \
+            --branch main \
+            --commit-hash "${{ steps.source.outputs.sha }}" 2>&1 | tee deployment.log
           url=$(grep -Eo 'https://[A-Za-z0-9._-]+\.pages\.dev' deployment.log | tail -n 1 || true)
           if [[ -n "$url" ]]; then
             echo "deployment-url=$url" >> "$GITHUB_OUTPUT"
