@@ -9,6 +9,7 @@ const ignoredDirectories = new Set([
   'dist',
   'node_modules',
   'playwright-report',
+  'reference-snapshot',
   'test-results',
   '.wrangler',
 ]);
