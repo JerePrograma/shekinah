@@ -78,7 +78,7 @@ jobs:
             if [ "$code" -ne 0 ]; then
               {
                 printf '\n### Error: %s\n\n```text\n' "$label"
-                tail -n 80 "$log_file"
+                tail -n 80 "$log_file" | sed -r 's/\x1B\[[0-9;]*[mK]//g'
                 printf '\n```\n'
               } >> "$report"
             fi
@@ -116,6 +116,10 @@ jobs:
           - El informe fue generado por GitHub Actions sobre el commit indicado.
           - Los adjuntos originales no fueron utilizados.
           EOF
+
+          if [ -x node_modules/.bin/prettier ]; then
+            npx prettier --write "$report"
+          fi
 
           echo "overall=$overall" >> "$GITHUB_OUTPUT"
 
