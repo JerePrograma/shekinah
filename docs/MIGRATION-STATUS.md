@@ -1,6 +1,6 @@
 # Estado de migración
 
-Estado técnico: **migración implementada, reproducible y unificada en `main`; CI en verificación remota y despliegue pendiente de credenciales Cloudflare**.
+Estado técnico: **migración implementada, reproducible, verificada en GitHub Actions y unificada en `main`; el único pendiente externo es el primer despliegue en Cloudflare Pages**.
 
 ## Alcance completado
 
@@ -16,9 +16,10 @@ Estado técnico: **migración implementada, reproducible y unificada en `main`; 
 - SEO, sitemap, robots, manifest, 404, canonical, Open Graph y datos estructurados.
 - Pruebas unitarias, Playwright y auditorías de salida/secretos.
 - `package-lock.json` reproducible publicado; `npm ci` ya no depende de un bootstrap ni de los adjuntos.
+- Verificación final aprobada en GitHub Actions con Node 24, npm 11 y Chromium.
 - CI, Dependabot y despliegue Cloudflare Pages configurados.
 - Documentación de arquitectura, contenido, seguridad, pruebas, mantenimiento, despliegue y rollback.
-- Eliminación del workflow temporal usado una sola vez para generar el lockfile.
+- Eliminación de los workflows temporales usados para generar el lockfile y formatear la documentación.
 
 ## Estado por área
 
@@ -31,17 +32,15 @@ Estado técnico: **migración implementada, reproducible y unificada en `main`; 
 | Medios                   | Finalizada con selección curada | 5 medios de producción; faltantes documentados               |
 | Seguridad                | Finalizada                      | Auditoría de secretos y exclusión de backups                 |
 | Reproducibilidad         | Finalizada                      | `package-lock.json`, Node 24 y `npm ci`                      |
-| CI remoto                | En verificación                 | Revisar el run disparado por el último commit de `main`      |
+| CI remoto                | Finalizada                      | `docs/CI-VERIFICATION.md`                                    |
 | Cloudflare Pages         | Pendiente externo               | Requiere dos secretos y proyecto `shekinah`                  |
 | URL pública              | Pendiente externo               | No debe inventarse hasta verificar el despliegue             |
 
 ## Tareas estrictamente pendientes
 
-1. Confirmar que el último workflow **CI** finalice en verde en GitHub Actions.
-2. Si falla, corregir el primer step rojo y volver a ejecutar mediante un commit normal a `main`.
-3. Crear el proyecto Cloudflare Pages `shekinah` como **Direct Upload**.
-4. Configurar los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
-5. Ejecutar o dejar que se dispare `Deploy Cloudflare Pages` después de CI.
-6. Verificar la URL pública, actualizar el canonical si Cloudflare asigna otra URL y registrar el resultado en README y este documento.
+1. Crear el proyecto Cloudflare Pages `shekinah` como **Direct Upload**.
+2. Configurar los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
+3. Ejecutar o dejar que se dispare `Deploy Cloudflare Pages` después de CI.
+4. Verificar la URL pública, actualizar el canonical si Cloudflare asigna otra URL y registrar el resultado en README y este documento.
 
 Ninguna tarea pendiente requiere volver a acceder a los cuatro adjuntos, usar rutas locales, levantar WordPress, instalar PHP, Docker o una base de datos.
