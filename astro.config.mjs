@@ -8,12 +8,6 @@ export default defineConfig({
   output: 'static',
   trailingSlash: 'always',
   integrations: [sitemap()],
-  redirects: {
-    '/inicio': '/',
-    '/terminos-condiciones': '/terms-and-conditions',
-    '/privacy-policy': '/terms-and-conditions',
-    '/hello-world': '/blog',
-  },
   build: {
     format: 'directory',
     inlineStylesheets: 'auto',
