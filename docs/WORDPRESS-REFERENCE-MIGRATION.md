@@ -1,84 +1,110 @@
 # Migración desde el WordPress recuperado
 
+Fecha de actualización: **2026-07-21**.
+
 ## Fuente de verdad
 
-La fuente visual y de contenido es la restauración local disponible en:
-
 ```text
-C:\laburo\shekinah-wordpress-reference
-http://localhost:8081
+Repositorio:             C:\laburo\shekinah
+Restauración WordPress:  C:\laburo\shekinah-wordpress-reference
+Compose:                 C:\laburo\shekinah-wordpress-reference\compose.yaml
+Proyecto Compose:        shekinah-original-reference
+Respaldo inmutable:      C:\Users\Jerem\Downloads\shekinah.orig
+Auditoría SHA-256:       C:\Users\Jerem\Downloads\shekinah-original-audit
 ```
 
-El repositorio no versiona la base completa ni credenciales. El contenido público se obtiene del WordPress en ejecución y los medios se copian desde `wp-content/uploads` conservando rutas y nombres.
+La URL se construye con `LOCAL_PORT` leído desde `.env`. El valor histórico fue 8081, pero el script no lo presupone.
 
-## Ejecución completa
+La implementación Astro anterior no es fuente de verdad. Solo puede utilizarse para checks de código transitorio; el build publicable requiere `reference-snapshot/site/index.html`.
 
-Desde PowerShell 7:
+## Ejecución maestra
 
 ```powershell
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 Set-Location 'C:\laburo\shekinah'
-git switch main
-git pull --ff-only origin main
 Set-ExecutionPolicy -Scope Process Bypass
-
-.\scripts\Migrate-WordPressReference.ps1 `
-    -SourceUrl 'http://localhost:8081' `
-    -WorkRoot 'C:\laburo\shekinah-wordpress-reference' `
-    -RepositoryRoot 'C:\laburo\shekinah' `
-    -Publish
+.\scripts\Run-FullMigration.ps1 -Publish -WaitForRemote
 ```
 
-El script:
+Sin `-Publish`, genera y verifica el snapshot pero no confirma ni envía cambios. Sin `-WaitForRemote`, publica Git y termina sin esperar CI o Cloudflare.
 
-1. exige una rama `main` limpia;
-2. actualiza desde `origin/main`;
-3. etiqueta el estado previo;
-4. comprueba la restauración Docker;
-5. exporta inventarios públicos mediante WP-CLI;
-6. descubre rutas mediante sitemaps y navegación;
-7. renderiza cada página con Chromium;
-8. copia todos los medios públicos recuperados;
-9. descarga recursos externos utilizados;
-10. reescribe `localhost` y el dominio Hostinger;
-11. genera capturas y hashes SHA-256;
-12. construye y prueba el resultado;
-13. compara visualmente el snapshot con WordPress en móvil, tablet y escritorio;
-14. confirma y publica el snapshot cuando se usa `-Publish`.
+## Flujo realizado
 
-## Resultado versionado
+1. valida rutas y fingerprints del respaldo y su auditoría;
+2. exige `main` y protege cambios locales ajenos;
+3. actualiza `main` y crea `pre-wordpress-reference-YYYYMMDD-HHMMSS`;
+4. lee `LOCAL_PORT`;
+5. levanta `db` y `wordpress` usando siempre `-p` y `-f` explícitos;
+6. espera MariaDB y prueba WP-CLI;
+7. repara usuario/permisos solo ante una falla comprobada;
+8. importa SQL únicamente cuando no existen tablas WordPress;
+9. verifica y corrige `home` y `siteurl`;
+10. valida `/inicio/`;
+11. exige Node 24 y npm 11;
+12. ejecuta `npm ci` e instala Chromium;
+13. exporta datos públicos sanitizados;
+14. descubre rutas desde semillas, navegación y sitemaps;
+15. renderiza con Chromium, activa lazy-loading y espera fuentes;
+16. descarga recursos internos y externos usados, incluidos CSS, fuentes, fondos y `srcset`;
+17. neutraliza endpoints y formularios no migrados;
+18. genera HTML, redirecciones, robots, sitemap, 404, capturas y manifiesto SHA-256;
+19. ejecuta verificaciones, E2E y fidelidad visual a cero píxeles;
+20. confirma y publica únicamente si todo queda aprobado.
+
+## Datos públicos exportados
+
+```text
+reference-snapshot/data/plugins.json
+reference-snapshot/data/themes.json
+reference-snapshot/data/published-content.json
+reference-snapshot/data/categories.json
+reference-snapshot/data/tags.json
+reference-snapshot/data/navigation.json
+reference-snapshot/data/public-settings.json
+```
+
+No se exportan usuarios, opciones privadas, SQL, credenciales, sesiones, IP internas ni logs.
+
+## Captura de recursos
+
+La captura conserva rutas `/wp-content/...` cuando contienen archivos públicos estáticos. Las URLs con query string reciben nombres deterministas con hash para evitar colisiones. Los recursos externos se guardan bajo `site/__external/` y quedan inventariados en el manifiesto.
+
+Se bloquean o neutralizan:
+
+- `wp-admin`;
+- `wp-login.php`;
+- XML-RPC y cron;
+- comentarios dinámicos;
+- `admin-ajax.php`;
+- nonces y tokens ocultos;
+- formularios que dependían de PHP;
+- conexiones a localhost y al dominio Hostinger anterior.
+
+## Salida esperada
 
 ```text
 reference-snapshot/
-  data/          inventarios públicos
-  screenshots/   capturas de referencia
-  site/          raíz estática desplegable
-  manifest.json  rutas, recursos, tamaños y hashes
+  data/
+  screenshots/
+  site/
+  manifest.json
+  README.md
 ```
 
-Cuando `reference-snapshot/site/index.html` existe, `npm run build` copia ese snapshot a `dist`. Cloudflare Pages sigue desplegando `dist`.
+El manifiesto incluye páginas, redirecciones, recursos, formularios, recursos externos, errores HTTP, errores de consola, páginas no recuperables, tamaños y SHA-256.
 
-## Límites deliberados
+## Resultado que debe copiarse para diagnóstico
 
-El repositorio público no reemplaza el panel administrativo WordPress. No se publican:
+Ante éxito, copiar desde:
 
-- login y administración;
-- usuarios, contraseñas o correos administrativos;
-- base completa;
-- cron interno;
-- caché de servidor;
-- endpoints PHP de escritura.
+```text
+=== MIGRATION SUMMARY ===
+```
 
-Los formularios encontrados quedan registrados en `manifest.json` dentro de `dynamicFeatures`. Cada formulario debe clasificarse antes de declarar que su flujo funcional fue migrado. El sitio recuperado no incluye WooCommerce ni un plugin de formularios transaccionales; los plugins activos pertenecen a Hostinger y LiteSpeed.
-
-## Verificación
+hasta el final. Ante falla, copiar el primer error real y como máximo las últimas 100 líneas, además de:
 
 ```powershell
-npm run verify:snapshot
-npm run build
-npm run audit:output
-npm run test:e2e
-$env:WORDPRESS_REFERENCE_URL = 'http://localhost:8081'
-npm run test:fidelity
+git status --short --branch
+docker compose -p 'shekinah-original-reference' -f 'C:\laburo\shekinah-wordpress-reference\compose.yaml' ps
 ```
-
-El manifiesto permite detectar cualquier archivo agregado, eliminado o modificado después de la captura. La comparación de fidelidad usa el mismo Chromium para la fuente y el snapshot y exige cero píxeles diferentes.
