@@ -99,13 +99,13 @@ El build normal no lee ni busca los cuatro adjuntos.
 
 ## Confianza
 
-| Área | Confianza |
-| --- | --- |
-| Contenido publicado | Alta |
-| Rutas y slugs | Alta |
-| Medios locales | Alta |
-| Identidad de marca | Media-alta |
-| Diseño exacto | Media |
+| Área                      | Confianza            |
+| ------------------------- | -------------------- |
+| Contenido publicado       | Alta                 |
+| Rutas y slugs             | Alta                 |
+| Medios locales            | Alta                 |
+| Identidad de marca        | Media-alta           |
+| Diseño exacto             | Media                |
 | Catálogo, stock y precios | Baja; no recuperable |
 
 ## Estado final por alcance

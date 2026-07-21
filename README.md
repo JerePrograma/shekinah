@@ -131,17 +131,17 @@ tests/                  pruebas unitarias y Playwright
 
 ## Rutas principales
 
-| Ruta | Función |
-| --- | --- |
-| `/` | Portada reconstruida desde la página Inicio |
-| `/nosotros/` | Identidad y propósito |
-| `/tienda/` | Catálogo informativo sin comercio electrónico |
-| `/blog/` | Índice de publicaciones |
-| `/recetas/` | Índice del recetario |
-| `/chocolate-casero/` | Receta recuperada |
-| `/receta-barra-de-cereal/` | Receta parcial recuperada |
-| `/terms-and-conditions/` | Información legal publicada |
-| `/404.html` | Página no encontrada |
+| Ruta                       | Función                                       |
+| -------------------------- | --------------------------------------------- |
+| `/`                        | Portada reconstruida desde la página Inicio   |
+| `/nosotros/`               | Identidad y propósito                         |
+| `/tienda/`                 | Catálogo informativo sin comercio electrónico |
+| `/blog/`                   | Índice de publicaciones                       |
+| `/recetas/`                | Índice del recetario                          |
+| `/chocolate-casero/`       | Receta recuperada                             |
+| `/receta-barra-de-cereal/` | Receta parcial recuperada                     |
+| `/terms-and-conditions/`   | Información legal publicada                   |
+| `/404.html`                | Página no encontrada                          |
 
 El mapa completo y las redirecciones están en [`docs/ROUTE-MAP.md`](docs/ROUTE-MAP.md).
 

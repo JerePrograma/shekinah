@@ -4,18 +4,18 @@ Fecha de la última validación local documentada: **2026-07-20**. Estado remoto
 
 ## Comandos ejecutados en el sandbox
 
-| Comando | Resultado |
-| --- | --- |
-| `npm ci` | aprobado con el lockfile saneado que posteriormente quedó publicado |
-| `npm run check` | aprobado, 0 errores y 0 advertencias |
-| `npm run lint` | aprobado |
-| `npm run format:check` | aprobado |
-| `npm run test:unit` | aprobado, 7 pruebas |
-| `npm run build` | aprobado, salida estática |
-| `npm run audit:output` | aprobado |
-| `npm run audit:secrets` | aprobado |
+| Comando                                   | Resultado                                                              |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| `npm ci`                                  | aprobado con el lockfile saneado que posteriormente quedó publicado    |
+| `npm run check`                           | aprobado, 0 errores y 0 advertencias                                   |
+| `npm run lint`                            | aprobado                                                               |
+| `npm run format:check`                    | aprobado                                                               |
+| `npm run test:unit`                       | aprobado, 7 pruebas                                                    |
+| `npm run build`                           | aprobado, salida estática                                              |
+| `npm run audit:output`                    | aprobado                                                               |
+| `npm run audit:secrets`                   | aprobado                                                               |
 | `npm audit --omit=dev --audit-level=high` | aprobado, 0 vulnerabilidades de producción detectadas en esa ejecución |
-| `npm run test:e2e` | no completado dentro del sandbox por política externa del navegador |
+| `npm run test:e2e`                        | no completado dentro del sandbox por política externa del navegador    |
 
 El `package-lock.json` publicado fue generado desde el registro público de npm por un workflow efímero y quedó como fuente reproducible de `npm ci`. El workflow temporal fue eliminado después de cumplir su única función.
 

@@ -22,18 +22,18 @@ Estado técnico: **migración implementada, reproducible y unificada en `main`; 
 
 ## Estado por área
 
-| Área | Estado | Evidencia o siguiente control |
-| --- | --- | --- |
-| Evidencia original | Finalizada | Inventarios redactados; originales excluidos del repositorio |
-| Extracción y saneamiento | Finalizada | `scripts/migration/` y pruebas unitarias |
-| Aplicación Astro | Finalizada | Build estático sin backend ni base de datos |
-| Contenido y rutas | Finalizada | Inventarios y pruebas de rutas |
-| Medios | Finalizada con selección curada | 5 medios de producción; faltantes documentados |
-| Seguridad | Finalizada | Auditoría de secretos y exclusión de backups |
-| Reproducibilidad | Finalizada | `package-lock.json`, Node 24 y `npm ci` |
-| CI remoto | En verificación | Revisar el run disparado por el último commit de `main` |
-| Cloudflare Pages | Pendiente externo | Requiere dos secretos y proyecto `shekinah` |
-| URL pública | Pendiente externo | No debe inventarse hasta verificar el despliegue |
+| Área                     | Estado                          | Evidencia o siguiente control                                |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------ |
+| Evidencia original       | Finalizada                      | Inventarios redactados; originales excluidos del repositorio |
+| Extracción y saneamiento | Finalizada                      | `scripts/migration/` y pruebas unitarias                     |
+| Aplicación Astro         | Finalizada                      | Build estático sin backend ni base de datos                  |
+| Contenido y rutas        | Finalizada                      | Inventarios y pruebas de rutas                               |
+| Medios                   | Finalizada con selección curada | 5 medios de producción; faltantes documentados               |
+| Seguridad                | Finalizada                      | Auditoría de secretos y exclusión de backups                 |
+| Reproducibilidad         | Finalizada                      | `package-lock.json`, Node 24 y `npm ci`                      |
+| CI remoto                | En verificación                 | Revisar el run disparado por el último commit de `main`      |
+| Cloudflare Pages         | Pendiente externo               | Requiere dos secretos y proyecto `shekinah`                  |
+| URL pública              | Pendiente externo               | No debe inventarse hasta verificar el despliegue             |
 
 ## Tareas estrictamente pendientes
 

@@ -8,13 +8,13 @@
 
 ## Resultados
 
-| Control | Comando | Código | Resultado |
-| --- | --- | ---: | --- |
-| Instalación reproducible | `npm ci` | 0 | **APROBADO** |
-| Chromium de Playwright | `npx playwright install --with-deps chromium` | 0 | **APROBADO** |
-| Astro y TypeScript | `npm run check` | 0 | **APROBADO** |
-| ESLint | `npm run lint` | 0 | **APROBADO** |
-| Prettier | `npm run format:check` | 1 | **FALLÓ** |
+| Control                  | Comando                                       | Código | Resultado    |
+| ------------------------ | --------------------------------------------- | -----: | ------------ |
+| Instalación reproducible | `npm ci`                                      |      0 | **APROBADO** |
+| Chromium de Playwright   | `npx playwright install --with-deps chromium` |      0 | **APROBADO** |
+| Astro y TypeScript       | `npm run check`                               |      0 | **APROBADO** |
+| ESLint                   | `npm run lint`                                |      0 | **APROBADO** |
+| Prettier                 | `npm run format:check`                        |      1 | **FALLÓ**    |
 
 ### Error: Prettier
 
@@ -32,6 +32,7 @@ Checking formatting...
 [[33mwarn[39m] Code style issues found in 5 files. Run Prettier with --write to fix.
 
 ```
+
 | Build estático | `npm run build` | 0 | **APROBADO** |
 | Pruebas unitarias | `npm run test:unit` | 0 | **APROBADO** |
 | Pruebas de navegador | `npx playwright test` | 1 | **FALLÓ** |
@@ -112,8 +113,8 @@ Checking formatting...
     [tablet] › tests/e2e/site.spec.ts:17:3 › /recetas/ responde y tiene SEO básico ─────────────────
     [tablet] › tests/e2e/site.spec.ts:17:3 › /chocolate-casero/ responde y tiene SEO básico ────────
     [tablet] › tests/e2e/site.spec.ts:17:3 › /receta-barra-de-cereal/ responde y tiene SEO básico ──
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-viaje-de-las-especias-sabor-y-bienestar/ responde y tiene SEO básico 
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/ responde y tiene SEO básico 
+    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-viaje-de-las-especias-sabor-y-bienestar/ responde y tiene SEO básico
+    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/ responde y tiene SEO básico
     [tablet] › tests/e2e/site.spec.ts:17:3 › /terms-and-conditions/ responde y tiene SEO básico ────
     [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ─────
     [tablet] › tests/e2e/site.spec.ts:41:1 › todas las imágenes cargan ─────────────────────────────
@@ -121,6 +122,7 @@ Checking formatting...
   31 passed (20.4s)
 
 ```
+
 | Auditoría de salida | `npm run audit:output` | 0 | **APROBADO** |
 | Auditoría de secretos | `npm run audit:secrets` | 0 | **APROBADO** |
 | Auditoría de dependencias de producción | `npm audit --omit=dev --audit-level=high` | 0 | **APROBADO** |
