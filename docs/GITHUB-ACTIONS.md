@@ -2,7 +2,7 @@
 
 Fecha de actualización: **2026-07-21**.
 
-## Flujo principal de integración continua
+## CI
 
 Archivo: `.github/workflows/ci.yml`.
 
@@ -13,11 +13,11 @@ Disparadores:
 
 Permisos del token: `contents: read`.
 
-### Secuencia ejecutada
+### Secuencia
 
 1. checkout exacto del commit;
 2. instalación de Node.js desde `.nvmrc`;
-3. restauración de caché npm basada en `package-lock.json`;
+3. caché npm basada en `package-lock.json`;
 4. `npm ci`;
 5. instalación de Chromium y dependencias del sistema;
 6. `npm run check`;
@@ -28,101 +28,108 @@ Permisos del token: `contents: read`.
 11. `npm run audit:output`;
 12. `npm run audit:secrets`;
 13. `npm audit` como informe no bloqueante;
-14. publicación temporal del artefacto `dist` y del reporte Playwright cuando existe.
+14. carga temporal de `dist` y del reporte Playwright cuando existe.
 
-La ausencia o inconsistencia del lockfile debe fallar explícitamente. CI no debe omitirse para ocultar un error.
+La ausencia o inconsistencia del lockfile debe fallar explícitamente. No se omiten controles para obtener un estado verde artificial.
 
-## Interpretación del resultado
+## Interpretación de CI
 
-- **Verde:** el commit de `main` es técnicamente publicable.
+- **Verde:** el commit es técnicamente publicable.
 - **Rojo:** abrir `Validate static site` y corregir el primer step rojo.
-- **Cancelado:** normalmente un commit más nuevo sustituyó al anterior por la política de concurrencia.
+- **Cancelado:** normalmente un commit más nuevo sustituyó al anterior.
 - **Omitido:** revisar sintaxis, permisos o políticas de Actions.
 
-No desactivar validaciones para obtener un check verde. La corrección debe publicarse como un commit normal y trazable sobre `main`.
-
-## Relación con Cloudflare
-
-El publicador automático principal es la **integración Git de Cloudflare Pages**, no GitHub Actions.
-
-```text
-push a main
-  → CI valida el commit
-  → Cloudflare detecta el mismo push
-  → construye y publica dist
-```
-
-El panel de Cloudflare debe usar:
-
-```bash
-npm run build
-```
-
-como build y:
-
-```bash
-npx wrangler pages deploy dist --project-name shekinah --branch main
-```
-
-como deploy.
-
-No usar `npx wrangler deploy`, porque corresponde a Workers.
-
-## Workflow manual de despliegue
+## Despliegue de producción
 
 Archivo: `.github/workflows/deploy-cloudflare.yml`.
 
-Disparador único:
+Disparadores:
 
-- ejecución manual desde **Actions → Deploy Cloudflare Pages → Run workflow**.
+- automáticamente cuando **CI** termina correctamente en `main`;
+- manualmente desde **Actions → Deploy Cloudflare Pages → Run workflow**.
 
-No se dispara después de cada CI. Esta decisión evita que Cloudflare Git Integration y GitHub Actions publiquen dos veces el mismo commit.
+### Garantía de SHA
 
-El workflow manual:
+Para una ejecución automática, el workflow toma `github.event.workflow_run.head_sha` y hace checkout de ese commit. No despliega ciegamente el HEAD existente en el momento de ejecución.
 
-1. comprueba si existen los secretos;
-2. si faltan, informa `Deployment not configured` sin romper CI;
-3. obtiene la rama `main`;
-4. ejecuta `npm ci`;
-5. instala Chromium;
-6. ejecuta `npm run verify` completo;
-7. despliega con Wrangler al proyecto `shekinah` y rama `main`;
-8. verifica la portada publicada.
+Para una ejecución manual, usa el SHA desde el que se inició el workflow.
 
-Secretos requeridos:
+### Secuencia
 
-- `CLOUDFLARE_API_TOKEN`;
-- `CLOUDFLARE_ACCOUNT_ID`.
+1. comprobar `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`;
+2. resolver el SHA de origen;
+3. hacer checkout del SHA;
+4. instalar Node.js y dependencias;
+5. instalar Chromium;
+6. ejecutar `npm run verify` completo;
+7. publicar `dist` con `wrangler pages deploy`;
+8. asociar el SHA al deployment mediante `--commit-hash`;
+9. registrar la URL del deployment;
+10. descargar la portada y comprobar `<title>Shekinah</title>`.
 
-No deben almacenarse en archivos, variables públicas, issues, logs o commits.
+Comando:
 
-## Cuándo usar el workflow manual
+```bash
+npx wrangler pages deploy dist \
+  --project-name shekinah \
+  --branch main \
+  --commit-hash <SHA_VALIDADO>
+```
 
-Usarlo solamente cuando:
+## Secretos requeridos
 
-- la integración Git de Cloudflare esté temporalmente fuera de servicio;
-- se necesite una recuperación controlada;
-- se decida migrar deliberadamente desde la integración Git a Direct Upload.
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+```
 
-No configurarlo como segundo mecanismo automático habitual.
+El token debe limitarse a la cuenta y al permiso necesario para editar Cloudflare Pages. No debe almacenarse en archivos, variables públicas, issues, logs o commits.
+
+## Relación con Cloudflare
+
+GitHub Actions es el único publicador automático seleccionado.
+
+Si Cloudflare tiene una integración Git activa para el mismo proyecto:
+
+1. deshabilitar deployments automáticos de producción y preview;
+2. conservar el proyecto Pages y su dominio;
+3. no ejecutar un segundo build y deploy por cada push.
+
+Si el panel muestra un Worker con `Deploy command = npx wrangler deploy`, ese recurso no reemplaza al proyecto Pages. Workers Builds y Pages son mecanismos distintos.
+
+## `Deployment not configured`
+
+El workflow no encontró ambos secretos. El job informativo termina sin publicar.
+
+CI puede continuar en verde porque la falta de autorización de infraestructura no convierte al código en inválido.
 
 ## Dependabot
 
-`.github/dependabot.yml` revisa npm semanalmente y agrupa actualizaciones relacionadas para reducir ruido. Una actualización no debe integrarse solo porque compile: deben revisarse changelog, compatibilidad con Node 24, resultado de CI, pruebas y salida estática.
+`.github/dependabot.yml` revisa npm semanalmente y agrupa actualizaciones relacionadas. Una actualización no debe integrarse solo porque compile: deben revisarse changelog, compatibilidad con Node.js 24, resultado de CI, pruebas y salida estática.
 
 ## Diagnóstico operativo
 
-1. Abrir la pestaña **Actions**.
-2. Elegir el workflow y el run del SHA que se quiere diagnosticar.
+1. Abrir **Actions**.
+2. Elegir el workflow y el run del SHA relevante.
 3. Abrir el job y localizar el primer step rojo.
-4. Leer el error completo y no solo la última línea.
-5. Corregir mediante edición de GitHub o un checkout opcional.
-6. Confirmar el cambio sobre `main`.
+4. Leer el error completo.
+5. Corregir mediante edición de GitHub o checkout opcional.
+6. Confirmar en `main`.
 7. Verificar el nuevo run.
 8. Descargar artefactos cuando sea necesario:
    - `playwright-report-<SHA>` para fallos funcionales;
    - `shekinah-dist-<SHA>` para inspeccionar el build validado.
 
-## Historial del bootstrap
+## Verificación final
 
-Al inicializar el repositorio se usaron workflows efímeros para generar `package-lock.json`, ejecutar verificaciones y formatear documentación. Esos workflows fueron eliminados después de cumplir su función y no forman parte del flujo normal.
+Un cambio se considera publicado cuando:
+
+1. existe en `main`;
+2. CI está verde para su SHA;
+3. el workflow de Pages está verde para el mismo SHA;
+4. Cloudflare registra ese SHA;
+5. el sitio público muestra el cambio.
+
+## Automatizaciones temporales
+
+Los workflows efímeros usados durante bootstrap, generación de lockfile, verificación o formato fueron eliminados. No forman parte del flujo productivo.
