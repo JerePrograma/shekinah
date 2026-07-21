@@ -2,10 +2,14 @@ import { defineConfig } from '@playwright/test';
 
 const sharedUse = {
   browserName: 'chromium' as const,
+  colorScheme: 'light' as const,
+  locale: 'es-AR',
+  reducedMotion: 'reduce' as const,
   deviceScaleFactor: 1,
   hasTouch: false,
   isMobile: false,
   serviceWorkers: 'block' as const,
+  timezoneId: 'America/Argentina/Buenos_Aires',
   trace: 'retain-on-failure' as const,
 };
 
