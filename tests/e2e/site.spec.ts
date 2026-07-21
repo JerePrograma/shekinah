@@ -25,10 +25,11 @@ for (const route of criticalRoutes) {
   });
 }
 
-test('la navegación principal es utilizable con teclado', async ({ page, isMobile }) => {
+test('la navegación principal es utilizable con teclado', async ({ page }) => {
   await page.goto('/');
-  if (isMobile) {
-    const toggle = page.getByRole('button', { name: 'Abrir menú' });
+
+  const toggle = page.getByRole('button', { name: 'Abrir menú' });
+  if (await toggle.isVisible()) {
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
