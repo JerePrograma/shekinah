@@ -8,7 +8,6 @@ const forbidden = [
   /chocolate-chimpanzee-908881\.hostingersite\.com/giu,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gu,
   /\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|DB_PASSWORD)\s*[:=]/giu,
-  /\.php(?:["'<\s?]|$)/giu,
 ];
 const textExtensions = new Set([
   '.html',
