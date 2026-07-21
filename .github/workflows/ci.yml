@@ -46,7 +46,7 @@ jobs:
       - name: Build static output
         run: npm run build
         env:
-          SITE_URL: https://shekinah.pages.dev
+          SITE_URL: https://shekinah-7dl.pages.dev
 
       - name: Unit and browser tests
         run: npm run test
