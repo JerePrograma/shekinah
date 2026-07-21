@@ -1,7 +1,7 @@
 # Verificación final de CI
 
-- Commit verificado: `d097017d80b08b43ba838166f418abae9d6edcbd`
-- Inicio UTC: **2026-07-21T01:32:27Z**
+- Commit verificado: `0254bc2557fb1aa243287440d1731215e2d46092`
+- Inicio UTC: **2026-07-21T01:38:03Z**
 - Runner: **GitHub Actions / ubuntu-latest**
 - Node: **v24.18.0**
 - npm: **11.16.0**
@@ -24,12 +24,8 @@
 > prettier --check .
 
 Checking formatting...
-[[33mwarn[39m] docs/CI-VERIFICATION.md
-[[33mwarn[39m] docs/MIGRATION-REPORT.md
-[[33mwarn[39m] docs/MIGRATION-STATUS.md
-[[33mwarn[39m] docs/TEST-REPORT.md
-[[33mwarn[39m] README.md
-[[33mwarn[39m] Code style issues found in 5 files. Run Prettier with --write to fix.
+[warn] docs/CI-VERIFICATION.md
+[warn] Code style issues found in the above file. Run Prettier with --write to fix.
 
 ```
 
@@ -40,86 +36,86 @@ Checking formatting...
 ### Error: Pruebas de navegador
 
 ```text
+[40/45] [desktop] › tests/e2e/site.spec.ts:17:3 › /terms-and-conditions/ responde y tiene SEO básico
+[41/45] [desktop] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado
+[42/45] [desktop] › tests/e2e/site.spec.ts:43:1 › todas las imágenes cargan
+[43/45] [desktop] › tests/e2e/site.spec.ts:70:1 › rutas históricas redirigen
+[44/45] [desktop] › tests/e2e/site.spec.ts:75:1 › sitemap, robots y 404 están disponibles
+[45/45] [desktop] › tests/e2e/site.spec.ts:81:1 › el HTML no contiene dependencias heredadas
+[46/45] (retries) [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado (retry #1)
+[47/45] (retries) [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado (retry #2)
+  1) [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ────
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.focus: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: 'Abrir menú' })
 
 
+      30 |   if (isMobile) {
+      31 |     const toggle = page.getByRole('button', { name: 'Abrir menú' });
+    > 32 |     await toggle.focus();
+         |                  ^
+      33 |     await page.keyboard.press('Enter');
+      34 |     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       35 |   }
-      36 |   await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
-    > 37 |   await page.getByRole('link', { name: 'Nosotros' }).click();
-         |                                                      ^
-      38 |   await expect(page).toHaveURL(/\/nosotros\/$/u);
-      39 | });
-      40 |
-        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:37:54
+        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:32:18
 
-    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-desktop/error-context.md
+    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-tablet/error-context.md
 
     Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
 
-    Error: locator.click: Error: strict mode violation: getByRole('link', { name: 'Nosotros' }) resolved to 2 elements:
-        1) <a href="/nosotros/" data-astro-cid-6stfpryv="">Nosotros</a> aka getByLabel('Navegación principal').getByRole('link', { name: 'Nosotros' })
-        2) <a href="/nosotros/" data-astro-cid-kl7gxbjz="">Nosotros</a> aka getByLabel('Navegación de pie de página').getByRole('link', { name: 'Nosotros' })
+    Test timeout of 30000ms exceeded.
 
+    Error: locator.focus: Test timeout of 30000ms exceeded.
     Call log:
-      - waiting for getByRole('link', { name: 'Nosotros' })
+      - waiting for getByRole('button', { name: 'Abrir menú' })
 
 
+      30 |   if (isMobile) {
+      31 |     const toggle = page.getByRole('button', { name: 'Abrir menú' });
+    > 32 |     await toggle.focus();
+         |                  ^
+      33 |     await page.keyboard.press('Enter');
+      34 |     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       35 |   }
-      36 |   await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
-    > 37 |   await page.getByRole('link', { name: 'Nosotros' }).click();
-         |                                                      ^
-      38 |   await expect(page).toHaveURL(/\/nosotros\/$/u);
-      39 | });
-      40 |
-        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:37:54
+        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:32:18
 
-    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-desktop-retry1/error-context.md
+    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-tablet-retry1/error-context.md
 
     attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results/site-la-navegación-principal-es-utilizable-con-teclado-desktop-retry1/trace.zip
+    test-results/site-la-navegación-principal-es-utilizable-con-teclado-tablet-retry1/trace.zip
     Usage:
 
-        npx playwright show-trace test-results/site-la-navegación-principal-es-utilizable-con-teclado-desktop-retry1/trace.zip
+        npx playwright show-trace test-results/site-la-navegación-principal-es-utilizable-con-teclado-tablet-retry1/trace.zip
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
 
-    Error: locator.click: Error: strict mode violation: getByRole('link', { name: 'Nosotros' }) resolved to 2 elements:
-        1) <a href="/nosotros/" data-astro-cid-6stfpryv="">Nosotros</a> aka getByLabel('Navegación principal').getByRole('link', { name: 'Nosotros' })
-        2) <a href="/nosotros/" data-astro-cid-kl7gxbjz="">Nosotros</a> aka getByLabel('Navegación de pie de página').getByRole('link', { name: 'Nosotros' })
+    Test timeout of 30000ms exceeded.
 
+    Error: locator.focus: Test timeout of 30000ms exceeded.
     Call log:
-      - waiting for getByRole('link', { name: 'Nosotros' })
+      - waiting for getByRole('button', { name: 'Abrir menú' })
 
 
+      30 |   if (isMobile) {
+      31 |     const toggle = page.getByRole('button', { name: 'Abrir menú' });
+    > 32 |     await toggle.focus();
+         |                  ^
+      33 |     await page.keyboard.press('Enter');
+      34 |     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       35 |   }
-      36 |   await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
-    > 37 |   await page.getByRole('link', { name: 'Nosotros' }).click();
-         |                                                      ^
-      38 |   await expect(page).toHaveURL(/\/nosotros\/$/u);
-      39 | });
-      40 |
-        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:37:54
+        at /home/runner/work/shekinah/shekinah/tests/e2e/site.spec.ts:32:18
 
-    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-desktop-retry2/error-context.md
+    Error Context: test-results/site-la-navegación-principal-es-utilizable-con-teclado-tablet-retry2/error-context.md
 
 
-  14 failed
-    [mobile] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ─────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › / responde y tiene SEO básico ─────────────────────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /nosotros/ responde y tiene SEO básico ────────────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /tienda/ responde y tiene SEO básico ──────────────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /blog/ responde y tiene SEO básico ────────────────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /recetas/ responde y tiene SEO básico ─────────────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /chocolate-casero/ responde y tiene SEO básico ────────
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /receta-barra-de-cereal/ responde y tiene SEO básico ──
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-viaje-de-las-especias-sabor-y-bienestar/ responde y tiene SEO básico
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/ responde y tiene SEO básico
-    [tablet] › tests/e2e/site.spec.ts:17:3 › /terms-and-conditions/ responde y tiene SEO básico ────
+  1 failed
     [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ─────
-    [tablet] › tests/e2e/site.spec.ts:41:1 › todas las imágenes cargan ─────────────────────────────
-    [desktop] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ────
-  31 passed (20.4s)
+  44 passed (1.6m)
 
 ```
 
@@ -131,6 +127,6 @@ Checking formatting...
 
 Verificación **FALLÓ**.
 
-- Fin UTC: **2026-07-21T01:33:43Z**
+- Fin UTC: **2026-07-21T01:40:31Z**
 - El informe fue generado por GitHub Actions sobre el commit indicado.
 - Los adjuntos originales no fueron utilizados.
