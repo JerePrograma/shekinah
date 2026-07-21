@@ -6,130 +6,66 @@ Fecha de actualización: **2026-07-21**.
 
 Archivo: `.github/workflows/ci.yml`.
 
-Disparadores:
+Se ejecuta en cada push a `main` y manualmente. Usa Node.js 24 desde `.nvmrc`, `npm ci` y Chromium instalado desde el paquete local de Playwright.
 
-- cada push a `main`;
-- ejecución manual desde **Actions → CI → Run workflow**.
+Orden bloqueante:
 
-Permisos del token: `contents: read`.
+1. `npm ci`;
+2. `npm run check`;
+3. `npm run lint`;
+4. `npm run format:check`;
+5. `npm run verify:snapshot:required`;
+6. `npm run build`;
+7. `npm run test:unit`;
+8. `npm run test:e2e`;
+9. `npm run audit:output`;
+10. `npm run audit:secrets`.
 
-### Secuencia
+La captura contra WordPress no ocurre en CI porque GitHub Actions no tiene acceso al Docker ni al `localhost` del usuario. CI verifica el snapshot versionado y sus hashes.
 
-1. checkout exacto del commit;
-2. instalación de Node.js desde `.nvmrc`;
-3. caché npm basada en `package-lock.json`;
-4. `npm ci`;
-5. instalación de Chromium y dependencias del sistema;
-6. `npm run check`;
-7. `npm run lint`;
-8. `npm run format:check`;
-9. `npm run build` con `SITE_URL=https://shekinah-7dl.pages.dev`;
-10. pruebas unitarias y Playwright mediante `npm run test`;
-11. `npm run audit:output`;
-12. `npm run audit:secrets`;
-13. `npm audit` como informe no bloqueante;
-14. carga temporal de `dist` y del reporte Playwright cuando existe.
+Mientras falte `reference-snapshot/site/index.html`, el fallo esperado es deliberado. Un verde obtenido mediante el fallback Astro sería un falso positivo y está prohibido.
 
-La ausencia o inconsistencia del lockfile debe fallar explícitamente. No se omiten controles para obtener un estado verde artificial.
-
-## Interpretación de CI
-
-- **Verde:** el commit es técnicamente publicable.
-- **Rojo:** abrir `Validate static site` y corregir el primer step rojo.
-- **Cancelado:** normalmente un commit más nuevo sustituyó al anterior.
-- **Omitido:** revisar sintaxis, permisos o políticas de Actions.
-
-## Despliegue de producción
+## Despliegue
 
 Archivo: `.github/workflows/deploy-cloudflare.yml`.
 
-Disparadores:
+Se ejecuta automáticamente únicamente después de un CI exitoso de `main`, o manualmente. Resuelve y despliega el mismo SHA validado.
 
-- automáticamente cuando **CI** termina correctamente en `main`;
-- manualmente desde **Actions → Deploy Cloudflare Pages → Run workflow**.
+Secuencia:
 
-### Garantía de SHA
+1. exige `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`;
+2. hace checkout del SHA validado;
+3. ejecuta `npm ci`;
+4. instala Chromium;
+5. ejecuta `npm run verify` completo;
+6. ejecuta `wrangler pages deploy dist` mediante el binario local;
+7. verifica rutas en la URL de deployment y en el dominio estable;
+8. verifica que exista un sitemap público.
 
-Para una ejecución automática, el workflow toma `github.event.workflow_run.head_sha` y hace checkout de ese commit. No despliega ciegamente el HEAD existente en el momento de ejecución.
+La ausencia de secretos es un error de despliegue, no un estado verde ficticio.
 
-Para una ejecución manual, usa el SHA desde el que se inició el workflow.
+## Acciones utilizadas
 
-### Secuencia
+Los workflows usan líneas mayores compatibles con Node.js 24:
 
-1. comprobar `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`;
-2. resolver el SHA de origen;
-3. hacer checkout del SHA;
-4. instalar Node.js y dependencias;
-5. instalar Chromium;
-6. ejecutar `npm run verify` completo;
-7. publicar `dist` con `wrangler pages deploy`;
-8. asociar el SHA al deployment mediante `--commit-hash`;
-9. registrar la URL del deployment;
-10. descargar la portada y comprobar `<title>Shekinah</title>`.
+- `actions/checkout@v6`;
+- `actions/setup-node@v6`;
+- `actions/upload-artifact@v7`.
 
-Comando:
+## Artefactos
 
-```bash
-npx wrangler pages deploy dist \
-  --project-name shekinah \
-  --branch main \
-  --commit-hash <SHA_VALIDADO>
-```
+CI conserva durante siete días:
 
-## Secretos requeridos
+- `shekinah-dist-<SHA>`;
+- `playwright-report-<SHA>` cuando existe.
 
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
+Los artefactos ayudan al diagnóstico, pero la fuente de producción sigue siendo el commit versionado.
 
-El token debe limitarse a la cuenta y al permiso necesario para editar Cloudflare Pages. No debe almacenarse en archivos, variables públicas, issues, logs o commits.
+## Interpretación
 
-## Relación con Cloudflare
-
-GitHub Actions es el único publicador automático seleccionado.
-
-Si Cloudflare tiene una integración Git activa para el mismo proyecto:
-
-1. deshabilitar deployments automáticos de producción y preview;
-2. conservar el proyecto Pages y su dominio;
-3. no ejecutar un segundo build y deploy por cada push.
-
-Si el panel muestra un Worker con `Deploy command = npx wrangler deploy`, ese recurso no reemplaza al proyecto Pages. Workers Builds y Pages son mecanismos distintos.
-
-## `Deployment not configured`
-
-El workflow no encontró ambos secretos. El job informativo termina sin publicar.
-
-CI puede continuar en verde porque la falta de autorización de infraestructura no convierte al código en inválido.
-
-## Dependabot
-
-`.github/dependabot.yml` revisa npm semanalmente y agrupa actualizaciones relacionadas. Una actualización no debe integrarse solo porque compile: deben revisarse changelog, compatibilidad con Node.js 24, resultado de CI, pruebas y salida estática.
-
-## Diagnóstico operativo
-
-1. Abrir **Actions**.
-2. Elegir el workflow y el run del SHA relevante.
-3. Abrir el job y localizar el primer step rojo.
-4. Leer el error completo.
-5. Corregir mediante edición de GitHub o checkout opcional.
-6. Confirmar en `main`.
-7. Verificar el nuevo run.
-8. Descargar artefactos cuando sea necesario:
-   - `playwright-report-<SHA>` para fallos funcionales;
-   - `shekinah-dist-<SHA>` para inspeccionar el build validado.
-
-## Verificación final
-
-Un cambio se considera publicado cuando:
-
-1. existe en `main`;
-2. CI está verde para su SHA;
-3. el workflow de Pages está verde para el mismo SHA;
-4. Cloudflare registra ese SHA;
-5. el sitio público muestra el cambio.
-
-## Automatizaciones temporales
-
-Los workflows efímeros usados durante bootstrap, generación de lockfile, verificación o formato fueron eliminados. No forman parte del flujo productivo.
+- **CI rojo por snapshot faltante:** ejecutar la migración local real.
+- **CI rojo por hash:** el snapshot fue modificado después de generar el manifiesto.
+- **CI rojo por E2E:** corregir el primer recurso, ruta o consola fallidos.
+- **Deploy rojo por secretos:** configurar los dos secretos exactos.
+- **Deploy rojo en Wrangler:** verificar proyecto Pages, cuenta y permiso del token.
+- **Deploy verde:** aún debe verificarse dominio estable y SHA.
