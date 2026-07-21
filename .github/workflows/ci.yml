@@ -16,7 +16,6 @@ jobs:
   validate:
     name: Validate static site
     runs-on: ubuntu-latest
-    if: hashFiles('package-lock.json') != ''
     timeout-minutes: 20
 
     steps:
