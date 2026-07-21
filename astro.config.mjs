@@ -1,7 +1,7 @@
 import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
 
-const site = process.env.SITE_URL ?? 'https://shekinah.pages.dev';
+const site = process.env.SITE_URL ?? 'https://shekinah-7dl.pages.dev';
 
 export default defineConfig({
   site,
