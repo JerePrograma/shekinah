@@ -1,6 +1,6 @@
 # Informe de pruebas
 
-Fecha de la última validación local documentada: **2026-07-20**. Estado remoto actualizado: **2026-07-20/21** según los commits de cierre en `main`.
+Fecha de la validación local documentada: **2026-07-20**. Verificación remota final: **2026-07-21 UTC**.
 
 ## Comandos ejecutados en el sandbox
 
@@ -23,7 +23,27 @@ El `package-lock.json` publicado fue generado desde el registro público de npm 
 
 Playwright no pudo descargar Chromium porque el entorno efímero bloqueó la resolución del CDN. El Chromium del sistema estaba administrado con una política que bloqueaba toda navegación (`URLBlocklist: ["*"]`). No se intentó eludir esa política.
 
-La suite Playwright está configurada para GitHub Actions, donde `.github/workflows/ci.yml` instala Chromium con dependencias del sistema y prueba móvil, tablet y escritorio.
+La limitación quedó resuelta mediante GitHub Actions, donde la suite se ejecutó con Chromium y dependencias del sistema en móvil, tablet y escritorio.
+
+## Verificación remota aprobada
+
+El informe versionado [`CI-VERIFICATION.md`](CI-VERIFICATION.md) confirma una ejecución completa en GitHub Actions con:
+
+- Node.js **24.18.0**;
+- npm **11.16.0**;
+- `npm ci` aprobado;
+- instalación de Chromium aprobada;
+- Astro y TypeScript aprobados;
+- ESLint aprobado;
+- Prettier aprobado;
+- build estático aprobado;
+- pruebas unitarias aprobadas;
+- **45 pruebas Playwright aprobadas** en móvil, tablet y escritorio;
+- auditoría de salida aprobada;
+- auditoría de secretos aprobada;
+- auditoría de dependencias de producción aprobada.
+
+La verificación remota no utilizó los cuatro adjuntos originales.
 
 ## Cobertura implementada
 
@@ -52,9 +72,9 @@ La suite Playwright está configurada para GitHub Actions, donde `.github/workfl
 
 Las métricas pueden variar levemente cuando cambie contenido o versiones de Astro. La fuente de verdad operativa es el artefacto `shekinah-dist-<SHA>` generado por el último CI aprobado.
 
-## Verificación remota
+## Criterios de aceptación de CI
 
-El CI se dispara en cada push a `main` y manualmente. Para aceptar un commit como publicable deben quedar verdes:
+Para aceptar un commit como publicable deben quedar verdes:
 
 1. instalación con `npm ci`;
 2. instalación de Chromium;
