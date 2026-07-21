@@ -1,125 +1,39 @@
-# Diagnóstico actual de Cloudflare para Shekinah
+# Estado de Cloudflare Pages
 
-Fecha de diagnóstico: **2026-07-21**.
+Fecha de actualización: **2026-07-21**.
 
-## Evidencia observada
+## Evidencia conocida
 
-- Repositorio conectado: `JerePrograma/shekinah`.
-- Rama utilizada: `main`.
-- Dominio estable identificado: `https://shekinah-7dl.pages.dev`.
-- El build observado instaló dependencias, ejecutó `npm run build`, generó 11 páginas y creó `dist/sitemap-index.xml`.
-- La etapa siguiente ejecutó:
+- Proyecto esperado: `shekinah`.
+- Dominio estable asignado: `https://shekinah-7dl.pages.dev`.
+- Rama: `main`.
+- Un intento anterior ejecutó `wrangler deploy` y falló por falta de entry point de Worker.
+- No existe evidencia desde este repositorio de que la integración Git nativa haya sido desactivada.
+- No existe evidencia actual de un deployment del snapshot WordPress, porque el snapshot aún no está versionado.
 
-  ```bash
-  npx wrangler deploy
-  ```
-
-- Wrangler buscó un entry point de Worker inexistente y el despliegue falló.
-
-## Diagnóstico corregido
-
-`npx wrangler deploy` es el comando de despliegue de **Cloudflare Workers**.
-
-Un proyecto Pages con integración Git se configura mediante:
-
-- production branch;
-- build command;
-- build output directory;
-- root directory;
-- variables de entorno.
-
-Por lo tanto, un panel que exige **Deploy command** y propone `npx wrangler deploy` corresponde a **Workers Builds** o a una configuración distinta del Pages Git build tradicional.
-
-El sitio Shekinah es estático y su destino correcto es Cloudflare Pages. No debe agregarse un Worker ficticio, `src/index.ts`, un entry point ni `assets.directory` para satisfacer ese comando.
-
-## Decisión adoptada
-
-Se usa un solo flujo controlado desde GitHub:
+## Configuración decidida
 
 ```text
-push a main
-  → GitHub Actions ejecuta CI
-  → CI verde
-  → GitHub Actions obtiene el mismo SHA
-  → npm run verify
-  → wrangler pages deploy dist
-  → Cloudflare Pages
+GitHub Actions = único CI/CD
+Cloudflare Pages = destino estático
+Directorio = dist
+Comando = wrangler pages deploy dist
 ```
 
-Comando exacto:
+No se agregará un Worker ficticio ni un entry point para satisfacer `wrangler deploy`.
 
-```bash
-npx wrangler pages deploy dist \
-  --project-name shekinah \
-  --branch main \
-  --commit-hash <SHA_VALIDADO>
-```
+## Acciones manuales en el panel
 
-## Qué hacer en Cloudflare
+1. abrir **Workers & Pages**;
+2. localizar el recurso asociado a `shekinah-7dl.pages.dev`;
+3. confirmar que es Pages y que su nombre API es `shekinah`;
+4. desactivar o desconectar la integración Git automática;
+5. revisar que no exista otro Worker publicando el mismo repositorio;
+6. crear un token limitado a la cuenta con **Cloudflare Pages: Edit**;
+7. cargar token y Account ID como secretos de GitHub;
+8. ejecutar CI y deployment;
+9. verificar el mismo SHA en GitHub y Cloudflare.
 
-1. Abrir **Workers & Pages**.
-2. Localizar el recurso asociado a `shekinah-7dl.pages.dev`.
-3. Confirmar que es un proyecto **Pages** llamado `shekinah`.
-4. Si Pages tiene integración Git automática, deshabilitar deployments automáticos de producción y preview.
-5. Si existe además un recurso Worker conectado a `JerePrograma/shekinah`, revisar que no contenga otro servicio válido.
-6. Desconectar o eliminar ese Worker solo después de esa comprobación.
-7. No reemplazar su deploy command por otro comando como solución permanente; el publicador canónico está en GitHub Actions.
+## Estado que no puede afirmarse desde GitHub
 
-## Qué hacer en GitHub
-
-Crear en **Settings → Secrets and variables → Actions**:
-
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
-
-El token debe limitarse a la cuenta y al permiso necesario para editar Pages.
-
-Después:
-
-1. ejecutar **Actions → CI → Run workflow** sobre `main`;
-2. corregir cualquier fallo;
-3. confirmar el run automático **Deploy Cloudflare Pages**;
-4. ejecutar ese workflow manualmente si no se inicia;
-5. abrir el environment `cloudflare-pages-production`;
-6. verificar el dominio estable y el SHA.
-
-## URL aplicada en el repositorio
-
-El repositorio utiliza `https://shekinah-7dl.pages.dev` en:
-
-- fallback `site` de `astro.config.mjs`;
-- `public/robots.txt`;
-- variable `SITE_URL` de CI;
-- variable `SITE_URL` y fallback de verificación del workflow de Pages.
-
-## TLS y URL de deployment
-
-Cloudflare puede generar una URL individual similar a:
-
-```text
-https://<hash>.shekinah-7dl.pages.dev
-```
-
-La URL estable es:
-
-```text
-https://shekinah-7dl.pages.dev
-```
-
-No diagnosticar definitivamente TLS o DNS mientras no exista un deployment Pages válido. Después del primer deployment exitoso:
-
-1. abrir el dominio estable;
-2. recargar sin caché;
-3. probar en una ventana privada;
-4. revisar el estado del dominio y del certificado si el error continúa.
-
-## Controles de cierre
-
-- CI verde para el HEAD de `main`;
-- workflow de Pages verde para el mismo SHA;
-- dominio estable accesible;
-- portada, rutas, imágenes, robots y sitemap correctos;
-- SHA de Cloudflare coincidente con el SHA validado;
-- ningún Worker o publicador automático paralelo conectado accidentalmente.
+El repositorio no puede cambiar por sí solo la configuración del panel de Cloudflare. Hasta que el usuario complete esos pasos, deben permanecer como pendientes documentados.
