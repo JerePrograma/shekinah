@@ -33,8 +33,10 @@ test('la navegación principal es utilizable con teclado', async ({ page, isMobi
     await page.keyboard.press('Enter');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   }
-  await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
-  await page.getByRole('link', { name: 'Nosotros' }).click();
+
+  const primaryNavigation = page.getByRole('navigation', { name: 'Navegación principal' });
+  await expect(primaryNavigation).toBeVisible();
+  await primaryNavigation.getByRole('link', { name: 'Nosotros' }).click();
   await expect(page).toHaveURL(/\/nosotros\/$/u);
 });
 
