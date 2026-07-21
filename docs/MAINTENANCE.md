@@ -6,15 +6,15 @@ El sitio puede editarse, validarse y publicarse íntegramente desde GitHub y Clo
 
 ## Flujo habitual
 
-1. Editar o crear archivos desde GitHub o desde un checkout temporal.
+1. Editar o crear archivos desde GitHub o un checkout temporal.
 2. Confirmar el cambio directamente en `main`.
 3. Abrir **GitHub → Actions → CI**.
 4. Confirmar que `Validate static site` termina en verde.
-5. Abrir **Cloudflare → Workers & Pages → shekinah → Deployments**.
-6. Confirmar que Cloudflare construyó y publicó el mismo SHA de `main`.
-7. Abrir `https://shekinah-7dl.pages.dev` y revisar la ruta modificada.
+5. Confirmar que **Deploy Cloudflare Pages** se ejecuta para el mismo SHA.
+6. Abrir `https://shekinah-7dl.pages.dev`.
+7. Revisar la ruta modificada y el SHA del deployment.
 
-Un push a `main` es la única acción habitual de publicación. El workflow de GitHub Actions para Cloudflare es manual y queda reservado para contingencias.
+Un push a `main` es la única acción habitual. GitHub Actions es el único publicador automático seleccionado.
 
 ## Cambiar un texto existente
 
@@ -23,15 +23,15 @@ Un push a `main` es la única acción habitual de publicación. El workflow de G
 3. Abrir el Markdown correspondiente.
 4. Pulsar **Edit this file**.
 5. Modificar el cuerpo.
-6. Cambiar el frontmatter YAML solo cuando se necesite actualizar título, descripción, fecha, imagen, etiquetas o SEO.
+6. Cambiar el frontmatter YAML solo para título, descripción, fecha, imagen, etiquetas o SEO.
 7. Pulsar **Commit changes**.
 8. Confirmar directamente en `main`.
-9. Revisar CI y el deployment de Cloudflare.
+9. Revisar CI, deployment y sitio público.
 
 ## Agregar una publicación de blog
 
 1. Abrir `src/content/posts/`.
-2. Crear un archivo con nombre minúsculo y guiones, por ejemplo `como-conservar-especias.md`.
+2. Crear un archivo en minúsculas y con guiones, por ejemplo `como-conservar-especias.md`.
 3. Copiar la estructura de una entrada existente.
 4. Completar al menos:
    - `title`;
@@ -43,12 +43,12 @@ Un push a `main` es la única acción habitual de publicación. El workflow de G
    - `tags`;
    - `image` e `imageAlt`;
    - `source` o procedencia editorial documentada.
-5. Escribir el contenido en Markdown semántico.
-6. Usar una imagen ubicada dentro de `public/images/`.
-7. Confirmar sobre `main` y revisar CI.
-8. Verificar la entrada en `/blog/` y en su ruta individual.
+5. Escribir contenido Markdown semántico.
+6. Usar una imagen ubicada en `public/images/`.
+7. Confirmar en `main`.
+8. Verificar `/blog/` y la ruta individual.
 
-La ruta se genera automáticamente desde el nombre del archivo o el slug definido por la colección.
+La ruta se genera desde el nombre del archivo o el slug definido por la colección.
 
 ## Agregar una receta
 
@@ -57,9 +57,9 @@ La ruta se genera automáticamente desde el nombre del archivo o el slug definid
 3. Completar título, descripción, fechas, imagen y texto alternativo.
 4. Cargar `ingredients` e `instructions` como listas YAML.
 5. Agregar tiempos y rendimiento solo cuando estén comprobados.
-6. No inventar cantidades, advertencias alimentarias, propiedades médicas o valores nutricionales.
-7. Confirmar sobre `main`.
-8. Revisar CI, `/recetas/` y la ruta nueva.
+6. No inventar cantidades, advertencias alimentarias, propiedades médicas ni valores nutricionales.
+7. Confirmar en `main`.
+8. Revisar `/recetas/` y la ruta nueva.
 
 ## Cambiar o agregar una imagen
 
@@ -68,9 +68,9 @@ La ruta se genera automáticamente desde el nombre del archivo o el slug definid
 3. Usar nombre descriptivo, minúsculo y con guiones.
 4. Subirla a `public/images/`.
 5. Evitar archivos mayores a 25 MiB; para web normalmente deben ser mucho menores.
-6. Actualizar `image` y `imageAlt` en el contenido o componente.
+6. Actualizar `image` y `imageAlt`.
 7. Confirmar que CI valida existencia, tamaño y referencias.
-8. No volver a usar rutas `/wp-content/uploads`, dominios heredados o imágenes remotas no controladas.
+8. No usar rutas `/wp-content/uploads`, dominios heredados ni imágenes remotas no controladas.
 
 ## Cambiar datos generales
 
@@ -81,7 +81,7 @@ La ruta se genera automáticamente desde el nombre del archivo o el slug definid
 - Estilos globales: `src/styles/global.css`.
 - Componentes: `src/components/`.
 
-No agregar teléfonos, correos, domicilios, testimonios, precios o redes sociales sin una fuente pública confirmada.
+No agregar teléfonos, correos, domicilios, testimonios, precios o redes sociales sin fuente confirmada.
 
 ## Cambiar una ruta
 
@@ -90,12 +90,12 @@ No agregar teléfonos, correos, domicilios, testimonios, precios o redes sociale
 3. Agregar una redirección permanente desde la ruta anterior.
 4. Actualizar `docs/ROUTE-MAP.md`.
 5. Revisar canonical, sitemap y enlaces internos.
-6. Confirmar en `main` y revisar CI.
+6. Confirmar en `main`.
 7. Verificar la redirección y la ruta pública.
 
 Eliminar una ruta sin redirección rompe enlaces existentes y SEO.
 
-## Revisar GitHub Actions
+## Revisar CI
 
 1. Abrir **Actions**.
 2. Seleccionar **CI**.
@@ -107,37 +107,31 @@ Eliminar una ruta sin redirección rompe enlaces existentes y SEO.
    - `shekinah-dist-<SHA>`: build generado;
    - `playwright-report-<SHA>`: diagnóstico de navegador.
 
-## Revisar Cloudflare
+## Revisar el despliegue
 
-La integración Git de Cloudflare es el mecanismo normal.
+1. Abrir **Actions → Deploy Cloudflare Pages**.
+2. Confirmar que el run corresponde al mismo SHA aprobado por CI.
+3. Confirmar que `Deploy validated production build` terminó en verde.
+4. Abrir el environment `cloudflare-pages-production`.
+5. Abrir el dominio estable.
+6. Revisar la ruta modificada, navegación, imágenes y consola.
+7. Abrir Cloudflare Pages y comparar el SHA asociado.
 
-1. Abrir **Workers & Pages → shekinah → Deployments**.
-2. Localizar el deployment asociado al último commit de `main`.
-3. Verificar que build y deploy terminaron correctamente.
-4. Abrir el dominio estable `https://shekinah-7dl.pages.dev`.
-5. Revisar la ruta modificada, navegación, imágenes y consola.
+## Ejecutar el despliegue manualmente
 
-Configuración requerida:
+Cuando el workflow automático no se haya iniciado:
 
-```text
-Production branch: main
-Build command: npm run build
-Deploy command: npx wrangler pages deploy dist --project-name shekinah --branch main
-Root directory: /
-SITE_URL: https://shekinah-7dl.pages.dev
-```
+1. abrir **Actions → Deploy Cloudflare Pages**;
+2. pulsar **Run workflow**;
+3. ejecutar desde `main`;
+4. comprobar ambos secretos;
+5. verificar la URL resultante.
 
-No usar `npx wrangler deploy`.
+## Evitar un segundo publicador
 
-## Workflow manual de respaldo
-
-Solo ante contingencia:
-
-1. configurar en GitHub Actions `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`;
-2. abrir **Actions → Deploy Cloudflare Pages**;
-3. pulsar **Run workflow** desde `main`;
-4. verificar el job y la URL resultante;
-5. evitar que este mecanismo quede automático en paralelo con Cloudflare Git Integration.
+- Deshabilitar deployments automáticos de una integración Git de Cloudflare para el mismo proyecto.
+- No conectar el repositorio a Workers Builds para publicar este sitio.
+- No utilizar `npx wrangler deploy`; el workflow usa `npx wrangler pages deploy dist`.
 
 ## Desarrollo local opcional
 
@@ -166,7 +160,7 @@ npm run build
 npm run preview
 ```
 
-El desarrollo local no debe utilizar los adjuntos originales, PHP, WordPress, Docker o una base de datos.
+El desarrollo local no debe utilizar los adjuntos originales, PHP, WordPress, Docker ni una base de datos.
 
 ## Flujo de uso del sitio publicado
 
@@ -175,7 +169,7 @@ El desarrollo local no debe utilizar los adjuntos originales, PHP, WordPress, Do
 3. En Tienda, consultar el catálogo informativo; no existe checkout ni pago.
 4. En Blog, abrir las publicaciones disponibles.
 5. En Recetas, abrir las recetas recuperadas.
-6. Consultar la página legal desde su enlace correspondiente.
+6. Consultar la página legal desde su enlace.
 7. En móvil, abrir y cerrar el menú mediante el botón de navegación.
 
 No existen usuarios, inicio de sesión, panel administrativo, carrito, pedidos, pagos ni base de datos.
@@ -186,6 +180,7 @@ Un cambio está publicado solo cuando:
 
 1. el commit existe en `main`;
 2. CI está verde para ese SHA;
-3. Cloudflare publicó ese mismo SHA;
-4. la URL pública muestra el cambio;
-5. no hay errores relevantes de navegación, imágenes, SEO o consola.
+3. el workflow de Pages está verde para el mismo SHA;
+4. Cloudflare registra ese SHA;
+5. la URL pública muestra el cambio;
+6. no hay errores relevantes de navegación, imágenes, SEO o consola.
