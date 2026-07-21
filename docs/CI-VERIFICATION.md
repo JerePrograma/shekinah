@@ -1,32 +1,27 @@
-# Verificación remota de referencia
+# Verificación de CI
 
-- Commit verificado: `4c433637e435a77c2a23b01d45abfcdecf43d586`
-- Inicio UTC: **2026-07-21T01:48:09Z**
-- Runner: **GitHub Actions / ubuntu-latest**
-- Node.js: **v24.18.0**
-- npm: **11.16.0**
+Fecha de actualización: **2026-07-21**.
 
-## Resultados
+## Estado actual
 
-| Control                                 | Comando                                       | Código | Resultado    |
-| --------------------------------------- | --------------------------------------------- | -----: | ------------ |
-| Instalación reproducible                | `npm ci`                                      |      0 | **APROBADO** |
-| Chromium de Playwright                  | `npx playwright install --with-deps chromium` |      0 | **APROBADO** |
-| Astro y TypeScript                      | `npm run check`                               |      0 | **APROBADO** |
-| ESLint                                  | `npm run lint`                                |      0 | **APROBADO** |
-| Prettier                                | `npm run format:check`                        |      0 | **APROBADO** |
-| Build estático                          | `npm run build`                               |      0 | **APROBADO** |
-| Pruebas unitarias                       | `npm run test:unit`                           |      0 | **APROBADO** |
-| Pruebas de navegador                    | `npx playwright test`                         |      0 | **APROBADO** |
-| Auditoría de salida                     | `npm run audit:output`                        |      0 | **APROBADO** |
-| Auditoría de secretos                   | `npm run audit:secrets`                       |      0 | **APROBADO** |
-| Auditoría de dependencias de producción | `npm audit --omit=dev --audit-level=high`     |      0 | **APROBADO** |
+No existe un run de GitHub Actions que valide el snapshot WordPress real, porque `reference-snapshot/manifest.json` aún no está versionado.
 
-## Conclusión
+Cualquier ejecución verde anterior corresponde a la implementación Astro transitoria y no satisface el criterio de aceptación actual.
 
-La ejecución indicada fue **APROBADA**.
+## Evidencia requerida
 
-- Fin UTC: **2026-07-21T01:49:07Z**.
-- El informe fue generado por GitHub Actions sobre el commit indicado.
-- Los adjuntos originales no fueron utilizados.
-- Este documento conserva una línea base histórica; todo commit posterior requiere su propio CI verde.
+Para cerrar esta verificación deben registrarse:
+
+- SHA de `main` que contiene el snapshot;
+- tag `pre-wordpress-reference-*`;
+- fecha y URL del run CI;
+- `npm ci` aprobado con Node 24/npm 11;
+- verificación requerida del manifiesto;
+- build desde `reference-snapshot/site`;
+- unit tests y E2E aprobados;
+- auditorías aprobadas;
+- URL y resultado del workflow Cloudflare;
+- verificación del dominio estable;
+- coincidencia del SHA entre CI y deployment.
+
+El script maestro genera una versión local preliminar de este documento. La evidencia remota debe agregarse únicamente después de que los workflows terminen.
