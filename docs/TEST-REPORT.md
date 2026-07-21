@@ -1,6 +1,18 @@
 # Informe de pruebas
 
-Fecha de la validación local documentada: **2026-07-20**. Verificación remota final: **2026-07-21 UTC**.
+Fecha de la validación local documentada: **2026-07-20**. Validación remota de referencia: **2026-07-21 UTC**.
+
+## Alcance temporal
+
+La validación remota completa documentada corresponde al commit:
+
+```text
+4c433637e435a77c2a23b01d45abfcdecf43d586
+```
+
+Ese resultado demuestra que la aplicación, el lockfile, las pruebas y las auditorías funcionaban en la línea base indicada. No demuestra automáticamente que commits posteriores estén aprobados.
+
+Después de esa ejecución se consolidaron documentación y automatización de despliegue. El HEAD actual debe ejecutar nuevamente **CI** y no se considera validado hasta que ese run termine en verde.
 
 ## Comandos ejecutados en el sandbox
 
@@ -25,7 +37,7 @@ Playwright no pudo descargar Chromium porque el entorno efímero bloqueó la res
 
 La limitación quedó resuelta mediante GitHub Actions, donde la suite se ejecutó con Chromium y dependencias del sistema en móvil, tablet y escritorio.
 
-## Verificación remota aprobada
+## Validación remota aprobada de referencia
 
 El informe versionado [`CI-VERIFICATION.md`](CI-VERIFICATION.md) confirma una ejecución completa en GitHub Actions con:
 
@@ -43,7 +55,7 @@ El informe versionado [`CI-VERIFICATION.md`](CI-VERIFICATION.md) confirma una ej
 - auditoría de secretos aprobada;
 - auditoría de dependencias de producción aprobada.
 
-La verificación remota no utilizó los cuatro adjuntos originales.
+La ejecución no utilizó los cuatro adjuntos originales.
 
 ## Cobertura implementada
 
@@ -61,7 +73,7 @@ La verificación remota no utilizó los cuatro adjuntos originales.
 
 ## Auditoría de `dist`
 
-Última medición local consolidada antes de la publicación final:
+Última medición local consolidada antes de la publicación de referencia:
 
 - archivos: **26**;
 - tamaño total: **167.657 B**;
@@ -70,15 +82,15 @@ La verificación remota no utilizó los cuatro adjuntos originales.
 - sourcemaps: **0**;
 - errores de enlaces, SEO o cadenas prohibidas: **0**.
 
-Las métricas pueden variar levemente cuando cambie contenido o versiones de Astro. La fuente de verdad operativa es el artefacto `shekinah-dist-<SHA>` generado por el último CI aprobado.
+Las métricas pueden variar cuando cambie contenido o versiones de Astro. La fuente de verdad operativa es el artefacto `shekinah-dist-<SHA>` generado por el último CI aprobado.
 
-## Criterios de aceptación de CI
+## Criterios de aceptación
 
 Para aceptar un commit como publicable deben quedar verdes:
 
 1. instalación con `npm ci`;
 2. instalación de Chromium;
-3. check de Astro/TypeScript;
+3. check de Astro y TypeScript;
 4. ESLint;
 5. Prettier;
 6. build;
@@ -88,6 +100,6 @@ Para aceptar un commit como publicable deben quedar verdes:
 
 `npm audit` se conserva como informe y no como criterio ciego: puede informar vulnerabilidades de herramientas de desarrollo sin implicar una vulnerabilidad explotable en el HTML estático publicado.
 
-## Pruebas omitidas
+## Pruebas fuera de alcance
 
 No se hicieron pruebas de compra, carrito, pagos, usuarios, pedidos, autenticación o base de datos porque esas funciones no existen en la evidencia ni forman parte de la arquitectura final.
