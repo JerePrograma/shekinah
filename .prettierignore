@@ -1,8 +1,11 @@
-
 .astro
 dist
 node_modules
 package-lock.json
 playwright-report
 public/images
+reference-snapshot/data
+reference-snapshot/manifest.json
+reference-snapshot/screenshots
+reference-snapshot/site
 test-results
