@@ -90,6 +90,7 @@ jobs:
             run_check 'Chromium de Playwright' 'npx playwright install --with-deps chromium'
             run_check 'Astro y TypeScript' 'npm run check'
             run_check 'ESLint' 'npm run lint'
+            npx prettier --write "$report"
             run_check 'Prettier' 'npm run format:check'
             run_check 'Build estático' 'npm run build'
             run_check 'Pruebas unitarias' 'npm run test:unit'
