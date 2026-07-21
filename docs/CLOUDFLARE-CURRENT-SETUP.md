@@ -32,18 +32,18 @@ Ese comando despliega Workers y no corresponde a un proyecto Pages estático. Wr
 
 En **Workers & Pages → shekinah → Settings → Build** configurar:
 
-| Campo | Valor |
-| --- | --- |
-| Production branch | `main` |
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler pages deploy dist --project-name shekinah --branch main` |
-| Root directory | `/` |
+| Campo              | Valor                                                                         |
+| ------------------ | ----------------------------------------------------------------------------- |
+| Production branch  | `main`                                                                        |
+| Build command      | `npm run build`                                                               |
+| Deploy command     | `npx wrangler pages deploy dist --project-name shekinah --branch main`        |
+| Root directory     | `/`                                                                           |
 
 Agregar la variable de build:
 
-| Nombre | Valor |
-| --- | --- |
-| `SITE_URL` | `https://shekinah-7dl.pages.dev` |
+| Nombre     | Valor                               |
+| ---------- | ----------------------------------- |
+| `SITE_URL` | `https://shekinah-7dl.pages.dev`    |
 
 No configurar `npx wrangler deploy`, un archivo Worker `main`, `src/index.ts` ni `assets.directory`: el proyecto es Astro estático para Cloudflare Pages y su directorio publicable es `dist`.
 
@@ -87,7 +87,12 @@ push a main
   → shekinah-7dl.pages.dev
 ```
 
-Para evitar despliegues duplicados, no configurar simultáneamente los secretos del workflow GitHub `Deploy Cloudflare Pages` mientras Cloudflare mantenga despliegues automáticos por integración Git. El workflow puede permanecer sin secretos y se marcará como no configurado.
+Para evitar despliegues duplicados:
+
+- la integración Git de Cloudflare es el mecanismo automático principal;
+- `.github/workflows/deploy-cloudflare.yml` solo admite ejecución manual;
+- los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` son opcionales y se configuran únicamente para contingencias;
+- no deben existir dos despliegues automáticos para el mismo push.
 
 ## URL aplicada en el repositorio
 
@@ -96,4 +101,4 @@ El repositorio usa `https://shekinah-7dl.pages.dev` en:
 - fallback `site` de `astro.config.mjs`;
 - `public/robots.txt`;
 - variable `SITE_URL` de CI;
-- variable `SITE_URL` y fallback de verificación del workflow de Cloudflare.
+- variable `SITE_URL` y fallback de verificación del workflow manual de Cloudflare.
