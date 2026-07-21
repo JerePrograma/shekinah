@@ -14,56 +14,64 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate static site
+    name: Validate recovered static snapshot
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout exact commit
+        uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        run: npm exec -- playwright install --with-deps chromium
 
-      - name: Type and content checks
+      - name: Validate transition source
         run: npm run check
 
-      - name: Lint
+      - name: Lint repository scripts and tests
         run: npm run lint
 
-      - name: Formatting
+      - name: Check formatting
         run: npm run format:check
 
-      - name: Build static output
+      - name: Require and verify versioned WordPress snapshot
+        run: npm run verify:snapshot:required
+        env:
+          SITE_URL: https://shekinah-7dl.pages.dev
+
+      - name: Build deployable dist
         run: npm run build
         env:
           SITE_URL: https://shekinah-7dl.pages.dev
 
-      - name: Unit and browser tests
-        run: npm run test
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run static browser tests
+        run: npm run test:e2e
 
       - name: Audit generated output
         run: npm run audit:output
 
-      - name: Audit repository for secrets and backups
+      - name: Audit repository and snapshot for secrets
         run: npm run audit:secrets
 
       - name: Dependency audit report
         run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
 
-      - name: Upload static build
+      - name: Upload validated static build
         if: always() && hashFiles('dist/**') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shekinah-dist-${{ github.sha }}
           path: dist
@@ -72,7 +80,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always() && hashFiles('playwright-report/**') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ github.sha }}
           path: playwright-report
