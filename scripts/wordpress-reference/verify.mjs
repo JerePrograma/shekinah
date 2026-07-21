@@ -83,7 +83,10 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
       errors.push('el manifiesto no contiene páginas');
     }
     if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
-      errors.push('el manifiesto no contiene archivos');
+      errors.push('el manifiesto no contiene archivos del sitio');
+    }
+    if (!Array.isArray(manifest.snapshotFiles) || manifest.snapshotFiles.length === 0) {
+      errors.push('el manifiesto no contiene archivos auxiliares de data/screenshots');
     }
     if ((manifest.httpErrors?.length ?? 0) > 0) {
       errors.push(`el manifiesto registra ${manifest.httpErrors.length} errores HTTP`);
@@ -133,6 +136,45 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
     for (const missing of expected.keys()) errors.push(`${missing}: falta en el snapshot`);
   }
 
+  if (manifest?.snapshotFiles) {
+    const expected = new Map();
+    for (const record of manifest.snapshotFiles) {
+      if (expected.has(record.path)) {
+        errors.push(`${record.path}: auxiliar duplicado en el manifiesto`);
+      }
+      expected.set(record.path, record);
+    }
+    const auxiliaryFiles = [
+      ...(await walk(path.join(snapshotBase, 'data'))),
+      ...(await walk(path.join(snapshotBase, 'screenshots'))),
+    ];
+    for (const file of auxiliaryFiles) {
+      const relative = path.relative(snapshotBase, file).replaceAll(path.sep, '/');
+      const body = await readFile(file);
+      const record = expected.get(relative);
+      if (!record) {
+        errors.push(`${relative}: auxiliar no figura en el manifiesto`);
+        continue;
+      }
+      if (record.bytes !== body.length) errors.push(`${relative}: tamaño auxiliar distinto`);
+      if (record.sha256 !== sha256(body)) errors.push(`${relative}: SHA-256 auxiliar distinto`);
+      if (relative.startsWith('screenshots/') && body.length > 90 * 1024 * 1024) {
+        errors.push(`${relative}: captura supera 90 MiB`);
+      }
+      expected.delete(relative);
+    }
+    for (const missing of expected.keys()) errors.push(`${missing}: auxiliar faltante`);
+  }
+
+  for (const page of manifest?.pages ?? []) {
+    for (const viewport of ['mobile', 'tablet', 'desktop']) {
+      const screenshot = page.screenshots?.[viewport];
+      if (!screenshot || !(await exists(path.resolve(screenshot)))) {
+        errors.push(`${page.route}: falta captura ${viewport}`);
+      }
+    }
+  }
+
   const forbiddenExtensions = new Set(['.bak', '.gz', '.log', '.php', '.sql', '.tar', '.zip']);
   const forbiddenNames = new Set(['.env', 'wp-config.php']);
   const forbiddenPatterns = [
@@ -177,6 +219,7 @@ if (!(await exists(path.join(snapshotRoot, 'index.html')))) {
     files: actualFiles.length,
     pages: manifest?.pages?.length ?? 0,
     resources: manifest?.resources?.length ?? 0,
+    snapshotFiles: manifest?.snapshotFiles?.length ?? 0,
     errors,
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
