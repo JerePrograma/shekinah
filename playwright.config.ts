@@ -22,7 +22,10 @@ export default defineConfig({
   },
   projects: [
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
-    { name: 'tablet', use: { ...devices['iPad Pro 11'] } },
+    {
+      name: 'tablet',
+      use: { ...devices['iPad Pro 11'], browserName: 'chromium' },
+    },
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
   ],
 });
