@@ -1,29 +1,32 @@
 # Operación y mantenimiento de Shekinah
 
-El sitio puede editarse, validarse y publicarse íntegramente desde GitHub. Una instalación local es opcional y no constituye una dependencia operativa.
+Fecha de actualización: **2026-07-21**.
+
+El sitio puede editarse, validarse y publicarse íntegramente desde GitHub y Cloudflare. Una instalación local es opcional y no constituye una dependencia operativa.
 
 ## Flujo habitual
 
-1. Editar o crear archivos desde GitHub.
+1. Editar o crear archivos desde GitHub o desde un checkout temporal.
 2. Confirmar el cambio directamente en `main`.
-3. Abrir la pestaña **Actions**.
-4. Esperar que el workflow **CI** termine en verde.
-5. Si Cloudflare está configurado, comprobar que **Deploy Cloudflare Pages** termine en verde.
-6. Abrir el sitio publicado y revisar la ruta modificada.
+3. Abrir **GitHub → Actions → CI**.
+4. Confirmar que `Validate static site` termina en verde.
+5. Abrir **Cloudflare → Workers & Pages → shekinah → Deployments**.
+6. Confirmar que Cloudflare construyó y publicó el mismo SHA de `main`.
+7. Abrir `https://shekinah-7dl.pages.dev` y revisar la ruta modificada.
 
-Un push a `main` es la única acción habitual de publicación.
+Un push a `main` es la única acción habitual de publicación. El workflow de GitHub Actions para Cloudflare es manual y queda reservado para contingencias.
 
 ## Cambiar un texto existente
 
-1. En el repositorio, abrir `src/content/`.
+1. Abrir `src/content/`.
 2. Elegir `pages`, `posts` o `recipes`.
 3. Abrir el Markdown correspondiente.
 4. Pulsar **Edit this file**.
 5. Modificar el cuerpo.
 6. Cambiar el frontmatter YAML solo cuando se necesite actualizar título, descripción, fecha, imagen, etiquetas o SEO.
 7. Pulsar **Commit changes**.
-8. Seleccionar commit directo a `main`.
-9. Revisar CI.
+8. Confirmar directamente en `main`.
+9. Revisar CI y el deployment de Cloudflare.
 
 ## Agregar una publicación de blog
 
@@ -43,6 +46,7 @@ Un push a `main` es la única acción habitual de publicación.
 5. Escribir el contenido en Markdown semántico.
 6. Usar una imagen ubicada dentro de `public/images/`.
 7. Confirmar sobre `main` y revisar CI.
+8. Verificar la entrada en `/blog/` y en su ruta individual.
 
 La ruta se genera automáticamente desde el nombre del archivo o el slug definido por la colección.
 
@@ -54,15 +58,16 @@ La ruta se genera automáticamente desde el nombre del archivo o el slug definid
 4. Cargar `ingredients` e `instructions` como listas YAML.
 5. Agregar tiempos y rendimiento solo cuando estén comprobados.
 6. No inventar cantidades, advertencias alimentarias, propiedades médicas o valores nutricionales.
-7. Confirmar sobre `main` y revisar la ruta en `/recetas/`.
+7. Confirmar sobre `main`.
+8. Revisar CI, `/recetas/` y la ruta nueva.
 
 ## Cambiar o agregar una imagen
 
-1. Optimizar previamente la imagen en JPEG, PNG, WebP o AVIF.
+1. Optimizar la imagen en JPEG, PNG, WebP o AVIF.
 2. Eliminar metadatos privados cuando existan.
 3. Usar nombre descriptivo, minúsculo y con guiones.
-4. Subirla a `public/images/` desde GitHub.
-5. Evitar archivos mayores a 25 MiB; para web normalmente deberían ser mucho menores.
+4. Subirla a `public/images/`.
+5. Evitar archivos mayores a 25 MiB; para web normalmente deben ser mucho menores.
 6. Actualizar `image` y `imageAlt` en el contenido o componente.
 7. Confirmar que CI valida existencia, tamaño y referencias.
 8. No volver a usar rutas `/wp-content/uploads`, dominios heredados o imágenes remotas no controladas.
@@ -85,7 +90,8 @@ No agregar teléfonos, correos, domicilios, testimonios, precios o redes sociale
 3. Agregar una redirección permanente desde la ruta anterior.
 4. Actualizar `docs/ROUTE-MAP.md`.
 5. Revisar canonical, sitemap y enlaces internos.
-6. Ejecutar CI.
+6. Confirmar en `main` y revisar CI.
+7. Verificar la redirección y la ruta pública.
 
 Eliminar una ruta sin redirección rompe enlaces existentes y SEO.
 
@@ -97,31 +103,52 @@ Eliminar una ruta sin redirección rompe enlaces existentes y SEO.
 4. Verificar el SHA y que `Validate static site` esté verde.
 5. Ante un fallo, abrir el primer step rojo.
 6. Corregir la causa; no omitir la prueba.
-7. Descargar los artefactos cuando sea necesario:
+7. Descargar artefactos cuando sea necesario:
    - `shekinah-dist-<SHA>`: build generado;
    - `playwright-report-<SHA>`: diagnóstico de navegador.
 
-## Publicación en Cloudflare
+## Revisar Cloudflare
 
-Cuando los secretos estén configurados, el workflow de despliegue se ejecuta después de CI. Para ejecutarlo manualmente:
+La integración Git de Cloudflare es el mecanismo normal.
 
-1. Abrir **Actions**.
-2. Seleccionar **Deploy Cloudflare Pages**.
-3. Pulsar **Run workflow**.
-4. Elegir `main`.
-5. Confirmar la ejecución.
-6. Verificar la URL registrada en el environment `cloudflare-pages-production`.
+1. Abrir **Workers & Pages → shekinah → Deployments**.
+2. Localizar el deployment asociado al último commit de `main`.
+3. Verificar que build y deploy terminaron correctamente.
+4. Abrir el dominio estable `https://shekinah-7dl.pages.dev`.
+5. Revisar la ruta modificada, navegación, imágenes y consola.
+
+Configuración requerida:
+
+```text
+Production branch: main
+Build command: npm run build
+Deploy command: npx wrangler pages deploy dist --project-name shekinah --branch main
+Root directory: /
+SITE_URL: https://shekinah-7dl.pages.dev
+```
+
+No usar `npx wrangler deploy`.
+
+## Workflow manual de respaldo
+
+Solo ante contingencia:
+
+1. configurar en GitHub Actions `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`;
+2. abrir **Actions → Deploy Cloudflare Pages**;
+3. pulsar **Run workflow** desde `main`;
+4. verificar el job y la URL resultante;
+5. evitar que este mecanismo quede automático en paralelo con Cloudflare Git Integration.
 
 ## Desarrollo local opcional
 
 Requisitos:
 
-- Node.js 24 LTS;
+- Node.js 24 o superior;
 - npm 11 o compatible.
 
-Comandos:
-
 ```bash
+git clone https://github.com/JerePrograma/shekinah.git
+cd shekinah
 npm ci
 npm run dev
 ```
@@ -141,12 +168,24 @@ npm run preview
 
 El desarrollo local no debe utilizar los adjuntos originales, PHP, WordPress, Docker o una base de datos.
 
+## Flujo de uso del sitio publicado
+
+1. Entrar a la portada.
+2. Usar la navegación principal para acceder a Nosotros, Tienda, Blog y Recetas.
+3. En Tienda, consultar el catálogo informativo; no existe checkout ni pago.
+4. En Blog, abrir las publicaciones disponibles.
+5. En Recetas, abrir las recetas recuperadas.
+6. Consultar la página legal desde su enlace correspondiente.
+7. En móvil, abrir y cerrar el menú mediante el botón de navegación.
+
+No existen usuarios, inicio de sesión, panel administrativo, carrito, pedidos, pagos ni base de datos.
+
 ## Criterio para considerar un cambio publicado
 
 Un cambio está publicado solo cuando:
 
 1. el commit existe en `main`;
 2. CI está verde para ese SHA;
-3. el deploy está verde para ese SHA, si Cloudflare está configurado;
+3. Cloudflare publicó ese mismo SHA;
 4. la URL pública muestra el cambio;
-5. no hay errores de navegación, imágenes, SEO o consola relevantes.
+5. no hay errores relevantes de navegación, imágenes, SEO o consola.
