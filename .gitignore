@@ -5,6 +5,7 @@ dist/
 playwright-report/
 test-results/
 .wrangler/
+.migration-work/
 .dev.vars
 .env
 .env.*
