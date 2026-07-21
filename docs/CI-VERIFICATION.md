@@ -1,7 +1,7 @@
 # Verificación final de CI
 
-- Commit verificado: `ce682d9c73bfa88cbfa2e25a765f62eaf657d5ab`
-- Inicio UTC: **2026-07-21T01:30:59Z**
+- Commit verificado: `d097017d80b08b43ba838166f418abae9d6edcbd`
+- Inicio UTC: **2026-07-21T01:32:27Z**
 - Runner: **GitHub Actions / ubuntu-latest**
 - Node: **v24.18.0**
 - npm: **11.16.0**
@@ -118,7 +118,7 @@ Checking formatting...
     [tablet] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ─────
     [tablet] › tests/e2e/site.spec.ts:41:1 › todas las imágenes cargan ─────────────────────────────
     [desktop] › tests/e2e/site.spec.ts:28:1 › la navegación principal es utilizable con teclado ────
-  31 passed (18.9s)
+  31 passed (20.4s)
 
 ```
 | Auditoría de salida | `npm run audit:output` | 0 | **APROBADO** |
@@ -129,6 +129,6 @@ Checking formatting...
 
 Verificación **FALLÓ**.
 
-- Fin UTC: **2026-07-21T01:32:04Z**
+- Fin UTC: **2026-07-21T01:33:43Z**
 - El informe fue generado por GitHub Actions sobre el commit indicado.
 - Los adjuntos originales no fueron utilizados.
