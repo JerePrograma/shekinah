@@ -686,14 +686,25 @@ const context = await browser.newContext({
 let activeRoute = '/';
 const neutralizedRequests = [];
 await context.route('**/*', async (route) => {
-  if (isBlockedUrl(route.request().url())) {
+  const request = route.request();
+  if (isBlockedUrl(request.url())) {
     neutralizedRequests.push({
       route: activeRoute,
-      resourceType: route.request().resourceType(),
-      url: sanitizeDiagnostic(publicValue(route.request().url())),
+      resourceType: request.resourceType(),
+      url: sanitizeDiagnostic(publicValue(request.url())),
     });
     await route.fulfill({ status: 204, body: '' });
     return;
+  }
+  const requestUrl = new URL(request.url());
+  if (requestUrl.origin !== source.origin && request.resourceType() !== 'document') {
+    try {
+      const response = await route.fetch({ maxRetries: 3, timeout: 60_000 });
+      await route.fulfill({ response });
+      return;
+    } catch {
+      // Continue once through Chromium so the final manifest records a real failure if retries exhaust.
+    }
   }
   await route.continue();
 });
@@ -708,6 +719,29 @@ const unrecoverablePages = [];
 const resourceMap = new Map();
 const resources = new Map();
 const resourceBaseUrls = new Map();
+
+async function fetchWithRetry(url, attempts = 4) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (response.ok || (response.status < 500 && response.status !== 429)) {
+        return { response };
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+      await response.body?.cancel();
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+    }
+  }
+  return { response: null, error: lastError };
+}
 
 page.on('console', (message) => {
   if (message.type() === 'error') {
@@ -743,19 +777,17 @@ async function saveResource(value, ancestry = new Set()) {
   if (ancestry.has(requestUrl.href)) return;
 
   const nextAncestry = new Set(ancestry).add(requestUrl.href);
-  const response = await fetch(requestUrl, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(60_000),
-  }).catch((error) => {
+  const fetched = await fetchWithRetry(requestUrl);
+  const response = fetched.response;
+  if (!response) {
     httpErrors.push({
       route: activeRoute,
       status: 0,
       url: sanitizeDiagnostic(publicValue(original)),
       resourceType: 'fetch',
-      error: sanitizeDiagnostic(error.message),
+      error: sanitizeDiagnostic(fetched.error?.message ?? 'fetch failed after retries'),
     });
-    return null;
-  });
+  }
   if (!response?.ok) {
     if (response) {
       httpErrors.push({
