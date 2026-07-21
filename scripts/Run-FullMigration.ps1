@@ -208,10 +208,10 @@ Fecha de actualización: **$(Get-Date -Format 'yyyy-MM-dd')**.
 
 - WordPress restaurado: **disponible durante la captura**.
 - Snapshot: **generado y verificado localmente**.
-- Fuente local: `$sourceUrl`.
-- Fecha de captura: `$captureDate`.
-- Commit base: `$baseCommit`.
-- Tag de rollback: `$rollbackTag`.
+- Fuente local: $sourceUrl.
+- Fecha de captura: $captureDate.
+- Commit base: $baseCommit.
+- Tag de rollback: $rollbackTag.
 - Publicación, CI y Cloudflare: **pendientes hasta completar el flujo remoto**.
 
 | Métrica | Valor |
@@ -228,14 +228,14 @@ Fecha de actualización: **$(Get-Date -Format 'yyyy-MM-dd')**.
 | Errores de consola | $($manifest.totals.consoleErrors) |
 | Páginas no recuperables | $($manifest.totals.unrecoverablePages) |
 
-La migración no se declara completa hasta obtener CI y deployment verdes para el mismo SHA y verificar `https://shekinah-7dl.pages.dev`.
+La migración no se declara completa hasta obtener CI y deployment verdes para el mismo SHA y verificar https://shekinah-7dl.pages.dev.
 "@
 $testReport = @"
 # Informe de pruebas
 
 Fecha: **$(Get-Date -Format 'yyyy-MM-dd')**.
 
-La captura local aprobó `npm ci`, snapshot requerido, check, lint, formato, build, unit tests, E2E, auditorías y fidelidad visual con `maxDiffPixels: 0` en 375 × 812, 768 × 1024 y 1440 × 1200.
+La captura local aprobó npm ci, snapshot requerido, check, lint, formato, build, unit tests, E2E, auditorías y fidelidad visual con maxDiffPixels: 0 en 375 × 812, 768 × 1024 y 1440 × 1200.
 
 - Páginas: $($manifest.totals.pages)
 - Recursos: $($manifest.totals.resources)
@@ -251,8 +251,8 @@ $ciReport = @"
 
 Fecha de actualización: **$(Get-Date -Format 'yyyy-MM-dd')**.
 
-- Commit base: `$baseCommit`.
-- Tag de rollback: `$rollbackTag`.
+- Commit base: $baseCommit.
+- Tag de rollback: $rollbackTag.
 - Snapshot: generado y aprobado localmente.
 - Commit del snapshot: pendiente al generar este documento.
 - CI del snapshot: pendiente.
