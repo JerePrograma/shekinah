@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
-const snapshotRoot = path.resolve('reference-snapshot/site');
-const manifestPath = path.resolve('reference-snapshot/manifest.json');
+const snapshotBase = path.resolve('reference-snapshot');
+const snapshotRoot = path.join(snapshotBase, 'site');
+const manifestPath = path.join(snapshotBase, 'manifest.json');
 
 async function exists(filePath) {
   try {
@@ -58,17 +59,20 @@ for (const missing of expected.keys()) errors.push(`${missing}: falta en el snap
 const forbiddenPatterns = [
   /https?:\/\/localhost(?::\d+)?/giu,
   /chocolate-chimpanzee-908881\.hostingersite\.com/giu,
+  /\bgh[pousr]_[A-Za-z0-9]{30,}\b/gu,
+  /\bgithub_pat_[A-Za-z0-9_]{50,}\b/gu,
+  /\bAKIA[0-9A-Z]{16}\b/gu,
+  /\bsk-[A-Za-z0-9]{20,}\b/gu,
   /(?:DB_PASSWORD|AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY)\s*[:=]/giu,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gu,
 ];
-for (const file of actualFiles) {
-  if (!['.css', '.html', '.js', '.json', '.svg', '.txt', '.xml'].includes(path.extname(file))) {
-    continue;
-  }
+const textExtensions = new Set(['.css', '.html', '.js', '.json', '.svg', '.txt', '.xml']);
+for (const file of await walk(snapshotBase)) {
+  if (!textExtensions.has(path.extname(file).toLowerCase())) continue;
   const content = await readFile(file, 'utf8').catch(() => '');
   for (const pattern of forbiddenPatterns) {
     if (pattern.test(content)) {
-      errors.push(`${path.relative(snapshotRoot, file)}: patrón prohibido ${pattern}`);
+      errors.push(`${path.relative(snapshotBase, file)}: patrón prohibido ${pattern}`);
     }
     pattern.lastIndex = 0;
   }
