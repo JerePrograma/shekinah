@@ -53,6 +53,7 @@ export default [
     files: ['scripts/**/*.mjs'],
     rules: {
       'no-console': 'off',
+      'no-unused-expressions': ['error', { allowShortCircuit: true }],
     },
   },
 ];
