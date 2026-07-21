@@ -295,6 +295,7 @@ while (queue.length && seen.size < maxPages) {
     title: document.title,
     links: [...document.querySelectorAll('a[href]')].map((item) => item.href),
     resources: [
+      ...performance.getEntriesByType('resource').map((entry) => entry.name),
       ...[...document.querySelectorAll('[src]')].map((item) => item.src),
       ...[...document.querySelectorAll('[poster]')].map((item) => item.poster),
       ...[...document.querySelectorAll('link[href]')].map((item) => item.href),
