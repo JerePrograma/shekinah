@@ -19,7 +19,7 @@
     "audit:output": "node scripts/audit-output.mjs",
     "audit:secrets": "node scripts/audit-secrets.mjs",
     "verify": "npm run check && npm run lint && npm run format:check && npm run build && npm run test && npm run audit:output && npm run audit:secrets",
-    "deploy": "npm run verify && wrangler pages deploy dist --project-name shekinah",
+    "deploy": "npm run verify && wrangler pages deploy dist --project-name shekinah --branch main",
     "test:unit": "node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright install chromium && playwright test"
   },
