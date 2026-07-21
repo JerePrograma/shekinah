@@ -1,9 +1,9 @@
-# Verificación final de CI
+# Verificación remota de referencia
 
 - Commit verificado: `4c433637e435a77c2a23b01d45abfcdecf43d586`
 - Inicio UTC: **2026-07-21T01:48:09Z**
 - Runner: **GitHub Actions / ubuntu-latest**
-- Node: **v24.18.0**
+- Node.js: **v24.18.0**
 - npm: **11.16.0**
 
 ## Resultados
@@ -24,8 +24,9 @@
 
 ## Conclusión
 
-Verificación **APROBADA**.
+La ejecución indicada fue **APROBADA**.
 
-- Fin UTC: **2026-07-21T01:49:07Z**
+- Fin UTC: **2026-07-21T01:49:07Z**.
 - El informe fue generado por GitHub Actions sobre el commit indicado.
 - Los adjuntos originales no fueron utilizados.
+- Este documento conserva una línea base histórica; todo commit posterior requiere su propio CI verde.
