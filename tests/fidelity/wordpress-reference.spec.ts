@@ -65,6 +65,26 @@ async function settle(page: import('@playwright/test').Page) {
 for (const route of routes) {
   test(`${route} coincide con WordPress restaurado`, async ({ page, context }, testInfo) => {
     const sourcePage = await context.newPage();
+    const deterministicScript = ({ epoch }: { epoch: number }) => {
+      const OriginalDate = Date;
+      const FixedDate = new Proxy(OriginalDate, {
+        construct(target, values, newTarget) {
+          return Reflect.construct(target, values.length > 0 ? values : [epoch], newTarget);
+        },
+      });
+      FixedDate.now = () => epoch;
+      globalThis.Date = FixedDate;
+      let state = 0x1a2b3c4d;
+      Math.random = () => {
+        state = (1664525 * state + 1013904223) >>> 0;
+        return state / 0x100000000;
+      };
+    };
+    const deterministicArguments = { epoch: Date.UTC(2026, 6, 21, 12, 0, 0) };
+    await Promise.all([
+      sourcePage.addInitScript(deterministicScript, deterministicArguments),
+      page.addInitScript(deterministicScript, deterministicArguments),
+    ]);
     await Promise.all([
       sourcePage.goto(new URL(route, sourceOrigin).href, { waitUntil: 'domcontentloaded' }),
       page.goto(route, { waitUntil: 'domcontentloaded' }),
