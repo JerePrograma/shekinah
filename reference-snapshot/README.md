@@ -1,24 +1,29 @@
 # Snapshot WordPress de referencia
 
-Esta carpeta recibe la captura estática generada desde el WordPress restaurado localmente.
+Esta carpeta es el destino del snapshot público generado desde la restauración WordPress local.
 
-Hasta que exista `site/index.html`, la compilación conserva como respaldo transitorio el sitio Astro anterior. Después de ejecutar `scripts/Migrate-WordPressReference.ps1`, `npm run build` publica el contenido capturado de esta carpeta.
+## Estado actual
 
-Se versionan únicamente datos y recursos públicos:
+Mientras no existan `site/index.html` y `manifest.json`, el snapshot no fue generado y el build de producción debe fallar. La aplicación Astro anterior no se usa como sustituto silencioso.
+
+## Contenido versionable
 
 - HTML renderizado;
-- imágenes y medios públicos;
-- CSS, JavaScript y fuentes necesarios;
-- rutas y redirecciones públicas;
-- inventarios sanitizados de contenido, temas y plugins;
-- manifiesto SHA-256;
-- capturas de referencia.
+- CSS y JavaScript frontend requeridos;
+- fuentes, imágenes, fondos, `srcset`, audio, video y documentos públicos usados;
+- recursos externos localizados;
+- redirecciones, robots, sitemap y 404;
+- inventarios públicos sanitizados;
+- capturas de referencia;
+- manifiesto con tamaños y SHA-256.
 
-No deben entrar aquí:
+## Exclusiones
 
-- base SQL completa;
-- `wp-config.php`;
-- usuarios o metadatos de usuarios;
-- contraseñas, salts, tokens o claves;
-- datos administrativos o privados;
-- logs del servidor.
+- SQL y backups;
+- `.env` y `wp-config.php`;
+- PHP ejecutable;
+- usuarios, hashes, correos privados, sesiones y tokens;
+- salts y claves;
+- logs y datos administrativos.
+
+El archivo se reemplaza automáticamente con conteos reales al completar una captura válida.
