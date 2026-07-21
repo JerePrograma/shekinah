@@ -1,105 +1,60 @@
 # Informe de pruebas
 
-Fecha de la validación local documentada: **2026-07-20**. Validación remota de referencia: **2026-07-21 UTC**.
+Fecha de actualización: **2026-07-21**.
 
-## Alcance temporal
+## Estado actual
 
-La validación remota completa documentada corresponde al commit:
+Las pruebas de la antigua implementación Astro constituyen una línea base histórica, no una validación del snapshot WordPress solicitado.
+
+El snapshot real todavía no está versionado. En consecuencia, aún no existen resultados válidos para:
+
+- integridad del manifiesto recuperado;
+- rutas reales del WordPress;
+- recursos reales;
+- formularios reales;
+- comparación visual contra la restauración;
+- E2E del snapshot;
+- build final de producción.
+
+## Suite preparada
+
+### Local contra WordPress
 
 ```text
-4c433637e435a77c2a23b01d45abfcdecf43d586
+npm run verify:snapshot:required
+npm run build
+npm run test:unit
+npm run test:e2e
+npm run audit:output
+npm run audit:secrets
+WORDPRESS_REFERENCE_URL=<URL_LOCAL> npm run test:fidelity
 ```
 
-Ese resultado demuestra que la aplicación, el lockfile, las pruebas y las auditorías funcionaban en la línea base indicada. No demuestra automáticamente que commits posteriores estén aprobados.
+Viewports fijos:
 
-Después de esa ejecución se consolidaron documentación y automatización de despliegue. El HEAD actual debe ejecutar nuevamente **CI** y no se considera validado hasta que ese run termine en verde.
+```text
+375 × 812
+768 × 1024
+1440 × 1200
+```
 
-## Comandos ejecutados en el sandbox
+La fidelidad exige `maxDiffPixels: 0` y `threshold: 0`.
 
-| Comando                                   | Resultado                                                              |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| `npm ci`                                  | aprobado con el lockfile saneado que posteriormente quedó publicado    |
-| `npm run check`                           | aprobado, 0 errores y 0 advertencias                                   |
-| `npm run lint`                            | aprobado                                                               |
-| `npm run format:check`                    | aprobado                                                               |
-| `npm run test:unit`                       | aprobado, 7 pruebas                                                    |
-| `npm run build`                           | aprobado, salida estática                                              |
-| `npm run audit:output`                    | aprobado                                                               |
-| `npm run audit:secrets`                   | aprobado                                                               |
-| `npm audit --omit=dev --audit-level=high` | aprobado, 0 vulnerabilidades de producción detectadas en esa ejecución |
-| `npm run test:e2e`                        | no completado dentro del sandbox por política externa del navegador    |
+### Cobertura estática
 
-El `package-lock.json` publicado fue generado desde el registro público de npm por un workflow efímero y quedó como fuente reproducible de `npm ci`. El workflow temporal fue eliminado después de cumplir su única función.
+- rutas críticas y redirecciones reales;
+- títulos y cuerpo visible;
+- imágenes y `srcset` cargados;
+- CSS y fuentes;
+- navegación;
+- recursos HTTP sin errores;
+- consola sin errores;
+- ausencia de conexiones externas no localizadas;
+- ausencia de localhost y dominio Hostinger;
+- canonical y `og:url`;
+- robots, sitemap y 404;
+- formularios clasificados y neutralizados.
 
-## Limitación del sandbox
+## Resultado pendiente
 
-Playwright no pudo descargar Chromium porque el entorno efímero bloqueó la resolución del CDN. El Chromium del sistema estaba administrado con una política que bloqueaba toda navegación (`URLBlocklist: ["*"]`). No se intentó eludir esa política.
-
-La limitación quedó resuelta mediante GitHub Actions, donde la suite se ejecutó con Chromium y dependencias del sistema en móvil, tablet y escritorio.
-
-## Validación remota aprobada de referencia
-
-El informe versionado [`CI-VERIFICATION.md`](CI-VERIFICATION.md) confirma una ejecución completa en GitHub Actions con:
-
-- Node.js **24.18.0**;
-- npm **11.16.0**;
-- `npm ci` aprobado;
-- instalación de Chromium aprobada;
-- Astro y TypeScript aprobados;
-- ESLint aprobado;
-- Prettier aprobado;
-- build estático aprobado;
-- pruebas unitarias aprobadas;
-- **45 pruebas Playwright aprobadas** en móvil, tablet y escritorio;
-- auditoría de salida aprobada;
-- auditoría de secretos aprobada;
-- auditoría de dependencias de producción aprobada.
-
-La ejecución no utilizó los cuatro adjuntos originales.
-
-## Cobertura implementada
-
-- rutas críticas con respuesta 200, `h1`, title, description, canonical y `main`;
-- navegación principal, menú móvil y uso por teclado;
-- carga y existencia de imágenes;
-- redirecciones históricas;
-- sitemap, robots y 404;
-- ausencia de PHP y referencias activas a la plataforma heredada, `localhost` y dominio anterior;
-- parser SQL, escapes, tipos y prefijo variable;
-- parser WXR y comparación de fuentes;
-- saneamiento de scripts, eventos y comentarios Gutenberg;
-- detección de path traversal y ZIP sospechoso;
-- auditoría de secretos, backups y referencias a adjuntos temporales.
-
-## Auditoría de `dist`
-
-Última medición local consolidada antes de la publicación de referencia:
-
-- archivos: **26**;
-- tamaño total: **167.657 B**;
-- archivo HTML mayor: **19.206 B**;
-- recursos externos activos: **0**;
-- sourcemaps: **0**;
-- errores de enlaces, SEO o cadenas prohibidas: **0**.
-
-Las métricas pueden variar cuando cambie contenido o versiones de Astro. La fuente de verdad operativa es el artefacto `shekinah-dist-<SHA>` generado por el último CI aprobado.
-
-## Criterios de aceptación
-
-Para aceptar un commit como publicable deben quedar verdes:
-
-1. instalación con `npm ci`;
-2. instalación de Chromium;
-3. check de Astro y TypeScript;
-4. ESLint;
-5. Prettier;
-6. build;
-7. pruebas unitarias y Playwright;
-8. auditoría de `dist`;
-9. auditoría de secretos.
-
-`npm audit` se conserva como informe y no como criterio ciego: puede informar vulnerabilidades de herramientas de desarrollo sin implicar una vulnerabilidad explotable en el HTML estático publicado.
-
-## Pruebas fuera de alcance
-
-No se hicieron pruebas de compra, carrito, pagos, usuarios, pedidos, autenticación o base de datos porque esas funciones no existen en la evidencia ni forman parte de la arquitectura final.
+Este archivo será reemplazado por el script maestro después de una ejecución local aprobada, con conteos reales del manifiesto. Después deberá actualizarse nuevamente con el run remoto y el SHA desplegado.
