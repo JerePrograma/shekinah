@@ -1,5 +1,7 @@
 # GitHub Actions
 
+Fecha de actualización: **2026-07-21**.
+
 ## Flujo principal de integración continua
 
 Archivo: `.github/workflows/ci.yml`.
@@ -21,53 +23,92 @@ Permisos del token: `contents: read`.
 6. `npm run check`;
 7. `npm run lint`;
 8. `npm run format:check`;
-9. `npm run build`;
+9. `npm run build` con `SITE_URL=https://shekinah-7dl.pages.dev`;
 10. pruebas unitarias y Playwright mediante `npm run test`;
 11. `npm run audit:output`;
 12. `npm run audit:secrets`;
 13. `npm audit` como informe no bloqueante;
 14. publicación temporal del artefacto `dist` y del reporte Playwright cuando existe.
 
-El job ya no contiene una condición previa basada en `hashFiles`; el checkout y `npm ci` siempre se ejecutan. La ausencia o inconsistencia del lockfile debe fallar explícitamente, no ocultar el CI como omitido.
+La ausencia o inconsistencia del lockfile debe fallar explícitamente. CI no debe omitirse para ocultar un error.
 
 ## Interpretación del resultado
 
-- **Verde:** el commit puede desplegarse.
-- **Rojo:** abrir el run, entrar al job `Validate static site` y corregir el primer step rojo.
+- **Verde:** el commit de `main` es técnicamente publicable.
+- **Rojo:** abrir `Validate static site` y corregir el primer step rojo.
 - **Cancelado:** normalmente un commit más nuevo sustituyó al anterior por la política de concurrencia.
-- **Omitido:** no debería ocurrir en CI normal; revisar la sintaxis del workflow o las políticas de Actions.
+- **Omitido:** revisar sintaxis, permisos o políticas de Actions.
 
 No desactivar validaciones para obtener un check verde. La corrección debe publicarse como un commit normal y trazable sobre `main`.
 
-## Despliegue
+## Relación con Cloudflare
+
+El publicador automático principal es la **integración Git de Cloudflare Pages**, no GitHub Actions.
+
+```text
+push a main
+  → CI valida el commit
+  → Cloudflare detecta el mismo push
+  → construye y publica dist
+```
+
+El panel de Cloudflare debe usar:
+
+```bash
+npm run build
+```
+
+como build y:
+
+```bash
+npx wrangler pages deploy dist --project-name shekinah --branch main
+```
+
+como deploy.
+
+No usar `npx wrangler deploy`, porque corresponde a Workers.
+
+## Workflow manual de despliegue
 
 Archivo: `.github/workflows/deploy-cloudflare.yml`.
 
-Se dispara:
+Disparador único:
 
-- automáticamente cuando `CI` termina correctamente en `main`;
-- manualmente desde **Actions → Deploy Cloudflare Pages → Run workflow**.
+- ejecución manual desde **Actions → Deploy Cloudflare Pages → Run workflow**.
 
-El workflow:
+No se dispara después de cada CI. Esta decisión evita que Cloudflare Git Integration y GitHub Actions publiquen dos veces el mismo commit.
+
+El workflow manual:
 
 1. comprueba si existen los secretos;
 2. si faltan, informa `Deployment not configured` sin romper CI;
-3. si existen, obtiene el SHA validado;
-4. vuelve a ejecutar `npm ci` y build;
-5. audita `dist`;
-6. despliega con Wrangler al proyecto `shekinah`;
-7. verifica la portada publicada.
+3. obtiene la rama `main`;
+4. ejecuta `npm ci`;
+5. instala Chromium;
+6. ejecuta `npm run verify` completo;
+7. despliega con Wrangler al proyecto `shekinah` y rama `main`;
+8. verifica la portada publicada.
 
 Secretos requeridos:
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`;
+- `CLOUDFLARE_ACCOUNT_ID`.
 
 No deben almacenarse en archivos, variables públicas, issues, logs o commits.
 
+## Cuándo usar el workflow manual
+
+Usarlo solamente cuando:
+
+- la integración Git de Cloudflare esté temporalmente fuera de servicio;
+- se necesite una recuperación controlada;
+- se decida migrar deliberadamente desde la integración Git a Direct Upload.
+
+No configurarlo como segundo mecanismo automático habitual.
+
 ## Dependabot
 
-`.github/dependabot.yml` revisa npm semanalmente y agrupa actualizaciones relacionadas para reducir ruido. Una actualización no debe fusionarse solo porque compile: deben revisarse changelog, compatibilidad con Node 24, resultado de CI y salida estática.
+`.github/dependabot.yml` revisa npm semanalmente y agrupa actualizaciones relacionadas para reducir ruido. Una actualización no debe integrarse solo porque compile: deben revisarse changelog, compatibilidad con Node 24, resultado de CI, pruebas y salida estática.
 
 ## Diagnóstico operativo
 
@@ -78,8 +119,10 @@ No deben almacenarse en archivos, variables públicas, issues, logs o commits.
 5. Corregir mediante edición de GitHub o un checkout opcional.
 6. Confirmar el cambio sobre `main`.
 7. Verificar el nuevo run.
-8. Descargar `playwright-report-*` ante fallos funcionales y `shekinah-dist-*` para inspeccionar exactamente el build validado.
+8. Descargar artefactos cuando sea necesario:
+   - `playwright-report-<SHA>` para fallos funcionales;
+   - `shekinah-dist-<SHA>` para inspeccionar el build validado.
 
-## Historial del bootstrap del lockfile
+## Historial del bootstrap
 
-Al inicializar el repositorio fue necesario un workflow efímero que generara `package-lock.json` contra el registro público, evitando publicar URLs internas del sandbox. Una vez generado el lockfile, ese workflow fue eliminado. No forma parte del flujo normal ni debe recrearse salvo pérdida deliberada del lockfile, situación que debería resolverse preferentemente regenerándolo en una rama controlada y revisando el diff.
+Al inicializar el repositorio se usaron workflows efímeros para generar `package-lock.json`, ejecutar verificaciones y formatear documentación. Esos workflows fueron eliminados después de cumplir su función y no forman parte del flujo normal.
