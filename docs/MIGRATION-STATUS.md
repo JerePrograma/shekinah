@@ -1,5 +1,37 @@
 # Estado de migración
 
+<!-- SHEKINAH-VERIFICATION:START -->
+
+## Verificación más reciente de Shekinah
+
+Fecha UTC: **2026-07-22T18:23:41Z**.
+
+- Nombre público: **Shekinah**.
+- Identificador técnico del repositorio: `JerePrograma/shekinah`.
+- Fuente WordPress: `http://localhost:8081`.
+- Snapshot generado: `07/22/2026 16:51:33`.
+- Commit de contenido: `7a18900c1979dabb080c14d08091421b5d8a0206`.
+- CI: **success**, run `29946184286`.
+- Deployment Cloudflare Pages: **success**, run `29946314352`.
+- Producción verificada: **https://shekinah-7dl.pages.dev**.
+
+| Métrica                       |    Valor |
+| ----------------------------- | -------: |
+| Páginas                       |       12 |
+| Redirecciones                 |        1 |
+| Recursos                      |       67 |
+| Recursos externos localizados |       26 |
+| Imágenes                      |       29 |
+| Archivos                      |       87 |
+| Bytes                         | 87299318 |
+| Formularios                   |        0 |
+| Errores HTTP                  |        0 |
+| Errores de consola            |        0 |
+| Páginas no recuperables       |        0 |
+
+La portada usa una página estática, muestra **Shekinah**, contiene navegación real y no conserva `Hello world!`, formularios inertes ni marcadores `trans-*` visibles.
+<!-- SHEKINAH-VERIFICATION:END -->
+
 Fecha de actualización: **2026-07-22**.
 
 ## Resultado: bloqueado en Cloudflare

@@ -1,5 +1,24 @@
 # Verificación de CI
 
+<!-- SHEKINAH-VERIFICATION:START -->
+
+## Verificación más reciente de Shekinah
+
+Fecha UTC: **2026-07-22T18:23:41Z**.
+
+- Commit validado: `7a18900c1979dabb080c14d08091421b5d8a0206`.
+- Workflow: **CI**.
+- Run: `29946184286`.
+- Resultado: **success**.
+- Workflow de despliegue: **Deploy Cloudflare Pages**.
+- Run de despliegue: `29946314352`.
+- SHA desplegado: `7a18900c1979dabb080c14d08091421b5d8a0206`.
+- Producción: **https://shekinah-7dl.pages.dev**.
+- Verificación semántica remota: **aprobada**.
+
+Las comprobaciones bloquean la portada predeterminada de WordPress, los marcadores `trans-*`, la falta de navegación y los formularios sin procesamiento.
+<!-- SHEKINAH-VERIFICATION:END -->
+
 Fecha de actualización: **2026-07-22**.
 
 - Commit base: `ebb2d25284aead867a5bc2c042cbbaecf6c89b46`.

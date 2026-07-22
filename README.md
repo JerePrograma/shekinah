@@ -8,11 +8,11 @@ Repositorio de migración de la representación pública recuperada desde WordPr
 
 - Rama operativa y de despliegue: `main`.
 - Fuente de verdad para la captura: `C:\laburo\shekinah-wordpress-reference`.
-- Destino: Cloudflare Pages, proyecto `shekinah`.
+- Destino: Cloudflare Pages, identificador técnico `shekinah`; nombre público **Shekinah**.
 - Dominio estable: `https://shekinah-7dl.pages.dev`.
 - Infraestructura de captura, verificación, CI y despliegue: versionada.
-- Snapshot WordPress real: **generado, publicado y validado por CI** en `91761a6fdb64da05b54331524d11577ae3670032`; contiene 14 páginas, 68 recursos y 88 archivos de sitio.
-- Cloudflare Pages: **bloqueado antes de publicar** porque faltan `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` en GitHub.
+- Snapshot WordPress real: **generado, validado y desplegado** en `7a18900c1979dabb080c14d08091421b5d8a0206`; contiene 12 páginas, 67 recursos y 87 archivos de sitio.
+- Cloudflare Pages: **desplegado y verificado** para `7a18900c1979dabb080c14d08091421b5d8a0206` en https://shekinah-7dl.pages.dev.
 - La implementación Astro existente se conserva únicamente como referencia transitoria; `npm run build` ya no puede desplegarla como sustituto del snapshot recuperado.
 
 La publicación remota, CI y Cloudflare se registran en `docs/MIGRATION-STATUS.md`; no se declara cierre mientras esos estados no correspondan al mismo SHA.

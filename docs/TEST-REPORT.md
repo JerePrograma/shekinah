@@ -1,5 +1,24 @@
 # Informe de pruebas
 
+<!-- SHEKINAH-VERIFICATION:START -->
+
+## Verificación más reciente de Shekinah
+
+Fecha UTC: **2026-07-22T18:23:41Z**.
+
+Aprobados: `npm ci`, Chromium, Astro check, ESLint, Prettier, integridad y contrato semántico del snapshot, build, unitarias, smoke tests PowerShell, E2E, auditoría de salida, auditoría de secretos, fidelidad visual con `maxDiffPixels: 0` y validación remota.
+
+- Páginas: 12
+- Redirecciones: 1
+- Recursos: 67
+- Archivos: 87
+- Formularios: 0
+- Errores HTTP: 0
+- Errores de consola: 0
+- Páginas no recuperables: 0
+
+<!-- SHEKINAH-VERIFICATION:END -->
+
 Fecha: **2026-07-22**.
 
 Commit de snapshot: `91761a6fdb64da05b54331524d11577ae3670032`.

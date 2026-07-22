@@ -1,5 +1,24 @@
 # Estado de Cloudflare Pages
 
+<!-- SHEKINAH-VERIFICATION:START -->
+
+## Verificación más reciente de Shekinah
+
+Fecha UTC: **2026-07-22T18:23:41Z**.
+
+- Nombre público del sitio: **Shekinah**.
+- Identificador técnico del proyecto Pages: `shekinah`.
+- Dominio estable: **https://shekinah-7dl.pages.dev**.
+- Rama de producción: `main`.
+- Directorio publicado: `dist`.
+- Publicador: GitHub Actions mediante `wrangler pages deploy`.
+- Commit de contenido verificado: `7a18900c1979dabb080c14d08091421b5d8a0206`.
+- Deployment run: `29946314352`.
+- Estado: **success**.
+
+El identificador técnico permanece en minúsculas porque forma parte del hostname y de la API; la marca visible del sitio es **Shekinah**.
+<!-- SHEKINAH-VERIFICATION:END -->
+
 Fecha de actualización: **2026-07-22**.
 
 ## Evidencia conocida
