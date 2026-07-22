@@ -983,7 +983,10 @@ while (queue.length > 0 && seen.size < maxPages) {
     title: sanitizeDiagnostic(discovered.title),
     htmlPath,
     screenshots: shots,
-    navigation: discovered.navigation,
+    navigation: discovered.navigation.map(({ href, label }) => ({
+      href: publicValue(href),
+      label,
+    })),
   });
 }
 

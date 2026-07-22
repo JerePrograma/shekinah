@@ -2,17 +2,17 @@
 
 Captura pública generada desde la restauración WordPress local y preparada para Cloudflare Pages.
 
-- Fecha UTC: 2026-07-22T13:27:37.492Z
+- Fecha UTC: 2026-07-22T16:51:33.635Z
 - Origen: restauración WordPress local (no versionada)
 - Destino canónico: https://shekinah-7dl.pages.dev
-- Páginas: 14
-- Redirecciones: 0
-- Recursos HTTP: 68
+- Páginas: 12
+- Redirecciones: 1
+- Recursos HTTP: 67
 - Recursos externos localizados: 26
 - Imágenes: 29
-- Archivos: 88
-- Bytes: 87549644
-- Formularios visibles: 14
+- Archivos: 87
+- Bytes: 87299318
+- Formularios visibles: 0
 - Errores HTTP: 0
 - Errores de consola: 0
 - Páginas no recuperables: 0

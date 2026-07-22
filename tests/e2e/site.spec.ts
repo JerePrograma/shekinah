@@ -216,3 +216,27 @@ test('los formularios visibles están clasificados y neutralizados', async ({ pa
 test('la respuesta 404 está disponible', async ({ request }) => {
   expect((await request.get('/ruta-inexistente-para-prueba/')).status()).toBe(404);
 });
+test('la portada publica la identidad real de Shekinah', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await settle(page);
+
+  await expect(page).toHaveTitle(/Shekinah/iu);
+  const text = (await page.locator('body').innerText()).replace(/\s+/gu, ' ');
+  expect(text).toContain('Guía del Viajero');
+  expect(text).toContain('Nuestra esencia y pasión');
+  expect(text).not.toContain('Welcome to WordPress');
+  expect(text).not.toMatch(
+    /\btrans-(?:menu|contacts|contact_email|contact_phone|socials|newsletter|current-year|all-rights-reserved)\b/iu,
+  );
+
+  const navigationPaths = await page.locator('nav a[href]').evaluateAll((anchors) =>
+    anchors.map((anchor) => {
+      const pathname = new URL((anchor as HTMLAnchorElement).href).pathname;
+      return pathname !== '/' && !pathname.endsWith('/') ? `${pathname}/` : pathname;
+    }),
+  );
+  for (const expected of ['/', '/nosotros/', '/tienda/', '/blog/', '/recetas/']) {
+    expect(navigationPaths).toContain(expected);
+  }
+  expect(await page.locator('form').count()).toBe(0);
+});

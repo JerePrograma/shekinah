@@ -1,0 +1,21 @@
+{
+  "displayName": "Shekinah",
+  "packageName": "shekinah",
+  "frontPageSlug": "inicio",
+  "postsPageSlug": "blog",
+  "requiredHomeText": ["Guía del Viajero", "Nuestra esencia y pasión"],
+  "requiredNavigationPaths": ["/", "/nosotros/", "/tienda/", "/blog/", "/recetas/"],
+  "forbiddenVisibleText": [
+    "Welcome to WordPress. This is your first post.",
+    "trans-menu",
+    "trans-contacts",
+    "trans-contact_email",
+    "trans-contact_phone",
+    "trans-socials",
+    "trans-newsletter",
+    "trans-current-year",
+    "trans-all-rights-reserved"
+  ],
+  "forbiddenPublishedSlugs": ["hello-world"],
+  "maxStaticForms": 0
+}

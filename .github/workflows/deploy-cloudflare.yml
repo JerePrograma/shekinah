@@ -96,6 +96,9 @@ jobs:
                 --retry 8 --retry-delay 5 \
                 "$base$route" > /dev/null
             done
+            node scripts/wordpress-reference/validate-remote.mjs \
+              --base-url "$base" \
+              --contract scripts/wordpress-reference/content-contract.json
           done
           sitemap_status=$(curl --silent --location --output /dev/null --write-out '%{http_code}' "$STABLE_URL/sitemap.xml")
           if [[ "$sitemap_status" == '404' ]]; then
