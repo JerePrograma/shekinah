@@ -39,6 +39,17 @@ try {
 }
 finally { Remove-Item -LiteralPath $lfFile -Force -ErrorAction SilentlyContinue }
 
+$previousCulture = [Threading.Thread]::CurrentThread.CurrentCulture
+try {
+    [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('es-AR')
+    $decodedTimestamp = ('{"generatedAt":"2026-07-22T13:01:03.000Z"}' | ConvertFrom-Json).generatedAt
+    $timestamp = ConvertTo-SnapshotTimestamp $decodedTimestamp
+    if ($timestamp.UtcDateTime.ToString('o') -ne '2026-07-22T13:01:03.0000000Z') {
+        throw 'ConvertTo-SnapshotTimestamp cambió el instante ISO al usar una cultura local.'
+    }
+}
+finally { [Threading.Thread]::CurrentThread.CurrentCulture = $previousCulture }
+
 Assert-ContainerId -Value ('a' * 64) -Service 'self-test' | Out-Null
 $rejected = $false
 try {

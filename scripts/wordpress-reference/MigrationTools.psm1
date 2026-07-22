@@ -185,6 +185,19 @@ function Get-MajorVersion {
     0
 }
 
+function ConvertTo-SnapshotTimestamp {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Value)
+
+    if ($Value -is [DateTimeOffset]) { return $Value }
+    if ($Value -is [DateTime]) { return [DateTimeOffset]$Value }
+    [DateTimeOffset]::Parse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    )
+}
+
 function Update-ProcessPath {
     $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $user = [Environment]::GetEnvironmentVariable('Path', 'User')

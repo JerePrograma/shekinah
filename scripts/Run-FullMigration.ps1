@@ -293,7 +293,7 @@ try {
 finally { $env:WORDPRESS_REFERENCE_URL = $previousReference }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$captureDate = [DateTimeOffset]::Parse([string]$manifest.generatedAt).ToString('yyyy-MM-dd HH:mm:ss zzz')
+$captureDate = (ConvertTo-SnapshotTimestamp $manifest.generatedAt).ToString('yyyy-MM-dd HH:mm:ss zzz')
 $statusReport = @"
 # Estado de migración
 
