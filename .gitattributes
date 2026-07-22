@@ -1,0 +1,4 @@
+reference-snapshot/site/** -text
+reference-snapshot/screenshots/** -text
+reference-snapshot/data/*.json text eol=lf
+reference-snapshot/manifest.json text eol=lf

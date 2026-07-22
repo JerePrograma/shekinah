@@ -438,6 +438,17 @@ function Wait-Http {
     throw "No respondió $Uri. Último error: $last"
 }
 
+function Write-Utf8LfText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content
+    )
+
+    $normalized = $Content.Replace("`r`n", "`n").Replace("`r", "`n").TrimEnd("`n") + "`n"
+    [IO.File]::WriteAllText($Path, $normalized, [Text.UTF8Encoding]::new($false))
+}
+
 function Export-WpJson {
     [CmdletBinding()]
     param(
@@ -449,13 +460,13 @@ function Export-WpJson {
 
     $result = Invoke-WpCli -Context $Context -Arguments $Arguments -AllowFailure:$Optional
     if ($result.ExitCode -ne 0) {
-        [IO.File]::WriteAllText($Destination, "[]`n", [Text.UTF8Encoding]::new($false))
+        Write-Utf8LfText -Path $Destination -Content '[]'
         return @()
     }
     $text = if ($result.StdOut.Trim()) { $result.StdOut.Trim() } else { '[]' }
     try { $parsed = $text | ConvertFrom-Json }
     catch { throw "WP-CLI no devolvió JSON válido para $($Arguments -join ' '):`n$text" }
-    [IO.File]::WriteAllText($Destination, $text + "`n", [Text.UTF8Encoding]::new($false))
+    Write-Utf8LfText -Path $Destination -Content $text
     $parsed
 }
 
@@ -524,7 +535,7 @@ function Export-WordPressPublicData {
     $navigationJson = $navigationJson.Replace($SourceUrl.TrimEnd('/'), $ProductionOrigin.TrimEnd('/'))
     $navigationJson = $navigationJson.Replace('http://chocolate-chimpanzee-908881.hostingersite.com', $ProductionOrigin.TrimEnd('/'))
     $navigationJson = $navigationJson.Replace('https://chocolate-chimpanzee-908881.hostingersite.com', $ProductionOrigin.TrimEnd('/'))
-    Set-Content -LiteralPath (Join-Path $Destination 'navigation.json') -Value $navigationJson -Encoding utf8NoBOM
+    Write-Utf8LfText -Path (Join-Path $Destination 'navigation.json') -Content $navigationJson
     Remove-Item -LiteralPath (Join-Path $Destination '.menus.tmp.json'), (Join-Path $Destination '.navigation.tmp.json') -Force
 
     $publicOptionsPhp = @'
@@ -541,7 +552,7 @@ echo wp_json_encode($values);
     $publicOptionsJson = $publicOptions | ConvertTo-Json -Depth 10
     $publicOptionsJson = $publicOptionsJson.Replace($SourceUrl.TrimEnd('/'), $ProductionOrigin.TrimEnd('/'))
     $publicOptionsJson = $publicOptionsJson.Replace('chocolate-chimpanzee-908881.hostingersite.com', ([Uri]$ProductionOrigin).Host)
-    Set-Content -LiteralPath (Join-Path $Destination 'public-settings.json') -Value $publicOptionsJson -Encoding utf8NoBOM
+    Write-Utf8LfText -Path (Join-Path $Destination 'public-settings.json') -Content $publicOptionsJson
 
     [pscustomobject]@{ Menus = $classicMenus.Count; NavigationPosts = $navigation.Count }
 }

@@ -28,6 +28,17 @@ try {
 }
 finally { Remove-Item -LiteralPath $envFile -Force -ErrorAction SilentlyContinue }
 
+$lfFile = [IO.Path]::GetTempFileName()
+try {
+    Write-Utf8LfText -Path $lfFile -Content "uno`r`ndos`rtres`n`n"
+    $bytes = [IO.File]::ReadAllBytes($lfFile)
+    $text = [Text.UTF8Encoding]::new($false).GetString($bytes)
+    if ($text -ne "uno`ndos`ntres`n" -or ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)) {
+        throw 'Write-Utf8LfText no produjo UTF-8 sin BOM y saltos LF deterministas.'
+    }
+}
+finally { Remove-Item -LiteralPath $lfFile -Force -ErrorAction SilentlyContinue }
+
 Assert-ContainerId -Value ('a' * 64) -Service 'self-test' | Out-Null
 $rejected = $false
 try {
