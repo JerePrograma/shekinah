@@ -1,17 +1,18 @@
 # Estado de Cloudflare Pages
 
-Fecha de actualización: **2026-07-21**.
+Fecha de actualización: **2026-07-22**.
 
 ## Evidencia conocida
 
 - Proyecto esperado: `shekinah`.
 - Dominio estable asignado: `https://shekinah-7dl.pages.dev`.
 - Rama: `main`.
-- Un intento anterior ejecutó `wrangler deploy` y falló por falta de entry point de Worker.
 - No existe evidencia desde este repositorio de que la integración Git nativa haya sido desactivada.
-- El snapshot WordPress ya fue generado y validado localmente, pero todavía no existe evidencia de su deployment.
-- GitHub no tiene configurados `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID` al 21 de julio de 2026.
-- Wrangler local no está autenticado; no se realizó una publicación paralela fuera de GitHub Actions.
+- El snapshot `91761a6fdb64da05b54331524d11577ae3670032` fue publicado en `main` y su CI terminó verde.
+- El deploy [29925142658](https://github.com/JerePrograma/shekinah/actions/runs/29925142658) falló en `Require Cloudflare credentials` antes de ejecutar Wrangler.
+- GitHub no lista `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID` como secretos del repositorio ni del environment `cloudflare-pages-production`.
+- No se encontraron esas variables en el entorno local ni una configuración local de Wrangler; no se realizó una publicación paralela.
+- El dominio estable responde, pero sigue mostrando la versión previa; `/inicio/` redirige a `/`, por lo que no prueba el snapshot.
 
 ## Configuración decidida
 

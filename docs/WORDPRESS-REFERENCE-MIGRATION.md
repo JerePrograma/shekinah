@@ -1,6 +1,6 @@
 # Migración desde el WordPress recuperado
 
-Fecha de actualización: **2026-07-21**.
+Fecha de actualización: **2026-07-22**.
 
 ## Fuente de verdad
 
@@ -13,7 +13,7 @@ Respaldo inmutable:      C:\Users\Jerem\Downloads\shekinah.orig
 Auditoría SHA-256:       C:\Users\Jerem\Downloads\shekinah-original-audit
 ```
 
-La URL se construye con `LOCAL_PORT` leído desde `.env`. La captura local del 21 de julio de 2026 leyó `8081`; el script no lo presupone.
+La URL se construye con `LOCAL_PORT` leído desde `.env`. La captura publicada el 22 de julio de 2026 leyó `8081` y usó `http://localhost:8081`; el script no presupone ese valor.
 
 La implementación Astro anterior no es fuente de verdad. Solo puede utilizarse para checks de código transitorio; el build publicable requiere `reference-snapshot/site/index.html`.
 

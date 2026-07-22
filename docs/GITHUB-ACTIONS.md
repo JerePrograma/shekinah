@@ -1,6 +1,6 @@
 # GitHub Actions
 
-Fecha de actualización: **2026-07-21**.
+Fecha de actualización: **2026-07-22**.
 
 ## CI
 
@@ -45,6 +45,13 @@ Secuencia:
 8. verifica que exista un sitemap público.
 
 La ausencia de secretos es un error de despliegue, no un estado verde ficticio.
+
+## Última verificación del snapshot
+
+- SHA: `91761a6fdb64da05b54331524d11577ae3670032`.
+- CI: [run 29925014757](https://github.com/JerePrograma/shekinah/actions/runs/29925014757), **success**.
+- Deploy: [run 29925142658](https://github.com/JerePrograma/shekinah/actions/runs/29925142658), **failure**.
+- Causa: faltan los dos secretos Cloudflare; no se ejecutaron checkout, revalidación, Wrangler ni smoke de producción.
 
 ## Acciones utilizadas
 

@@ -1,6 +1,6 @@
 # Despliegue en Cloudflare Pages
 
-Fecha de actualización: **2026-07-21**.
+Fecha de actualización: **2026-07-22**.
 
 ## Arquitectura
 
@@ -23,6 +23,13 @@ Rama:          main
 Dominio:       https://shekinah-7dl.pages.dev
 ```
 
+## Estado comprobado
+
+- CI del snapshot `91761a6fdb64da05b54331524d11577ae3670032`: **success**.
+- Deployment run [29925142658](https://github.com/JerePrograma/shekinah/actions/runs/29925142658): **failure** antes del checkout y de Wrangler.
+- Paso: `Require Cloudflare credentials`.
+- No hubo publicación ni verificación de producción para ese SHA.
+
 ## Secretos requeridos
 
 En **GitHub → Settings → Secrets and variables → Actions**:
@@ -32,7 +39,7 @@ CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 ```
 
-El token debe limitarse a la cuenta correcta y al permiso **Cloudflare Pages: Edit**. No usar la Global API Key ni guardar valores en archivos.
+El token debe limitarse a la cuenta correcta y al permiso de cuenta **Cloudflare Pages: Edit**. Restringir sus recursos a la cuenta del proyecto `shekinah`; no usar la Global API Key ni guardar valores en archivos.
 
 ## Evitar doble despliegue
 

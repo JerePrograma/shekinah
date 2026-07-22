@@ -1,6 +1,6 @@
 # Rollback
 
-Fecha de actualización: **2026-07-21**.
+Fecha de actualización: **2026-07-22**.
 
 ## Punto previo a la captura
 
@@ -13,6 +13,8 @@ pre-wordpress-reference-YYYYMMDD-HHMMSS
 La etiqueta apunta al `main` limpio y actualizado previo a la captura. Solo se publica después de que las verificaciones locales aprueben.
 
 Para esta migración, el punto previo seleccionado es `pre-wordpress-reference-20260721-173405`, que apunta a `8deba8911da82b48b6c91a5c23cd49000b0c457a`.
+
+La reejecución publicada creó además `pre-wordpress-reference-20260722-101709`, que apunta a `ebb2d25284aead867a5bc2c042cbbaecf6c89b46`. Este tag adicional no reemplaza ni mueve el tag histórico.
 
 ## Reglas
 
