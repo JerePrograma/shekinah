@@ -1,44 +1,46 @@
 # Informe de pruebas
 
-<!-- SHEKINAH-VERIFICATION:START -->
+Fecha de actualización: **2026-07-22**.
 
-## Verificación más reciente de Shekinah
+## Cobertura implementada
 
-Fecha UTC: **2026-07-22T18:23:41Z**.
+### Análisis estático
 
-Aprobados: `npm ci`, Chromium, Astro check, ESLint, Prettier, integridad y contrato semántico del snapshot, build, unitarias, smoke tests PowerShell, E2E, auditoría de salida, auditoría de secretos, fidelidad visual con `maxDiffPixels: 0` y validación remota.
+- TypeScript estricto mediante `tsc --noEmit` dentro del build.
+- ESLint para TypeScript, TSX, JavaScript, scripts y pruebas.
+- Verificación determinista de LF, espacios finales y salto de línea final.
 
-- Páginas: 12
-- Redirecciones: 1
-- Recursos: 67
-- Archivos: 87
-- Formularios: 0
-- Errores HTTP: 0
-- Errores de consola: 0
-- Páginas no recuperables: 0
+### Build y SEO
 
-<!-- SHEKINAH-VERIFICATION:END -->
+- Build cliente Vite.
+- Build SSR temporal.
+- Prerender de rutas canónicas y 404.
+- Títulos, descripciones, canonical, Open Graph, Twitter Cards y JSON-LD.
+- Sitemap, robots y redirecciones.
 
-Fecha: **2026-07-22**.
+### Pruebas unitarias
 
-Commit de snapshot: `91761a6fdb64da05b54331524d11577ae3670032`.
+- React y Vite como arquitectura productiva.
+- Ausencia del snapshot y del código Astro anterior.
+- Rutas y contenido declarados en TypeScript.
+- HTML prerenderizado con SEO y sin marcadores WordPress.
 
-| Control                            | Resultado                                  |
-| ---------------------------------- | ------------------------------------------ |
-| Node / npm                         | PASS: 24.18.0 / 11.16.0                    |
-| `npm ci`                           | PASS: 394 paquetes                         |
-| `npm run verify:snapshot:required` | PASS: 88 archivos, 14 páginas, 68 recursos |
-| `npm run check`                    | PASS: 46 archivos, 0 diagnósticos          |
-| `npm run lint`                     | PASS                                       |
-| `npm run format:check`             | PASS                                       |
-| `npm run build`                    | PASS: 88 archivos copiados a `dist`        |
-| `npm run test:unit`                | PASS: 7/7                                  |
-| `npm run test:powershell`          | PASS                                       |
-| `npm run test:e2e`                 | PASS: 48/48                                |
-| `npm run audit:output`             | PASS: 89 archivos; mayor 12.121.791 bytes  |
-| `npm run audit:secrets`            | PASS: 0 hallazgos                          |
-| `npm run test:fidelity`            | PASS: 42/42 en 9,5 min                     |
+### Pruebas E2E
 
-La fidelidad usó Chromium, `deviceScaleFactor: 1`, un worker, viewports exactos 375 × 812, 768 × 1024 y 1440 × 1200, `maxDiffPixels: 0` y `threshold: 0`.
+- Rutas principales en 375×812, 768×1024 y 1440×1200.
+- Un único `h1`, `main` visible y canonical correcto.
+- Consola y errores de página vacíos.
+- Menú móvil y estado `aria-expanded`.
+- Documento 404 y `noindex`.
 
-El manifiesto registra 14 formularios neutralizados, 0 errores HTTP, 0 errores de consola y 0 páginas no recuperables. CI repitió satisfactoriamente todos los gates remotos aplicables en el run [29925014757](https://github.com/JerePrograma/shekinah/actions/runs/29925014757).
+### Auditorías
+
+- Límite de archivos y tamaño de Cloudflare Pages.
+- Recursos y enlaces internos rotos.
+- Sourcemaps y archivos prohibidos.
+- Endpoints WordPress activos.
+- Patrones de secretos y configuraciones privadas.
+
+## Estado de ejecución
+
+La modificación fue construida mediante el conector remoto de GitHub porque el entorno efímero no pudo resolver GitHub por DNS. Por eso no se declara una ejecución local. El resultado verificable es el estado de GitHub Actions asociado al commit publicado; cualquier fallo debe conservarse como evidencia y corregirse antes de considerar el despliegue válido.

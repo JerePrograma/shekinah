@@ -12,7 +12,7 @@ const sharedUse = {
 };
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests/react-e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
@@ -23,7 +23,7 @@ export default defineConfig({
     ...sharedUse,
   },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4321',
+    command: 'npm run preview',
     url: 'http://127.0.0.1:4321',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

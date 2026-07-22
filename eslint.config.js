@@ -1,51 +1,33 @@
 import eslint from '@eslint/js';
 import tsParser from '@typescript-eslint/parser';
-import astro from 'eslint-plugin-astro';
 import globals from 'globals';
 
 export default [
   {
     ignores: [
+      '.ssr/**',
       'dist/**',
-      '.astro/**',
-      '.migration-work/**',
       'node_modules/**',
       'playwright-report/**',
-      'reference-snapshot/**',
       'test-results/**',
+      '.wrangler/**',
     ],
   },
   eslint.configs.recommended,
-  ...astro.configs.recommended,
   {
-    files: ['**/*.{js,mjs,ts}'],
+    files: ['**/*.{js,mjs,ts,tsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
+        ecmaFeatures: { jsx: true },
       },
       globals: {
         ...globals.node,
         ...globals.browser,
       },
     },
-  },
-  {
-    files: ['**/*.astro'],
-    languageOptions: {
-      parserOptions: {
-        parser: tsParser,
-        extraFileExtensions: ['.astro'],
-      },
-      globals: {
-        ...globals.node,
-        ...globals.browser,
-      },
-    },
-  },
-  {
-    files: ['**/*.{js,mjs,ts,astro}'],
     rules: {
       'no-console': ['error', { allow: ['warn', 'error'] }],
     },
