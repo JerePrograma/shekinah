@@ -21,7 +21,7 @@ test('la aplicación usa React y Vite como fuente productiva', async () => {
   assert.equal(pkg.dependencies.astro, undefined);
 });
 
-test('el snapshot WordPress dejó de ser una fuente versionada', async () => {
+test('la arquitectura productiva no depende de fuentes heredadas', async () => {
   assert.equal(await exists('reference-snapshot'), false);
   assert.equal(await exists('scripts/wordpress-reference'), false);
   assert.equal(await exists('src/pages/index.astro'), false);
@@ -51,13 +51,12 @@ test('el build produce HTML prerenderizado y SEO técnico', async () => {
     'dist/404.html',
     'dist/sitemap.xml',
     'dist/robots.txt',
-    'dist/_redirects',
   ]) {
     assert.equal(await exists(file), true, `Falta ${file}`);
   }
   const home = await readFile('dist/index.html', 'utf8');
   assert.match(home, /<h1[^>]*>Tesoros botánicos/iu);
-  assert.match(home, /rel="canonical" href="https:\/\/shekinah-7dl\.pages\.dev\/"/u);
+  assert.match(home, /rel="canonical" href="https:\/\/jereprograma\.github\.io\/shekinah\/"/u);
   assert.match(home, /application\/ld\+json/u);
   assert.doesNotMatch(home, /Hello world!|trans-[a-z_-]+|wp-admin/iu);
 });
