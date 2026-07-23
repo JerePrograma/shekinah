@@ -1,0 +1,236 @@
+name: Deploy Cloudflare Pages
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: cloudflare-pages-production
+  cancel-in-progress: false
+
+env:
+  SITE_BASE_PATH: /
+  SITE_ORIGIN: https://shekinah-7dl.pages.dev
+
+jobs:
+  deploy:
+    name: Deploy validated application
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: cloudflare-pages-production
+      url: https://shekinah-7dl.pages.dev/
+
+    steps:
+      - id: source
+        name: Resolve validated commit
+        shell: bash
+        env:
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VALIDATED_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo '::error::No se recibió un SHA validado'; exit 1; }
+          echo "sha=$VALIDATED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish deployment start
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SOURCE_SHA}" \
+            -f state='pending' \
+            -f context='shekinah/cloudflare-pages' \
+            -f description='Cloudflare Pages deployment in progress' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo '::error::Falta CLOUDFLARE_API_TOKEN'; exit 1; }
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || { echo '::error::Falta CLOUDFLARE_ACCOUNT_ID'; exit 1; }
+
+      - id: project
+        name: Confirm Cloudflare production project
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          diagnostics="$RUNNER_TEMP/shekinah-cloudflare"
+          mkdir -p "$diagnostics"
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/shekinah"
+          auth=(--header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --header 'Content-Type: application/json')
+
+          curl --fail-with-body --silent --show-error "${auth[@]}" "$api" > "$diagnostics/project.json"
+          branch=$(node -e "const p=require(process.argv[1]); if(p.success!==true||!p.result) process.exit(2); process.stdout.write(p.result.production_branch||'')" "$diagnostics/project.json")
+          if [[ "$branch" != 'main' ]]; then
+            curl --fail-with-body --silent --show-error \
+              --request PATCH "${auth[@]}" \
+              --data '{"production_branch":"main"}' \
+              "$api" > "$diagnostics/project-updated.json"
+            mv "$diagnostics/project-updated.json" "$diagnostics/project.json"
+          fi
+
+          node -e "const p=require(process.argv[1]); if(p.success!==true||p.result?.production_branch!=='main') throw new Error('Cloudflare production_branch no es main')" "$diagnostics/project.json"
+          stable_url=$(node -e "const p=require(process.argv[1]); const raw=String(p.result?.subdomain||'').trim(); if(!raw) throw new Error('Cloudflare no informó subdomain'); process.stdout.write(new URL(raw.includes('://')?raw:'https://'+raw).origin)" "$diagnostics/project.json")
+          echo "stable-url=$stable_url" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout validated commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Build validated production output
+        run: npm run build
+
+      - name: Validate production artifact
+        run: |
+          npm run validate:content
+          npm run audit:output
+          npm run audit:copy
+          npm run audit:secrets
+
+      - id: publish
+        name: Publish to Cloudflare Pages
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_COMMIT_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/cloudflare-publish.txt"
+          npm run deploy:cloudflare 2>&1 | tee "$output"
+          deployment_url=$(grep -Eo 'https://[A-Za-z0-9._-]+\.pages\.dev' "$output" | head -n 1 || true)
+          [[ -n "$deployment_url" ]] || deployment_url='${{ steps.project.outputs.stable-url }}'
+          echo "deployment-url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - id: canonical
+        name: Wait for production promotion
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          state_file="$RUNNER_TEMP/cloudflare-project.json"
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/shekinah"
+          ready='false'
+
+          for attempt in $(seq 1 60); do
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "$api" > "$state_file"
+            canonical_sha=$(node -e "const p=require(process.argv[1]); process.stdout.write(p.result?.canonical_deployment?.deployment_trigger?.metadata?.commit_hash||'')" "$state_file")
+            canonical_env=$(node -e "const p=require(process.argv[1]); process.stdout.write(p.result?.canonical_deployment?.environment||'')" "$state_file")
+            if [[ "$canonical_sha" == "$SOURCE_SHA" && "$canonical_env" == 'production' ]]; then
+              ready='true'
+              break
+            fi
+            sleep 5
+          done
+
+          [[ "$ready" == 'true' ]] \
+            || { echo '::error::Cloudflare no promovió el SHA validado a producción'; exit 1; }
+          canonical_url=$(node -e "const p=require(process.argv[1]); const raw=String(p.result?.canonical_deployment?.url||'').trim(); if(!raw) throw new Error('Cloudflare no informó canonical deployment URL'); process.stdout.write(new URL(raw.includes('://')?raw:'https://'+raw).origin)" "$state_file")
+          echo "canonical-url=$canonical_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify published routes
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.publish.outputs.deployment-url }}
+          CANONICAL_URL: ${{ steps.canonical.outputs.canonical-url }}
+          STABLE_URL: ${{ steps.project.outputs.stable-url }}
+        run: |
+          set -euo pipefail
+
+          verify_html() {
+            local base="$1"
+            local route="$2"
+            local body
+            body=$(curl --fail --silent --show-error --location --retry 8 --retry-delay 4 --retry-all-errors "$base$route")
+            grep -qi '<title>' <<< "$body" || { echo "::error::$base$route no contiene title"; exit 1; }
+            grep -qi 'Shekinah' <<< "$body" || { echo "::error::$base$route no contiene la marca"; exit 1; }
+            if grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|jereprograma\.github\.io' <<< "$body"; then
+              echo "::error::$base$route expone contenido técnico o residual"
+              exit 1
+            fi
+          }
+
+          routes=(
+            /
+            /nosotros/
+            /tienda/
+            /tienda/categoria/hierbas-medicinales/
+            /guayaba/
+            /melena-de-leon-futuro-fungi-50ml/
+            /blog/
+            /recetas/
+            /chocolate-casero/
+            /receta-barra-de-cereal/
+            /terms-and-conditions/
+          )
+
+          for base in "$DEPLOYMENT_URL" "$CANONICAL_URL" "$STABLE_URL"; do
+            for route in "${routes[@]}"; do
+              verify_html "$base" "$route"
+            done
+          done
+
+          stable_shop=$(curl --fail --silent --show-error --location --retry 8 --retry-delay 4 --retry-all-errors "$STABLE_URL/tienda/")
+          grep -Fqi "rel=\"canonical\" href=\"$STABLE_URL/tienda/\"" <<< "$stable_shop" \
+            || { echo '::error::La tienda estable no contiene el canonical productivo'; exit 1; }
+
+          robots=$(curl --fail --silent --show-error --location --retry 8 --retry-delay 4 --retry-all-errors "$STABLE_URL/robots.txt")
+          grep -Fqi "Sitemap: $STABLE_URL/sitemap.xml" <<< "$robots" \
+            || { echo '::error::robots.txt no apunta al sitemap productivo'; exit 1; }
+          sitemap=$(curl --fail --silent --show-error --location --retry 8 --retry-delay 4 --retry-all-errors "$STABLE_URL/sitemap.xml")
+          grep -Fqi "<loc>$STABLE_URL/" <<< "$sitemap" \
+            || { echo '::error::sitemap.xml no apunta al dominio productivo'; exit 1; }
+
+      - name: Publish deployment result
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          state='failure'
+          description='Cloudflare Pages deployment failed'
+          if [[ "$JOB_STATUS" == 'success' ]]; then
+            state='success'
+            description='Cloudflare Pages deployed and verified'
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SOURCE_SHA}" \
+            -f state="$state" \
+            -f context='shekinah/cloudflare-pages' \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
