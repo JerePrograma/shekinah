@@ -3,7 +3,7 @@ import { normalizePath, site } from './content';
 import { applyClientHead, buildHead } from './seo';
 
 function absolute(path: string): string {
-  return new URL(path, site.origin).toString();
+  return new URL(path.replace(/^\/+ /u, '').replace(/^\/+/, ''), `${site.origin}/`).toString();
 }
 
 function escapeAttribute(value: string): string {
@@ -34,7 +34,7 @@ function productJsonLd(product: Product): Array<Record<string, unknown>> {
         ? {
             additionalProperty: {
               '@type': 'PropertyValue',
-              name: `Precio público capturado el ${product.capturedAt}`,
+              name: 'Precio de referencia',
               value: `${product.currency} ${product.price.toFixed(2)}`,
             },
           }
@@ -62,8 +62,8 @@ function commerceHead(pathValue: string): string | null {
   const description = product
     ? productDescription(product)
     : category
-      ? `Productos recuperados de ${category.name} en el catálogo público de Shekinah.`
-      : 'Catálogo recuperado del Hostinger original de Shekinah, con precios públicos fechados y consulta por WhatsApp.';
+      ? `Productos de ${category.name} disponibles en Shekinah.`
+      : 'Catálogo de productos naturales, especias, hierbas y complementos de Shekinah.';
   const canonical = absolute(path);
   const image = product?.images[0]?.src ? absolute(product.images[0].src) : absolute('/images/original/home-herb-jars.jpg');
   const jsonLd = product
@@ -191,7 +191,7 @@ export function getCommerceSeoSummary(pathValue: string): { title: string; descr
     };
   }
   const category = findCategory(path);
-  if (category) return { title: `${category.name} — Tienda Shekinah`, description: `Productos recuperados de ${category.name}.` };
-  if (path === '/tienda/') return { title: 'Tienda — Shekinah', description: 'Catálogo recuperado de Shekinah.' };
+  if (category) return { title: `${category.name} — Tienda Shekinah`, description: `Productos de ${category.name} disponibles en Shekinah.` };
+  if (path === '/tienda/') return { title: 'Tienda — Shekinah', description: 'Catálogo de productos de Shekinah.' };
   return null;
 }
