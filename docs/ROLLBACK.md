@@ -16,7 +16,7 @@ git revert <SHA_DEL_CAMBIO>
 git push origin main
 ```
 
-El workflow validará el commit de reversión y, si todas las verificaciones pasan, GitHub Pages desplegará el nuevo estado.
+GitHub Actions validará el commit de reversión. Cloudflare Pages detectará el nuevo estado de `main`, generará el deployment y el workflow verificará después el dominio productivo.
 
 ## Reversión de un archivo puntual
 
@@ -30,4 +30,8 @@ git commit -m "revert: restore previous file state"
 git push origin main
 ```
 
-No se debe modificar manualmente el contenido publicado en GitHub Pages. La publicación siempre debe provenir de un commit validado de `main`.
+## Cloudflare Pages
+
+No modificar manualmente los archivos de un deployment. La publicación debe provenir de un commit de `main` mediante la integración de Cloudflare Pages con GitHub.
+
+Si un deployment nuevo falla pero el anterior sigue activo, conservar el deployment estable, corregir el repositorio y publicar otro commit normal. No es necesario eliminar el historial de deployments para restaurar producción.
