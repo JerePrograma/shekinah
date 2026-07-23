@@ -58,7 +58,25 @@ jobs:
         run: npm run validate:content
 
       - name: Build local production output
-        run: npm run build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .ci
+          set +e
+          npm run build 2>&1 | tee .ci/build.log
+          build_code=${PIPESTATUS[0]}
+          set -e
+          if [[ "$build_code" -ne 0 ]]; then
+            detail=$(grep -Ev '^\s*$' .ci/build.log | tail -n 1 | tr '\r\n\t' ' ' | cut -c1-130)
+            [[ -n "$detail" ]] || detail='Build failed without diagnostic output'
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -f state='failure' \
+              -f context='shekinah/validation' \
+              -f description="$detail" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
+            exit "$build_code"
+          fi
 
       - name: Validate generated content
         run: npm run validate:content
