@@ -222,7 +222,7 @@ jobs:
           ready='false'
           for attempt in $(seq 1 60); do
             body=$(curl --fail --show-error --silent --location --retry 2 --retry-delay 2 --retry-all-errors "$STABLE_URL/guayaba/" || true)
-            if grep -qi '<title>' <<< "$body" && grep -qi 'Guayaba hojas x 50 gr' <<< "$body" && grep -qi 'rel="canonical"' <<< "$body"; then
+            if grep -qi '<title>' <<< "$body" && grep -Eqi 'Guayaba hojas[[:space:]]+x[[:space:]]+50[[:space:]]+gr' <<< "$body" && grep -qi 'rel="canonical"' <<< "$body"; then
               ready='true'
               printf 'Dominio estable actualizado en intento %s.\n' "$attempt" | tee -a "$log"
               break
