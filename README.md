@@ -1,58 +1,36 @@
 # Shekinah
 
-[![CI](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml/badge.svg)](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml)
+[![CI and GitHub Pages](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml/badge.svg)](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml)
 
-Aplicación pública de Shekinah construida con React, TypeScript y Vite. El HTML de cada ruta se prerenderiza para conservar navegación directa, SEO técnico, accesibilidad y compatibilidad con Cloudflare Pages.
+Sitio oficial de Shekinah construido con React, TypeScript y Vite. La aplicación publica un catálogo navegable, páginas de producto, categorías, contenidos editoriales, recetas y un carrito local con consulta por WhatsApp.
 
-## Estado real
+## Producción
 
-- Rama operativa y de despliegue: `main`.
-- Dominio estable: `https://shekinah-7dl.pages.dev`.
-- Dominio original auditado: `https://herbalarioonline.com`.
-- Fuente de verdad productiva: código React, contenido TypeScript/JSON y activos de `public/`.
-- WordPress se utiliza únicamente como evidencia complementaria fuera del build.
-- El catálogo no se declara completo: solo se publican entidades con evidencia y los faltantes quedan documentados.
+- Rama de publicación: `main`.
+- Sitio: `https://jereprograma.github.io/shekinah/`.
+- Alojamiento: GitHub Pages.
+- Fuente de verdad: código, contenido y activos versionados en este repositorio.
 
 ## Arquitectura
 
 ```text
-HTML Hostinger / contenido público / referencia WordPress
-  → scripts/crawl-hostinger-original.mjs
-  → scripts/import-hostinger-original.mjs
-  → evidencia y manifiestos deterministas
-  → src/generated/*.json
-  → src/catalog.ts + src/siteApp.tsx
-  → Vite client + SSR temporal
-  → scripts/prerender.mjs
-  → dist/ + sitemap + robots + redirects
+src/generated/*.json
+  → src/content.ts + src/catalog.ts
+  → aplicación React
+  → build Vite cliente y SSR temporal
+  → prerender de rutas estáticas
+  → dist/
   → GitHub Actions
-  → Cloudflare Pages
+  → GitHub Pages
 ```
 
-La aplicación no depende de una API, base de datos o CMS en tiempo de ejecución. El carrito se almacena localmente con versión de esquema y genera una consulta por WhatsApp; no procesa pagos ni envía información sin una acción explícita.
-
-## Contenido recuperado y publicado
-
-- Páginas institucionales, blog, recetas y términos ya versionados.
-- Dos productos públicos usados como controles de recuperación:
-  - `/guayaba/`
-  - `/melena-de-leon-futuro-fungi-50ml/`
-- Categorías finales navegables:
-  - `/tienda/categoria/hierbas-medicinales/`
-  - `/tienda/categoria/suplementos/`
-- Precios ARS etiquetados como históricos con fecha de captura `2026-07-23`.
-- Carrito local, cantidades, eliminación, subtotal informativo y WhatsApp verificado.
-- Product JSON-LD, breadcrumbs, canonicals y sitemap para productos y categorías.
-
-Las imágenes y los identificadores originales `prod_*` de estos controles todavía no fueron recuperados de forma verificable; no se publican sustitutos engañosos.
+La aplicación no requiere API, base de datos ni CMS en tiempo de ejecución. El carrito se conserva en el navegador y prepara una consulta por WhatsApp; no procesa pagos.
 
 ## Comandos
 
 ```bash
 npm install --package-lock=false --no-audit --no-fund
 npm run dev
-npm run crawl:original -- --output .migration-work/hostinger-public
-npm run import:original -- --source .migration-work/hostinger-public/html
 npm run validate:content
 npm run lint
 npm run format:check
@@ -65,7 +43,12 @@ npm run audit:secrets
 npm run verify
 ```
 
-El crawler limita dominio, concurrencia, reintentos, timeout y cantidad de páginas. La caché de HTML se guarda bajo `.migration-work/` y no debe versionarse. El importador admite varios archivos o directorios, registra SHA-256 y errores por isla, preserva tipos Astro desconocidos y genera salida ordenada.
+Para generar localmente el resultado exacto de GitHub Pages:
+
+```bash
+SITE_BASE_PATH=/shekinah/ SITE_ORIGIN=https://jereprograma.github.io/shekinah npm run build
+SITE_BASE_PATH=/shekinah/ SITE_ORIGIN=https://jereprograma.github.io/shekinah npm run audit:output
+```
 
 ## Rutas principales
 
@@ -74,25 +57,17 @@ El crawler limita dominio, concurrencia, reintentos, timeout y cantidad de pági
 - `/tienda/`
 - `/blog/`
 - `/recetas/`
-- `/guayaba/`
-- `/melena-de-leon-futuro-fungi-50ml/`
-- `/tienda/categoria/hierbas-medicinales/`
-- `/tienda/categoria/suplementos/`
-- `/chocolate-casero/`
-- `/receta-barra-de-cereal/`
+- páginas individuales de producto
+- categorías de la tienda
+- artículos y recetas
 - `/terms-and-conditions/`
-
-Se conservan redirecciones permanentes para `/inicio/` y `/terminos-condiciones/`. `/category/uncategorized/` permanece como ruta `noindex`.
 
 ## Seguridad
 
-No se versionan `.env`, SQL, `wp-config.php`, usuarios, contraseñas, salts, tokens, sesiones, plugins, temas, cachés ni el árbol WordPress. La auditoría del respaldo solo registra hashes, conteos, estructura y datos públicos necesarios para la migración.
+No se publican archivos de entorno, credenciales, bases de datos, configuraciones privadas, copias comprimidas ni dependencias de servidor. El workflow bloquea el despliegue si fallan el análisis estático, las pruebas, el build o las auditorías.
 
 ## Documentación
 
-- [Estado de migración](docs/MIGRATION-STATUS.md)
-- [Recuperación Hostinger y WordPress](docs/HOSTINGER-RECOVERY.md)
-- [Matriz de fidelidad](docs/fidelity/MATRIX.md)
 - [Despliegue](docs/DEPLOYMENT.md)
 - [GitHub Actions](docs/GITHUB-ACTIONS.md)
 - [Pruebas](docs/TEST-REPORT.md)
