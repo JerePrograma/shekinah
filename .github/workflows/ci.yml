@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  statuses: write
 
 concurrency:
   group: github-pages-production
@@ -90,15 +91,16 @@ jobs:
           path: dist
 
   deploy:
-    name: Deploy GitHub Pages
+    name: Deploy and verify GitHub Pages
     if: github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       pages: write
       id-token: write
+      statuses: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -107,3 +109,63 @@ jobs:
       - name: Deploy artifact
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify production site
+        shell: bash
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          base="${PAGE_URL%/}"
+          [[ -n "$base" ]] || { echo '::error::GitHub Pages no informó una URL'; exit 1; }
+
+          ready='false'
+          for attempt in $(seq 1 30); do
+            body=$(curl --fail --silent --show-error --location --retry 2 --retry-delay 2 "$base/tienda/" || true)
+            if grep -qi '<title>' <<< "$body" && grep -qi 'Shekinah' <<< "$body"; then
+              ready='true'
+              break
+            fi
+            sleep 10
+          done
+          [[ "$ready" == 'true' ]] || { echo '::error::El sitio publicado no quedó disponible'; exit 1; }
+
+          html_routes=(
+            /
+            /tienda/
+            /blog/
+            /recetas/
+            /guayaba/
+          )
+          for route in "${html_routes[@]}"; do
+            body=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base$route")
+            grep -qi '<title>' <<< "$body" || { echo "::error::$route no contiene title"; exit 1; }
+            grep -qi 'Shekinah' <<< "$body" || { echo "::error::$route no contiene la marca"; exit 1; }
+            if grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|Cloudflare|pages\.dev' <<< "$body"; then
+              echo "::error::$route expone texto técnico o residual"
+              exit 1
+            fi
+          done
+
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/robots.txt" | grep -qi 'Sitemap:'
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/sitemap.xml" | grep -qi '<urlset'
+
+      - name: Publish deployment status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          state='failure'
+          description='GitHub Pages deployment or verification failed'
+          if [[ "$JOB_STATUS" == 'success' ]]; then
+            state='success'
+            description='GitHub Pages deployed and verified'
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context='shekinah/github-pages' \
+            -f description="$description" \
+            -f target_url="${PAGE_URL:-${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}}"
