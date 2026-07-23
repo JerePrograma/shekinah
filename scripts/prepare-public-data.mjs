@@ -16,9 +16,10 @@ async function writeJson(fileName, value) {
 const products = await readJson('products.json');
 const categories = await readJson('categories.json');
 const editorial = await readJson('wordpress-original-content.json');
+const categoryIds = new Map(categories.map((category) => [category.id, category.slug]));
 
 const publicProducts = products.map((product) => ({
-  id: product.id,
+  id: product.slug,
   name: product.name,
   slug: product.slug,
   path: product.path,
@@ -28,14 +29,16 @@ const publicProducts = products.map((product) => ({
   currency: product.currency ?? null,
   unit: product.unit ?? null,
   sku: product.sku ?? null,
-  categoryIds: Array.isArray(product.categoryIds) ? product.categoryIds : [],
+  categoryIds: Array.isArray(product.categoryIds)
+    ? product.categoryIds.map((categoryId) => categoryIds.get(categoryId)).filter(Boolean)
+    : [],
   images: Array.isArray(product.images)
     ? product.images.map((image) => ({ src: image.src, alt: image.alt ?? product.name }))
     : [],
 }));
 
 const publicCategories = categories.map((category) => ({
-  id: category.id,
+  id: category.slug,
   name: category.name,
   slug: category.slug,
   path: category.path,
