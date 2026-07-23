@@ -48,9 +48,15 @@ test('nosotros recupera galería y testimonio original', async ({ page }) => {
   await expect(page.getByLabel('Testimonio de Ana M.')).toContainText('★★★★★');
 });
 
-test('la tienda conserva una acción de contacto funcional sin inventar carrito', async ({ page }) => {
+test('la tienda conserva carrito local y contacto explícito por WhatsApp', async ({ page }) => {
   await page.goto('/tienda/');
-  const contact = page.getByRole('link', { name: 'Consultar por correo' });
-  await expect(contact).toHaveAttribute('href', /mailto:german\.gauna@yahoo\.com\.ar/u);
+  await expect(page.getByRole('link', { name: 'WhatsApp', exact: true })).toHaveAttribute(
+    'href',
+    'https://wa.me/542236216559',
+  );
+  const cart = page.getByRole('button', { name: /Carrito \(0\)/u });
+  await expect(cart).toBeVisible();
+  await cart.click();
+  await expect(page.getByRole('dialog', { name: 'Carrito' })).toBeVisible();
   await expect(page.locator('form')).toHaveCount(0);
 });
