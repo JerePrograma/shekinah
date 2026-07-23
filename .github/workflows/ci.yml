@@ -36,9 +36,67 @@ jobs:
 
       - name: Lint React, TypeScript, scripts and tests
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p .ci
-          npm run lint 2>&1 | tee .ci/lint.log
+          set +e
+          npm run lint -- --format json > .ci/lint.json 2> .ci/lint.stderr
+          lint_code=$?
+          set -e
+          cat .ci/lint.stderr
+          if [[ "$lint_code" -eq 0 ]]; then
+            context='shekinah/lint'
+            state='success'
+            description='ESLint aprobado'
+          else
+            node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          let results = [];
+          try {
+            results = JSON.parse(readFileSync('.ci/lint.json', 'utf8'));
+          } catch {
+            process.stderr.write('No se pudo decodificar la salida JSON de ESLint.\n');
+          }
+          const firstResult = results.find((result) => result.messages?.length);
+          const first = firstResult?.messages?.[0];
+          if (firstResult && first) {
+            const relative = firstResult.filePath.replace(`${process.cwd()}/`, '');
+            process.stderr.write(`${relative}:${first.line ?? 0}:${first.column ?? 0} ${first.ruleId ?? 'parser'} ${first.message}\n`);
+          }
+          NODE
+            detail=$(node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          let value = 'execution';
+          try {
+            const results = JSON.parse(readFileSync('.ci/lint.json', 'utf8'));
+            const result = results.find((item) => item.messages?.length);
+            const message = result?.messages?.[0];
+            if (result && message) {
+              const file = result.filePath.replace(`${process.cwd()}/`, '').split('/').slice(-2).join('/');
+              value = `${file}:${message.line ?? 0}:${message.ruleId ?? 'parser'}`;
+            }
+          } catch {}
+          process.stdout.write(value.replace(/[^A-Za-z0-9_.:/-]/g, '_').slice(0, 75));
+          NODE
+            )
+            context="shekinah/lint/$detail"
+            state='failure'
+            description='ESLint detectó errores'
+          fi
+          export STATE="$state"
+          export CONTEXT="$context"
+          export DESCRIPTION="$description"
+          export TARGET_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:process.env.CONTEXT,description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            --data "$payload"
+          exit "$lint_code"
 
       - name: Check formatting
         run: npm run format:check
