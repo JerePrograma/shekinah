@@ -55,7 +55,9 @@ jobs:
         run: npm run test:e2e
 
       - name: Audit local production output
-        run: npm run audit:output
+        run: |
+          npm run audit:output
+          npm run audit:copy
 
       - name: Audit repository security
         run: npm run audit:secrets
@@ -76,7 +78,9 @@ jobs:
         env:
           SITE_BASE_PATH: /shekinah/
           SITE_ORIGIN: https://jereprograma.github.io/shekinah
-        run: npm run audit:output
+        run: |
+          npm run audit:output
+          npm run audit:copy
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
