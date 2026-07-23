@@ -87,6 +87,50 @@ jobs:
           STABLE_URL: https://shekinah-7dl.pages.dev
         run: |
           set -euo pipefail
+          mkdir -p .deploy-diagnostics
+          log='.deploy-diagnostics/verify.log'
+          : > "$log"
+
+          fail_verification() {
+            local detail="$1"
+            local message="$2"
+            detail=$(printf '%s' "$detail" | tr -cs 'A-Za-z0-9._-' '-' | cut -c1-72)
+            printf '%s\n' "$detail" > .deploy-diagnostics/failure-context
+            printf 'FAIL %s: %s\n' "$detail" "$message" | tee -a "$log" >&2
+            exit 1
+          }
+
+          verify_route() {
+            local label="$1"
+            local base="$2"
+            local route="$3"
+            local safe_route
+            local body
+            safe_route=$(printf '%s' "$route" | tr -cs 'A-Za-z0-9._-' '-' | cut -c1-55)
+            if ! body=$(curl --fail --show-error --silent --location --retry 8 --retry-delay 5 --retry-all-errors "$base$route"); then
+              fail_verification "$label-$safe_route-http" "$base$route no respondió correctamente"
+            fi
+            if [[ "$route" == */ ]]; then
+              grep -qi '<title>' <<< "$body" || fail_verification "$label-$safe_route-title" "$base$route no contiene title"
+              grep -qi 'rel="canonical"' <<< "$body" || fail_verification "$label-$safe_route-canonical" "$base$route no contiene canonical"
+              ! grep -Eqi 'Hello world!|trans-[a-z_-]+|wp-admin|wp-login|la tienda original no contenía productos|la tienda original no contenía carrito' <<< "$body" || fail_verification "$label-$safe_route-residual" "$base$route conserva contenido residual"
+            fi
+            printf 'PASS %s%s\n' "$base" "$route" | tee -a "$log"
+          }
+
+          ready='false'
+          for attempt in $(seq 1 24); do
+            body=$(curl --fail --show-error --silent --location --retry 2 --retry-delay 2 --retry-all-errors "$STABLE_URL/guayaba/" || true)
+            if grep -qi '<title>' <<< "$body" && grep -qi 'Guayaba hojas x 50 gr' <<< "$body" && grep -qi 'rel="canonical"' <<< "$body"; then
+              ready='true'
+              printf 'Dominio estable actualizado en intento %s.\n' "$attempt" | tee -a "$log"
+              break
+            fi
+            printf 'Dominio estable todavía no refleja el catálogo; intento %s/24.\n' "$attempt" | tee -a "$log"
+            sleep 5
+          done
+          [[ "$ready" == 'true' ]] || fail_verification 'stable-rollout-guayaba' 'El dominio estable no reflejó el nuevo catálogo dentro de 120 segundos'
+
           routes=(
             /
             /nosotros/
@@ -103,16 +147,21 @@ jobs:
             /robots.txt
             /sitemap.xml
           )
-          for base in "$DEPLOYMENT_URL" "$STABLE_URL"; do
-            for route in "${routes[@]}"; do
-              body=$(curl --fail --show-error --silent --location --retry 8 --retry-delay 5 "$base$route")
-              if [[ "$route" == */ ]]; then
-                grep -qi '<title>' <<< "$body" || { echo "::error::$base$route no contiene title"; exit 1; }
-                grep -qi 'rel="canonical"' <<< "$body" || { echo "::error::$base$route no contiene canonical"; exit 1; }
-                ! grep -Eqi 'Hello world!|trans-[a-z_-]+|wp-admin|wp-login|la tienda original no contenía productos|la tienda original no contenía carrito' <<< "$body" || { echo "::error::$base$route conserva contenido residual"; exit 1; }
-              fi
-            done
+          for route in "${routes[@]}"; do
+            verify_route 'deployment' "$DEPLOYMENT_URL" "$route"
           done
+          for route in "${routes[@]}"; do
+            verify_route 'stable' "$STABLE_URL" "$route"
+          done
+
+      - name: Upload deployment diagnostics
+        if: always() && hashFiles('.deploy-diagnostics/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: cloudflare-diagnostics-${{ github.event.workflow_run.head_sha }}
+          path: .deploy-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Publish observable Cloudflare status
         if: always()
@@ -124,6 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$SOURCE_SHA" ]] || { echo '::error::No se recibió el SHA para publicar el estado'; exit 1; }
+          context='shekinah/cloudflare'
           case "$JOB_STATUS" in
             success)
               state='success'
@@ -132,6 +182,10 @@ jobs:
             failure)
               state='failure'
               description='El despliegue o la verificación Cloudflare falló'
+              if [[ -s .deploy-diagnostics/failure-context ]]; then
+                detail=$(cat .deploy-diagnostics/failure-context)
+                context="shekinah/cloudflare/${detail:0:72}"
+              fi
               ;;
             *)
               state='error'
@@ -139,9 +193,10 @@ jobs:
               ;;
           esac
           export STATE="$state"
+          export CONTEXT="$context"
           export DESCRIPTION="$description"
           export TARGET_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:'shekinah/cloudflare',description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
+          payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:process.env.CONTEXT,description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
           curl --fail-with-body --silent --show-error \
             --request POST \
             --header 'Accept: application/vnd.github+json' \
