@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { formatPrice, products, verifiedStore, type Product } from './catalog';
+import { toSitePath } from './content';
 
 interface CartLine {
   productId: string;
@@ -120,7 +121,6 @@ export function quantityLabel(lines: CartLine[]): string {
   return count === 1 ? '1 producto' : `${count} productos`;
 }
 
-
 export function QuantityControl({ productId, value }: { productId: string; value: number }) {
   const { setQuantity } = useCart();
   return (
@@ -143,7 +143,6 @@ export function QuantityControl({ productId, value }: { productId: string; value
     </div>
   );
 }
-
 
 function buildWhatsAppMessage(lines: CartLine[]): string {
   const resolved = lines
@@ -234,7 +233,7 @@ export function CartDialog() {
               {resolved.map(({ line, product }) => (
                 <li key={product.id}>
                   <div>
-                    <a href={product.path}>{product.name}</a>
+                    <a href={toSitePath(product.path)}>{product.name}</a>
                     <span>{formatPrice(product) ?? 'Precio no disponible'}</span>
                   </div>
                   <QuantityControl productId={product.id} value={line.quantity} />
@@ -261,7 +260,7 @@ export function CartDialog() {
         ) : (
           <div className="cart-empty">
             <p>El carrito está vacío.</p>
-            <a className="button" href="/tienda/" onClick={() => setOpen(false)}>
+            <a className="button" href={toSitePath('/tienda/')} onClick={() => setOpen(false)}>
               Ir a la tienda
             </a>
           </div>
@@ -284,4 +283,3 @@ export function CommerceDock() {
     </div>
   );
 }
-
