@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { categories, categoryName, formatPrice, products, type Product } from './catalog';
 import { useCart } from './cart';
+import { toSitePath } from './content';
 import { StoreLayout } from './storeShell';
 
 const PAGE_SIZE = 24;
@@ -11,7 +12,7 @@ function ProductVisual({ product }: { product: Product }) {
     return (
       <img
         className="product-visual__image"
-        src={image.src}
+        src={toSitePath(image.src)}
         alt={image.alt}
         width="900"
         height="900"
@@ -31,18 +32,18 @@ function ProductCard({ product }: { product: Product }) {
   const price = formatPrice(product);
   return (
     <article className="product-card">
-      <a className="product-card__visual" href={product.path} aria-label={`Ver ${product.name}`}>
+      <a className="product-card__visual" href={toSitePath(product.path)} aria-label={`Ver ${product.name}`}>
         <ProductVisual product={product} />
       </a>
       <div className="product-card__body">
         <p className="product-card__category">{product.categoryIds.map(categoryName).join(' · ') || 'Otros'}</p>
         <h2>
-          <a href={product.path}>{product.name}</a>
+          <a href={toSitePath(product.path)}>{product.name}</a>
         </h2>
         {product.shortDescription ? <p>{product.shortDescription}</p> : null}
         {price ? <p className="product-price">{price}</p> : null}
         <div className="product-card__actions">
-          <a className="button button--secondary" href={product.path}>
+          <a className="button button--secondary" href={toSitePath(product.path)}>
             Ver producto
           </a>
           <button className="button" type="button" onClick={() => add(product.id)}>
@@ -154,8 +155,8 @@ export function ProductPage({ product }: { product: Product }) {
     <StoreLayout>
       <nav className="container store-breadcrumbs" aria-label="Migas de pan">
         <ol>
-          <li><a href="/">Inicio</a></li>
-          <li><a href="/tienda/">Tienda</a></li>
+          <li><a href={toSitePath('/')}>Inicio</a></li>
+          <li><a href={toSitePath('/tienda/')}>Tienda</a></li>
           <li aria-current="page">{product.name}</li>
         </ol>
       </nav>
