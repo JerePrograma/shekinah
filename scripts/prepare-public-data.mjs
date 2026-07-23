@@ -27,11 +27,30 @@ const editorialOverrides = new Map([
       eyebrow: 'Recetario',
     },
   ],
+  [
+    '/receta-barra-de-cereal/',
+    {
+      eyebrow: 'Receta',
+    },
+  ],
+  [
+    '/terms-and-conditions/',
+    {
+      description: 'Términos y condiciones de venta online, cambios, devoluciones y reembolsos.',
+    },
+  ],
 ]);
+
+const publicTextReplacements = [
+  ['https://herbalarioonline.com', 'sitio oficial de Shekinah'],
+  ['Herbalario Online', 'Shekinah'],
+];
 
 const prohibitedEditorialPatterns = [
   /\bHostinger\b/iu,
   /\bWordPress\b/iu,
+  /herbalarioonline\.com/iu,
+  /\bHerbalario Online\b/iu,
   /\bmigraci[oó]n(?:es)?\b/iu,
   /\brecuperad[oa]s?\b/iu,
   /\bevidencia(?:s)?\b/iu,
@@ -49,9 +68,23 @@ async function writeJson(fileName, value) {
   await writeFile(path.join(outputDirectory, fileName), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function sanitizePublicValue(value) {
+  if (typeof value === 'string') {
+    return publicTextReplacements.reduce(
+      (current, [source, replacement]) => current.replaceAll(source, replacement),
+      value,
+    );
+  }
+  if (Array.isArray(value)) return value.map(sanitizePublicValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizePublicValue(item)]));
+  }
+  return value;
+}
+
 function toPublicEditorialEntry(entry) {
   return {
-    ...entry,
+    ...sanitizePublicValue(entry),
     ...(editorialOverrides.get(entry.path) ?? {}),
   };
 }
