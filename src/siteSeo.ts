@@ -3,7 +3,7 @@ import { normalizePath, site } from './content';
 import { applyClientHead, buildHead } from './seo';
 
 function absolute(path: string): string {
-  return new URL(path.replace(/^\/+ /u, '').replace(/^\/+/, ''), `${site.origin}/`).toString();
+  return new URL(path.replace(/^\/+/, ''), `${site.origin}/`).toString();
 }
 
 function escapeAttribute(value: string): string {
