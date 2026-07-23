@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p .ci
           set +e
-          npm run lint -- --format json > .ci/lint.json 2> .ci/lint.stderr
+          ./node_modules/.bin/eslint src scripts tests vite.config.ts --format json > .ci/lint.json 2> .ci/lint.stderr
           lint_code=$?
           set -e
           cat .ci/lint.stderr
