@@ -59,14 +59,13 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p .wordpress-restore
-          npm run verify 2>&1 | tee .wordpress-restore/verify.log
+          mkdir -p "$RUNNER_TEMP/wordpress-restore"
+          npm run verify 2>&1 | tee "$RUNNER_TEMP/wordpress-restore/verify.log"
 
       - name: Review exact generated diff
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .wordpress-restore
           git status --short
           git diff --stat
           git diff --check
@@ -93,7 +92,7 @@ jobs:
           path: |
             docs/fidelity/wordpress-original-manifest.json
             src/generated/wordpress-original-content.json
-            .wordpress-restore/verify.log
+            ${{ runner.temp }}/wordpress-restore/verify.log
           if-no-files-found: error
           retention-days: 14
 
