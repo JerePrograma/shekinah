@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   entries,
   findEntry,
@@ -10,6 +10,8 @@ import {
   type Block,
   type ContentEntry,
 } from './content';
+import { getOriginalMedia, type OriginalImage } from './originalMedia';
+import './originalMedia.css';
 
 interface AppProps {
   path: string;
@@ -21,6 +23,20 @@ function isCurrent(currentPath: string, href: string): boolean {
 
 function Header({ currentPath }: { currentPath: string }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('has-open-overlay', open);
+    return () => document.body.classList.remove('has-open-overlay');
+  }, [open]);
+
   return (
     <header className="site-header">
       <div className="container header-inner">
@@ -160,13 +176,18 @@ function Hero({
   );
 }
 
+function imageForEntry(entry: ContentEntry): OriginalImage {
+  return getOriginalMedia(entry.path)?.hero ?? { src: entry.image, alt: entry.imageAlt };
+}
+
 function ContentCard({ entry, meta }: { entry: ContentEntry; meta: string }) {
+  const image = imageForEntry(entry);
   return (
     <article className="card content-card">
       <a className="content-card__image-link" href={entry.path} tabIndex={-1} aria-hidden="true">
         <img
           className="card__media"
-          src={entry.image}
+          src={image.src}
           alt=""
           width="1200"
           height="750"
@@ -209,16 +230,141 @@ function Blocks({ blocks }: { blocks: Block[] }) {
   );
 }
 
+function OriginalGallery({ title, images }: { title: string; images: OriginalImage[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (selected === null) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelected(null);
+      if (event.key === 'ArrowLeft') {
+        setSelected((current) => (current === null ? null : (current - 1 + images.length) % images.length));
+      }
+      if (event.key === 'ArrowRight') {
+        setSelected((current) => (current === null ? null : (current + 1) % images.length));
+      }
+    };
+    document.body.classList.add('has-open-overlay');
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.classList.remove('has-open-overlay');
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [images.length, selected]);
+
+  if (images.length === 0) return null;
+  const activeImage = selected === null ? null : images[selected];
+  const currentIndex = selected ?? 0;
+
+  return (
+    <section className="original-gallery" aria-labelledby="original-gallery-title">
+      <div className="original-gallery__heading">
+        <p className="eyebrow">Archivo visual recuperado</p>
+        <h2 id="original-gallery-title">{title}</h2>
+      </div>
+      <div className="original-gallery__grid">
+        {images.map((image, index) => (
+          <button
+            className="original-gallery__button"
+            type="button"
+            key={image.src}
+            aria-label={`Ampliar imagen ${index + 1}: ${image.alt}`}
+            onClick={() => setSelected(index)}
+          >
+            <img src={image.src} alt={image.alt} width="1200" height="900" loading="lazy" />
+          </button>
+        ))}
+      </div>
+      {activeImage ? (
+        <div className="lightbox" role="presentation" onMouseDown={() => setSelected(null)}>
+          <div
+            className="lightbox__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Imagen ampliada"
+            onMouseDown={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}
+          >
+            <img className="lightbox__image" src={activeImage.src} alt={activeImage.alt} />
+            <button
+              className="lightbox__close"
+              type="button"
+              aria-label="Cerrar imagen ampliada"
+              onClick={() => setSelected(null)}
+            >
+              ×
+            </button>
+            {images.length > 1 ? (
+              <>
+                <button
+                  className="lightbox__previous"
+                  type="button"
+                  aria-label="Imagen anterior"
+                  onClick={() => setSelected((currentIndex - 1 + images.length) % images.length)}
+                >
+                  ‹
+                </button>
+                <button
+                  className="lightbox__next"
+                  type="button"
+                  aria-label="Imagen siguiente"
+                  onClick={() => setSelected((currentIndex + 1) % images.length)}
+                >
+                  ›
+                </button>
+              </>
+            ) : null}
+            <p className="lightbox__caption">{activeImage.alt}</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Testimonial({ quote, author, rating }: { quote: string; author: string; rating: number }) {
+  return (
+    <aside className="testimonial-card" aria-label={`Testimonio de ${author}`}>
+      <p className="testimonial-card__rating" aria-label={`${rating} de 5 estrellas`}>
+        {'★'.repeat(rating)}
+      </p>
+      <blockquote>{quote}</blockquote>
+      <p className="testimonial-card__author">{author}</p>
+    </aside>
+  );
+}
+
 function Home() {
   const latestPosts = [...posts].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+  const media = getOriginalMedia('/');
+  const features = [
+    {
+      title: 'El mercado del mundo',
+      description: 'Familias de especias, hierbas, cacao, semillas y complementos gourmet.',
+      href: '/tienda/',
+      image: media?.features?.[0],
+    },
+    {
+      title: 'Historias y usos',
+      description: 'Contexto cultural y gastronómico para cocinar con más intención.',
+      href: '/blog/',
+      image: media?.features?.[1],
+    },
+    {
+      title: 'Recetas',
+      description: 'Preparaciones recuperadas y editadas con límites de evidencia explícitos.',
+      href: '/recetas/',
+      image: media?.features?.[2],
+    },
+  ];
+
   return (
     <>
       <Hero
         eyebrow="Origen, aroma y cocina"
         title="Tesoros botánicos para una cocina con historia"
         description="Especias, hierbas, semillas y recetas para explorar sabores auténticos sin perder de vista su origen."
-        image="/images/about-spice-shop.webp"
-        imageAlt="Interior de un herbolario con estantes llenos de frascos de especias."
+        image={media?.hero.src ?? '/images/about-spice-shop.webp'}
+        imageAlt={media?.hero.alt ?? 'Interior de un herbolario con estantes llenos de frascos de especias.'}
       >
         <div className="cluster hero-actions">
           <a className="button" href="/tienda/">
@@ -242,23 +388,19 @@ function Home() {
             </p>
           </div>
           <div className="grid grid--3 feature-grid">
-            {[
-              ['El mercado del mundo', 'Familias de especias, hierbas, cacao, semillas y complementos gourmet.', '/tienda/'],
-              ['Historias y usos', 'Contexto cultural y gastronómico para cocinar con más intención.', '/blog/'],
-              ['Recetas', 'Preparaciones recuperadas y editadas con límites de evidencia explícitos.', '/recetas/'],
-            ].map(([title, description, href], index) => (
-              <article className="feature-card" key={title}>
+            {features.map((feature) => (
+              <article className="feature-card" key={feature.title}>
                 <img
-                  src={index === 2 ? '/images/culinary-kitchen.webp' : '/images/about-spice-shop.webp'}
-                  alt=""
+                  src={feature.image?.src ?? '/images/about-spice-shop.webp'}
+                  alt={feature.image?.alt ?? ''}
                   width="1024"
                   height="768"
                   loading="lazy"
                 />
                 <div>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <a href={href}>Conocer más</a>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.description}</p>
+                  <a href={feature.href}>Conocer más</a>
                 </div>
               </article>
             ))}
@@ -269,8 +411,8 @@ function Home() {
         <div className="container split">
           <img
             className="split__image"
-            src="/images/about-spice-shop.webp"
-            alt="Herbolario con frascos ordenados y una persona detrás del mostrador."
+            src={media?.featured?.src ?? '/images/about-spice-shop.webp'}
+            alt={media?.featured?.alt ?? 'Herbolario con frascos ordenados.'}
             width="1800"
             height="870"
             loading="lazy"
@@ -283,8 +425,8 @@ function Home() {
               calidad y una mirada que une bienestar y alta cocina.
             </p>
             <p>
-              La aplicación conserva esa promesa y reemplaza definitivamente la infraestructura anterior
-              por código React y contenido TypeScript versionado.
+              La aplicación conserva esa promesa, incorpora las imágenes originales recuperadas y reemplaza
+              definitivamente la infraestructura anterior por código React y contenido versionado.
             </p>
             <a className="button button--secondary" href="/nosotros/">
               Conocer la historia
@@ -362,14 +504,16 @@ function ListingSection({
 }
 
 function EntryPage({ entry }: { entry: ContentEntry }) {
+  const media = getOriginalMedia(entry.path);
+  const heroImage = media?.hero ?? { src: entry.image, alt: entry.imageAlt };
   return (
     <>
       <Hero
         eyebrow={entry.eyebrow}
         title={entry.title}
         description={entry.description}
-        image={entry.image}
-        imageAlt={entry.imageAlt}
+        image={heroImage.src}
+        imageAlt={heroImage.alt}
       />
       <div className="breadcrumb-wrap">
         <nav className="container" aria-label="Migas de pan">
@@ -377,7 +521,15 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
             <li>
               <a href="/">Inicio</a>
             </li>
-            <li>{entry.kind === 'post' ? <a href="/blog/">Blog</a> : entry.kind === 'recipe' ? <a href="/recetas/">Recetas</a> : 'Página'}</li>
+            <li>
+              {entry.kind === 'post' ? (
+                <a href="/blog/">Blog</a>
+              ) : entry.kind === 'recipe' ? (
+                <a href="/recetas/">Recetas</a>
+              ) : (
+                'Página'
+              )}
+            </li>
             <li aria-current="page">{entry.title}</li>
           </ol>
         </nav>
@@ -407,10 +559,21 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
             </section>
           ) : null}
           <Blocks blocks={entry.blocks} />
+          {media?.gallery ? <OriginalGallery title="Galería original" images={media.gallery} /> : null}
+          {media?.testimonial ? <Testimonial {...media.testimonial} /> : null}
           {entry.path === '/tienda/' ? (
-            <p className="contact-callout">
-              Consultas de disponibilidad: <a href={`mailto:${site.email}`}>{site.email}</a>
-            </p>
+            <div className="contact-callout">
+              <strong>Consultas de disponibilidad</strong>
+              <p>La tienda original no contenía carrito ni precios verificables. La consulta directa sigue disponible.</p>
+              <div className="contact-actions">
+                <a className="button" href={`mailto:${site.email}?subject=Consulta%20de%20disponibilidad%20Shekinah`}>
+                  Consultar por correo
+                </a>
+                <a className="button button--secondary" href="/recetas/">
+                  Ver recetas
+                </a>
+              </div>
+            </div>
           ) : null}
         </div>
       </article>
@@ -420,6 +583,8 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
 
 function ListingPage({ kind }: { kind: 'blog' | 'recipes' }) {
   const list = kind === 'blog' ? posts : recipes;
+  const referenceEntry = kind === 'blog' ? posts[0] : recipes[0];
+  const originalHero = referenceEntry ? getOriginalMedia(referenceEntry.path)?.hero : undefined;
   return (
     <>
       <Hero
@@ -428,10 +593,10 @@ function ListingPage({ kind }: { kind: 'blog' | 'recipes' }) {
         description={
           kind === 'blog'
             ? 'Cultura gastronómica, perfiles aromáticos y formas responsables de acercarse a hierbas y especias.'
-            : 'Preparaciones documentadas desde la evidencia recuperada, sin completar con datos inventados.'
+            : 'Preparaciones documentadas desde la evidencia recuperada, con sus imágenes originales.'
         }
-        image={kind === 'blog' ? '/images/about-spice-shop.webp' : '/images/culinary-kitchen.webp'}
-        imageAlt={kind === 'blog' ? 'Frascos con hierbas y especias.' : 'Cocina preparada para recetas artesanales.'}
+        image={originalHero?.src ?? (kind === 'blog' ? '/images/about-spice-shop.webp' : '/images/culinary-kitchen.webp')}
+        imageAlt={originalHero?.alt ?? (kind === 'blog' ? 'Frascos con hierbas y especias.' : 'Cocina preparada para recetas artesanales.')}
       />
       <ListingSection title={kind === 'blog' ? 'Publicaciones' : 'Preparaciones'} eyebrow="Contenido versionado" entries={list} />
     </>
@@ -486,5 +651,11 @@ export function App({ path: rawPath }: AppProps) {
 
 export function routeExists(path: string): boolean {
   const normalized = normalizePath(path);
-  return normalized === '/' || normalized === '/blog/' || normalized === '/recetas/' || normalized === '/category/uncategorized/' || entries.some((entry) => entry.path === normalized);
+  return (
+    normalized === '/' ||
+    normalized === '/blog/' ||
+    normalized === '/recetas/' ||
+    normalized === '/category/uncategorized/' ||
+    entries.some((entry) => entry.path === normalized)
+  );
 }
