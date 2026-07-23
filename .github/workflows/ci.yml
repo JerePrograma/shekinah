@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -81,3 +82,37 @@ jobs:
           path: playwright-report
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Publish observable CI status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          case "$JOB_STATUS" in
+            success)
+              state='success'
+              description='Validación completa de Shekinah aprobada'
+              ;;
+            failure)
+              state='failure'
+              description='La validación de Shekinah falló'
+              ;;
+            *)
+              state='error'
+              description='La validación de Shekinah fue cancelada'
+              ;;
+          esac
+          export STATE="$state"
+          export DESCRIPTION="$description"
+          export TARGET_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:'shekinah/ci',description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            --data "$payload"
