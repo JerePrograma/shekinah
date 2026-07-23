@@ -17,7 +17,7 @@ test('la portada utiliza las imágenes publicadas', async ({ page }) => {
   );
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
     'content',
-    'https://jereprograma.github.io/shekinah/images/original/home-spice-chest.jpg',
+    'https://shekinah-7dl.pages.dev/images/original/home-spice-chest.jpg',
   );
 });
 
