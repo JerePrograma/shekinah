@@ -1,4 +1,5 @@
 import { findEntry, normalizePath, site } from './content';
+import { getOriginalMedia } from './originalMedia';
 
 export interface SeoData {
   path: string;
@@ -15,28 +16,28 @@ const routeDefaults: Record<string, Pick<SeoData, 'title' | 'description' | 'ima
   '/': {
     title: 'Shekinah — Herbolario & tienda gourmet',
     description: site.description,
-    image: '/images/about-spice-shop.webp',
+    image: '/images/original/home-spice-chest.jpg',
     type: 'website',
     noindex: false,
   },
   '/blog/': {
     title: 'Blog — Shekinah',
     description: 'Historias, usos culinarios y cultura alrededor de hierbas y especias.',
-    image: '/images/about-spice-shop.webp',
+    image: '/images/original/post-spice-journey.png',
     type: 'website',
     noindex: false,
   },
   '/recetas/': {
     title: 'Recetas — Shekinah',
     description: 'Preparaciones recuperadas y documentadas con límites de evidencia explícitos.',
-    image: '/images/culinary-kitchen.webp',
+    image: '/images/original/recipe-chocolate.jpg',
     type: 'website',
     noindex: false,
   },
   '/category/uncategorized/': {
     title: 'Archivo sin categoría — Shekinah',
     description: 'Ruta histórica conservada para compatibilidad. El contenido se encuentra en el blog.',
-    image: '/images/about-spice-shop.webp',
+    image: '/images/original/home-spice-chest.jpg',
     type: 'website',
     noindex: true,
   },
@@ -52,7 +53,7 @@ export function getSeo(pathValue: string): SeoData {
   const base = routeDefaults[path];
   const title = entry ? `${entry.title} — Shekinah` : (base?.title ?? 'Página no encontrada — Shekinah');
   const description = entry?.description ?? base?.description ?? 'La página solicitada no existe.';
-  const image = entry?.image ?? base?.image ?? '/images/about-spice-shop.webp';
+  const image = getOriginalMedia(path)?.hero.src ?? entry?.image ?? base?.image ?? '/images/original/home-spice-chest.jpg';
   const type = entry?.kind === 'post' || entry?.kind === 'recipe' ? 'article' : (base?.type ?? 'website');
   const noindex = path === '/404/' || (!entry && !base) || Boolean(base?.noindex);
 
@@ -82,7 +83,7 @@ export function getSeo(pathValue: string): SeoData {
           name: entry.title,
           headline: entry.title,
           description: entry.description,
-          image: absolute(entry.image),
+          image: absolute(image),
           url: absolute(entry.path),
           ...(entry.publishedAt ? { datePublished: entry.publishedAt } : {}),
           ...(entry.kind === 'recipe' && entry.ingredients
@@ -151,6 +152,7 @@ export function buildHead(path: string): string {
 export function applyClientHead(path: string): void {
   const seo = getSeo(path);
   const canonical = absolute(seo.path === '/404/' ? '/' : seo.path);
+  const image = absolute(seo.image);
   document.title = seo.title;
 
   const setMeta = (selector: string, attribute: 'name' | 'property', key: string, content: string) => {
@@ -167,6 +169,8 @@ export function applyClientHead(path: string): void {
   setMeta('meta[property="og:title"]', 'property', 'og:title', seo.title);
   setMeta('meta[property="og:description"]', 'property', 'og:description', seo.description);
   setMeta('meta[property="og:url"]', 'property', 'og:url', canonical);
+  setMeta('meta[property="og:image"]', 'property', 'og:image', image);
+  setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', image);
 
   let canonicalElement = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
   if (!canonicalElement) {

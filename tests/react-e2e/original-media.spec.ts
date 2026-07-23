@@ -15,6 +15,10 @@ test('la portada utiliza las imágenes originales recuperadas', async ({ page })
     'src',
     '/images/original/home-essence.png',
   );
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    'content',
+    'https://shekinah-7dl.pages.dev/images/original/home-spice-chest.jpg',
+  );
 });
 
 test('la galería original de chocolate abre y se navega como diálogo', async ({ page }) => {
