@@ -1,0 +1,146 @@
+{
+  "source": {
+    "archiveFile": "shekinah.orig.rar",
+    "archiveSha256": "8776c2e6da17a229405e6881ed407760a3c4db3c746b5f67c8c190010013b336",
+    "archiveBytes": 515235795,
+    "wxrFile": "chocolate-chimpanzee-908881hostingersitecom.WordPress.2026-07-20.xml",
+    "wxrSha256": "3be08bdb42685cba0a8fc8421f539a7ead4769c0e314af5e133402f451f20733",
+    "databaseFiles": [
+      {
+        "file": "u951590191_yCHGz.sql",
+        "sha256": "2697c49c8cb6f52e260628e930a47d2dbe1ff231d4aefd2691acb4fb88143231",
+        "bytes": 193516
+      },
+      {
+        "file": "127_0_0_1.sql",
+        "sha256": "b76141633c2b476769d08ae4be963b631679db0e8c2360792cc35b20c34037d1",
+        "bytes": 193647
+      }
+    ],
+    "publicHtmlArchive": {
+      "file": "public_html.zip",
+      "sha256": "4efd27eaa610819b440df7bc02411034ce5c3a4c1386b61a0eca25e6b67a5343",
+      "bytes": 329999391
+    },
+    "capturedDate": "2026-07-20"
+  },
+  "sourceIndex": [
+    {
+      "path": "/nosotros/",
+      "postId": "27",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/nosotros/",
+      "sourceHtmlSha256": "98a26936ec9150faaf27c95c82f2bb0f730ecef1b2ab78999cb5d0acddd1037c",
+      "sourceHtmlBytes": 1724
+    },
+    {
+      "path": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "postId": "28",
+      "postType": "post",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "sourceHtmlSha256": "096d7e2c4972af79b0c75b2c6c499d441b4ef78792063c31acfa50fc933833ac",
+      "sourceHtmlBytes": 2082
+    },
+    {
+      "path": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "postId": "33",
+      "postType": "post",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "sourceHtmlSha256": "8a3eb63c93ab6d9da59577eeec42fe1dafef4ee15b9cf2f1c7ddd0f24e7eedfe",
+      "sourceHtmlBytes": 1583
+    },
+    {
+      "path": "/chocolate-casero/",
+      "postId": "32",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/chocolate-casero/",
+      "sourceHtmlSha256": "98aa6eaea613bafdddbeb121420b5d7e3a51a0dc9e3af2a9413fe24e89e212b0",
+      "sourceHtmlBytes": 11320
+    },
+    {
+      "path": "/receta-barra-de-cereal/",
+      "postId": "34",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/receta-barra-de-cereal/",
+      "sourceHtmlSha256": "e813c73f9279e4cb0b2690ab28f13ebe8f6ca9dd8bc378ecf9772bad8017cf2f",
+      "sourceHtmlBytes": 2915
+    },
+    {
+      "path": "/terms-and-conditions/",
+      "postId": "25",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/terms-and-conditions/",
+      "sourceHtmlSha256": "10c2121ab04769a03db304644a59a4d984484c9f047d997dda2c667b2d806380",
+      "sourceHtmlBytes": 8495
+    },
+    {
+      "path": "/tienda/",
+      "postId": "26",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/tienda/",
+      "sourceHtmlSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceHtmlBytes": 0
+    },
+    {
+      "path": "/blog/",
+      "postId": "29",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/blog/",
+      "sourceHtmlSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceHtmlBytes": 0
+    },
+    {
+      "path": "/recetas/",
+      "postId": "30",
+      "postType": "page",
+      "status": "publish",
+      "sourceUrl": "https://chocolate-chimpanzee-908881.hostingersite.com/recetas/",
+      "sourceHtmlSha256": "da46d5c82eb8c4e26a96f6040fe6dfcc31e77e7339a74f98b8c9fd50888749ea",
+      "sourceHtmlBytes": 1654
+    }
+  ],
+  "excludedWordPressItems": [
+    {
+      "postId": "1",
+      "slug": "hello-world",
+      "reason": "Contenido predeterminado de WordPress sin relación comercial."
+    },
+    {
+      "postId": "3",
+      "slug": "privacy-policy",
+      "reason": "Borrador predeterminado no publicado."
+    },
+    {
+      "postId": "4",
+      "slug": "navigation",
+      "reason": "Bloque automático de listado de páginas, reemplazado por navegación explícita."
+    },
+    {
+      "postId": "35",
+      "slug": "terminos-condiciones",
+      "reason": "Plantilla en inglés con marcadores sin completar; se conserva el redirect a la página legal válida."
+    }
+  ],
+  "attachments": {
+    "declared": 20,
+    "originalFilesPresent": 20,
+    "mediaVariantsPresent": 98,
+    "note": "Los activos comerciales y editoriales ya están versionados bajo public/images y public/images/original."
+  },
+  "storeCrossCheck": {
+    "productsRecovered": 510,
+    "categoriesRecovered": 16,
+    "productsStillWithoutFullDescription": 15,
+    "productsStillWithoutProductImage": 1,
+    "wordpressProductMatches": 0,
+    "note": "La extracción WordPress original no contiene tablas ni publicaciones de producto del Hostinger Ecommerce original."
+  }
+}

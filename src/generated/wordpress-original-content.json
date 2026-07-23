@@ -1,0 +1,724 @@
+{
+  "source": {
+    "archiveFile": "shekinah.orig.rar",
+    "archiveSha256": "8776c2e6da17a229405e6881ed407760a3c4db3c746b5f67c8c190010013b336",
+    "archiveBytes": 515235795,
+    "wxrFile": "WordPress-export-2026-07-20.xml",
+    "wxrSha256": "3be08bdb42685cba0a8fc8421f539a7ead4769c0e314af5e133402f451f20733",
+    "databaseFiles": [
+      {
+        "file": "u951590191_yCHGz.sql",
+        "sha256": "2697c49c8cb6f52e260628e930a47d2dbe1ff231d4aefd2691acb4fb88143231",
+        "bytes": 193516
+      },
+      {
+        "file": "127_0_0_1.sql",
+        "sha256": "b76141633c2b476769d08ae4be963b631679db0e8c2360792cc35b20c34037d1",
+        "bytes": 193647
+      }
+    ],
+    "publicHtmlArchive": {
+      "file": "public_html.zip",
+      "sha256": "4efd27eaa610819b440df7bc02411034ce5c3a4c1386b61a0eca25e6b67a5343",
+      "bytes": 329999391
+    },
+    "capturedDate": "2026-07-20"
+  },
+  "entries": [
+    {
+      "path": "/nosotros/",
+      "kind": "page",
+      "title": "Nosotros",
+      "description": "En Shekinah, no solo seleccionamos especias; rescatamos historias milenarias.",
+      "eyebrow": "Nuestra esencia",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Interior de un herbolario con frascos de especias y productos botánicos.",
+      "publishedAt": "2026-07-20",
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Nuestra Promesa: Amor por el Origen"
+        },
+        {
+          "type": "paragraph",
+          "text": "En Shekinah, no solo seleccionamos especias; rescatamos historias milenarias. Nuestra herboristería nace de una pasión profunda por el bienestar y la alta cocina, acercándote tesoros botánicos cultivados con el mayor respeto por la tierra. Cada hebra, semilla y hoja que llega a tu alacena es garantía de pureza, sabor auténtico y comercio justo. Confiá en nuestra ruta para transformar tus platos diarios en experiencias extraordinarias."
+        },
+        {
+          "type": "heading",
+          "text": "Origen puro"
+        },
+        {
+          "type": "heading",
+          "text": "El Arte de la Alquimia Natural"
+        },
+        {
+          "type": "paragraph",
+          "text": "Tu confianza es nuestro ingrediente principal. Amamos profundamente el poder curativo de las plantas y la riqueza de la gastronomía global. Por eso, cada producto de nuestra tienda ha sido seleccionado a mano, garantizando que recibas únicamente lo mejor del mundo botánico. Sabores reales, orígenes éticos y un compromiso absoluto con la excelencia de tus recetas."
+        }
+      ]
+    },
+    {
+      "path": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "kind": "post",
+      "title": "El viaje de las especias: sabor y bienestar",
+      "description": "Sabor natural. Historia viva. Desde las antiguas rutas comerciales hasta la alacena de tu cocina.",
+      "eyebrow": "Especias",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Frascos con una selección de especias de distintos colores.",
+      "publishedAt": "2026-05-07",
+      "categories": [
+        "Uncategorized"
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Sabor natural. Historia viva. Desde las antiguas rutas comerciales que conectaban continentes hasta la alacena de tu cocina, las especias han sido el tesoro más codiciado de la humanidad. No solo transformaron la forma en que el mundo se comunicaba, sino que revolucionaron nuestra manera de nutrirnos y sanar."
+        },
+        {
+          "type": "paragraph",
+          "text": "La alquimia en tu cocina Una pizca de la especia correcta tiene el poder de transformar lo cotidiano en extraordinario. No se trata solo de sazonar, sino de crear una experiencia sensorial. Es el calor del pimentón, la frescura del cardamomo o la profundidad de la nuez moscada lo que le otorga a cada plato su verdadera \"alma\" y ese sabor natural inconfundible."
+        },
+        {
+          "type": "paragraph",
+          "text": "El botiquín de la naturaleza Pero el verdadero viaje de las especias ocurre en nuestro cuerpo. Cada semilla, corteza o raíz esconde un perfil fitoquímico único:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Antioxidantes poderosos: Especias como el clavo de olor y la canela combaten el envejecimiento celular.",
+            "Antiinflamatorios naturales: La cúrcuma y el jengibre son aliados milenarios para reducir la inflamación y fortalecer el sistema inmunológico.",
+            "Digestión óptima: El hinojo y el comino no solo aportan aroma, sino que facilitan el proceso digestivo y el confort estomacal."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Tu propia ruta de las especias Te invitamos a no cocinar en piloto automático. Huele, prueba y experimenta. Descubre cómo integrar estos pequeños tesoros botánicos en tus infusiones, guisos, postres y rituales diarios."
+        }
+      ]
+    },
+    {
+      "path": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "kind": "post",
+      "title": "El poder del romero: memoria milenaria y frescura en tu cocina",
+      "description": "El romero ha sido venerado desde la antigüedad por su aroma, su historia y sus usos tradicionales.",
+      "eyebrow": "Hierbas",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Ramas frescas de romero junto a una selección de especias.",
+      "publishedAt": "2026-04-25",
+      "categories": [
+        "Uncategorized"
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "El romero ha sido venerado desde la antigüedad. Los griegos y romanos lo consideraban una hierba sagrada, símbolo de la memoria y la claridad mental. Hoy, en Especiora, rescatamos esa tradición para llevarla directamente a tu mesa."
+        },
+        {
+          "type": "paragraph",
+          "text": "En la alta cocina Su perfil aromático, con notas a pino, madera y un ligero toque cítrico, lo convierte en el aliado perfecto para transformar ingredientes sencillos. Unas ramas de romero fresco pueden elevar un asado tradicional, dar carácter a unas papas rústicas o infundir aceites de oliva con un sabor inconfundible."
+        },
+        {
+          "type": "paragraph",
+          "text": "El poder curativo Más allá de su sabor, el romero es un tesoro botánico. Es rico en antioxidantes y compuestos antiinflamatorios. Tradicionalmente se utiliza para mejorar la digestión, estimular la circulación y, como creían los antiguos, ayudar a la concentración y reducir la fatiga mental."
+        },
+        {
+          "type": "paragraph",
+          "text": "¿Cómo integrarlo en tu día a día? No lo limites a las comidas principales. Prueba añadir una pizca de romero a tus infusiones o limonadas para un toque refrescante y revitalizante."
+        },
+        {
+          "type": "paragraph",
+          "text": "Explora nuestra selección de hierbas y comienza a experimentar con el poder de la naturaleza."
+        }
+      ]
+    },
+    {
+      "path": "/chocolate-casero/",
+      "kind": "recipe",
+      "title": "Chocolate casero",
+      "description": "Una receta sencilla para preparar chocolate casero delicioso y natural.",
+      "eyebrow": "Receta artesanal",
+      "image": "/images/culinary-kitchen.webp",
+      "imageAlt": "Cocina de preparación artesanal con mesadas y utensilios.",
+      "ingredients": [
+        "250 g de semillas de cacao naturales y orgánicas",
+        "50 a 80 g de manteca de cacao pura",
+        "80 a 100 g de azúcar impalpable o eritritol en polvo",
+        "Una pizca de sal marina fina",
+        "Media cucharadita de canela de Ceylán, opcional",
+        "Pistachos salados, opcionales",
+        "Pétalos de flor de oropel, opcionales"
+      ],
+      "instructions": [
+        "Tostar las semillas a unos 120 °C durante 15 a 20 minutos y dejarlas enfriar.",
+        "Retirar las cáscaras y conservar los nibs de cacao.",
+        "Procesar los nibs en tandas, haciendo pausas, hasta obtener una pasta espesa y brillante.",
+        "Agregar la manteca de cacao derretida, el endulzante seco, la sal y la canela.",
+        "Procesar de 5 a 10 minutos más, volcar en un molde seco y retirar las burbujas.",
+        "Agregar pistachos o pétalos y refrigerar durante un par de horas hasta que quede firme."
+      ],
+      "publishedAt": "2026-07-20",
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "🍫 Guía para Principiantes: Tu Primer Chocolate Artesanal"
+        },
+        {
+          "type": "paragraph",
+          "text": "Hacer chocolate en casa es como hacer alquimia. Vamos a transformar una semilla dura y cruda en una tableta que se derrite en la boca. Al no usar máquinas industriales, tu chocolate tendrá una textura ligeramente más rústica y crujiente, un sello inconfundible de los verdaderos chocolates artesanales de alta gama."
+        },
+        {
+          "type": "heading",
+          "text": "🛒 Los Ingredientes (La clave del éxito)"
+        },
+        {
+          "type": "paragraph",
+          "text": "Para que el resultado sea increíble, la materia prima debe ser excelente:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "El Alma del Chocolate: 250 gr de nuestras Semillas de Cacao Naturales y Orgánicas . Al ser importadas y puras, te garantizan ese sabor intenso y real a cacao que los chocolates de kiosco no tienen.",
+            "La Textura: 50 gr a 80 gr de Manteca de Cacao pura (se consigue fácilmente en dietéticas o casas de repostería). Viene en trozos duros amarillentos y es fundamental para que el chocolate fluya y se derrita en la boca.",
+            "El Dulzor: 80 gr a 100 gr de Azúcar impalpable (o eritritol en polvo si buscás una versión sin azúcar). Regla de oro: ¡Nunca uses miel, edulcorante líquido ni agua! Cualquier líquido hará que tu chocolate se corte y se convierta en una pasta dura imposible de salvar.",
+            "Aroma cálido: Media cucharadita de nuestra Canela de Ceylán . A diferencia de la canela común, esta es sutil, dulce y no pica, dándole un perfume espectacular a la mezcla.",
+            "El Crunch perfecto: Un puñado de nuestros Pistachos Salados . El contraste entre el chocolate amargo y el crocante salado del pistacho es un viaje de ida.",
+            "Un horno común.",
+            "Una procesadora de alimentos (la clásica de cuchillas) o una licuadora muy potente.",
+            "Bowls o recipientes de vidrio/metal limpios y totalmente secos .",
+            "Prendé el horno a fuego muy, muy bajito (unos 120°C).",
+            "Poné nuestras semillas de cacao en una fuente para horno, bien esparcidas.",
+            "Dejalas tostar por unos 15 a 20 minutos. Vas a saber que están listas porque tu cocina se va a llenar de un aroma a brownie recién horneado y algunas semillas pueden hacer un pequeño ruidito (como un \"pop\").",
+            "Agarrá las semillas tostadas y frotalas con los dedos. Vas a ver que la cáscara finita se rompe y sale súper fácil.",
+            "Poné los nibs pelados en tu procesadora o licuadora.",
+            "Empezá a licuar. Al principio se va a hacer un polvo seco. No te asustes, es normal.",
+            "Importante: Pará la máquina cada un par de minutos para que el motor no se queme, y con una cuchara seca raspá los bordes para ayudar a que todo se mezcle.",
+            "A esa pasta que tenés en la procesadora, agregale la manteca de cacao (que tenés que derretir previamente en el microondas o a bañomaría para que esté líquida).",
+            "Sumá el azúcar impalpable, la pizca de sal marina y la media cucharadita de nuestra Canela de Ceylán ."
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "🍫 Preguntas Frecuentes: Tu Primer Chocolate Artesanal"
+        },
+        {
+          "type": "paragraph",
+          "text": "1. ¿Puedo usar miel, stevia líquida o esencias para endulzar y dar sabor? ¡No! Este es el error más común. El chocolate puro y los líquidos son enemigos íntimos. Cualquier ingrediente con base de agua (miel, siropes, o esencias líquidas) hará que la grasa del cacao se corte. Tu mezcla se va a convertir instantáneamente en una pasta grumosa y dura que no podrás moldear. Usá siempre ingredientes 100% secos, como azúcar impalpable, eritritol en polvo o especias secas."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Mi licuadora se está calentando mucho, ¿es normal? Sí, transformar los nibs sólidos en licor líquido exige bastante al motor. Si sentís que tu máquina está muy caliente al tacto, apagala y dejala descansar 5 o 10 minutos. Aprovechá esas pausas para raspar los bordes con una espátula de silicona (¡que esté completamente seca!) para ayudar a que la mezcla baje hacia las cuchillas."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. El chocolate me quedó un poco \"arenoso\" al paladar, ¿hice algo mal? Para nada, ¡es una característica del chocolate artesanal! Al hacerlo en casa sin una máquina conchadora industrial (que muele el cacao por 48 horas seguidas), es natural sentir una textura ligeramente rústica. De hecho, este estilo es muy codiciado en Europa, similar al famoso chocolate de Módica. Si lo preferís más suave, la próxima vez procesá la mezcla por más tiempo."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. ¿Es obligatorio comprar y agregar manteca de cacao extra? Sí, es fundamental. Aunque nuestras semillas ya tienen su propia grasa natural, al molerlas en una licuadora casera no logramos la fluidez necesaria. La manteca de cacao extra es el secreto para poder volcarlo en el molde fácilmente y lograr esa textura sedosa que se derrite en la boca."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. ¿Por qué tengo que guardarlo en la heladera? Como en esta guía para principiantes omitimos el complejo proceso del \"templado\" (que requiere termómetros de precisión y curvas de temperatura exactas), tu chocolate no tiene la estructura de cristales necesaria para soportar el calor ambiente. Guardarlo en la heladera o nevera asegura que mantenga su firmeza y haga ese hermoso sonido de \"crack\" al morderlo."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. ¿En qué momento le agrego los pistachos u otros extras? Todo lo que sea en polvo (como la canela de Ceylán) va a la licuadora junto con el azúcar. Pero los agregados que querés que mantengan su textura crujiente (como nuestros pistachos salados o escamas de sal) y las decoraciones visuales (como la flor de oropel) van directamente en el molde, justo después de volcar el chocolate líquido y antes de meterlo a la heladera."
+        },
+        {
+          "type": "heading",
+          "text": "¿Cuánto tiempo tarda?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Preparar y enfriar el chocolate casero suele tomar alrededor de una hora en total."
+        },
+        {
+          "type": "heading",
+          "text": "¿Puedo usar otros sabores?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Sí, puedes añadir vainilla, nueces o frutas secas para darle un toque personal y delicioso."
+        },
+        {
+          "type": "heading",
+          "text": "¿Cómo conservarlo mejor?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Guarda el chocolate en un lugar fresco y seco, preferiblemente en un recipiente hermético."
+        },
+        {
+          "type": "heading",
+          "text": "¿Es apto para niños?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Sí, es una receta sencilla y segura para que los niños disfruten con supervisión."
+        }
+      ]
+    },
+    {
+      "path": "/receta-barra-de-cereal/",
+      "kind": "recipe",
+      "title": "Barras caseras",
+      "description": "Recetas fáciles y deliciosas para tus barras de cereales hechas en casa.",
+      "eyebrow": "Receta recuperada",
+      "image": "/images/culinary-kitchen.webp",
+      "imageAlt": "Frascos de productos secos sobre una mesada luminosa.",
+      "ingredients": [
+        "Avena",
+        "Frutos secos",
+        "Miel",
+        "Semillas naturales"
+      ],
+      "instructions": [],
+      "publishedAt": "2026-07-20",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Barras caseras"
+        },
+        {
+          "type": "heading",
+          "text": "Galería"
+        },
+        {
+          "type": "paragraph",
+          "text": "Deliciosas barras caseras hechas con amor"
+        },
+        {
+          "type": "heading",
+          "text": "Preguntas frecuentes"
+        },
+        {
+          "type": "heading",
+          "text": "¿Qué ingredientes uso?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Utilizo avena, frutos secos, miel y semillas naturales para barras saludables."
+        },
+        {
+          "type": "heading",
+          "text": "¿Son aptas para veganos?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Sí, todas las recetas pueden adaptarse fácilmente para ser 100% veganas sin perder sabor."
+        },
+        {
+          "type": "heading",
+          "text": "¿Cuánto duran las barras?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Las barras caseras duran hasta dos semanas si se guardan en un recipiente hermético y en lugar fresco."
+        },
+        {
+          "type": "paragraph",
+          "text": "Recomiendo conservarlas en la nevera para mayor frescura."
+        },
+        {
+          "type": "heading",
+          "text": "¿Puedo personalizar las recetas?"
+        },
+        {
+          "type": "heading",
+          "text": "¿Son difíciles de hacer?"
+        },
+        {
+          "type": "paragraph",
+          "text": "No, las recetas son simples y perfectas para principiantes en la cocina."
+        }
+      ]
+    },
+    {
+      "path": "/terms-and-conditions/",
+      "kind": "page",
+      "title": "Términos y condiciones",
+      "description": "Términos y condiciones de venta online, cambios, devoluciones y reembolsos recuperados del sitio original.",
+      "eyebrow": "Información legal",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Productos botánicos y especias en un espacio de atención.",
+      "publishedAt": "2026-07-20",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Información Legal El sitio web https://herbalarioonline.com es administrado por la persona física Germán Ignacio Gauna."
+        },
+        {
+          "type": "list",
+          "items": [
+            "Identificación (CUIT): 20-25957366-2",
+            "Domicilio comercial: Moreno 2575, Mar del Plata Norte (7600), Buenos Aires, Argentina.",
+            "Contacto: german.gauna@yahoo.com.ar"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "¡Bienvenido a la tienda online de Herbalario Online!"
+        },
+        {
+          "type": "paragraph",
+          "text": "Estos términos y condiciones rigen el uso de nuestro sitio web https://herbalarioonline.com y la compra de productos a través del mismo. Al navegar y comprar en nuestra tienda, aceptas estar sujeto a las siguientes condiciones."
+        },
+        {
+          "type": "paragraph",
+          "text": "1. Información de los Productos y Disponibilidad"
+        },
+        {
+          "type": "paragraph",
+          "text": "Hacemos todo lo posible para mostrar con la mayor precisión posible los colores, imágenes y descripciones de nuestros productos. Sin embargo, no podemos garantizar que la visualización en el monitor de tu computadora o dispositivo móvil sea exactamente igual al producto real."
+        },
+        {
+          "type": "paragraph",
+          "text": "Todos los pedidos están sujetos a la disponibilidad del producto. Si por algún motivo un producto que has comprado se encuentra agotado, nos comunicaremos contigo de inmediato para ofrecerte un reemplazo, un tiempo de espera estimado o el reembolso total de tu compra. Nos reservamos el derecho de limitar las cantidades de cualquier producto que ofrecemos o descontinuar cualquier artículo en cualquier momento sin previo aviso."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Precios y Pagos"
+        },
+        {
+          "type": "paragraph",
+          "text": "Todos los precios en nuestra tienda están indicados en Pesos Argentinos y están sujetos a cambios sin previo aviso. El precio aplicable a tu pedido será el que esté publicado en el momento en que confirmes la compra."
+        },
+        {
+          "type": "paragraph",
+          "text": "Aceptamos pagos a través de tarjetas de crédito, débito, Mercado Pago y transferencias bancarias. Al proporcionar tu información de pago, garantizas que estás autorizado a utilizar dicho método de pago y nos autorizas a cargar el monto total de la compra a dicha cuenta. Nos reservamos el derecho de rechazar o cancelar cualquier pedido si sospechas de actividad fraudulenta."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Envíos y Tiempos de Entrega"
+        },
+        {
+          "type": "paragraph",
+          "text": "Realizamos envíos a todo el país. Los tiempos de entrega mostrados al momento del pago son estimaciones y comienzan a contar desde el momento en que el pago ha sido procesado y el pedido ha sido despachado."
+        },
+        {
+          "type": "paragraph",
+          "text": "No nos hacemos responsables por retrasos causados por las empresas de transporte, aduanas o causas de fuerza mayor. El riesgo de pérdida de los productos pasa a ser tuyo una vez que entregamos el paquete al transportista."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Cuentas de Usuario"
+        },
+        {
+          "type": "paragraph",
+          "text": "Para realizar compras, es posible que debas registrarte y crear una cuenta. Eres responsable de mantener la confidencialidad de tu contraseña y de restringir el acceso a tu computadora o dispositivo. Aceptas asumir la responsabilidad de todas las actividades que ocurran bajo tu cuenta. Si sospechas que la seguridad de tu cuenta ha sido comprometida, debes notificarnos inmediatamente."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Propiedad Intelectual Todo el contenido alojado en esta tienda online, incluyendo textos, gráficos, logotipos, imágenes y software, es propiedad de Germán Ignacio Gauna (Shekinah / Herbalario Online) o de sus proveedores de contenido y está protegido por las leyes de propiedad intelectual. Queda estrictamente prohibida la extracción, reutilización o reproducción de cualquier parte del sitio sin nuestro consentimiento expreso por escrito."
+        },
+        {
+          "type": "heading",
+          "text": "Política de Cambios y Reembolsos"
+        },
+        {
+          "type": "paragraph",
+          "text": "En Herbalario Online queremos que tu experiencia de compra sea excelente. Al tratarse de productos naturales y de consumo, contamos con lineamientos estrictos para garantizar la salud y seguridad de todos nuestros clientes."
+        },
+        {
+          "type": "paragraph",
+          "text": "1. Cancelación de Pedidos"
+        },
+        {
+          "type": "paragraph",
+          "text": "Puedes solicitar la cancelación de tu pedido para un reembolso completo siempre y cuando el pedido no haya sido despachado. Una vez que el paquete ha sido entregado a la empresa de transporte, el pedido no puede ser cancelado y deberás iniciar un proceso de devolución estándar una vez que lo recibas."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Condiciones para Devoluciones"
+        },
+        {
+          "type": "paragraph",
+          "text": "Tienes un plazo de 10 días corridos desde la recepción del paquete para solicitar una devolución. Para que un artículo sea elegible para una devolución, debe cumplir estrictamente con lo siguiente:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "El producto debe estar en su embalaje original, completamente sellado y sin signos de haber sido abierto o manipulado. (Por razones de seguridad sanitaria, no aceptamos devoluciones de hierbas o productos de consumo que hayan sido abiertos).",
+            "Debes presentar el comprobante de compra o el número de pedido."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Productos Dañados o Erróneos en el Envío"
+        },
+        {
+          "type": "paragraph",
+          "text": "Si recibes un producto dañado, defectuoso o que no corresponde a lo que pediste, por favor contáctanos dentro de las primeras 48 horas posteriores a la recepción del paquete. Se comunicarán al contacto vía WhatsApp, adjuntando:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Número de pedido.",
+            "Fotografías claras del paquete tal como llegó y del producto dañado/erróneo. En estos casos, nosotros nos haremos cargo de los costos de envío para el reemplazo del producto o, si lo prefieres, emitiremos un reembolso total."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Proceso para Solicitar un Reembolso o Devolución"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Envía un mensaje a través del link de WhatsApp explicando el motivo de la devolución.",
+            "Nuestro equipo revisará tu solicitud y te enviará las instrucciones y la dirección postal a la cual debes enviar el paquete.",
+            "Debes empaquetar el producto de forma segura. Eres responsable de pagar los costos de envío de la devolución (a menos que se trate de un error nuestro o producto dañado en tránsito). Te recomendamos usar un servicio de envío con seguimiento, ya que no podemos procesar el reembolso si el paquete se pierde en el camino.",
+            "Una vez que recibamos e inspeccionemos el artículo, te enviaremos un correo electrónico confirmando la recepción y la aprobación o rechazo de tu reembolso."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Procesamiento del Reembolso"
+        },
+        {
+          "type": "paragraph",
+          "text": "Si tu devolución es aprobada, el reembolso será procesado y se aplicará automáticamente a tu tarjeta de crédito o método de pago original. Los tiempos para que el dinero se vea reflejado en tu cuenta dependen enteramente de tu banco o pasarela de pago (generalmente entre 5 y 15 días hábiles)."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Excepciones / Artículos no retornables"
+        },
+        {
+          "type": "paragraph",
+          "text": "No se aceptan devoluciones ni se emiten reembolsos por:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Productos en liquidación o comprados con cupones de descuento especiales.",
+            "Tarjetas de regalo (Gift cards).",
+            "Productos que muestren signos evidentes de uso o cuyos precintos de seguridad hayan sido violados."
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/tienda/",
+      "kind": "page",
+      "title": "Tienda",
+      "description": "Catálogo original de Shekinah recuperado desde Hostinger Ecommerce.",
+      "eyebrow": "Catálogo recuperado",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Selección de especias, hierbas y semillas.",
+      "publishedAt": "2026-07-20",
+      "blocks": []
+    },
+    {
+      "path": "/blog/",
+      "kind": "page",
+      "title": "Blog",
+      "description": "Historias, cultura gastronómica y usos tradicionales recuperados del sitio original.",
+      "eyebrow": "Publicaciones",
+      "image": "/images/about-spice-shop.webp",
+      "imageAlt": "Frascos con hierbas y especias.",
+      "publishedAt": "2026-07-20",
+      "blocks": []
+    },
+    {
+      "path": "/recetas/",
+      "kind": "page",
+      "title": "Recetas",
+      "description": "Tu brújula en la cocina: recetas y preparaciones recuperadas del sitio original.",
+      "eyebrow": "Recetario",
+      "image": "/images/culinary-kitchen.webp",
+      "imageAlt": "Cocina preparada para recetas artesanales.",
+      "publishedAt": "2026-07-20",
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Recetas únicas"
+        },
+        {
+          "type": "paragraph",
+          "text": "Tu brújula en la cocina. Buscá por especia o ingrediente y descubrí exactamente qué plato podés preparar. Encontrá la receta perfecta para sacarle el máximo provecho a cada tesoro que te lleves."
+        },
+        {
+          "type": "heading",
+          "text": "Chocolate Casero"
+        },
+        {
+          "type": "paragraph",
+          "text": "Huevos, patatas y cebolla, paso a paso."
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "heading",
+          "text": "Barra de Cereal Casero"
+        },
+        {
+          "type": "paragraph",
+          "text": "Nuestros productos especiales"
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "heading",
+          "text": "Sopa Caliente"
+        },
+        {
+          "type": "paragraph",
+          "text": "Caldo de verduras con toque de ajo y perejil."
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "heading",
+          "text": "Pasta Rápida"
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "paragraph",
+          "text": "Espaguetis con salsa de tomate y albahaca fresca."
+        },
+        {
+          "type": "heading",
+          "text": "Postre Dulce"
+        },
+        {
+          "type": "paragraph",
+          "text": "Yogur con miel y frutas de temporada."
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "heading",
+          "text": "Gratis"
+        },
+        {
+          "type": "heading",
+          "text": "Pan Casero"
+        },
+        {
+          "type": "paragraph",
+          "text": "Receta fácil para hacer pan en casa sin complicaciones."
+        }
+      ]
+    }
+  ],
+  "sourceIndex": [
+    {
+      "path": "/nosotros/",
+      "postId": "27",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "98a26936ec9150faaf27c95c82f2bb0f730ecef1b2ab78999cb5d0acddd1037c",
+      "sourceHtmlBytes": 1724
+    },
+    {
+      "path": "/el-viaje-de-las-especias-sabor-y-bienestar/",
+      "postId": "28",
+      "postType": "post",
+      "status": "publish",
+      "sourceHtmlSha256": "096d7e2c4972af79b0c75b2c6c499d441b4ef78792063c31acfa50fc933833ac",
+      "sourceHtmlBytes": 2082
+    },
+    {
+      "path": "/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/",
+      "postId": "33",
+      "postType": "post",
+      "status": "publish",
+      "sourceHtmlSha256": "8a3eb63c93ab6d9da59577eeec42fe1dafef4ee15b9cf2f1c7ddd0f24e7eedfe",
+      "sourceHtmlBytes": 1583
+    },
+    {
+      "path": "/chocolate-casero/",
+      "postId": "32",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "98aa6eaea613bafdddbeb121420b5d7e3a51a0dc9e3af2a9413fe24e89e212b0",
+      "sourceHtmlBytes": 11320
+    },
+    {
+      "path": "/receta-barra-de-cereal/",
+      "postId": "34",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "e813c73f9279e4cb0b2690ab28f13ebe8f6ca9dd8bc378ecf9772bad8017cf2f",
+      "sourceHtmlBytes": 2915
+    },
+    {
+      "path": "/terms-and-conditions/",
+      "postId": "25",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "10c2121ab04769a03db304644a59a4d984484c9f047d997dda2c667b2d806380",
+      "sourceHtmlBytes": 8495
+    },
+    {
+      "path": "/tienda/",
+      "postId": "26",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceHtmlBytes": 0
+    },
+    {
+      "path": "/blog/",
+      "postId": "29",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceHtmlBytes": 0
+    },
+    {
+      "path": "/recetas/",
+      "postId": "30",
+      "postType": "page",
+      "status": "publish",
+      "sourceHtmlSha256": "da46d5c82eb8c4e26a96f6040fe6dfcc31e77e7339a74f98b8c9fd50888749ea",
+      "sourceHtmlBytes": 1654
+    }
+  ],
+  "excludedWordPressItems": [
+    {
+      "postId": "1",
+      "slug": "hello-world",
+      "reason": "Contenido predeterminado de WordPress sin relación comercial."
+    },
+    {
+      "postId": "3",
+      "slug": "privacy-policy",
+      "reason": "Borrador predeterminado no publicado."
+    },
+    {
+      "postId": "4",
+      "slug": "navigation",
+      "reason": "Bloque automático de listado de páginas, reemplazado por navegación explícita."
+    },
+    {
+      "postId": "35",
+      "slug": "terminos-condiciones",
+      "reason": "Plantilla en inglés con marcadores sin completar; se conserva el redirect a la página legal válida."
+    }
+  ],
+  "attachments": {
+    "declared": 20,
+    "originalFilesPresent": 20,
+    "mediaVariantsPresent": 98,
+    "note": "Los activos comerciales y editoriales ya están versionados bajo public/images y public/images/original."
+  },
+  "storeCrossCheck": {
+    "productsRecovered": 510,
+    "categoriesRecovered": 16,
+    "productsStillWithoutFullDescription": 15,
+    "productsStillWithoutProductImage": 1,
+    "wordpressProductMatches": 0,
+    "note": "La extracción WordPress original no contiene tablas ni publicaciones de producto del Hostinger Ecommerce original."
+  }
+}
