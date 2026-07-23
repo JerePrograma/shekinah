@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   appType: 'spa',
+  base: process.env.SITE_BASE_PATH || '/',
   build: {
     target: 'es2022',
     sourcemap: false,
