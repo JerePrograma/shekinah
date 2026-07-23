@@ -8,7 +8,7 @@ const dist = path.join(root, 'dist');
 const ssr = path.join(root, '.ssr');
 const templatePath = path.join(dist, 'index.html');
 const serverEntry = path.join(ssr, 'entry-server.js');
-const siteOrigin = (process.env.SITE_ORIGIN ?? 'https://jereprograma.github.io/shekinah').replace(/\/+$/u, '');
+const siteOrigin = (process.env.SITE_ORIGIN ?? 'https://shekinah-7dl.pages.dev').replace(/\/+$/u, '');
 const configuredBase = process.env.SITE_BASE_PATH ?? '/';
 const siteBasePath = configuredBase === '/' ? '' : `/${configuredBase.replace(/^\/+|\/+$/gu, '')}`;
 
