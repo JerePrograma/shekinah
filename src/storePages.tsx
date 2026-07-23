@@ -1,16 +1,27 @@
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { categories, categoryName, formatPrice, products, type Product } from './catalog';
 import { useCart } from './cart';
 import { StoreLayout } from './storeShell';
 
+const PAGE_SIZE = 24;
+
 function ProductVisual({ product }: { product: Product }) {
   const image = product.images[0];
   if (image) {
-    return <img className="product-visual__image" src={image.src} alt={image.alt} width="900" height="900" />;
+    return (
+      <img
+        className="product-visual__image"
+        src={image.src}
+        alt={image.alt}
+        width="900"
+        height="900"
+        loading="lazy"
+      />
+    );
   }
   return (
-    <div className="product-visual__missing" role="img" aria-label={`Imagen no recuperada para ${product.name}`}>
-      <span>Imagen original pendiente de recuperación verificable</span>
+    <div className="product-visual__missing" role="img" aria-label={`Imagen original no disponible para ${product.name}`}>
+      <span>El producto original no contiene una imagen pública recuperable</span>
     </div>
   );
 }
@@ -24,15 +35,15 @@ function ProductCard({ product }: { product: Product }) {
         <ProductVisual product={product} />
       </a>
       <div className="product-card__body">
-        <p className="product-card__category">{product.categoryIds.map(categoryName).join(' · ')}</p>
+        <p className="product-card__category">{product.categoryIds.map(categoryName).join(' · ') || 'Otros'}</p>
         <h2>
           <a href={product.path}>{product.name}</a>
         </h2>
-        <p>{product.shortDescription}</p>
+        {product.shortDescription ? <p>{product.shortDescription}</p> : null}
         {price ? (
           <p className="product-price">
             {price}
-            <small>Precio público capturado el 23/07/2026</small>
+            <small>Precio público histórico capturado el 23/07/2026</small>
           </p>
         ) : null}
         <div className="product-card__actions">
@@ -51,25 +62,38 @@ function ProductCard({ product }: { product: Product }) {
 export function ShopPage({ categoryId }: { categoryId?: string }) {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categoryId ?? 'all');
+  const [pageNumber, setPageNumber] = useState(1);
   const normalizedQuery = query.trim().toLocaleLowerCase('es-AR');
-  const filtered = products.filter((product) => {
-    const categoryMatches = selectedCategory === 'all' || product.categoryIds.includes(selectedCategory);
-    const queryMatches =
-      !normalizedQuery ||
-      `${product.name} ${product.description ?? ''} ${product.categoryIds.map(categoryName).join(' ')}`
-        .toLocaleLowerCase('es-AR')
-        .includes(normalizedQuery);
-    return categoryMatches && queryMatches;
-  });
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [normalizedQuery, selectedCategory]);
+
+  const filtered = useMemo(
+    () =>
+      products.filter((product) => {
+        const categoryMatches = selectedCategory === 'all' || product.categoryIds.includes(selectedCategory);
+        const queryMatches =
+          !normalizedQuery ||
+          `${product.name} ${product.description ?? ''} ${product.sku ?? ''} ${product.categoryIds.map(categoryName).join(' ')}`
+            .toLocaleLowerCase('es-AR')
+            .includes(normalizedQuery);
+        return categoryMatches && queryMatches;
+      }),
+    [normalizedQuery, selectedCategory],
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(pageNumber, totalPages);
+  const visibleProducts = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <StoreLayout>
       <section className="store-hero">
         <div className="container">
-          <p className="eyebrow">Catálogo recuperado</p>
+          <p className="eyebrow">Catálogo original recuperado</p>
           <h1>{categoryId ? categoryName(categoryId) : 'Tienda'}</h1>
           <p className="lead">
-            Productos demostrables del Hostinger original. Los precios se presentan con su fecha de captura y el pago no se procesa en este sitio.
+            {products.length} productos recuperados del Hostinger original, con IDs, categorías, precios, SKU, descripciones e imágenes públicas versionadas.
           </p>
         </div>
       </section>
@@ -82,7 +106,7 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
                 type="search"
                 value={query}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.currentTarget.value)}
-                placeholder="Nombre o categoría"
+                placeholder="Nombre, SKU o categoría"
               />
             </label>
             <label>
@@ -99,9 +123,23 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
           </div>
           <p className="catalog-result" aria-live="polite">
             {filtered.length === 1 ? '1 producto recuperado' : `${filtered.length} productos recuperados`}
+            {filtered.length > PAGE_SIZE ? ` · Página ${currentPage} de ${totalPages}` : ''}
           </p>
-          {filtered.length ? (
-            <div className="product-grid">{filtered.map((product) => <ProductCard key={product.id} product={product} />)}</div>
+          {visibleProducts.length ? (
+            <>
+              <div className="product-grid">{visibleProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>
+              {totalPages > 1 ? (
+                <nav className="catalog-pagination" aria-label="Paginación del catálogo">
+                  <button type="button" disabled={currentPage === 1} onClick={() => setPageNumber((value) => Math.max(1, value - 1))}>
+                    Anterior
+                  </button>
+                  <span>Página {currentPage} de {totalPages}</span>
+                  <button type="button" disabled={currentPage === totalPages} onClick={() => setPageNumber((value) => Math.min(totalPages, value + 1))}>
+                    Siguiente
+                  </button>
+                </nav>
+              ) : null}
+            </>
           ) : (
             <div className="catalog-empty">
               <h2>Sin coincidencias</h2>
@@ -109,9 +147,9 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
             </div>
           )}
           <aside className="evidence-notice">
-            <strong>Alcance verificable</strong>
+            <strong>Fuente recuperada</strong>
             <p>
-              Este catálogo inicial contiene únicamente productos corroborados en páginas públicas. El importador conserva los faltantes y colisiones para ampliar el inventario sin inventar datos.
+              El catálogo se genera desde la API pública del Store ID original y conserva los datos de procedencia. Los precios son evidencia histórica y deben confirmarse antes de concretar una compra.
             </p>
           </aside>
         </div>
@@ -120,11 +158,11 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
   );
 }
 
-
 export function ProductPage({ product }: { product: Product }) {
   const { add } = useCart();
   const [quantity, setQuantity] = useState(1);
   const price = formatPrice(product);
+  const setSafeQuantity = (value: number) => setQuantity(Number.isFinite(value) ? Math.max(1, Math.min(99, Math.floor(value))) : 1);
   return (
     <StoreLayout>
       <nav className="container store-breadcrumbs" aria-label="Migas de pan">
@@ -138,7 +176,7 @@ export function ProductPage({ product }: { product: Product }) {
         <div className="container product-detail__grid">
           <ProductVisual product={product} />
           <div>
-            <p className="eyebrow">{product.categoryIds.map(categoryName).join(' · ')}</p>
+            <p className="eyebrow">{product.categoryIds.map(categoryName).join(' · ') || 'Otros'}</p>
             <h1>{product.name}</h1>
             {price ? (
               <p className="product-price product-price--large">
@@ -146,9 +184,10 @@ export function ProductPage({ product }: { product: Product }) {
                 <small>Precio histórico público capturado el 23/07/2026</small>
               </p>
             ) : null}
-            <p className="lead">{product.shortDescription}</p>
-            <p>{product.description}</p>
+            {product.shortDescription ? <p className="lead">{product.shortDescription}</p> : null}
+            {product.description ? <p>{product.description}</p> : null}
             {product.unit ? <p><strong>Presentación:</strong> {product.unit}</p> : null}
+            {product.sku ? <p><strong>SKU original:</strong> {product.sku}</p> : null}
             <div className="product-buy">
               <label>
                 <span>Cantidad</span>
@@ -157,7 +196,7 @@ export function ProductPage({ product }: { product: Product }) {
                   min="1"
                   max="99"
                   value={quantity}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) => setQuantity(Math.max(1, Math.min(99, Number(event.currentTarget.value))))}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => setSafeQuantity(Number(event.currentTarget.value))}
                 />
               </label>
               <button className="button" type="button" onClick={() => add(product.id, quantity)}>
@@ -173,4 +212,3 @@ export function ProductPage({ product }: { product: Product }) {
     </StoreLayout>
   );
 }
-

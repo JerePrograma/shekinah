@@ -1,0 +1,150 @@
+name: Restore Complete Hostinger Catalog
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-complete-catalog.yml'
+      - 'scripts/recover-hostinger-catalog.mjs'
+
+permissions:
+  actions: write
+  contents: write
+  statuses: write
+
+concurrency:
+  group: restore-complete-hostinger-catalog
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Recover, validate and publish 510 products
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Publish recovery start
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state='pending' \
+            -f context='shekinah/catalog-recovery' \
+            -f description='Recovering the complete 510-product catalog' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install exact declared dependencies
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        run: npm run install:browsers:ci
+
+      - name: Recover original products, categories and images
+        env:
+          HOSTINGER_STORE_ID: store_01KPB411FQRYAKN8ED2BSRBPZC
+          HOSTINGER_CATALOG_WATERMARK: '2026-07-20T14:23:03.148Z'
+          HOSTINGER_CAPTURE_DATE: '2026-07-23'
+          HOSTINGER_EXPECTED_PRODUCTS: '510'
+        run: npm run recover:catalog
+
+      - name: Validate normalized complete catalog
+        run: npm run validate:content
+
+      - name: Verify application with recovered catalog
+        run: npm run verify
+
+      - name: Review generated diff and prohibited files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git diff --stat
+          git diff --check
+          ! git status --short | grep -E '(\.env|wp-config|\.sql$|\.php$|node_modules|\.wrangler|playwright-report|test-results)' \
+            || { echo '::error::Se generaron archivos prohibidos o temporales'; exit 1; }
+          test "$(node -e "console.log(require('./src/generated/products.json').length)")" = '510'
+          test "$(node -e "console.log(require('./src/generated/categories.json').length)")" = '16'
+          test "$(find public/images/original/catalog -type f | wc -l | tr -d ' ')" -ge '509'
+
+      - name: Upload catalog recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shekinah-complete-catalog-${{ github.sha }}
+          path: |
+            generated/hostinger-catalog
+            docs/fidelity/catalog-manifest.json
+            src/generated/products.json
+            src/generated/categories.json
+            src/generated/site.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - id: publish
+        name: Commit and push recovered catalog to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          remote_sha=$(git rev-parse origin/main)
+          [[ "$remote_sha" == "$GITHUB_SHA" ]] \
+            || { echo "::error::origin/main cambió: esperado $GITHUB_SHA; real $remote_sha"; exit 1; }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            src/generated/products.json \
+            src/generated/categories.json \
+            src/generated/site.json \
+            public/images/original/catalog \
+            generated/hostinger-catalog \
+            docs/fidelity/catalog-manifest.json
+
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            new_sha="$GITHUB_SHA"
+          else
+            git commit -m 'content: restore complete Hostinger catalog'
+            git push origin HEAD:main
+            new_sha=$(git rev-parse HEAD)
+          fi
+          echo "sha=$new_sha" >> "$GITHUB_OUTPUT"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${new_sha}" \
+            -f state='success' \
+            -f context='shekinah/catalog-recovery' \
+            -f description='510 products, 16 categories and original assets restored' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Dispatch CI for the generated catalog commit
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main
+
+      - name: Publish recovery failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state='failure' \
+            -f context='shekinah/catalog-recovery' \
+            -f description='Complete catalog recovery failed' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

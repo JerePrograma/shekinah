@@ -1,6 +1,6 @@
 {
   "name": "shekinah",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,6 +14,7 @@
     "format:check": "node scripts/check-format.mjs",
     "crawl:original": "node scripts/crawl-hostinger-original.mjs",
     "import:original": "node scripts/import-hostinger-original.mjs",
+    "recover:catalog": "node scripts/recover-hostinger-catalog.mjs",
     "validate:content": "node scripts/validate-catalog.mjs",
     "install:browsers": "playwright install chromium",
     "install:browsers:ci": "playwright install --with-deps chromium",
@@ -44,5 +45,5 @@
     "vite": "8.1.5",
     "wrangler": "4.112.0"
   },
-  "description": "Sitio oficial de Shekinah construido con React, TypeScript, catálogo estático recuperado y prerender SEO."
+  "description": "Sitio oficial de Shekinah construido con React, TypeScript y el catálogo original completo recuperado de Hostinger."
 }

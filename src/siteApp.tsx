@@ -4,6 +4,7 @@ import { CartDialog, CartProvider, CommerceDock } from './cart';
 import { canonicalRoutes as contentRoutes, normalizePath } from './content';
 import { ProductPage, ShopPage } from './storePages';
 import './catalog.css';
+import './catalog-pagination.css';
 
 export const canonicalRoutes: string[] = [...new Set([...contentRoutes, ...categories.map((item) => item.path), ...products.map((item) => item.path)])].sort(
   (left, right) => (left === '/' ? -1 : right === '/' ? 1 : left.localeCompare(right)),

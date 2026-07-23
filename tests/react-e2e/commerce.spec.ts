@@ -21,15 +21,24 @@ for (const route of productRoutes) {
   });
 }
 
-test('la tienda busca y filtra productos recuperados', async ({ page }) => {
+test('la tienda pagina, busca y filtra el catálogo completo', async ({ page }) => {
   await page.goto('/tienda/');
   await expect(page.getByRole('heading', { level: 1, name: 'Tienda' })).toBeVisible();
-  await expect(page.locator('.product-card')).toHaveCount(2);
+  const initialCards = await page.locator('.product-card').count();
+  expect(initialCards).toBeGreaterThan(1);
+  expect(initialCards).toBeLessThanOrEqual(24);
+  const resultText = await page.locator('.catalog-result').textContent();
+  const total = Number(resultText?.match(/(\d+) productos recuperados/iu)?.[1] ?? 0);
+  expect(total).toBeGreaterThan(1);
+  if (total > 24) await expect(page.getByRole('navigation', { name: 'Paginación del catálogo' })).toBeVisible();
+
   await page.getByRole('searchbox', { name: 'Buscar' }).fill('guayaba');
   await expect(page.locator('.product-card')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Guayaba hojas x 50 gr' })).toBeVisible();
+
   await page.getByRole('searchbox', { name: 'Buscar' }).fill('');
-  await page.getByLabel('Categoría').selectOption('category-suplementos');
+  await page.getByLabel('Categoría').selectOption({ label: 'Suplementos' });
+  await page.getByRole('searchbox', { name: 'Buscar' }).fill('melena');
   await expect(page.locator('.product-card')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Melena de león Futuro fungi 50ml' })).toBeVisible();
 });
@@ -65,11 +74,11 @@ test('el carrito cierra con Escape y devuelve el foco', async ({ page }) => {
   await expect(trigger).toBeFocused();
 });
 
-test('las categorías finales son navegables y canónicas', async ({ page }) => {
+test('las categorías originales son navegables y canónicas', async ({ page }) => {
   const response = await page.goto('/tienda/categoria/hierbas-medicinales/');
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole('heading', { level: 1, name: 'Hierbas medicinales' })).toBeVisible();
-  await expect(page.locator('.product-card')).toHaveCount(1);
+  await expect(page.getByRole('heading', { level: 1, name: /Hierbas Medicinales/iu })).toBeVisible();
+  expect(await page.locator('.product-card').count()).toBeGreaterThan(0);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://shekinah-7dl.pages.dev/tienda/categoria/hierbas-medicinales/',
