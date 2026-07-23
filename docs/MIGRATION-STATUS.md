@@ -4,71 +4,131 @@ Fecha de actualización: **2026-07-23**.
 
 ## Resultado
 
-La aplicación React/TypeScript continúa como arquitectura productiva, pero ya no sostiene que el Hostinger original carecía de productos, precios o carrito. El sitio público demuestra actividad de tienda; la implementación incorpora un catálogo normalizado, carrito local y consulta por WhatsApp sin simular un checkout recuperado.
+La aplicación React/TypeScript es la fuente productiva y contiene el inventario público completo recuperado desde Hostinger Ecommerce, junto con el contenido editorial extraído de la copia WordPress original.
 
-La migración completa del inventario original **no está cerrada**. El catálogo publicado contiene dos productos usados como controles verificables y la infraestructura necesaria para incorporar el resto desde HTML público capturado o evidencia Hostinger serializada.
+Se recuperaron y versionaron:
 
-## Alcance implementado
+- **510 productos únicos** con ID original `prod_*` y slug único.
+- **16 categorías o colecciones originales**.
+- **510 precios públicos en ARS** con fecha de captura.
+- **432 SKU**.
+- **509 referencias de imagen** descargadas y verificadas.
+- **484 binarios de imagen únicos**, deduplicados mediante SHA-256.
+- Variantes, disponibilidad pública, unidades o fracciones detectables y procedencia por página de API.
+- **9 entradas editoriales comerciales** desde el WXR original.
+- **20 adjuntos originales** y sus relaciones documentadas.
+- Páginas institucionales, artículos, recetas y términos completos recuperables.
 
-- Modelo tipado de producto, categoría, activo, evidencia y procedencia.
-- Contenido determinista en `src/generated/`.
-- Dos productos públicos con nombre, ruta, categoría, descripción, precio ARS, unidad y fecha de captura.
-- Tienda con búsqueda y filtro de categoría.
-- Rutas individuales de producto y rutas finales de categoría.
-- Carrito con `localStorage` versionado, cantidades, eliminación y subtotal.
-- Consulta por WhatsApp al número público verificado; no hay envío automático.
-- Product y Breadcrumb JSON-LD, canonical, Open Graph y sitemap.
-- Crawler público conservador y cacheado.
-- Importador Hostinger/Astro para uno o varios HTML/directorios.
-- Decodificación de tipos Astro 0 a 11 y preservación controlada de tipos desconocidos.
-- Informes de fuentes, rutas, activos, colisiones, faltantes y fidelidad.
-- Pruebas unitarias del extractor y E2E del catálogo/carrito.
-- Wrapper PowerShell conservador para captura, importación y validación local.
+El carrito local, las cantidades, la persistencia, el subtotal y el pedido por WhatsApp se mantienen como flujo comercial explícito. No se simula ni declara recuperado el checkout privado de Hostinger.
 
 ## Fuentes de verdad
 
 ```text
-src/content.ts                     páginas, artículos, recetas y textos legales
-src/generated/products.json        productos demostrables publicados
-src/generated/categories.json      categorías demostrables publicadas
-src/generated/site.json            configuración comercial pública verificada
-src/catalog.ts                     contratos y acceso tipado
-src/siteApp.tsx                    tienda, productos, carrito y rutas comerciales
-scripts/import-hostinger-original.mjs
-scripts/crawl-hostinger-original.mjs
+src/generated/products.json                    510 productos normalizados
+src/generated/categories.json                  16 categorías normalizadas
+src/generated/site.json                        configuración comercial pública
+src/generated/wordpress-original-content.json  contenido editorial consumido por React
+src/content.ts                                  contratos, navegación y rutas editoriales
+src/catalog.ts                                  contratos tipados del catálogo
+src/siteApp.tsx                                 aplicación, páginas y rutas públicas
+src/storePages.tsx                              tienda, categorías y productos
+src/cart.tsx                                    carrito local y pedido por WhatsApp
+docs/fidelity/catalog-manifest.json             métricas y faltantes del catálogo
+docs/fidelity/wordpress-original-manifest.json  procedencia WordPress completa
+scripts/recover-hostinger-catalog.mjs            recuperación reproducible del catálogo
+scripts/restore-wordpress-original.mjs           restauración editorial reproducible
 ```
 
-## Respaldo WordPress inspeccionado
+## Extracción WordPress original
 
-- Archivo: `shekinah-wordpress-reference(2).rar`.
-- Tamaño: `185111245` bytes.
-- SHA-256: `9ecc8d7d2846d34392880cac5f1f41be62794cacf84843c5ec0fb19988fa8ced`.
-- Entradas: `14720`.
-- SQL: 21 tablas con prefijo `wp_`; 35 filas en `wp_posts`, 20 attachments y ningún tipo de producto detectado.
-- Utilidad: páginas, blog, recetas, textos legales e imágenes complementarias.
-- Límite: no representa el inventario Hostinger original y no puede usarse para negar la existencia de productos.
+Archivo inspeccionado: `shekinah.orig.rar`.
 
-No se versionaron ni expusieron `.env`, SQL, `wp-config`, credenciales, usuarios, plugins, temas o datos privados.
+- Tamaño: `515235795` bytes.
+- SHA-256: `8776c2e6da17a229405e6881ed407760a3c4db3c746b5f67c8c190010013b336`.
+- Formato: RAR5.
+- Entradas: `14717`.
+- Tamaño descomprimido: `656669244` bytes.
+- Incluye el árbol WordPress original, `public_html.zip`, dos exportaciones SQL y una exportación WXR.
+- El WXR contiene 34 elementos: 20 adjuntos, 9 páginas publicadas, 3 entradas publicadas, una política de privacidad de ejemplo en borrador y una navegación.
+- WordPress no contiene productos WooCommerce ni registros equivalentes al inventario Hostinger.
+- No se encontraron coincidencias de los IDs o productos faltantes dentro de SQL, WXR, archivos o medios originales.
 
-## Compatibilidad
+La procedencia histórica completa se conserva en documentación. Los hostnames internos, configuraciones, SQL, PHP, credenciales y datos privados no se cargan en el bundle ni se publican en `dist`.
 
-Las rutas institucionales existentes se conservan. Se agregan:
+## Catálogo recuperado
 
-- `/guayaba/`
-- `/melena-de-leon-futuro-fungi-50ml/`
-- `/tienda/categoria/hierbas-medicinales/`
-- `/tienda/categoria/suplementos/`
+La fuente comercial es el API público original asociado a:
 
-El checkout de Hostinger no fue reactivado. El flujo comercial final es local y explícito: carrito informativo → WhatsApp → confirmación externa.
+```text
+store_01KPB411FQRYAKN8ED2BSRBPZC
+```
 
-## Pendientes comprobados
+El catálogo fue recuperado en 26 páginas de API, con offsets `0` a `500`. El generador exige exactamente 510 IDs y slugs únicos, valida cada imagen por MIME y firma binaria, registra hashes de evidencia y bloquea la publicación ante inconsistencias.
 
-- Inventario Hostinger completo no extraído en este entorno.
-- Imágenes originales de los dos productos de control no recuperadas.
-- IDs `prod_*`, SKU, stock y variantes no expuestos por las páginas públicas consultadas.
-- Fidelidad visual completa no medible sin capturas equivalentes del Hostinger activo.
-- Precios son evidencia fechada; no se presentan como garantía de vigencia futura.
+La tienda implementa:
 
-## Validación remota
+- búsqueda por nombre, SKU, descripción y categoría;
+- filtros sobre las 16 categorías;
+- paginación de 24 productos;
+- rutas individuales prerenderizadas;
+- rutas de categoría;
+- carrito accesible y persistente;
+- Product, Breadcrumb y Collection JSON-LD;
+- canonical, Open Graph, sitemap y 404 estático.
 
-GitHub Actions debe validar el SHA exacto antes de que Cloudflare Pages lo despliegue. La conclusión solo puede registrarse después de revisar el workflow y el dominio estable asociados al mismo commit.
+## Contenido editorial restaurado
+
+Se restauraron desde la fuente original:
+
+- `/nosotros/`
+- `/el-viaje-de-las-especias-sabor-y-bienestar/`
+- `/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/`
+- `/chocolate-casero/`
+- `/receta-barra-de-cereal/`
+- `/terms-and-conditions/`
+- `/tienda/`
+- `/blog/`
+- `/recetas/`
+
+La restauración conserva bloques, listas, fechas, IDs, hashes y relaciones de adjuntos. Se excluyen explícitamente contenido de ejemplo, borradores y navegación técnica que no forman parte del sitio comercial final.
+
+## Faltantes comprobados en todas las fuentes disponibles
+
+Estos faltantes no pueden completarse sin una fuente externa adicional y no deben rellenarse con contenido inventado:
+
+- **15 productos** no tienen descripción original completa utilizable.
+- **1 producto**, `Caldo sin sal en polvo`, no tiene imagen pública ni archivo equivalente en WordPress.
+- El checkout privado, pasarelas, credenciales y procesamiento de pagos de Hostinger no están disponibles.
+- Los precios y estados de disponibilidad son evidencia fechada al `2026-07-23`, no una garantía de vigencia futura.
+
+La ausencia fue comprobada contra el API Hostinger, los 14.717 archivos del RAR, `public_html.zip`, ambos SQL, el WXR y la biblioteca de medios. Se mantiene explícita para evitar inventar datos.
+
+## Seguridad y privacidad
+
+No se versionaron ni publicaron:
+
+- `.env`;
+- `wp-config.php`;
+- SQL;
+- PHP;
+- credenciales;
+- claves o tokens;
+- usuarios o pedidos;
+- archivos RAR o ZIP originales;
+- plugins o temas ejecutables.
+
+## Validación
+
+La restauración editorial fue verificada por el workflow `Restore Original WordPress Content` antes de crear el commit de contenido. La verificación incluyó:
+
+- lint y formato;
+- TypeScript;
+- validación de catálogo;
+- build cliente y SSR;
+- prerender de 537 rutas, redirecciones y 404;
+- 14 pruebas unitarias;
+- 64 pruebas Playwright aprobadas y 2 omisiones previstas;
+- auditoría de salida;
+- auditoría de secretos.
+
+El CI principal debe validar el SHA final de `main` antes de que el workflow de Cloudflare Pages despliegue ese mismo commit.
