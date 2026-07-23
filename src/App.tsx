@@ -7,6 +7,7 @@ import {
   posts,
   recipes,
   site,
+  toSitePath,
   type Block,
   type ContentEntry,
 } from './content';
@@ -40,8 +41,8 @@ function Header({ currentPath }: { currentPath: string }) {
   return (
     <header className="site-header">
       <div className="container header-inner">
-        <a className="brand" href="/" aria-label="Shekinah, inicio">
-          <img src="/images/brand-horizontal.webp" alt="Shekinah" width="600" height="162" />
+        <a className="brand" href={toSitePath('/')} aria-label="Shekinah, inicio">
+          <img src={toSitePath('/images/brand-horizontal.webp')} alt="Shekinah" width="600" height="162" />
         </a>
         <button
           className="menu-toggle"
@@ -64,7 +65,7 @@ function Header({ currentPath }: { currentPath: string }) {
             {navigation.map((item) => (
               <li key={item.href}>
                 <a
-                  href={item.href}
+                  href={toSitePath(item.href)}
                   aria-current={isCurrent(currentPath, item.href) ? 'page' : undefined}
                   onClick={() => setOpen(false)}
                 >
@@ -86,7 +87,7 @@ function Footer() {
         <section aria-labelledby="footer-brand">
           <img
             className="footer-logo"
-            src="/images/brand-lockup.webp"
+            src={toSitePath('/images/brand-lockup.webp')}
             alt="Shekinah, herbolario y tienda gourmet"
             width="1200"
             height="670"
@@ -103,14 +104,14 @@ function Footer() {
             {[...navigation, { href: '/terms-and-conditions/', label: 'Términos y condiciones' }].map(
               (item) => (
                 <li key={item.href}>
-                  <a href={item.href}>{item.label}</a>
+                  <a href={toSitePath(item.href)}>{item.label}</a>
                 </li>
               ),
             )}
           </ul>
         </nav>
         <section aria-labelledby="footer-contact">
-          <h2 id="footer-contact">Contacto público</h2>
+          <h2 id="footer-contact">Contacto</h2>
           <p>
             <a href={`mailto:${site.email}`}>{site.email}</a>
           </p>
@@ -118,7 +119,7 @@ function Footer() {
         </section>
       </div>
       <div className="container footer-bottom">
-        <p>© {new Date().getFullYear()} Shekinah. Contenido y aplicación versionados en el repositorio.</p>
+        <p>© {new Date().getFullYear()} Shekinah. Todos los derechos reservados.</p>
       </div>
     </footer>
   );
@@ -164,7 +165,7 @@ function Hero({
         {image ? (
           <img
             className="page-hero__image"
-            src={image}
+            src={toSitePath(image)}
             alt={imageAlt ?? ''}
             width="1600"
             height="900"
@@ -184,10 +185,10 @@ function ContentCard({ entry, meta }: { entry: ContentEntry; meta: string }) {
   const image = imageForEntry(entry);
   return (
     <article className="card content-card">
-      <a className="content-card__image-link" href={entry.path} tabIndex={-1} aria-hidden="true">
+      <a className="content-card__image-link" href={toSitePath(entry.path)} tabIndex={-1} aria-hidden="true">
         <img
           className="card__media"
-          src={image.src}
+          src={toSitePath(image.src)}
           alt=""
           width="1200"
           height="750"
@@ -197,10 +198,10 @@ function ContentCard({ entry, meta }: { entry: ContentEntry; meta: string }) {
       <div className="card__body">
         <p className="card__meta">{meta}</p>
         <h2>
-          <a href={entry.path}>{entry.title}</a>
+          <a href={toSitePath(entry.path)}>{entry.title}</a>
         </h2>
         <p>{entry.description}</p>
-        <a className="content-card__more" href={entry.path}>
+        <a className="content-card__more" href={toSitePath(entry.path)}>
           Leer más <span aria-hidden="true">→</span>
         </a>
       </div>
@@ -259,7 +260,7 @@ function OriginalGallery({ title, images }: { title: string; images: OriginalIma
   return (
     <section className="original-gallery" aria-labelledby="original-gallery-title">
       <div className="original-gallery__heading">
-        <p className="eyebrow">Archivo visual recuperado</p>
+        <p className="eyebrow">Galería</p>
         <h2 id="original-gallery-title">{title}</h2>
       </div>
       <div className="original-gallery__grid">
@@ -271,7 +272,7 @@ function OriginalGallery({ title, images }: { title: string; images: OriginalIma
             aria-label={`Ampliar imagen ${index + 1}: ${image.alt}`}
             onClick={() => setSelected(index)}
           >
-            <img src={image.src} alt={image.alt} width="1200" height="900" loading="lazy" />
+            <img src={toSitePath(image.src)} alt={image.alt} width="1200" height="900" loading="lazy" />
           </button>
         ))}
       </div>
@@ -284,7 +285,7 @@ function OriginalGallery({ title, images }: { title: string; images: OriginalIma
             aria-label="Imagen ampliada"
             onMouseDown={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}
           >
-            <img className="lightbox__image" src={activeImage.src} alt={activeImage.alt} />
+            <img className="lightbox__image" src={toSitePath(activeImage.src)} alt={activeImage.alt} />
             <button
               className="lightbox__close"
               type="button"
@@ -351,7 +352,7 @@ function Home() {
     },
     {
       title: 'Recetas',
-      description: 'Preparaciones recuperadas y editadas con límites de evidencia explícitos.',
+      description: 'Preparaciones artesanales para disfrutar y compartir.',
       href: '/recetas/',
       image: media?.features?.[2],
     },
@@ -367,10 +368,10 @@ function Home() {
         imageAlt={media?.hero.alt ?? 'Interior de un herbolario con estantes llenos de frascos de especias.'}
       >
         <div className="cluster hero-actions">
-          <a className="button" href="/tienda/">
+          <a className="button" href={toSitePath('/tienda/')}>
             Explorar el catálogo
           </a>
-          <a className="button button--secondary" href="/recetas/">
+          <a className="button button--secondary" href={toSitePath('/recetas/')}>
             Ver recetas
           </a>
         </div>
@@ -383,15 +384,14 @@ function Home() {
               <h2>Sabores que conectan territorios</h2>
             </div>
             <p className="lead">
-              Shekinah combina herbolario, tienda gourmet y contenidos prácticos para aprender a usar
-              cada ingrediente.
+              Shekinah combina herbolario, tienda gourmet y contenidos prácticos para aprender a usar cada ingrediente.
             </p>
           </div>
           <div className="grid grid--3 feature-grid">
             {features.map((feature) => (
               <article className="feature-card" key={feature.title}>
                 <img
-                  src={feature.image?.src ?? '/images/about-spice-shop.webp'}
+                  src={toSitePath(feature.image?.src ?? '/images/about-spice-shop.webp')}
                   alt={feature.image?.alt ?? ''}
                   width="1024"
                   height="768"
@@ -400,7 +400,7 @@ function Home() {
                 <div>
                   <h3>{feature.title}</h3>
                   <p>{feature.description}</p>
-                  <a href={feature.href}>Conocer más</a>
+                  <a href={toSitePath(feature.href)}>Conocer más</a>
                 </div>
               </article>
             ))}
@@ -411,7 +411,7 @@ function Home() {
         <div className="container split">
           <img
             className="split__image"
-            src={media?.featured?.src ?? '/images/about-spice-shop.webp'}
+            src={toSitePath(media?.featured?.src ?? '/images/about-spice-shop.webp')}
             alt={media?.featured?.alt ?? 'Herbolario con frascos ordenados.'}
             width="1800"
             height="870"
@@ -421,14 +421,12 @@ function Home() {
             <p className="eyebrow">Nuestra esencia</p>
             <h2>Amor por el origen</h2>
             <p className="lead">
-              Shekinah propone acercar ingredientes botánicos con respeto por la tierra, atención a la
-              calidad y una mirada que une bienestar y alta cocina.
+              Shekinah propone acercar ingredientes botánicos con respeto por la tierra, atención a la calidad y una mirada que une bienestar y alta cocina.
             </p>
             <p>
-              La aplicación conserva esa promesa, incorpora las imágenes originales recuperadas y reemplaza
-              definitivamente la infraestructura anterior por código React y contenido versionado.
+              Seleccionamos ingredientes y contenidos que combinan tradición, calidad y una experiencia de compra simple.
             </p>
-            <a className="button button--secondary" href="/nosotros/">
+            <a className="button button--secondary" href={toSitePath('/nosotros/')}>
               Conocer la historia
             </a>
           </div>
@@ -436,26 +434,6 @@ function Home() {
       </section>
       <ListingSection title="Del herbolario a la mesa" eyebrow="Últimas publicaciones" entries={latestPosts} />
       <ListingSection title="Preparaciones para experimentar" eyebrow="Recetario" entries={recipes} dark />
-      <section className="section evidence-stats" aria-labelledby="evidence-title">
-        <div className="container">
-          <p className="eyebrow">Señales recuperadas</p>
-          <h2 id="evidence-title">Una presencia comercial con historia</h2>
-          <div className="stats-grid">
-            <div>
-              <strong>+1.200</strong>
-              <span>envíos a todo el país informados en el sitio original</span>
-            </div>
-            <div>
-              <strong>+790</strong>
-              <span>ventas en Mercado Libre informadas en el sitio original</span>
-            </div>
-            <div>
-              <strong>100%</strong>
-              <span>contenido actual versionado y sin base de datos</span>
-            </div>
-          </div>
-        </div>
-      </section>
     </>
   );
 }
@@ -487,7 +465,7 @@ function ListingSection({
               entry={entry}
               meta={
                 entry.kind === 'recipe'
-                  ? 'Receta recuperada'
+                  ? 'Receta'
                   : new Date(`${entry.publishedAt ?? '2026-01-01'}T12:00:00Z`).toLocaleDateString('es-AR', {
                       year: 'numeric',
                       month: 'long',
@@ -519,13 +497,13 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
         <nav className="container" aria-label="Migas de pan">
           <ol className="breadcrumbs">
             <li>
-              <a href="/">Inicio</a>
+              <a href={toSitePath('/')}>Inicio</a>
             </li>
             <li>
               {entry.kind === 'post' ? (
-                <a href="/blog/">Blog</a>
+                <a href={toSitePath('/blog/')}>Blog</a>
               ) : entry.kind === 'recipe' ? (
-                <a href="/recetas/">Recetas</a>
+                <a href={toSitePath('/recetas/')}>Recetas</a>
               ) : (
                 'Página'
               )}
@@ -538,7 +516,7 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
         <div className="reading prose">
           {entry.kind === 'recipe' && entry.ingredients ? (
             <section className="recipe-panel" aria-labelledby="ingredients-title">
-              <h2 id="ingredients-title">Ingredientes identificados</h2>
+              <h2 id="ingredients-title">Ingredientes</h2>
               <ul>
                 {entry.ingredients.map((ingredient) => (
                   <li key={ingredient}>{ingredient}</li>
@@ -546,7 +524,7 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
               </ul>
               {entry.instructions && entry.instructions.length > 0 ? (
                 <>
-                  <h2>Resumen del procedimiento</h2>
+                  <h2>Procedimiento</h2>
                   <ol>
                     {entry.instructions.map((instruction) => (
                       <li key={instruction}>{instruction}</li>
@@ -554,27 +532,13 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
                   </ol>
                 </>
               ) : (
-                <p className="notice">El procedimiento completo no estaba disponible en la evidencia recuperada.</p>
+                <p className="notice">Consultanos para conocer el procedimiento completo.</p>
               )}
             </section>
           ) : null}
           <Blocks blocks={entry.blocks} />
-          {media?.gallery ? <OriginalGallery title="Galería original" images={media.gallery} /> : null}
+          {media?.gallery ? <OriginalGallery title="Imágenes" images={media.gallery} /> : null}
           {media?.testimonial ? <Testimonial {...media.testimonial} /> : null}
-          {entry.path === '/tienda/' ? (
-            <div className="contact-callout">
-              <strong>Consultas de disponibilidad</strong>
-              <p>La tienda original no contenía carrito ni precios verificables. La consulta directa sigue disponible.</p>
-              <div className="contact-actions">
-                <a className="button" href={`mailto:${site.email}?subject=Consulta%20de%20disponibilidad%20Shekinah`}>
-                  Consultar por correo
-                </a>
-                <a className="button button--secondary" href="/recetas/">
-                  Ver recetas
-                </a>
-              </div>
-            </div>
-          ) : null}
         </div>
       </article>
     </>
@@ -584,7 +548,7 @@ function EntryPage({ entry }: { entry: ContentEntry }) {
 function ListingPage({ kind }: { kind: 'blog' | 'recipes' }) {
   const list = kind === 'blog' ? posts : recipes;
   const referenceEntry = kind === 'blog' ? posts[0] : recipes[0];
-  const originalHero = referenceEntry ? getOriginalMedia(referenceEntry.path)?.hero : undefined;
+  const heroImage = referenceEntry ? getOriginalMedia(referenceEntry.path)?.hero : undefined;
   return (
     <>
       <Hero
@@ -593,12 +557,12 @@ function ListingPage({ kind }: { kind: 'blog' | 'recipes' }) {
         description={
           kind === 'blog'
             ? 'Cultura gastronómica, perfiles aromáticos y formas responsables de acercarse a hierbas y especias.'
-            : 'Preparaciones documentadas desde la evidencia recuperada, con sus imágenes originales.'
+            : 'Preparaciones artesanales, ideas y recetas para disfrutar en casa.'
         }
-        image={originalHero?.src ?? (kind === 'blog' ? '/images/about-spice-shop.webp' : '/images/culinary-kitchen.webp')}
-        imageAlt={originalHero?.alt ?? (kind === 'blog' ? 'Frascos con hierbas y especias.' : 'Cocina preparada para recetas artesanales.')}
+        image={heroImage?.src ?? (kind === 'blog' ? '/images/about-spice-shop.webp' : '/images/culinary-kitchen.webp')}
+        imageAlt={heroImage?.alt ?? (kind === 'blog' ? 'Frascos con hierbas y especias.' : 'Cocina preparada para recetas artesanales.')}
       />
-      <ListingSection title={kind === 'blog' ? 'Publicaciones' : 'Preparaciones'} eyebrow="Contenido versionado" entries={list} />
+      <ListingSection title={kind === 'blog' ? 'Publicaciones' : 'Preparaciones'} eyebrow="Contenido destacado" entries={list} />
     </>
   );
 }
@@ -607,12 +571,10 @@ function LegacyCategory() {
   return (
     <section className="section">
       <div className="reading empty-state">
-        <p className="eyebrow">Ruta histórica</p>
+        <p className="eyebrow">Archivo</p>
         <h1>Archivo sin categoría</h1>
-        <p className="lead">
-          Esta URL se conserva para no romper enlaces antiguos. Las publicaciones actuales están organizadas en el blog.
-        </p>
-        <a className="button" href="/blog/">
+        <p className="lead">Las publicaciones actuales están organizadas en el blog.</p>
+        <a className="button" href={toSitePath('/blog/')}>
           Abrir el blog
         </a>
       </div>
@@ -627,7 +589,7 @@ function NotFound() {
         <p className="eyebrow">Error 404</p>
         <h1>Página no encontrada</h1>
         <p className="lead">La dirección solicitada no existe o fue movida.</p>
-        <a className="button" href="/">
+        <a className="button" href={toSitePath('/')}>
           Volver al inicio
         </a>
       </div>
