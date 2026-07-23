@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const siteOrigin = 'https://jereprograma.github.io/shekinah';
+const siteOrigin = 'https://shekinah-7dl.pages.dev';
 const productRoutes = ['/guayaba/', '/melena-de-leon-futuro-fungi-50ml/'];
 
 for (const route of productRoutes) {
