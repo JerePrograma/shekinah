@@ -1,4 +1,4 @@
-name: CI and GitHub Pages
+name: CI and Cloudflare Pages
 
 on:
   push:
@@ -7,17 +7,19 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
   statuses: write
 
 concurrency:
-  group: github-pages-production
+  group: cloudflare-pages-production
   cancel-in-progress: true
+
+env:
+  SITE_BASE_PATH: /
+  SITE_ORIGIN: https://shekinah-7dl.pages.dev
 
 jobs:
   validate:
-    name: Validate and package application
+    name: Validate application
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -57,7 +59,7 @@ jobs:
       - name: Validate catalog
         run: npm run validate:content
 
-      - name: Build local production output
+      - name: Build production output
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,28 +101,6 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high --no-package-lock
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Build GitHub Pages output
-        env:
-          SITE_BASE_PATH: /shekinah/
-          SITE_ORIGIN: https://jereprograma.github.io/shekinah
-        run: npm run build
-
-      - name: Audit GitHub Pages output
-        env:
-          SITE_BASE_PATH: /shekinah/
-          SITE_ORIGIN: https://jereprograma.github.io/shekinah
-        run: |
-          npm run audit:output
-          npm run audit:copy
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
       - name: Publish validation result
         if: always()
         continue-on-error: true
@@ -141,45 +121,49 @@ jobs:
             -f description="$description" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-  deploy:
-    name: Deploy and verify GitHub Pages
+  verify-production:
+    name: Verify Cloudflare Pages production
     if: github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
-      pages: write
-      id-token: write
       statuses: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy artifact
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish production verification start
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state='pending' \
+            -f context='shekinah/cloudflare-pages' \
+            -f description='Waiting for Cloudflare Pages production' \
+            -f target_url='https://shekinah-7dl.pages.dev/'
 
       - name: Verify production site
         shell: bash
-        env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           set -euo pipefail
-          base="${PAGE_URL%/}"
-          [[ -n "$base" ]] || { echo '::error::GitHub Pages no informó una URL'; exit 1; }
-
+          base="${SITE_ORIGIN%/}"
           ready='false'
-          for attempt in $(seq 1 30); do
+
+          for attempt in $(seq 1 60); do
             body=$(curl --fail --silent --show-error --location --retry 2 --retry-delay 2 "$base/tienda/" || true)
-            if grep -qi '<title>' <<< "$body" && grep -qi 'Shekinah' <<< "$body"; then
+            if grep -qi '<title>' <<< "$body" \
+              && grep -qi 'Shekinah' <<< "$body" \
+              && grep -Fqi "rel=\"canonical\" href=\"$base/tienda/\"" <<< "$body" \
+              && ! grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|jereprograma\.github\.io' <<< "$body"; then
               ready='true'
               break
             fi
-            sleep 10
+            sleep 15
           done
-          [[ "$ready" == 'true' ]] || { echo '::error::El sitio publicado no quedó disponible'; exit 1; }
+
+          [[ "$ready" == 'true' ]] || { echo '::error::Cloudflare Pages no publicó todavía el estado esperado de main'; exit 1; }
 
           html_routes=(
             /
@@ -187,36 +171,44 @@ jobs:
             /blog/
             /recetas/
             /guayaba/
+            /tienda/categoria/hierbas-medicinales/
           )
           for route in "${html_routes[@]}"; do
             body=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base$route")
             grep -qi '<title>' <<< "$body" || { echo "::error::$route no contiene title"; exit 1; }
             grep -qi 'Shekinah' <<< "$body" || { echo "::error::$route no contiene la marca"; exit 1; }
-            if grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|Cloudflare|pages\.dev' <<< "$body"; then
+            grep -Fqi "rel=\"canonical\" href=\"$base$route\"" <<< "$body" \
+              || { echo "::error::$route no contiene el canonical productivo"; exit 1; }
+            if grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|jereprograma\.github\.io' <<< "$body"; then
               echo "::error::$route expone texto técnico o residual"
               exit 1
             fi
           done
 
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/robots.txt" | grep -qi 'Sitemap:'
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/sitemap.xml" | grep -qi '<urlset'
+          robots=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/robots.txt")
+          grep -Fqi "Sitemap: $base/sitemap.xml" <<< "$robots" \
+            || { echo '::error::robots.txt no apunta al sitemap productivo'; exit 1; }
 
-      - name: Publish deployment status
+          sitemap=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/sitemap.xml")
+          grep -Fqi "<loc>$base/" <<< "$sitemap" \
+            || { echo '::error::sitemap.xml no apunta al dominio productivo'; exit 1; }
+
+      - name: Publish production verification result
         if: always()
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           state='failure'
-          description='GitHub Pages deployment or verification failed'
+          description='Cloudflare Pages production verification failed'
           if [[ "$JOB_STATUS" == 'success' ]]; then
             state='success'
-            description='GitHub Pages deployed and verified'
+            description='Cloudflare Pages production verified'
           fi
           gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
             -f state="$state" \
-            -f context='shekinah/github-pages' \
+            -f context='shekinah/cloudflare-pages' \
             -f description="$description" \
-            -f target_url="${PAGE_URL:-${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}}"
+            -f target_url='https://shekinah-7dl.pages.dev/'
