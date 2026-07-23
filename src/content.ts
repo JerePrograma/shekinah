@@ -11,7 +11,7 @@ export const site = {
   description:
     'Especias, hierbas, semillas, productos naturales y recetas para disfrutar todos los días.',
   locale: 'es-AR',
-  origin: 'https://jereprograma.github.io/shekinah',
+  origin: 'https://shekinah-7dl.pages.dev',
   email: 'german.gauna@yahoo.com.ar',
   legalName: 'Germán Ignacio Gauna',
   legalIdentifier: '20-25957366-2',
