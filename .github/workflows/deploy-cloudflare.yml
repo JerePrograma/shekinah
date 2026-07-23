@@ -47,6 +47,57 @@ jobs:
           [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo '::error::Falta CLOUDFLARE_API_TOKEN'; exit 1; }
           [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || { echo '::error::Falta CLOUDFLARE_ACCOUNT_ID'; exit 1; }
 
+      - id: project
+        name: Ensure main is the Cloudflare production branch
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-diagnostics
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/shekinah"
+          auth=(--header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --header 'Content-Type: application/json')
+
+          curl --fail-with-body --silent --show-error "${auth[@]}" "$api" \
+            > .deploy-diagnostics/project-before.json
+          node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const payload = JSON.parse(readFileSync('.deploy-diagnostics/project-before.json', 'utf8'));
+          if (payload.success !== true || !payload.result) {
+            throw new Error(`Cloudflare no devolvió el proyecto: ${JSON.stringify(payload.errors ?? [])}`);
+          }
+          NODE
+
+          branch=$(node -e "const p=require('./.deploy-diagnostics/project-before.json'); process.stdout.write(p.result.production_branch || '')")
+          if [[ "$branch" != 'main' ]]; then
+            printf 'Cloudflare production_branch actual: %s; se corrige a main.\n' "${branch:-ausente}"
+            curl --fail-with-body --silent --show-error \
+              --request PATCH "${auth[@]}" \
+              --data '{"production_branch":"main"}' \
+              "$api" > .deploy-diagnostics/project-after.json
+          else
+            cp .deploy-diagnostics/project-before.json .deploy-diagnostics/project-after.json
+          fi
+
+          node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const payload = JSON.parse(readFileSync('.deploy-diagnostics/project-after.json', 'utf8'));
+          if (payload.success !== true || payload.result?.production_branch !== 'main') {
+            throw new Error(`No se pudo establecer production_branch=main: ${JSON.stringify(payload.errors ?? payload.result)}`);
+          }
+          NODE
+
+          stable_url=$(node - <<'NODE'
+          const payload = require('./.deploy-diagnostics/project-after.json');
+          const raw = String(payload.result.subdomain ?? '').trim();
+          if (!raw) throw new Error('Cloudflare no informó el subdominio estable del proyecto.');
+          process.stdout.write(new URL(raw.includes('://') ? raw : `https://${raw}`).origin);
+          NODE
+          )
+          echo "stable-url=$stable_url" >> "$GITHUB_OUTPUT"
+          echo "Cloudflare estable: $stable_url"
+
       - name: Checkout validated commit
         uses: actions/checkout@v6
         with:
@@ -76,15 +127,62 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/deploy-cloudflare.mjs 2>&1 | tee deployment.log
-          url=$(grep -Eo 'https://[A-Za-z0-9._-]+\.pages\.dev' deployment.log | tail -n 1 || true)
-          [[ -n "$url" ]] || url='https://shekinah-7dl.pages.dev'
+          url=$(grep -Eo 'https://[A-Za-z0-9._-]+\.pages\.dev' deployment.log | head -n 1 || true)
+          [[ -n "$url" ]] || url='${{ steps.project.outputs.stable-url }}'
           echo "deployment-url=$url" >> "$GITHUB_OUTPUT"
+
+      - id: canonical
+        name: Wait for the canonical production deployment
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-diagnostics
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/shekinah"
+          ready='false'
+
+          for attempt in $(seq 1 60); do
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "$api" > .deploy-diagnostics/project-current.json
+
+            canonical_sha=$(node -e "const p=require('./.deploy-diagnostics/project-current.json'); process.stdout.write(p.result?.canonical_deployment?.deployment_trigger?.metadata?.commit_hash || '')")
+            canonical_env=$(node -e "const p=require('./.deploy-diagnostics/project-current.json'); process.stdout.write(p.result?.canonical_deployment?.environment || '')")
+            latest_sha=$(node -e "const p=require('./.deploy-diagnostics/project-current.json'); process.stdout.write(p.result?.latest_deployment?.deployment_trigger?.metadata?.commit_hash || '')")
+            printf 'Cloudflare canonical intento %s/60: canonical=%s env=%s latest=%s esperado=%s\n' \
+              "$attempt" "${canonical_sha:-ausente}" "${canonical_env:-ausente}" "${latest_sha:-ausente}" "$SOURCE_SHA"
+
+            if [[ "$canonical_sha" == "$SOURCE_SHA" && "$canonical_env" == 'production' ]]; then
+              ready='true'
+              break
+            fi
+            sleep 5
+          done
+
+          [[ "$ready" == 'true' ]] || {
+            printf '%s\n' 'canonical-deployment-sha' > .deploy-diagnostics/failure-context
+            echo '::error::Cloudflare no promovió el SHA validado como canonical_deployment de producción.'
+            exit 1
+          }
+
+          canonical_url=$(node - <<'NODE'
+          const payload = require('./.deploy-diagnostics/project-current.json');
+          const raw = String(payload.result?.canonical_deployment?.url ?? '').trim();
+          if (!raw) throw new Error('Cloudflare no informó la URL del canonical_deployment.');
+          process.stdout.write(new URL(raw.includes('://') ? raw : `https://${raw}`).origin);
+          NODE
+          )
+          echo "canonical-url=$canonical_url" >> "$GITHUB_OUTPUT"
 
       - name: Verify deployment and stable domain
         shell: bash
         env:
           DEPLOYMENT_URL: ${{ steps.publish.outputs.deployment-url }}
-          STABLE_URL: https://shekinah-7dl.pages.dev
+          CANONICAL_URL: ${{ steps.canonical.outputs.canonical-url }}
+          STABLE_URL: ${{ steps.project.outputs.stable-url }}
         run: |
           set -euo pipefail
           mkdir -p .deploy-diagnostics
@@ -118,18 +216,21 @@ jobs:
             printf 'PASS %s%s\n' "$base" "$route" | tee -a "$log"
           }
 
+          [[ -n "$STABLE_URL" ]] || fail_verification 'stable-url-empty' 'Cloudflare no informó el dominio estable'
+          [[ -n "$CANONICAL_URL" ]] || fail_verification 'canonical-url-empty' 'Cloudflare no informó la URL canónica del despliegue'
+
           ready='false'
-          for attempt in $(seq 1 24); do
+          for attempt in $(seq 1 60); do
             body=$(curl --fail --show-error --silent --location --retry 2 --retry-delay 2 --retry-all-errors "$STABLE_URL/guayaba/" || true)
             if grep -qi '<title>' <<< "$body" && grep -qi 'Guayaba hojas x 50 gr' <<< "$body" && grep -qi 'rel="canonical"' <<< "$body"; then
               ready='true'
               printf 'Dominio estable actualizado en intento %s.\n' "$attempt" | tee -a "$log"
               break
             fi
-            printf 'Dominio estable todavía no refleja el catálogo; intento %s/24.\n' "$attempt" | tee -a "$log"
+            printf 'Dominio estable todavía no refleja el catálogo; intento %s/60.\n' "$attempt" | tee -a "$log"
             sleep 5
           done
-          [[ "$ready" == 'true' ]] || fail_verification 'stable-rollout-guayaba' 'El dominio estable no reflejó el nuevo catálogo dentro de 120 segundos'
+          [[ "$ready" == 'true' ]] || fail_verification 'stable-rollout-guayaba' 'El dominio estable no reflejó el canonical_deployment dentro de 300 segundos'
 
           routes=(
             /
@@ -149,6 +250,9 @@ jobs:
           )
           for route in "${routes[@]}"; do
             verify_route 'deployment' "$DEPLOYMENT_URL" "$route"
+          done
+          for route in "${routes[@]}"; do
+            verify_route 'canonical' "$CANONICAL_URL" "$route"
           done
           for route in "${routes[@]}"; do
             verify_route 'stable' "$STABLE_URL" "$route"
