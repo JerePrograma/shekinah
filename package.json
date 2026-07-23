@@ -8,8 +8,9 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 4321",
-    "typecheck": "tsc --noEmit",
+    "prepare:data": "node scripts/prepare-public-data.mjs",
+    "dev": "npm run prepare:data && vite --host 127.0.0.1 --port 4321",
+    "typecheck": "npm run prepare:data && tsc --noEmit",
     "lint": "eslint src scripts tests vite.config.ts",
     "format:check": "node scripts/check-format.mjs",
     "validate:content": "node scripts/validate-catalog.mjs",
