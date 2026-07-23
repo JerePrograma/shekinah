@@ -7,9 +7,8 @@ const textExtensions = new Set(['.css', '.html', '.js', '.json', '.txt', '.webma
 const prohibited = [
   /\bHostinger\b/iu,
   /\bWordPress\b/iu,
-  /\bCloudflare\b/iu,
   /herbalarioonline\.com/iu,
-  /pages\.dev/iu,
+  /jereprograma\.github\.io\/shekinah/iu,
   /\bmigraci[oó]n(?:es)?\b/iu,
   /\bproductos?\s+recuperad[oa]s?\b/iu,
   /\bcat[aá]logo\s+original(?:\s+recuperado)?\b/iu,
