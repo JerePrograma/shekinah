@@ -1,0 +1,69 @@
+name: Recover Hostinger Store
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-store.yml'
+      - 'scripts/recover-live-store.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover-hostinger-store
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Capture public Hostinger store evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install declared dependencies
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npm run install:browsers:ci
+
+      - name: Capture hydrated store, network and public archives
+        env:
+          STORE_ORIGIN: https://herbalarioonline.com
+          RECOVERY_OUTPUT: .migration-work/live-store
+          RECOVERY_MAX_PAGES: '1000'
+        run: node scripts/recover-live-store.mjs
+
+      - name: Import captured Astro data
+        shell: bash
+        run: |
+          set +e
+          node scripts/import-hostinger-original.mjs \
+            --source .migration-work/live-store/html \
+            --output generated/hostinger-live \
+            --assets .migration-work/live-store/assets \
+            --download-assets \
+            > .migration-work/live-store/import.stdout.log \
+            2> .migration-work/live-store/import.stderr.log
+          code=$?
+          echo "$code" > .migration-work/live-store/import.exit-code.txt
+          exit 0
+
+      - name: Upload complete recovery evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: shekinah-live-store-recovery-${{ github.sha }}
+          path: |
+            .migration-work/live-store
+            generated/hostinger-live
+          if-no-files-found: error
+          retention-days: 14
