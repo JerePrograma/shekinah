@@ -5,13 +5,14 @@ import path from 'node:path';
 const root = path.resolve('dist');
 const maxAssetBytes = 25 * 1024 * 1024;
 const maxFiles = 20_000;
-const siteOrigin = (process.env.SITE_ORIGIN ?? 'https://jereprograma.github.io/shekinah').replace(/\/+$/u, '');
+const siteOrigin = (process.env.SITE_ORIGIN ?? 'https://shekinah-7dl.pages.dev').replace(/\/+$/u, '');
 const productionUrl = new URL(`${siteOrigin}/`);
 const configuredBase = process.env.SITE_BASE_PATH ?? '/';
 const siteBasePath = configuredBase === '/' ? '' : `/${configuredBase.replace(/^\/+|\/+$/gu, '')}`;
 const forbidden = [
   /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/giu,
   /chocolate-chimpanzee-908881\.hostingersite\.com/giu,
+  /jereprograma\.github\.io\/shekinah/giu,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gu,
   /\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|DB_PASSWORD)\s*[:=]/giu,
 ];
