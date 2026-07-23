@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/restore-wordpress-original.yml'
       - 'scripts/restore-wordpress-original.mjs'
+      - 'scripts/data/wordpress-original-payload/**'
 
 permissions:
   contents: write
@@ -52,12 +53,17 @@ jobs:
         run: node scripts/restore-wordpress-original.mjs
 
       - name: Verify complete application
-        run: npm run verify
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .wordpress-restore
+          npm run verify 2>&1 | tee .wordpress-restore/verify.log
 
       - name: Review exact generated diff
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .wordpress-restore
           git status --short
           git diff --stat
           git diff --check
@@ -84,6 +90,7 @@ jobs:
           path: |
             docs/fidelity/wordpress-original-manifest.json
             src/generated/wordpress-original-content.json
+            .wordpress-restore/verify.log
           if-no-files-found: error
           retention-days: 14
 
