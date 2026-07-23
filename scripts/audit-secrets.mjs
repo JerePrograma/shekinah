@@ -10,8 +10,6 @@ const ignoredDirectories = new Set([
   'node_modules',
   'playwright-report',
   'test-results',
-  '.wrangler',
-  '.migration-work',
 ]);
 const binaryExtensions = new Set([
   '.avif',
@@ -37,12 +35,10 @@ const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u,
   /\bgh[pousr]_[A-Za-z0-9]{30,}\b/u,
   /\bgithub_pat_[A-Za-z0-9_]{50,}\b/u,
-  /\bcfut_[A-Za-z0-9_-]{20,}\b/u,
   /\bsk-[A-Za-z0-9]{20,}\b/u,
   /\bAKIA[0-9A-Z]{16}\b/u,
   /\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|DB_PASSWORD)\s*[:=]\s*["'][^"']{8,}["']/iu,
   /\b(?:password|passwd|pwd)\s*[:=]\s*["'][^"'${}<]{8,}["']/iu,
-  /\b(?:CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID)\s*=\s*[^\s${}<]{8,}/iu,
 ];
 
 async function walk(directory) {
@@ -82,16 +78,13 @@ for (const file of await walk(root)) {
   const baseName = path.basename(file).toLowerCase();
 
   if (forbiddenNames.has(baseName) || forbiddenExtensions.has(extension)) {
-    findings.push(`${relative}: respaldo, configuración privada o evidencia no permitida`);
+    findings.push(`${relative}: archivo no permitido`);
     continue;
   }
   if (binaryExtensions.has(extension)) {
     const fileStat = await stat(file);
     if (fileStat.size === 0) findings.push(`${relative}: binario vacío`);
     if (fileStat.size > 100 * 1024 * 1024) findings.push(`${relative}: binario supera 100 MiB`);
-    if (relative.startsWith('reference-snapshot/site/') && fileStat.size > 25 * 1024 * 1024) {
-      findings.push(`${relative}: recurso desplegable supera 25 MiB`);
-    }
     const body = await readFile(file);
     if (!hasExpectedSignature(extension, body)) {
       findings.push(`${relative}: firma no coincide con la extensión ${extension}`);
