@@ -26,7 +26,7 @@ for (const route of routes) {
     await expect(page.locator('main#main-content')).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       'href',
-      `https://shekinah-7dl.pages.dev${route}`,
+      `https://jereprograma.github.io/shekinah${route}`,
     );
     await expect(page.locator('body')).not.toContainText('Hello world!');
     await expect(page.locator('body')).not.toContainText('trans-current-year');
