@@ -29,14 +29,14 @@ const routeDefaults: Record<string, Pick<SeoData, 'title' | 'description' | 'ima
   },
   '/recetas/': {
     title: 'Recetas — Shekinah',
-    description: 'Preparaciones recuperadas y documentadas con límites de evidencia explícitos.',
+    description: 'Recetas e ideas para descubrir nuevos sabores en casa.',
     image: '/images/original/recipe-chocolate.jpg',
     type: 'website',
     noindex: false,
   },
   '/category/uncategorized/': {
     title: 'Archivo sin categoría — Shekinah',
-    description: 'Ruta histórica conservada para compatibilidad. El contenido se encuentra en el blog.',
+    description: 'Archivo de publicaciones de Shekinah. El contenido actualizado se encuentra en el blog.',
     image: '/images/original/home-spice-chest.jpg',
     type: 'website',
     noindex: true,
@@ -44,7 +44,7 @@ const routeDefaults: Record<string, Pick<SeoData, 'title' | 'description' | 'ima
 };
 
 function absolute(path: string): string {
-  return new URL(path, site.origin).toString();
+  return new URL(path.replace(/^\/+/, ''), `${site.origin}/`).toString();
 }
 
 export function getSeo(pathValue: string): SeoData {
