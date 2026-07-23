@@ -59,7 +59,9 @@ function entities(value) {
 
 function toText(html) {
   if (!html) return null;
-  return entities(String(html)
+  const source = String(html).trim();
+  if (/^MISSING DESCRIPTION$/iu.test(source)) return null;
+  return entities(source
     .replace(/<br\s*\/?\s*>/giu, '\n')
     .replace(/<\/(?:p|div|h[1-6]|ul|ol)>/giu, '\n\n')
     .replace(/<li[^>]*>/giu, '\n- ')
