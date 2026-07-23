@@ -1,5 +1,6 @@
 node_modules/
 /dist/
+/src/generated-public/
 .astro/
 .playwright/
 playwright-report/
