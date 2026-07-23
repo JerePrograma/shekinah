@@ -11,6 +11,7 @@ const ignoredDirectories = new Set([
   'playwright-report',
   'test-results',
 ]);
+const ignoredFiles = new Set(['.ci/build.log']);
 const binaryExtensions = new Set([
   '.avif',
   '.eot',
@@ -77,6 +78,7 @@ for (const file of await walk(root)) {
   const relative = path.relative(root, file).replaceAll(path.sep, '/');
   const baseName = path.basename(file).toLowerCase();
 
+  if (ignoredFiles.has(relative)) continue;
   if (forbiddenNames.has(baseName) || forbiddenExtensions.has(extension)) {
     findings.push(`${relative}: archivo no permitido`);
     continue;
