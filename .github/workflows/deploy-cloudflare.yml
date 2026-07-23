@@ -86,14 +86,29 @@ jobs:
           STABLE_URL: https://shekinah-7dl.pages.dev
         run: |
           set -euo pipefail
-          routes=(/ /nosotros/ /tienda/ /blog/ /recetas/ /chocolate-casero/ /receta-barra-de-cereal/ /terms-and-conditions/ /robots.txt /sitemap.xml)
+          routes=(
+            /
+            /nosotros/
+            /tienda/
+            /tienda/categoria/hierbas-medicinales/
+            /tienda/categoria/suplementos/
+            /guayaba/
+            /melena-de-leon-futuro-fungi-50ml/
+            /blog/
+            /recetas/
+            /chocolate-casero/
+            /receta-barra-de-cereal/
+            /terms-and-conditions/
+            /robots.txt
+            /sitemap.xml
+          )
           for base in "$DEPLOYMENT_URL" "$STABLE_URL"; do
             for route in "${routes[@]}"; do
               body=$(curl --fail --show-error --silent --location --retry 8 --retry-delay 5 "$base$route")
               if [[ "$route" == */ ]]; then
                 grep -qi '<title>' <<< "$body" || { echo "::error::$base$route no contiene title"; exit 1; }
                 grep -qi 'rel="canonical"' <<< "$body" || { echo "::error::$base$route no contiene canonical"; exit 1; }
-                ! grep -Eqi 'Hello world!|trans-[a-z_-]+|wp-admin|wp-login' <<< "$body" || { echo "::error::$base$route conserva marcadores WordPress"; exit 1; }
+                ! grep -Eqi 'Hello world!|trans-[a-z_-]+|wp-admin|wp-login|la tienda original no contenía productos|la tienda original no contenía carrito' <<< "$body" || { echo "::error::$base$route conserva contenido residual"; exit 1; }
               fi
             done
           done

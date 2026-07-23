@@ -1,0 +1,74 @@
+[
+  {
+    "availability": null,
+    "capturedAt": "2026-07-23",
+    "categoryIds": [
+      "category-hierbas-medicinales"
+    ],
+    "currency": "ARS",
+    "description": "Hojas de guayaba presentadas en un paquete de 50 gramos. El producto público estaba clasificado dentro de Hierbas medicinales.",
+    "evidence": [
+      {
+        "capturedAt": "2026-07-23",
+        "note": "Nombre, categoría, precio ARS y presentación verificados en la página pública.",
+        "source": "https://herbalarioonline.com/guayaba",
+        "sourceType": "hostinger-public"
+      }
+    ],
+    "id": "public-guayaba-hojas-50g",
+    "images": [],
+    "minimumFraction": 1,
+    "name": "Guayaba hojas x 50 gr",
+    "originalId": null,
+    "originalPath": "/guayaba",
+    "path": "/guayaba/",
+    "price": 8999,
+    "provenance": "hostinger-public",
+    "salePrice": null,
+    "shortDescription": "Hojas de guayaba, presentación pública de 50 gramos.",
+    "sku": null,
+    "slug": "guayaba",
+    "unit": "paquete de 50 g",
+    "variants": [],
+    "warnings": [
+      "ID prod_* no expuesto por la página pública.",
+      "Imagen original todavía no recuperada."
+    ]
+  },
+  {
+    "availability": null,
+    "capturedAt": "2026-07-23",
+    "categoryIds": [
+      "category-suplementos"
+    ],
+    "currency": "ARS",
+    "description": "Extracto de melena de león de Futuro Fungi en presentación pública de 50 ml. El producto estaba clasificado dentro de Suplementos.",
+    "evidence": [
+      {
+        "capturedAt": "2026-07-23",
+        "note": "Nombre, categoría, precio ARS y presentación verificados en la página pública.",
+        "source": "https://herbalarioonline.com/melena-de-leon-futuro-fungi-50ml",
+        "sourceType": "hostinger-public"
+      }
+    ],
+    "id": "public-melena-de-leon-futuro-fungi-50ml",
+    "images": [],
+    "minimumFraction": 1,
+    "name": "Melena de león Futuro fungi 50ml",
+    "originalId": null,
+    "originalPath": "/melena-de-leon-futuro-fungi-50ml",
+    "path": "/melena-de-leon-futuro-fungi-50ml/",
+    "price": 32500,
+    "provenance": "hostinger-public",
+    "salePrice": null,
+    "shortDescription": "Extracto de melena de león, presentación pública de 50 ml.",
+    "sku": null,
+    "slug": "melena-de-leon-futuro-fungi-50ml",
+    "unit": "frasco de 50 ml",
+    "variants": [],
+    "warnings": [
+      "ID prod_* no expuesto por la página pública.",
+      "Imagen original todavía no recuperada."
+    ]
+  }
+]

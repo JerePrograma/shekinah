@@ -39,10 +39,16 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Validate normalized catalog source
+        run: npm run validate:content
+
       - name: Build and prerender public routes
         run: npm run build
 
-      - name: Run architecture and output tests
+      - name: Validate prerendered catalog output
+        run: npm run validate:content
+
+      - name: Run architecture, importer and output tests
         run: npm run test:unit
 
       - name: Run browser tests

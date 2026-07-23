@@ -1,0 +1,16 @@
+[
+  {
+    "id": "category-hierbas-medicinales",
+    "name": "Hierbas medicinales",
+    "path": "/tienda/categoria/hierbas-medicinales/",
+    "provenance": "hostinger-public",
+    "slug": "hierbas-medicinales"
+  },
+  {
+    "id": "category-suplementos",
+    "name": "Suplementos",
+    "path": "/tienda/categoria/suplementos/",
+    "provenance": "hostinger-public",
+    "slug": "suplementos"
+  }
+]
