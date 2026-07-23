@@ -2,55 +2,53 @@
 
 Fecha de actualización: **2026-07-23**.
 
-## Workflow
+## Validación
 
 Archivo: `.github/workflows/ci.yml`.
 
-Se ejecuta con cada push a `main` y también admite ejecución manual.
+El workflow `CI` se ejecuta con cada push a `main` y también admite ejecución manual. El trabajo `validate` realiza:
 
-## Validación bloqueante
-
-El trabajo `validate` ejecuta, en este orden:
-
-1. publica el estado `shekinah/validation`;
+1. publicación del estado `shekinah/validation`;
 2. checkout del commit exacto;
-3. configuración de Node.js mediante `.nvmrc`;
-4. instalación de dependencias;
-5. instalación de Chromium;
-6. ESLint;
-7. verificación de formato;
-8. validación del catálogo;
-9. build y prerender con el origen productivo de Cloudflare;
-10. validación del contenido generado;
-11. pruebas unitarias;
-12. pruebas de navegador;
-13. auditoría estructural de `dist/`;
-14. auditoría de la copia pública;
-15. auditoría de seguridad del repositorio;
-16. auditoría de dependencias productivas.
+3. configuración de Node.js;
+4. instalación de dependencias y Chromium;
+5. ESLint y formato;
+6. validación del catálogo;
+7. build y prerender con el origen productivo;
+8. validación del contenido generado;
+9. pruebas unitarias y de navegador;
+10. auditorías de estructura, copia pública, secretos y dependencias.
 
-El resultado se publica como estado del commit. Los fallos de build incluyen un diagnóstico breve enlazado al run correspondiente.
+El resultado se publica sobre el SHA validado. Un fallo impide que se inicie el workflow de despliegue.
 
-## Publicación y verificación
+## Despliegue
 
-Cloudflare Pages publica `main` mediante su integración con GitHub. GitHub Actions no sube un artefacto ni utiliza Wrangler, por lo que no requiere secretos de Cloudflare.
+Archivo: `.github/workflows/deploy-cloudflare.yml`.
 
-Después de una validación exitosa, el trabajo `verify-production`:
+`Deploy Cloudflare Pages` se dispara mediante `workflow_run` únicamente cuando `CI` termina correctamente sobre `main`.
 
-- espera que `https://shekinah-7dl.pages.dev/` refleje el estado esperado;
-- comprueba inicio, tienda, blog, recetas, un producto y una categoría;
-- valida títulos y canonicals;
-- rechaza vocabulario técnico o dominios anteriores;
-- comprueba `robots.txt` y `sitemap.xml`;
-- publica el estado `shekinah/cloudflare-pages`.
+El trabajo de publicación:
 
-La espera evita marcar como fallido un commit mientras Cloudflare todavía está procesando el deployment de la misma rama.
+1. obtiene el SHA validado;
+2. comprueba las credenciales y el proyecto remoto;
+3. confirma `production_branch=main`;
+4. reconstruye y audita `dist/` desde ese SHA;
+5. publica con Wrangler;
+6. espera que Cloudflare promueva el mismo SHA a producción;
+7. verifica URLs de deployment, canónica y estable;
+8. comprueba rutas, canonicals, sitemap, robots y ausencia de contenido residual;
+9. publica `shekinah/cloudflare-pages` sobre el commit.
 
-## Permisos
+## Permisos y secretos
 
-El workflow utiliza únicamente:
+Ambos workflows utilizan:
 
 - `contents: read`;
 - `statuses: write`.
 
-No necesita `pages: write`, `id-token: write`, entornos de GitHub Pages ni credenciales externas.
+El workflow de despliegue usa el environment `cloudflare-pages-production` y sus secretos:
+
+- `CLOUDFLARE_API_TOKEN`;
+- `CLOUDFLARE_ACCOUNT_ID`.
+
+No se utilizan permisos de GitHub Pages, `id-token`, ramas de publicación ni artefactos permanentes.
