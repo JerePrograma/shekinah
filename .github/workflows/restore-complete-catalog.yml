@@ -77,7 +77,27 @@ jobs:
             || { echo '::error::Se generaron archivos prohibidos o temporales'; exit 1; }
           test "$(node -e "console.log(require('./src/generated/products.json').length)")" = '510'
           test "$(node -e "console.log(require('./src/generated/categories.json').length)")" = '16'
-          test "$(find public/images/original/catalog -type f | wc -l | tr -d ' ')" -ge '509'
+          node --input-type=module <<'NODE'
+          import { access, readdir, readFile } from 'node:fs/promises';
+          import path from 'node:path';
+
+          const assets = JSON.parse(await readFile('generated/hostinger-catalog/assets.json', 'utf8'));
+          if (assets.length !== 509) throw new Error(`Se esperaban 509 referencias de imagen y hay ${assets.length}.`);
+          const failed = assets.filter((asset) => asset.status !== 'downloaded');
+          if (failed.length) throw new Error(`Hay ${failed.length} referencias de imagen no descargadas.`);
+
+          const localPaths = new Set(assets.map((asset) => asset.localPath));
+          if (localPaths.has(undefined) || localPaths.has(null)) throw new Error('Hay activos descargados sin localPath.');
+          for (const localPath of localPaths) {
+            await access(path.join('public', localPath.replace(/^\//u, '').replace(/^images\//u, 'images/')));
+          }
+
+          const physicalFiles = await readdir('public/images/original/catalog');
+          if (physicalFiles.length !== localPaths.size) {
+            throw new Error(`Deduplicación inconsistente: ${localPaths.size} rutas locales y ${physicalFiles.length} archivos físicos.`);
+          }
+          process.stdout.write(`509 referencias verificadas y ${physicalFiles.length} binarios únicos deduplicados por SHA-256.\n`);
+          NODE
 
       - name: Upload catalog recovery evidence
         if: always()
