@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { verifiedStore } from './catalog';
 import { quantityLabel, useCart } from './cart';
+import { toSitePath } from './content';
 
 function StoreHeader() {
   const { lines, setOpen } = useCart();
@@ -14,15 +15,15 @@ function StoreHeader() {
       </div>
       <header className="store-header">
         <div className="container store-header__inner">
-          <a className="store-brand" href="/" aria-label="Shekinah, inicio">
-            <img src="/images/brand-horizontal.webp" alt="Shekinah" width="600" height="162" />
+          <a className="store-brand" href={toSitePath('/')} aria-label="Shekinah, inicio">
+            <img src={toSitePath('/images/brand-horizontal.webp')} alt="Shekinah" width="600" height="162" />
           </a>
           <nav aria-label="Navegación principal de la tienda">
-            <a href="/">Inicio</a>
-            <a href="/tienda/">Tienda</a>
-            <a href="/recetas/">Recetas</a>
-            <a href="/blog/">Blog</a>
-            <a href="/nosotros/">Nosotros</a>
+            <a href={toSitePath('/')}>Inicio</a>
+            <a href={toSitePath('/tienda/')}>Tienda</a>
+            <a href={toSitePath('/recetas/')}>Recetas</a>
+            <a href={toSitePath('/blog/')}>Blog</a>
+            <a href={toSitePath('/nosotros/')}>Nosotros</a>
           </nav>
           <button className="cart-trigger" type="button" onClick={() => setOpen(true)} aria-haspopup="dialog">
             Carrito <span aria-label={quantityLabel(lines)}>{lines.reduce((total, line) => total + line.quantity, 0)}</span>
@@ -38,13 +39,13 @@ function StoreFooter() {
     <footer className="store-footer">
       <div className="container store-footer__grid">
         <div>
-          <img src="/images/brand-lockup.webp" alt="Shekinah" width="1200" height="670" />
-          <p>Herbolario y tienda gourmet. Contenido recuperado con procedencia explícita.</p>
+          <img src={toSitePath('/images/brand-lockup.webp')} alt="Shekinah" width="1200" height="670" />
+          <p>Herbolario y tienda gourmet con productos seleccionados para tu cocina.</p>
         </div>
         <nav aria-label="Navegación legal">
-          <a href="/terms-and-conditions/">Términos y condiciones</a>
-          <a href="/blog/">Blog</a>
-          <a href="/recetas/">Recetas</a>
+          <a href={toSitePath('/terms-and-conditions/')}>Términos y condiciones</a>
+          <a href={toSitePath('/blog/')}>Blog</a>
+          <a href={toSitePath('/recetas/')}>Recetas</a>
         </nav>
         <div>
           <strong>Consultas</strong>
@@ -70,4 +71,3 @@ export function StoreLayout({ children }: { children: ReactNode }) {
     </>
   );
 }
-
