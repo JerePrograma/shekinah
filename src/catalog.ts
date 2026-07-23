@@ -1,5 +1,5 @@
-import categoryData from './generated/categories.json';
-import productData from './generated/products.json';
+import categoryData from './generated-public/categories.json';
+import productData from './generated-public/products.json';
 import storeData from './generated/site.json';
 
 export interface ProductImage {
