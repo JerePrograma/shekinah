@@ -60,7 +60,7 @@ if (fullCatalog && products.length !== 510) errors.push(`Catálogo incompleto: s
 if (fullCatalog && categories.length !== 16) errors.push(`Categorías incompletas: se esperaban 16 y hay ${categories.length}.`);
 if (!/^54\d{10,13}$/u.test(site.whatsappNumber)) errors.push('Número de WhatsApp normalizado inválido.');
 if (site.locale !== 'es-AR') errors.push(`Locale inesperado: ${site.locale}`);
-if (site.checkoutRecovered !== false) errors.push('La configuración de checkout debe permanecer deshabilitada.');
+if (site.checkoutEnabled !== false) errors.push('La configuración de checkout debe permanecer deshabilitada.');
 
 try {
   await access('dist');
