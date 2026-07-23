@@ -20,8 +20,8 @@ function ProductVisual({ product }: { product: Product }) {
     );
   }
   return (
-    <div className="product-visual__missing" role="img" aria-label={`Imagen original no disponible para ${product.name}`}>
-      <span>El producto original no contiene una imagen pública recuperable</span>
+    <div className="product-visual__missing" role="img" aria-label={`Imagen no disponible para ${product.name}`}>
+      <span>Imagen no disponible</span>
     </div>
   );
 }
@@ -40,12 +40,7 @@ function ProductCard({ product }: { product: Product }) {
           <a href={product.path}>{product.name}</a>
         </h2>
         {product.shortDescription ? <p>{product.shortDescription}</p> : null}
-        {price ? (
-          <p className="product-price">
-            {price}
-            <small>Precio público histórico capturado el 23/07/2026</small>
-          </p>
-        ) : null}
+        {price ? <p className="product-price">{price}</p> : null}
         <div className="product-card__actions">
           <a className="button button--secondary" href={product.path}>
             Ver producto
@@ -90,11 +85,9 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
     <StoreLayout>
       <section className="store-hero">
         <div className="container">
-          <p className="eyebrow">Catálogo original recuperado</p>
+          <p className="eyebrow">Catálogo</p>
           <h1>{categoryId ? categoryName(categoryId) : 'Tienda'}</h1>
-          <p className="lead">
-            {products.length} productos recuperados del Hostinger original, con IDs, categorías, precios, SKU, descripciones e imágenes públicas versionadas.
-          </p>
+          <p className="lead">Explorá nuestros productos, categorías y presentaciones disponibles.</p>
         </div>
       </section>
       <section className="section">
@@ -122,7 +115,7 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
             </label>
           </div>
           <p className="catalog-result" aria-live="polite">
-            {filtered.length === 1 ? '1 producto recuperado' : `${filtered.length} productos recuperados`}
+            {filtered.length === 1 ? '1 producto' : `${filtered.length} productos`}
             {filtered.length > PAGE_SIZE ? ` · Página ${currentPage} de ${totalPages}` : ''}
           </p>
           {visibleProducts.length ? (
@@ -143,15 +136,9 @@ export function ShopPage({ categoryId }: { categoryId?: string }) {
           ) : (
             <div className="catalog-empty">
               <h2>Sin coincidencias</h2>
-              <p>No hay productos recuperados que coincidan con esos filtros.</p>
+              <p>No hay productos que coincidan con esos filtros.</p>
             </div>
           )}
-          <aside className="evidence-notice">
-            <strong>Fuente recuperada</strong>
-            <p>
-              El catálogo se genera desde la API pública del Store ID original y conserva los datos de procedencia. Los precios son evidencia histórica y deben confirmarse antes de concretar una compra.
-            </p>
-          </aside>
         </div>
       </section>
     </StoreLayout>
@@ -178,16 +165,11 @@ export function ProductPage({ product }: { product: Product }) {
           <div>
             <p className="eyebrow">{product.categoryIds.map(categoryName).join(' · ') || 'Otros'}</p>
             <h1>{product.name}</h1>
-            {price ? (
-              <p className="product-price product-price--large">
-                {price}
-                <small>Precio histórico público capturado el 23/07/2026</small>
-              </p>
-            ) : null}
+            {price ? <p className="product-price product-price--large">{price}</p> : null}
             {product.shortDescription ? <p className="lead">{product.shortDescription}</p> : null}
             {product.description ? <p>{product.description}</p> : null}
             {product.unit ? <p><strong>Presentación:</strong> {product.unit}</p> : null}
-            {product.sku ? <p><strong>SKU original:</strong> {product.sku}</p> : null}
+            {product.sku ? <p><strong>SKU:</strong> {product.sku}</p> : null}
             <div className="product-buy">
               <label>
                 <span>Cantidad</span>
