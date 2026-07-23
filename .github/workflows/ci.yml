@@ -35,7 +35,10 @@ jobs:
         run: npm run install:browsers:ci
 
       - name: Lint React, TypeScript, scripts and tests
-        run: npm run lint
+        shell: bash
+        run: |
+          mkdir -p .ci
+          npm run lint 2>&1 | tee .ci/lint.log
 
       - name: Check formatting
         run: npm run format:check
@@ -80,6 +83,15 @@ jobs:
         with:
           name: playwright-report-${{ github.sha }}
           path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload CI diagnostics
+        if: always() && hashFiles('.ci/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.sha }}
+          path: .ci
           if-no-files-found: ignore
           retention-days: 7
 
