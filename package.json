@@ -24,7 +24,8 @@
     "audit:output": "node scripts/audit-output.mjs",
     "audit:copy": "node scripts/audit-public-copy.mjs",
     "audit:secrets": "node scripts/audit-secrets.mjs",
-    "verify": "npm run lint && npm run format:check && npm run validate:content && npm run build && npm run validate:content && npm run test:unit && npm run test:e2e && npm run audit:output && npm run audit:copy && npm run audit:secrets"
+    "verify": "npm run lint && npm run format:check && npm run validate:content && npm run build && npm run validate:content && npm run test:unit && npm run test:e2e && npm run audit:output && npm run audit:copy && npm run audit:secrets",
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
   },
   "dependencies": {
     "react": "19.2.7",
@@ -40,7 +41,8 @@
     "eslint": "10.7.0",
     "globals": "17.7.0",
     "typescript": "6.0.3",
-    "vite": "8.1.5"
+    "vite": "8.1.5",
+    "wrangler": "4.112.0"
   },
   "description": "Sitio oficial de Shekinah construido con React, TypeScript y Vite."
 }
