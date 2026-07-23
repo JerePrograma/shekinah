@@ -1,4 +1,4 @@
-import wordpressOriginal from './generated/wordpress-original-content.json';
+import editorialData from './generated/wordpress-original-content.json';
 
 const configuredBase = import.meta.env.BASE_URL || '/';
 
@@ -47,23 +47,11 @@ export interface ContentEntry {
   blocks: Block[];
 }
 
-interface WordPressOriginalContent {
+interface EditorialContent {
   entries: ContentEntry[];
-  source: {
-    archiveFile: string;
-    archiveSha256: string;
-    archiveBytes: number;
-    wxrFile: string;
-    wxrSha256: string;
-    capturedDate: string;
-  };
 }
 
-const editorialContent = wordpressOriginal as unknown as WordPressOriginalContent;
-
-export const entries: ContentEntry[] = editorialContent.entries;
-export const wordpressOriginalSource = editorialContent.source;
-
+export const entries: ContentEntry[] = (editorialData as unknown as EditorialContent).entries;
 export const posts = entries.filter((entry) => entry.kind === 'post');
 export const recipes = entries.filter((entry) => entry.kind === 'recipe');
 
