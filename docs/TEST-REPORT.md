@@ -17,7 +17,7 @@ Fecha de actualización: **2026-07-23**.
 - Prerender de rutas canónicas, redirecciones y 404.
 - Títulos, descripciones, canonical, Open Graph, Twitter Cards y JSON-LD.
 - Sitemap y robots con la URL final de Cloudflare Pages.
-- Validación de publicación desde la raíz `/`.
+- Publicación desde la raíz `/`.
 
 ### Pruebas unitarias
 
@@ -45,16 +45,18 @@ Fecha de actualización: **2026-07-23**.
 - Patrones de secretos y configuraciones privadas.
 - Dependencias productivas con vulnerabilidades de severidad alta.
 
-### Producción
+### Publicación y producción
 
-El trabajo `verify-production` comprueba sobre `https://shekinah-7dl.pages.dev/`:
+El workflow `Deploy Cloudflare Pages` valida además:
 
-- disponibilidad después del deployment de Cloudflare;
-- rutas principales, producto y categoría;
-- títulos y canonicals productivos;
-- ausencia de frases técnicas o dominios anteriores;
-- `robots.txt` y `sitemap.xml`.
+- reconstrucción del SHA aprobado por `CI`;
+- consistencia de `dist/` antes de publicar;
+- identificación del mismo SHA en el deployment canónico de Cloudflare;
+- disponibilidad de las URLs de deployment, canónica y estable;
+- rutas principales, productos, categorías y páginas editoriales;
+- títulos, canonicals, sitemap y robots productivos;
+- ausencia de frases técnicas, dominios anteriores e identificadores internos.
 
 ## Ejecución
 
-El workflow `.github/workflows/ci.yml` marca el commit como fallido cuando no pasa una validación local. La publicación la realiza Cloudflare Pages desde `main`; GitHub Actions verifica después el resultado servido en producción.
+`.github/workflows/ci.yml` bloquea la publicación ante cualquier fallo local. `.github/workflows/deploy-cloudflare.yml` solo se ejecuta tras un `CI` exitoso de `main` y publica exactamente el SHA que fue validado.
