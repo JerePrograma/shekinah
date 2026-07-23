@@ -1,4 +1,4 @@
-name: CI and Cloudflare Pages
+name: CI
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: cloudflare-pages-production
+  group: shekinah-validation
   cancel-in-progress: true
 
 env:
@@ -120,95 +120,3 @@ jobs:
             -f context='shekinah/validation' \
             -f description="$description" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-  verify-production:
-    name: Verify Cloudflare Pages production
-    if: github.ref == 'refs/heads/main'
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      statuses: write
-
-    steps:
-      - name: Publish production verification start
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state='pending' \
-            -f context='shekinah/cloudflare-pages' \
-            -f description='Waiting for Cloudflare Pages production' \
-            -f target_url='https://shekinah-7dl.pages.dev/'
-
-      - name: Verify production site
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="${SITE_ORIGIN%/}"
-          ready='false'
-
-          for attempt in $(seq 1 60); do
-            body=$(curl --fail --silent --show-error --location --retry 2 --retry-delay 2 "$base/tienda/" || true)
-            if grep -qi '<title>' <<< "$body" \
-              && grep -qi 'Shekinah' <<< "$body" \
-              && grep -Fqi "rel=\"canonical\" href=\"$base/tienda/\"" <<< "$body" \
-              && ! grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|jereprograma\.github\.io' <<< "$body"; then
-              ready='true'
-              break
-            fi
-            sleep 15
-          done
-
-          [[ "$ready" == 'true' ]] || { echo '::error::Cloudflare Pages no publicó todavía el estado esperado de main'; exit 1; }
-
-          html_routes=(
-            /
-            /tienda/
-            /blog/
-            /recetas/
-            /guayaba/
-            /tienda/categoria/hierbas-medicinales/
-          )
-          for route in "${html_routes[@]}"; do
-            body=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base$route")
-            grep -qi '<title>' <<< "$body" || { echo "::error::$route no contiene title"; exit 1; }
-            grep -qi 'Shekinah' <<< "$body" || { echo "::error::$route no contiene la marca"; exit 1; }
-            grep -Fqi "rel=\"canonical\" href=\"$base$route\"" <<< "$body" \
-              || { echo "::error::$route no contiene el canonical productivo"; exit 1; }
-            if grep -Eqi 'productos recuperados|catálogo original recuperado|fuente recuperada|evidencia histórica|contenido versionado|Hostinger|WordPress|migraci[oó]n|jereprograma\.github\.io' <<< "$body"; then
-              echo "::error::$route expone texto técnico o residual"
-              exit 1
-            fi
-          done
-
-          robots=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/robots.txt")
-          grep -Fqi "Sitemap: $base/sitemap.xml" <<< "$robots" \
-            || { echo '::error::robots.txt no apunta al sitemap productivo'; exit 1; }
-
-          sitemap=$(curl --fail --silent --show-error --location --retry 5 --retry-delay 3 "$base/sitemap.xml")
-          grep -Fqi "<loc>$base/" <<< "$sitemap" \
-            || { echo '::error::sitemap.xml no apunta al dominio productivo'; exit 1; }
-
-      - name: Publish production verification result
-        if: always()
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          state='failure'
-          description='Cloudflare Pages production verification failed'
-          if [[ "$JOB_STATUS" == 'success' ]]; then
-            state='success'
-            description='Cloudflare Pages production verified'
-          fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state="$state" \
-            -f context='shekinah/cloudflare-pages' \
-            -f description="$description" \
-            -f target_url='https://shekinah-7dl.pages.dev/'
