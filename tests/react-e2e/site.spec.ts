@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+const siteOrigin = 'https://shekinah-7dl.pages.dev';
 const routes = [
   '/',
   '/nosotros/',
@@ -24,10 +25,7 @@ for (const route of routes) {
     expect(response?.status()).toBe(200);
     await expect(page.locator('h1')).toHaveCount(1);
     await expect(page.locator('main#main-content')).toBeVisible();
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      'href',
-      `https://jereprograma.github.io/shekinah${route}`,
-    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${siteOrigin}${route}`);
     await expect(page.locator('body')).not.toContainText('Hello world!');
     await expect(page.locator('body')).not.toContainText('trans-current-year');
     expect(errors).toEqual([]);
