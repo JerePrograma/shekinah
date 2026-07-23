@@ -6,26 +6,32 @@ Fecha de actualización: **2026-07-23**.
 
 - Repositorio: `JerePrograma/shekinah`.
 - Rama de producción: `main`.
+- Proyecto de Cloudflare Pages: `shekinah`.
 - Directorio generado: `dist/`.
-- URL: `https://shekinah-7dl.pages.dev/`.
-- Publicador: integración de Cloudflare Pages con GitHub.
-- Comando de build: `npm run build`.
-- Directorio de salida: `dist`.
+- URL estable: `https://shekinah-7dl.pages.dev/`.
+- Publicador: GitHub Actions mediante Wrangler.
+- Configuración: `wrangler.jsonc`.
 
 ## Flujo
 
 1. Un commit llega a `main`.
-2. GitHub Actions instala dependencias y ejecuta lint, formato, validación de contenido, build, pruebas y auditorías.
-3. Cloudflare Pages detecta el mismo commit mediante la integración con GitHub.
-4. Cloudflare ejecuta el build con la raíz `/` y publica `dist/`.
-5. El trabajo `verify-production` consulta el dominio productivo hasta confirmar que el deployment esperado está disponible.
-6. La verificación comprueba rutas principales, canonicals, sitemap, robots y ausencia de rastros técnicos.
+2. El workflow `CI` ejecuta lint, formato, validación de contenido, build, pruebas y auditorías.
+3. Solo si ese run termina correctamente, `Deploy Cloudflare Pages` recibe el SHA validado.
+4. El workflow reconstruye y audita `dist/` desde ese SHA exacto.
+5. Wrangler publica el artefacto en el proyecto `shekinah`, rama `main`.
+6. El workflow consulta la API de Cloudflare hasta confirmar que ese SHA es el deployment canónico de producción.
+7. Finalmente verifica rutas, canonicals, sitemap, robots y ausencia de contenido técnico en el dominio estable.
 
-No hay un segundo despliegue desde GitHub Actions. Esto evita dos proveedores publicando artefactos diferentes para la misma rama.
+## Credenciales
+
+El environment de GitHub `cloudflare-pages-production` debe proporcionar:
+
+- `CLOUDFLARE_API_TOKEN`;
+- `CLOUDFLARE_ACCOUNT_ID`.
+
+Los valores no se escriben en archivos, logs persistentes ni artefactos públicos.
 
 ## Construcción local
-
-Construcción normal:
 
 ```bash
 npm install --package-lock=false --no-audit --no-fund
@@ -41,12 +47,17 @@ SITE_BASE_PATH=/ SITE_ORIGIN=https://shekinah-7dl.pages.dev npm run audit:output
 SITE_BASE_PATH=/ SITE_ORIGIN=https://shekinah-7dl.pages.dev npm run audit:copy
 ```
 
+La publicación manual requiere además las credenciales en el entorno y el SHA validado:
+
+```bash
+DEPLOY_COMMIT_SHA=<SHA_DE_40_CARACTERES> npm run deploy:cloudflare
+```
+
 ## Requisitos de Cloudflare Pages
 
-El proyecto `shekinah` debe permanecer conectado al repositorio `JerePrograma/shekinah`, rama `main`, con `npm run build` como comando de construcción y `dist` como directorio de salida.
+- `production_branch`: `main`;
+- proyecto: `shekinah`;
+- salida: `dist/`;
+- sitio servido desde la raíz `/`.
 
-No deben configurarse variables `SITE_BASE_PATH` con una subruta. El sitio se publica desde la raíz del dominio `pages.dev`.
-
-## Verificación
-
-El workflow `.github/workflows/ci.yml` no necesita credenciales de Cloudflare. Tras validar el commit, espera el deployment creado por la integración nativa y publica el estado `shekinah/cloudflare-pages` sobre el SHA correspondiente.
+El workflow comprueba y corrige remotamente `production_branch` antes de publicar.
