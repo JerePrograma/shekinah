@@ -259,7 +259,10 @@ await atomic(path.join(root, 'src/generated/site.json'), {
   whatsappNumber: '542236216559',
   whatsappVisible: '+54 9 223 621-6559',
 });
-await atomic(path.join(generatedRoot, 'products.raw.json'), productsRaw.map(({ _evidence, ...product }) => product));
+await atomic(
+  path.join(generatedRoot, 'products.raw.json'),
+  productsRaw.map((product) => Object.fromEntries(Object.entries(product).filter(([key]) => key !== '_evidence'))),
+);
 await atomic(path.join(generatedRoot, 'collections.raw.json'), collectionsRaw);
 await atomic(path.join(generatedRoot, 'api-pages.json'), pages);
 await atomic(path.join(generatedRoot, 'assets.json'), assets);
