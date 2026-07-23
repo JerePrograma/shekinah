@@ -1,4 +1,4 @@
-import editorialData from './generated/wordpress-original-content.json';
+import editorialData from './generated-public/editorial.json';
 
 const configuredBase = import.meta.env.BASE_URL || '/';
 
