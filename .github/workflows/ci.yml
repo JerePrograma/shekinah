@@ -1,6 +1,5 @@
-name: CI
+name: CI and GitHub Pages
 
-# Valida cada estado productivo de main, incluidas las restauraciones de evidencia migrada.
 on:
   push:
     branches: [main]
@@ -8,154 +7,97 @@ on:
 
 permissions:
   contents: read
-  statuses: write
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: github-pages-production
   cancel-in-progress: true
 
 jobs:
   validate:
-    name: Validate React static application
+    name: Validate and package application
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
-      - name: Checkout exact commit
+      - name: Checkout main commit
         uses: actions/checkout@v6
 
-      - name: Set up Node.js 24
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
-      - name: Install exact declared dependencies
+      - name: Install dependencies
         run: npm install --package-lock=false --no-audit --no-fund
 
       - name: Install Playwright Chromium
         run: npm run install:browsers:ci
 
-      - name: Lint React, TypeScript, scripts and tests
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .ci
-          set +e
-          ./node_modules/.bin/eslint src scripts tests vite.config.ts --format json > .ci/lint.json 2> .ci/lint.stderr
-          lint_code=$?
-          set -e
-          cat .ci/lint.stderr
-          if [[ "$lint_code" -eq 0 ]]; then
-            printf 'shekinah/lint\tESLint aprobado\n' > .ci/lint-statuses.tsv
-            lint_state='success'
-          else
-            node - <<'NODE'
-          const { readFileSync, writeFileSync } = require('node:fs');
-          let results = [];
-          try {
-            results = JSON.parse(readFileSync('.ci/lint.json', 'utf8'));
-          } catch {
-            process.stderr.write('No se pudo decodificar la salida JSON de ESLint.\n');
-          }
-          const rows = [];
-          const seen = new Set();
-          for (const result of results) {
-            for (const message of result.messages ?? []) {
-              const file = result.filePath.replace(`${process.cwd()}/`, '').split('/').slice(-2).join('/');
-              const rule = message.ruleId ?? 'parser';
-              const detail = `${file}:${message.line ?? 0}:${rule}`
-                .replace(/[^A-Za-z0-9_.:/-]/g, '_')
-                .slice(0, 75);
-              const context = `shekinah/lint/${detail}`;
-              if (seen.has(context)) continue;
-              seen.add(context);
-              const description = `${rule}: ${message.message}`
-                .replace(/[\t\r\n]+/g, ' ')
-                .slice(0, 130);
-              rows.push(`${context}\t${description}`);
-              process.stderr.write(`${file}:${message.line ?? 0}:${message.column ?? 0} ${rule} ${message.message}\n`);
-              if (rows.length >= 25) break;
-            }
-            if (rows.length >= 25) break;
-          }
-          if (!rows.length) rows.push('shekinah/lint/eslint\tESLint falló sin diagnóstico estructurado');
-          writeFileSync('.ci/lint-statuses.tsv', `${rows.join('\n')}\n`);
-          NODE
-            lint_state='failure'
-          fi
-          while IFS=$'\t' read -r context description; do
-            [[ -n "$context" ]] || continue
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-              -f state="$lint_state" \
-              -f context="$context" \
-              -f description="$description" \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          done < .ci/lint-statuses.tsv
-          exit "$lint_code"
+      - name: Lint
+        run: npm run lint
 
       - name: Check formatting
         run: npm run format:check
 
-      - name: Validate recovered catalog source
+      - name: Validate catalog
         run: npm run validate:content
 
-      - name: Build and prerender
+      - name: Build local production output
         run: npm run build
 
-      - name: Validate prerendered catalog output
+      - name: Validate generated content
         run: npm run validate:content
 
-      - name: Run unit, importer and output tests
+      - name: Run unit tests
         run: npm run test:unit
 
       - name: Run browser tests
         run: npm run test:e2e
 
-      - name: Audit static output
+      - name: Audit local production output
         run: npm run audit:output
 
-      - name: Audit repository for secrets and private artifacts
+      - name: Audit repository security
         run: npm run audit:secrets
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high --no-package-lock
 
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: shekinah-ci-diagnostics-${{ github.sha }}
-          path: |
-            .ci
-            playwright-report
-            test-results
-          if-no-files-found: ignore
-          retention-days: 14
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-      - name: Upload production artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: shekinah-dist-${{ github.sha }}
-          path: dist
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish observable CI status
-        if: always()
-        shell: bash
+      - name: Build GitHub Pages output
         env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          state='failure'
-          description='CI failed'
-          if [[ "$JOB_STATUS" == 'success' ]]; then
-            state='success'
-            description='CI passed: 510 products and WordPress source verified'
-          fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state="$state" \
-            -f context='shekinah/ci' \
-            -f description="$description" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SITE_BASE_PATH: /shekinah/
+          SITE_ORIGIN: https://jereprograma.github.io/shekinah
+        run: npm run build
+
+      - name: Audit GitHub Pages output
+        env:
+          SITE_BASE_PATH: /shekinah/
+          SITE_ORIGIN: https://jereprograma.github.io/shekinah
+        run: npm run audit:output
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy GitHub Pages
+    if: github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
