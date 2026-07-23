@@ -75,6 +75,14 @@ for (const [source, replacement] of testMarkers) {
 }
 files['tests/react/wordpress-original.test.mjs'] = correctedTest;
 
+const publicEvidencePath = 'src/generated/wordpress-original-content.json';
+const publicEvidence = JSON.parse(files[publicEvidencePath]);
+publicEvidence.source.wxrFile = 'WordPress-export-2026-07-20.xml';
+publicEvidence.sourceIndex = publicEvidence.sourceIndex.map((item) =>
+  Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'sourceUrl')),
+);
+files[publicEvidencePath] = `${JSON.stringify(publicEvidence, null, 2)}\n`;
+
 for (const file of Object.keys(files).sort()) {
   if (!expectedPaths.includes(file)) throw new Error(`Ruta no autorizada en la restauración: ${file}`);
   const target = path.resolve(file);
@@ -85,7 +93,7 @@ for (const file of Object.keys(files).sort()) {
   await writeFile(target, content, 'utf8');
 }
 
-const recovered = JSON.parse(files['src/generated/wordpress-original-content.json']);
+const recovered = JSON.parse(files[publicEvidencePath]);
 if (recovered.source.archiveSha256 !== expectedArchiveSha256) throw new Error('Hash de extracción WordPress inesperado.');
 if (recovered.entries.length !== 9) throw new Error(`Cantidad editorial inesperada: ${recovered.entries.length}.`);
 if (recovered.attachments.originalFilesPresent !== 20) throw new Error('No se acreditaron los 20 adjuntos originales.');
