@@ -1,5 +1,6 @@
 name: CI
 
+# Valida cada estado productivo de main, incluidas las restauraciones de evidencia migrada.
 on:
   push:
     branches: [main]
@@ -78,82 +79,67 @@ jobs:
             }
             if (rows.length >= 25) break;
           }
-          if (!rows.length) rows.push('shekinah/lint/execution\tNo se pudo interpretar la salida de ESLint');
+          if (!rows.length) rows.push('shekinah/lint/eslint\tESLint falló sin diagnóstico estructurado');
           writeFileSync('.ci/lint-statuses.tsv', `${rows.join('\n')}\n`);
           NODE
             lint_state='failure'
           fi
-          export TARGET_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           while IFS=$'\t' read -r context description; do
             [[ -n "$context" ]] || continue
-            export STATE="$lint_state"
-            export CONTEXT="$context"
-            export DESCRIPTION="$description"
-            payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:process.env.CONTEXT,description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
-            curl --fail-with-body --silent --show-error \
-              --request POST \
-              --header 'Accept: application/vnd.github+json' \
-              --header "Authorization: Bearer $GH_TOKEN" \
-              --header 'X-GitHub-Api-Version: 2022-11-28' \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-              --data "$payload"
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -f state="$lint_state" \
+              -f context="$context" \
+              -f description="$description" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           done < .ci/lint-statuses.tsv
           exit "$lint_code"
 
       - name: Check formatting
         run: npm run format:check
 
-      - name: Validate normalized catalog source
+      - name: Validate recovered catalog source
         run: npm run validate:content
 
-      - name: Build and prerender public routes
+      - name: Build and prerender
         run: npm run build
 
       - name: Validate prerendered catalog output
         run: npm run validate:content
 
-      - name: Run architecture, importer and output tests
+      - name: Run unit, importer and output tests
         run: npm run test:unit
 
       - name: Run browser tests
         run: npm run test:e2e
 
-      - name: Audit generated output
+      - name: Audit static output
         run: npm run audit:output
 
-      - name: Audit repository for secrets
+      - name: Audit repository for secrets and private artifacts
         run: npm run audit:secrets
 
-      - name: Dependency audit report
+      - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
 
-      - name: Upload validated static build
-        if: success() && hashFiles('dist/**') != ''
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shekinah-ci-diagnostics-${{ github.sha }}
+          path: |
+            .ci
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload production artifact
         uses: actions/upload-artifact@v7
         with:
           name: shekinah-dist-${{ github.sha }}
           path: dist
           if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload Playwright report
-        if: always() && hashFiles('playwright-report/**') != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-${{ github.sha }}
-          path: playwright-report
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload CI diagnostics
-        if: always() && hashFiles('.ci/**') != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: ci-diagnostics-${{ github.sha }}
-          path: .ci
-          if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Publish observable CI status
         if: always()
@@ -162,29 +148,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
-          case "$JOB_STATUS" in
-            success)
-              state='success'
-              description='Validación completa de Shekinah aprobada'
-              ;;
-            failure)
-              state='failure'
-              description='La validación de Shekinah falló'
-              ;;
-            *)
-              state='error'
-              description='La validación de Shekinah fue cancelada'
-              ;;
-          esac
-          export STATE="$state"
-          export DESCRIPTION="$description"
-          export TARGET_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          payload=$(node -e "process.stdout.write(JSON.stringify({state:process.env.STATE,context:'shekinah/ci',description:process.env.DESCRIPTION,target_url:process.env.TARGET_URL}))")
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header 'Accept: application/vnd.github+json' \
-            --header "Authorization: Bearer $GH_TOKEN" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            --data "$payload"
+          state='failure'
+          description='CI failed'
+          if [[ "$JOB_STATUS" == 'success' ]]; then
+            state='success'
+            description='CI passed: 510 products and WordPress source verified'
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context='shekinah/ci' \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
