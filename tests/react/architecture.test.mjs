@@ -56,7 +56,7 @@ test('el build produce HTML prerenderizado y SEO técnico', async () => {
   }
   const home = await readFile('dist/index.html', 'utf8');
   assert.match(home, /<h1[^>]*>Tesoros botánicos/iu);
-  assert.match(home, /rel="canonical" href="https:\/\/jereprograma\.github\.io\/shekinah\/"/u);
+  assert.match(home, /rel="canonical" href="https:\/\/shekinah-7dl\.pages\.dev\/"/u);
   assert.match(home, /application\/ld\+json/u);
   assert.doesNotMatch(home, /Hello world!|trans-[a-z_-]+|wp-admin/iu);
 });
