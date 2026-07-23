@@ -2,13 +2,14 @@
   "name": "Shekinah",
   "short_name": "Shekinah",
   "description": "Herbolario y tienda gourmet.",
-  "start_url": "/",
+  "start_url": "/shekinah/",
+  "scope": "/shekinah/",
   "display": "standalone",
   "background_color": "#f6f0e4",
   "theme_color": "#123f37",
   "icons": [
     {
-      "src": "/images/brand-emblem.png",
+      "src": "/shekinah/images/brand-emblem.png",
       "sizes": "512x512",
       "type": "image/png"
     }
