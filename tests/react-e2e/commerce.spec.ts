@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+const siteOrigin = 'https://jereprograma.github.io/shekinah';
 const productRoutes = ['/guayaba/', '/melena-de-leon-futuro-fungi-50ml/'];
 
 for (const route of productRoutes) {
-  test(`${route} prerenderiza producto, precio histórico y Product schema`, async ({ page }) => {
+  test(`${route} prerenderiza producto, precio y Product schema`, async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text());
@@ -12,8 +13,9 @@ for (const route of productRoutes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     await expect(page.locator('h1')).toHaveCount(1);
-    await expect(page.locator('.product-price')).toContainText('Precio histórico público capturado');
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://shekinah-7dl.pages.dev${route}`);
+    await expect(page.locator('.product-price')).toBeVisible();
+    await expect(page.locator('.product-price')).toContainText(/\d/u);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${siteOrigin}${route}`);
     const jsonLd = await page.locator('script[data-shekinah-jsonld]').textContent();
     expect(jsonLd).toContain('Product');
     expect(jsonLd).toContain('BreadcrumbList');
@@ -28,7 +30,7 @@ test('la tienda pagina, busca y filtra el catálogo completo', async ({ page }) 
   expect(initialCards).toBeGreaterThan(1);
   expect(initialCards).toBeLessThanOrEqual(24);
   const resultText = await page.locator('.catalog-result').textContent();
-  const total = Number(resultText?.match(/(\d+) productos recuperados/iu)?.[1] ?? 0);
+  const total = Number(resultText?.match(/(\d+) productos\b/iu)?.[1] ?? 0);
   expect(total).toBeGreaterThan(1);
   if (total > 24) await expect(page.getByRole('navigation', { name: 'Paginación del catálogo' })).toBeVisible();
 
@@ -74,13 +76,11 @@ test('el carrito cierra con Escape y devuelve el foco', async ({ page }) => {
   await expect(trigger).toBeFocused();
 });
 
-test('las categorías originales son navegables y canónicas', async ({ page }) => {
-  const response = await page.goto('/tienda/categoria/hierbas-medicinales/');
+test('las categorías son navegables y canónicas', async ({ page }) => {
+  const route = '/tienda/categoria/hierbas-medicinales/';
+  const response = await page.goto(route);
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { level: 1, name: /Hierbas Medicinales/iu })).toBeVisible();
   expect(await page.locator('.product-card').count()).toBeGreaterThan(0);
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    'https://shekinah-7dl.pages.dev/tienda/categoria/hierbas-medicinales/',
-  );
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${siteOrigin}${route}`);
 });
