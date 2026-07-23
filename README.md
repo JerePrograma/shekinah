@@ -15,14 +15,19 @@ Sitio oficial de Shekinah construido con React, TypeScript y Vite. La aplicació
 
 ```text
 src/generated/*.json
+  → scripts/prepare-public-data.mjs
+  → src/generated-public/*.json
   → src/content.ts + src/catalog.ts
   → aplicación React
   → build Vite cliente y SSR temporal
   → prerender de rutas estáticas
+  → auditoría integral del bundle
   → dist/
   → GitHub Actions
   → GitHub Pages
 ```
+
+La preparación de datos publica solamente los campos utilizados por la tienda. Metadatos internos, dominios anteriores e identificadores técnicos no ingresan al bundle final.
 
 La aplicación no requiere API, base de datos ni CMS en tiempo de ejecución. El carrito se conserva en el navegador y prepara una consulta por WhatsApp; no procesa pagos.
 
@@ -39,6 +44,7 @@ npm run test:unit
 npm run install:browsers
 npm run test:e2e
 npm run audit:output
+npm run audit:copy
 npm run audit:secrets
 npm run verify
 ```
@@ -48,6 +54,7 @@ Para generar localmente el resultado exacto de GitHub Pages:
 ```bash
 SITE_BASE_PATH=/shekinah/ SITE_ORIGIN=https://jereprograma.github.io/shekinah npm run build
 SITE_BASE_PATH=/shekinah/ SITE_ORIGIN=https://jereprograma.github.io/shekinah npm run audit:output
+SITE_BASE_PATH=/shekinah/ SITE_ORIGIN=https://jereprograma.github.io/shekinah npm run audit:copy
 ```
 
 ## Rutas principales
