@@ -2,7 +2,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
-const ignored = new Set(['.git', '.ssr', 'dist', 'node_modules', 'playwright-report', 'test-results', '.wrangler']);
+const ignored = new Set(['.git', '.ssr', 'dist', 'node_modules', 'playwright-report', 'test-results']);
 const textExtensions = new Set(['.css', '.html', '.js', '.json', '.md', '.mjs', '.ts', '.tsx', '.txt', '.webmanifest', '.xml', '.yml', '.yaml']);
 const findings = [];
 
