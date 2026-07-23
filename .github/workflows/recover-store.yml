@@ -14,13 +14,13 @@ permissions:
 
 concurrency:
   group: recover-hostinger-store
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   recover:
     name: Capture public Hostinger store evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout exact commit
@@ -41,7 +41,7 @@ jobs:
         env:
           STORE_ORIGIN: https://herbalarioonline.com
           RECOVERY_OUTPUT: .migration-work/live-store
-          RECOVERY_MAX_PAGES: '1000'
+          RECOVERY_MAX_PAGES: '250'
         run: node scripts/recover-live-store.mjs
 
       - name: Import captured Astro data
