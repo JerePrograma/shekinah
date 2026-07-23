@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-07-23",
+  "categoriesRecovered": 16,
+  "descriptionsRecovered": 495,
+  "imageReferences": 509,
+  "imagesDownloaded": 509,
+  "imagesFailed": 0,
+  "pricesRecovered": 510,
+  "productsDetected": 510,
+  "productsRecovered": 510,
+  "productsWithoutDescriptions": [
+    "prod_01KX65WQG51T9M68J844R4G28T",
+    "prod_01KW21GC7BYQ4GWFT0DVR3MQA5",
+    "prod_01KQ2CCYN26N1PKDGXSK3YHWQ7",
+    "prod_01KQ2CCYN7RV3BKX91G5VA88FS",
+    "prod_01KQ2CCYNNT5CQTMAMW2NR9WQ6",
+    "prod_01KQ2CBT37WWWX1EPA6E9FRN70",
+    "prod_01KQ2C3YVEW77FD9PE42AYFHGW",
+    "prod_01KQ2C3YF44C2H5WBCG37N7NWS",
+    "prod_01KQ2C3YFAAXGS6N68T7E3T4AG",
+    "prod_01KQ2C3Y0Z9KB93311S6VKQ148",
+    "prod_01KQ2C3Y0V42067R9MVXFSHERB",
+    "prod_01KQ2C1Q97PVA51KCGQ9ZNR55N",
+    "prod_01KQ2C1Q93K8TW3KPFGYRT040K",
+    "prod_01KQ2C1Q9JJ40EJW6KSM0NNSJM",
+    "prod_01KQ2BYW06QRG1Q9366Q54SFQT"
+  ],
+  "productsWithoutImages": [
+    "prod_01KQ2BYVS6BDSCJ2CXH8KEP5HY"
+  ],
+  "productsWithoutPrices": [],
+  "skusRecovered": 432,
+  "storeId": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+  "uniqueProductIds": 510,
+  "uniqueSlugs": 510,
+  "watermark": "2026-07-20T14:23:03.148Z"
+}

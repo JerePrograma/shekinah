@@ -1,0 +1,162 @@
+[
+  {
+    "created_at": "2026-06-24T16:11:21.214Z",
+    "deleted_at": null,
+    "id": "pcol_01KVX6CZ8RXEEV0Y6VCHHF6ST1",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "CACAO",
+    "updated_at": "2026-06-24T16:11:21.214Z"
+  },
+  {
+    "created_at": "2026-04-25T13:56:59.386Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2EVTDX5SQHGFE5473R5222",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Especias Gourmet",
+    "updated_at": "2026-06-10T13:11:45.171Z"
+  },
+  {
+    "created_at": "2026-04-25T13:57:33.511Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2EWVQ4PAYXKV366R7R9YBF",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Tinturas",
+    "updated_at": "2026-04-25T14:09:11.698Z"
+  },
+  {
+    "created_at": "2026-04-25T14:00:27.481Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2F25PK0QTRV9GFBJKZ88F6",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Legumbres y Cereales en grano",
+    "updated_at": "2026-06-26T17:53:27.132Z"
+  },
+  {
+    "created_at": "2026-04-25T14:00:50.262Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2F2VVV58NDYWHT8NC7TKCP",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Harinas",
+    "updated_at": "2026-06-26T17:51:46.722Z"
+  },
+  {
+    "created_at": "2026-04-25T14:02:13.753Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2F5DCGAF6DSJR59PQFMV8M",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Aceites",
+    "updated_at": "2026-04-25T14:02:13.753Z"
+  },
+  {
+    "created_at": "2026-04-25T14:03:38.733Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2F80D2FZMAD7CYHD7G1PVZ",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Armados de blends medicinales",
+    "updated_at": "2026-07-02T15:38:09.055Z"
+  },
+  {
+    "created_at": "2026-04-25T14:04:54.099Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2FA9Z6B57NKP0FBHY1Q6EN",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Frutos Secos y deshidratados",
+    "updated_at": "2026-07-13T19:14:06.012Z"
+  },
+  {
+    "created_at": "2026-04-25T14:09:04.178Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ2FHY5Z9DAE8MBQFH2G0QPV",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Sales Ancestrales",
+    "updated_at": "2026-04-25T14:09:04.178Z"
+  },
+  {
+    "created_at": "2026-05-02T19:33:13.366Z",
+    "deleted_at": null,
+    "id": "pcol_01KQN2WGHHCKV37PH586AN0WYV",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Agroecologicos",
+    "updated_at": "2026-05-02T19:33:13.366Z"
+  },
+  {
+    "created_at": "2026-05-02T19:59:35.356Z",
+    "deleted_at": null,
+    "id": "pcol_01KQN4CT1FF07DWA51YDEY6ENB",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Hierbas Medicinales",
+    "updated_at": "2026-05-02T19:59:35.356Z"
+  },
+  {
+    "created_at": "2026-04-27T12:24:34.633Z",
+    "deleted_at": null,
+    "id": "pcol_01KQ7EC1JEFTHZ2HBW7QY7V63N",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Amazonas",
+    "updated_at": "2026-07-16T17:10:25.683Z"
+  },
+  {
+    "created_at": "2026-05-27T18:58:07.851Z",
+    "deleted_at": null,
+    "id": "pcol_01KSNCT7BEF0W5ZBRC4ZZHWQAB",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Semillas",
+    "updated_at": "2026-05-27T18:58:07.851Z"
+  },
+  {
+    "created_at": "2026-05-27T18:58:35.393Z",
+    "deleted_at": null,
+    "id": "pcol_01KSNCV28417V64JKW243CBRM4",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Desayuno",
+    "updated_at": "2026-07-02T15:30:57.933Z"
+  },
+  {
+    "created_at": "2026-05-27T18:59:26.605Z",
+    "deleted_at": null,
+    "id": "pcol_01KSNCWM8FKS2P19Z1M2T9VZZP",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Otros",
+    "updated_at": "2026-05-27T18:59:26.605Z"
+  },
+  {
+    "created_at": "2026-05-27T19:09:42.336Z",
+    "deleted_at": null,
+    "id": "pcol_01KSNDFDJ39X68ZZF5JP517XJV",
+    "image_url": null,
+    "metadata": null,
+    "store_id": "store_01KPB411FQRYAKN8ED2BSRBPZC",
+    "title": "Suplementos",
+    "updated_at": "2026-05-27T19:09:42.336Z"
+  }
+]
