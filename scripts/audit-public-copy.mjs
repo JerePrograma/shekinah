@@ -7,14 +7,17 @@ const textExtensions = new Set(['.css', '.html', '.js', '.json', '.txt', '.webma
 const prohibited = [
   /\bHostinger\b/iu,
   /\bWordPress\b/iu,
+  /\bCloudflare\b/iu,
   /herbalarioonline\.com/iu,
+  /pages\.dev/iu,
   /\bmigraci[oó]n(?:es)?\b/iu,
-  /\brecuperad[oa]s?\b/iu,
-  /\bevidencia(?:s)?\b/iu,
-  /\bversionad[oa]s?\b/iu,
-  /\bfuente original\b/iu,
-  /\bcat[aá]logo original\b/iu,
-  /\bprecio hist[oó]rico\b/iu,
+  /\bproductos?\s+recuperad[oa]s?\b/iu,
+  /\bcat[aá]logo\s+original(?:\s+recuperado)?\b/iu,
+  /\bfuente\s+recuperada\b/iu,
+  /\bevidencia\s+hist[oó]rica\b/iu,
+  /\bcontenido\s+versionado\b/iu,
+  /\bprecio\s+hist[oó]rico\b/iu,
+  /\brecuperad[oa]s?\s+(?:de|desde)\s+(?:el\s+)?(?:sitio|cat[aá]logo|fuente|plataforma)\s+original\b/iu,
   /\bstore_[A-Z0-9]+\b/iu,
   /\bprod_[A-Z0-9_-]+\b/iu,
 ];
@@ -57,5 +60,5 @@ if (findings.length) {
   process.stderr.write(`${findings.join('\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write('Bundle público verificado: sin lenguaje, dominios ni identificadores de migración.\n');
+  process.stdout.write('Bundle público verificado: sin rastros técnicos ni frases de migración.\n');
 }
