@@ -60,14 +60,20 @@ if (typeof contentSource !== 'string' || !contentSource.includes(canonicalRoutes
 files['src/content.ts'] = contentSource.replace(canonicalRoutesSource, canonicalRoutesReplacement);
 
 const testSource = files['tests/react/wordpress-original.test.mjs'];
-const testMarker = 'assert.match(chocolate, /Flor de Oropel/u);';
-if (typeof testSource !== 'string' || !testSource.includes(testMarker)) {
-  throw new Error('No se encontró la aserción editorial esperada.');
+const testMarkers = [
+  ['assert.match(chocolate, /Flor de Oropel/u);', 'assert.match(chocolate, /flor de oropel/iu);'],
+  [
+    'assert.match(chocolate, /El Paso a Paso a Prueba de Fallos/u);',
+    'assert.match(chocolate, /Guía para Principiantes: Tu Primer Chocolate Artesanal/u);',
+  ],
+];
+if (typeof testSource !== 'string') throw new Error('La prueba editorial recuperada no es texto.');
+let correctedTest = testSource;
+for (const [source, replacement] of testMarkers) {
+  if (!correctedTest.includes(source)) throw new Error(`No se encontró la aserción editorial esperada: ${source}`);
+  correctedTest = correctedTest.replace(source, replacement);
 }
-files['tests/react/wordpress-original.test.mjs'] = testSource.replace(
-  testMarker,
-  'assert.match(chocolate, /flor de oropel/iu);',
-);
+files['tests/react/wordpress-original.test.mjs'] = correctedTest;
 
 for (const file of Object.keys(files).sort()) {
   if (!expectedPaths.includes(file)) throw new Error(`Ruta no autorizada en la restauración: ${file}`);
