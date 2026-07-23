@@ -10,14 +10,14 @@
     "evidence": [
       {
         "capturedAt": "2026-07-23",
-        "note": "Nombre, categoría, precio ARS y presentación verificados en la página pública.",
+        "note": "Nombre, categoría, precio ARS y fracción mínima de 50gr verificados en la página pública.",
         "source": "https://herbalarioonline.com/guayaba",
         "sourceType": "hostinger-public"
       }
     ],
     "id": "public-guayaba-hojas-50g",
     "images": [],
-    "minimumFraction": 1,
+    "minimumFraction": 50,
     "name": "Guayaba hojas x 50 gr",
     "originalId": null,
     "originalPath": "/guayaba",
