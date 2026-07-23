@@ -87,10 +87,25 @@ jobs:
       - name: Run browser tests
         run: npm run test:e2e
 
-      - name: Audit local production output
+      - name: Audit output structure
+        id: audit_output
+        continue-on-error: true
+        run: npm run audit:output
+
+      - name: Audit public copy
+        id: audit_copy
+        continue-on-error: true
+        run: npm run audit:copy
+
+      - name: Require successful production audits
+        if: always()
+        shell: bash
+        env:
+          OUTPUT_RESULT: ${{ steps.audit_output.outcome }}
+          COPY_RESULT: ${{ steps.audit_copy.outcome }}
         run: |
-          npm run audit:output
-          npm run audit:copy
+          [[ "$OUTPUT_RESULT" == 'success' ]] || { echo '::error::La auditoría estructural falló'; exit 1; }
+          [[ "$COPY_RESULT" == 'success' ]] || { echo '::error::La auditoría de copia pública falló'; exit 1; }
 
       - name: Audit repository security
         run: npm run audit:secrets
