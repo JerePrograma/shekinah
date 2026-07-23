@@ -1,12 +1,17 @@
 import wordpressOriginal from './generated/wordpress-original-content.json';
 
+const configuredBase = import.meta.env.BASE_URL || '/';
+
+export const siteBasePath =
+  configuredBase === '/' ? '' : `/${configuredBase.replace(/^\/+|\/+$/gu, '')}`;
+
 export const site = {
   name: 'Shekinah',
   tagline: 'Herbolario & tienda gourmet',
   description:
-    'Especias, hierbas, semillas, productos naturales y recetas recuperados de las fuentes originales de Shekinah.',
+    'Especias, hierbas, semillas, productos naturales y recetas para disfrutar todos los días.',
   locale: 'es-AR',
-  origin: 'https://shekinah-7dl.pages.dev',
+  origin: 'https://jereprograma.github.io/shekinah',
   email: 'german.gauna@yahoo.com.ar',
   legalName: 'Germán Ignacio Gauna',
   legalIdentifier: '20-25957366-2',
@@ -54,14 +59,10 @@ interface WordPressOriginalContent {
   };
 }
 
-const recovered = wordpressOriginal as unknown as WordPressOriginalContent;
+const editorialContent = wordpressOriginal as unknown as WordPressOriginalContent;
 
-/**
- * Contenido editorial recuperado de la extracción WordPress original.
- * La tienda y el catálogo se obtienen por separado desde Hostinger Ecommerce.
- */
-export const entries: ContentEntry[] = recovered.entries;
-export const wordpressOriginalSource = recovered.source;
+export const entries: ContentEntry[] = editorialContent.entries;
+export const wordpressOriginalSource = editorialContent.source;
 
 export const posts = entries.filter((entry) => entry.kind === 'post');
 export const recipes = entries.filter((entry) => entry.kind === 'recipe');
@@ -92,8 +93,19 @@ export const redirects = [
   { from: '/terminos-condiciones/', to: '/terms-and-conditions/', status: 301 },
 ] as const;
 
+export function toSitePath(value: string): string {
+  if (/^(?:https?:|mailto:|tel:|data:|javascript:|blob:|#)/iu.test(value)) return value;
+  const path = value.startsWith('/') ? value : `/${value}`;
+  if (!siteBasePath) return path;
+  if (path === siteBasePath || path.startsWith(`${siteBasePath}/`)) return path;
+  return path === '/' ? `${siteBasePath}/` : `${siteBasePath}${path}`;
+}
+
 export function normalizePath(value: string): string {
-  const path = value.split(/[?#]/u)[0] || '/';
+  let path = value.split(/[?#]/u)[0] || '/';
+  if (siteBasePath && (path === siteBasePath || path.startsWith(`${siteBasePath}/`))) {
+    path = path.slice(siteBasePath.length) || '/';
+  }
   if (path === '/') return '/';
   return `/${path.replace(/^\/+|\/+$/gu, '')}/`;
 }
