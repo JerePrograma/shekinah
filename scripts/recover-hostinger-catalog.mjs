@@ -57,10 +57,15 @@ function entities(value) {
   });
 }
 
+function cleanText(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return !text || /^MISSING DESCRIPTION$/iu.test(text) ? null : text;
+}
+
 function toText(html) {
-  if (!html) return null;
-  const source = String(html).trim();
-  if (/^MISSING DESCRIPTION$/iu.test(source)) return null;
+  const source = cleanText(html);
+  if (!source) return null;
   return entities(source
     .replace(/<br\s*\/?\s*>/giu, '\n')
     .replace(/<\/(?:p|div|h[1-6]|ul|ol)>/giu, '\n\n')
@@ -203,7 +208,7 @@ const products = productsRaw.map((product, sourceOrder) => {
     categoryIds: (product.product_collections ?? []).map((item) => item.collection_id).filter((id) => categoryIds.has(id)),
     currency: primaryPrice?.currency_code?.toUpperCase() ?? null,
     description,
-    descriptionHtml: product.description ?? null,
+    descriptionHtml: cleanText(product.description),
     evidence: [{ capturedAt, note: 'Registro público de Hostinger Ecommerce.', sha256: product._evidence.sha256, source: product._evidence.url, sourceType: 'hostinger-original' }],
     id: product.id,
     images,
@@ -216,14 +221,14 @@ const products = productsRaw.map((product, sourceOrder) => {
     price: money(primaryPrice?.amount),
     provenance: 'hostinger-original',
     purchasable: Boolean(product.purchasable),
-    ribbonText: product.ribbon_text?.trim() || null,
+    ribbonText: cleanText(product.ribbon_text),
     salePrice: money(primaryPrice?.sale_amount),
-    shortDescription: product.subtitle?.trim() || product.seo_settings?.description?.trim() || (description ? description.slice(0, 240) : null),
+    shortDescription: cleanText(product.subtitle) || cleanText(product.seo_settings?.description) || (description ? description.slice(0, 240) : null),
     sku: primaryVariant?.sku ?? null,
     slug: product.slug,
     sourceOrder,
     sourceUpdatedAt: product.updated_at ?? null,
-    subtitle: product.subtitle?.trim() || null,
+    subtitle: cleanText(product.subtitle),
     type: product.type?.value ?? null,
     unit: unit.unit,
     variants: (product.variants ?? []).map((variant) => {
