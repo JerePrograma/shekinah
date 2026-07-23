@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('la portada utiliza las imágenes originales recuperadas', async ({ page }) => {
+test('la portada utiliza las imágenes publicadas', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.page-hero__image')).toHaveAttribute(
     'src',
@@ -17,11 +17,11 @@ test('la portada utiliza las imágenes originales recuperadas', async ({ page })
   );
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
     'content',
-    'https://shekinah-7dl.pages.dev/images/original/home-spice-chest.jpg',
+    'https://jereprograma.github.io/shekinah/images/original/home-spice-chest.jpg',
   );
 });
 
-test('la galería original de chocolate abre y se navega como diálogo', async ({ page }) => {
+test('la galería de chocolate abre y se navega como diálogo', async ({ page }) => {
   await page.goto('/chocolate-casero/');
   const gallery = page.locator('.original-gallery');
   await expect(gallery).toBeVisible();
@@ -38,7 +38,7 @@ test('la galería original de chocolate abre y se navega como diálogo', async (
   await expect(dialog).toHaveCount(0);
 });
 
-test('nosotros recupera galería y testimonio original', async ({ page }) => {
+test('nosotros muestra galería y testimonio', async ({ page }) => {
   await page.goto('/nosotros/');
   await expect(page.locator('.page-hero__image')).toHaveAttribute(
     'src',
