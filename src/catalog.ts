@@ -93,15 +93,11 @@ export const catalogRoutes = [
 ] as const;
 
 export const verifiedStore = storeData as {
-  originalDomain: string;
-  storeIdMarker: string;
   whatsappNumber: string;
   whatsappVisible: string;
   locale: string;
-  priceEvidenceDate: string;
-  checkoutRecovered: boolean;
+  checkoutEnabled: boolean;
   catalogCount?: number;
-  catalogSourceWatermark?: string;
 };
 
 export function findProduct(pathValue: string): Product | undefined {
