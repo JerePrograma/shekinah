@@ -12,34 +12,45 @@ Se ejecuta con cada push a `main` y también admite ejecución manual.
 
 El trabajo `validate` ejecuta, en este orden:
 
-1. checkout del commit exacto;
-2. configuración de Node.js mediante `.nvmrc`;
-3. instalación de dependencias;
-4. instalación de Chromium;
-5. ESLint;
-6. verificación de formato;
-7. validación del catálogo;
-8. build local y prerender;
-9. pruebas unitarias;
-10. pruebas de navegador;
-11. auditoría del resultado generado;
-12. auditoría de seguridad del repositorio;
-13. auditoría de dependencias productivas;
-14. build final con la subruta `/shekinah/`;
-15. auditoría del artefacto de GitHub Pages.
+1. publica el estado `shekinah/validation`;
+2. checkout del commit exacto;
+3. configuración de Node.js mediante `.nvmrc`;
+4. instalación de dependencias;
+5. instalación de Chromium;
+6. ESLint;
+7. verificación de formato;
+8. validación del catálogo;
+9. build y prerender con el origen productivo de Cloudflare;
+10. validación del contenido generado;
+11. pruebas unitarias;
+12. pruebas de navegador;
+13. auditoría estructural de `dist/`;
+14. auditoría de la copia pública;
+15. auditoría de seguridad del repositorio;
+16. auditoría de dependencias productivas.
 
-No se cargan reportes de Playwright, archivos de log ni diagnósticos internos. El único artefacto conservado es el paquete estático requerido por GitHub Pages.
+El resultado se publica como estado del commit. Los fallos de build incluyen un diagnóstico breve enlazado al run correspondiente.
 
-## Despliegue
+## Publicación y verificación
 
-El trabajo `deploy` se ejecuta únicamente después de una validación exitosa de `main`.
+Cloudflare Pages publica `main` mediante su integración con GitHub. GitHub Actions no sube un artefacto ni utiliza Wrangler, por lo que no requiere secretos de Cloudflare.
 
-Utiliza:
+Después de una validación exitosa, el trabajo `verify-production`:
 
-- `actions/configure-pages@v5`;
-- `actions/upload-pages-artifact@v4`;
-- `actions/deploy-pages@v4`;
-- permisos `pages: write` e `id-token: write`;
-- entorno `github-pages`.
+- espera que `https://shekinah-7dl.pages.dev/` refleje el estado esperado;
+- comprueba inicio, tienda, blog, recetas, un producto y una categoría;
+- valida títulos y canonicals;
+- rechaza vocabulario técnico o dominios anteriores;
+- comprueba `robots.txt` y `sitemap.xml`;
+- publica el estado `shekinah/cloudflare-pages`.
 
-No requiere secretos de terceros.
+La espera evita marcar como fallido un commit mientras Cloudflare todavía está procesando el deployment de la misma rama.
+
+## Permisos
+
+El workflow utiliza únicamente:
+
+- `contents: read`;
+- `statuses: write`.
+
+No necesita `pages: write`, `id-token: write`, entornos de GitHub Pages ni credenciales externas.
