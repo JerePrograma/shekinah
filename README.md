@@ -1,90 +1,90 @@
 # Shekinah
 
-[![CI](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml/badge.svg)](https://github.com/JerePrograma/shekinah/actions/workflows/ci.yml)
-[![Cloudflare Pages](https://github.com/JerePrograma/shekinah/actions/workflows/deploy-cloudflare.yml/badge.svg)](https://github.com/JerePrograma/shekinah/actions/workflows/deploy-cloudflare.yml)
-
-Sitio oficial de Shekinah construido con React, TypeScript y Vite. La aplicación publica un catálogo navegable, páginas de producto, categorías, contenidos editoriales, recetas y un carrito local con consulta por WhatsApp.
-
-## Producción
-
-- Rama de publicación: `main`.
-- Sitio: `https://shekinah-7dl.pages.dev/`.
-- Alojamiento: Cloudflare Pages.
-- Publicación: GitHub Actions mediante Wrangler, después de validar el SHA exacto.
-- Fuente de verdad: código, contenido y activos versionados en este repositorio.
+Sitio estático de catálogo para Shekinah, implementado con React, TypeScript y Vite. La experiencia prioriza lectura clara, navegación simple, controles grandes y un flujo de consulta por WhatsApp.
 
 ## Arquitectura
 
-```text
-src/generated/*.json
-  → scripts/prepare-public-data.mjs
-  → src/generated-public/*.json
-  → src/content.ts + src/catalog.ts
-  → aplicación React
-  → build Vite cliente y SSR temporal
-  → prerender de rutas estáticas
-  → auditoría integral del bundle
-  → dist/
-  → Wrangler
-  → Cloudflare Pages
-```
+- React 19 con TypeScript estricto.
+- Vite para desarrollo y compilación.
+- Prerender SSR para generar HTML estático por ruta.
+- Catálogo y contenido público generados desde datos versionados.
+- Carrito local persistido en `localStorage`.
+- Consulta comercial mediante WhatsApp; el sitio no procesa pagos.
+- Despliegue validado en Cloudflare Pages.
 
-La preparación de datos publica solamente los campos utilizados por la tienda. Metadatos internos, dominios anteriores e identificadores técnicos no ingresan al bundle final.
+## Requisitos
 
-La aplicación no requiere API, base de datos ni CMS en tiempo de ejecución. El carrito se conserva en el navegador y prepara una consulta por WhatsApp; no procesa pagos.
+- Node.js: versión indicada en `.nvmrc`.
+- npm: versión compatible con `package.json`.
 
-## CI/CD
-
-El workflow `CI` valida cada push a `main`. Si el run termina correctamente, `Deploy Cloudflare Pages` recibe el SHA validado, reconstruye y audita `dist/`, publica con Wrangler, espera que Cloudflare lo promueva como deployment canónico de producción y verifica el dominio estable.
-
-Los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` se leen desde GitHub Actions y no forman parte del repositorio ni del bundle público.
-
-## Comandos
+## Instalación
 
 ```bash
 npm install --package-lock=false --no-audit --no-fund
+```
+
+## Desarrollo
+
+```bash
 npm run dev
-npm run validate:content
+```
+
+El servidor local queda disponible en `http://127.0.0.1:4321`.
+
+## Comandos principales
+
+```bash
+npm run typecheck
 npm run lint
 npm run format:check
+npm run validate:content
 npm run build
 npm run test:unit
-npm run install:browsers
 npm run test:e2e
 npm run audit:output
 npm run audit:copy
 npm run audit:secrets
 npm run verify
-npm run deploy:cloudflare
 ```
 
-Para generar localmente el resultado equivalente a producción:
+`npm run verify` ejecuta la validación completa utilizada por CI.
 
-```bash
-SITE_BASE_PATH=/ SITE_ORIGIN=https://shekinah-7dl.pages.dev npm run build
-SITE_BASE_PATH=/ SITE_ORIGIN=https://shekinah-7dl.pages.dev npm run audit:output
-SITE_BASE_PATH=/ SITE_ORIGIN=https://shekinah-7dl.pages.dev npm run audit:copy
-```
-
-## Rutas principales
+## Rutas públicas principales
 
 - `/`
-- `/nosotros/`
 - `/tienda/`
+- `/tienda/categoria/<slug>/`
+- `/<slug-de-producto>/`
+- `/nosotros/`
+- `/contacto/`
 - `/blog/`
-- `/recetas/`
-- páginas individuales de producto
-- categorías de la tienda
-- artículos y recetas
 - `/terms-and-conditions/`
 
-## Seguridad
+Las direcciones públicas retiradas se redirigen de forma permanente a una página útil y no se incluyen en el sitemap.
 
-No se publican archivos de entorno, credenciales, bases de datos, configuraciones privadas, copias comprimidas ni dependencias de servidor. La publicación solo se ejecuta después de una validación completa y utiliza el SHA aprobado por CI.
+## Accesibilidad y experiencia
 
-## Documentación
+El sistema visual utiliza:
 
-- [Despliegue](docs/DEPLOYMENT.md)
-- [GitHub Actions](docs/GITHUB-ACTIONS.md)
-- [Pruebas](docs/TEST-REPORT.md)
-- [Rollback](docs/ROLLBACK.md)
+- texto base legible;
+- contraste alto;
+- foco visible;
+- controles táctiles de al menos 44 por 44 píxeles;
+- navegación móvil con estado anunciado;
+- etiquetas visibles en formularios;
+- respeto por `prefers-reduced-motion`;
+- diseño responsive desde 320 píxeles.
+
+## Catálogo y contenido
+
+Los archivos de `src/generated/` son la fuente versionada. Antes de cada build, `scripts/prepare-public-data.mjs` genera la proyección pública en `src/generated-public/`.
+
+No se deben editar productos, precios, unidades, SKU ni categorías desde componentes visuales. Cualquier corrección de datos debe hacerse en la fuente correspondiente y validarse con `npm run validate:content`.
+
+## Despliegue
+
+La rama productiva es `main`. El workflow `CI` valida la aplicación y, solo después de un resultado exitoso, `Deploy Cloudflare Pages` publica el mismo commit en:
+
+`https://shekinah-7dl.pages.dev`
+
+No se debe publicar un commit distinto del validado ni usar force-push.
