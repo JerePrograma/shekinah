@@ -56,6 +56,7 @@ async function findUnexpectedReferences() {
     'tests/react/removed-content.test.mjs',
     'tests/react-e2e/site.spec.ts',
     'docs/CONTENT-INVENTORY.md',
+    'docs/ROUTE-MAP.md',
     '.github/workflows/deploy-cloudflare.yml',
   ]);
   const extensions = new Set(['.css', '.json', '.md', '.mjs', '.ts', '.tsx', '.yml', '.yaml']);
