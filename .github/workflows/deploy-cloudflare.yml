@@ -183,23 +183,40 @@ jobs:
             fi
           }
 
+          verify_redirect() {
+            local base="$1"
+            local route="$2"
+            local headers
+            headers=$(curl --silent --show-error --head --retry 8 --retry-delay 4 --retry-all-errors "$base$route")
+            grep -Eqi '^HTTP/[^ ]+ 301' <<< "$headers" \
+              || { echo "::error::$base$route no responde 301"; exit 1; }
+            grep -Eqi '^location: .*\/tienda\/?\r?$' <<< "$headers" \
+              || { echo "::error::$base$route no redirige a /tienda/"; exit 1; }
+          }
+
           routes=(
             /
             /nosotros/
+            /contacto/
             /tienda/
             /tienda/categoria/hierbas-medicinales/
             /guayaba/
             /melena-de-leon-futuro-fungi-50ml/
             /blog/
+            /terms-and-conditions/
+          )
+          redirect_routes=(
             /recetas/
             /chocolate-casero/
             /receta-barra-de-cereal/
-            /terms-and-conditions/
           )
 
           for base in "$DEPLOYMENT_URL" "$CANONICAL_URL" "$STABLE_URL"; do
             for route in "${routes[@]}"; do
               verify_html "$base" "$route"
+            done
+            for route in "${redirect_routes[@]}"; do
+              verify_redirect "$base" "$route"
             done
           done
 
@@ -213,6 +230,10 @@ jobs:
           sitemap=$(curl --fail --silent --show-error --location --retry 8 --retry-delay 4 --retry-all-errors "$STABLE_URL/sitemap.xml")
           grep -Fqi "<loc>$STABLE_URL/" <<< "$sitemap" \
             || { echo '::error::sitemap.xml no apunta al dominio productivo'; exit 1; }
+          if grep -Eq '/recetas/|/chocolate-casero/|/receta-barra-de-cereal/' <<< "$sitemap"; then
+            echo '::error::sitemap.xml conserva rutas retiradas'
+            exit 1
+          fi
 
       - name: Publish deployment result
         if: always()
