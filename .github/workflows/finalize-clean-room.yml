@@ -79,14 +79,10 @@ jobs:
 
             mkdir -p /tmp/shekinah-finalizer-diagnostics
             cp /tmp/shekinah-finalizer.log /tmp/shekinah-finalizer-diagnostics/finalizer.log
-            for source in \
-              scripts/validate-catalog.mjs \
-              src/editorial-content.json \
-              docs/assets-provenance.json \
-              docs/provenance-audit.md; do
-              if [[ -f "$source" ]]; then
+            for source in package.json scripts src/editorial-content.json docs tests/react; do
+              if [[ -e "$source" ]]; then
                 mkdir -p "/tmp/shekinah-finalizer-diagnostics/$(dirname "$source")"
-                cp "$source" "/tmp/shekinah-finalizer-diagnostics/$source"
+                cp -R "$source" "/tmp/shekinah-finalizer-diagnostics/$source"
               fi
             done
             find src/generated public/images/original generated \
