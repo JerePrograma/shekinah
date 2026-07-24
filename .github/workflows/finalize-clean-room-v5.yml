@@ -1,0 +1,96 @@
+name: Finalize verified clean-room rebuild v5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.clean-room-bundle/trigger-v5b'
+      - '.github/workflows/finalize-clean-room-v5.yml'
+
+permissions:
+  contents: write
+  actions: write
+  statuses: write
+
+concurrency:
+  group: shekinah-finalize-clean-room-v5
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Validate and publish audited tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout staged commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Execute verified finalizer payload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shekinah-finalizer /tmp/shekinah-finalizer-diagnostics
+
+          cat .clean-room-finalizer-v5/part-* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            > /tmp/shekinah-finalizer-payload.tar.gz
+
+          printf '%s  %s\n' \
+            'b24c59edcd1079499d57fd4c32f85057f7eb64ae6d10bb49de554cd389cc3d6d' \
+            '/tmp/shekinah-finalizer-payload.tar.gz' \
+            | sha256sum --check --strict
+
+          tar --extract --gzip \
+            --file /tmp/shekinah-finalizer-payload.tar.gz \
+            --directory /tmp
+
+          set +e
+          bash /tmp/shekinah-finalizer/run.sh 2>&1 \
+            | tee /tmp/shekinah-finalizer.log
+          finalizer_code=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$finalizer_code" -ne 0 ]]; then
+            detail=$(grep -Ev '^\s*$' /tmp/shekinah-finalizer.log \
+              | tail -n 1 \
+              | tr '\r\n\t' ' ' \
+              | cut -c1-130)
+            [[ -n "$detail" ]] || detail='Clean-room finalizer failed without diagnostic output'
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -f state='failure' \
+              -f context='shekinah/clean-room-finalizer-v5' \
+              -f description="$detail" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              >/dev/null || true
+
+            mkdir -p /tmp/shekinah-finalizer-diagnostics
+            cp /tmp/shekinah-finalizer.log /tmp/shekinah-finalizer-diagnostics/finalizer.log
+            for source in package.json scripts src/editorial-content.json docs tests/react; do
+              if [[ -e "$source" ]]; then
+                mkdir -p "/tmp/shekinah-finalizer-diagnostics/$(dirname "$source")"
+                cp -R "$source" "/tmp/shekinah-finalizer-diagnostics/$source"
+              fi
+            done
+          fi
+
+          exit "$finalizer_code"
+
+      - name: Upload finalizer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-room-finalizer-v5-${{ github.run_id }}
+          path: /tmp/shekinah-finalizer-diagnostics
+          if-no-files-found: warn
+          retention-days: 1
