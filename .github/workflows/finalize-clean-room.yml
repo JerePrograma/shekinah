@@ -42,7 +42,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -rf /tmp/shekinah-finalizer
+          rm -rf /tmp/shekinah-finalizer /tmp/shekinah-finalizer-diagnostics
 
           cat .clean-room-finalizer-v3/part-* \
             | tr -d '\r\n' \
@@ -76,6 +76,22 @@ jobs:
               -f description="$detail" \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               >/dev/null || true
+
+            mkdir -p /tmp/shekinah-finalizer-diagnostics
+            cp /tmp/shekinah-finalizer.log /tmp/shekinah-finalizer-diagnostics/finalizer.log
+            for source in \
+              scripts/validate-catalog.mjs \
+              src/editorial-content.json \
+              docs/assets-provenance.json \
+              docs/provenance-audit.md; do
+              if [[ -f "$source" ]]; then
+                mkdir -p "/tmp/shekinah-finalizer-diagnostics/$(dirname "$source")"
+                cp "$source" "/tmp/shekinah-finalizer-diagnostics/$source"
+              fi
+            done
+            find src/generated public/images/original generated \
+              -maxdepth 3 -print 2>/dev/null \
+              > /tmp/shekinah-finalizer-diagnostics/retired-paths.txt || true
           fi
 
           exit "$finalizer_code"
@@ -85,11 +101,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: clean-room-finalizer-${{ github.run_id }}
-          path: |
-            /tmp/shekinah-finalizer.log
-            scripts/validate-catalog.mjs
-            src/editorial-content.json
-            docs/assets-provenance.json
-            docs/provenance-audit.md
+          path: /tmp/shekinah-finalizer-diagnostics
           if-no-files-found: warn
           retention-days: 1
