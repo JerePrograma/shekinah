@@ -74,11 +74,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       lines,
       add(productId, quantity = 1) {
         setLines((current) => {
+          const safeQuantity = Math.max(1, Math.min(99, Math.floor(quantity)));
           const existing = current.find((line) => line.productId === productId);
-          if (!existing) return [...current, { productId, quantity: Math.max(1, Math.min(99, quantity)) }];
+          if (!existing) return [...current, { productId, quantity: safeQuantity }];
           return current.map((line) =>
             line.productId === productId
-              ? { ...line, quantity: Math.min(99, line.quantity + Math.max(1, quantity)) }
+              ? { ...line, quantity: Math.min(99, line.quantity + safeQuantity) }
               : line,
           );
         });
@@ -91,7 +92,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         setLines((current) =>
           current.map((line) =>
-            line.productId === productId ? { ...line, quantity: Math.max(1, Math.min(99, quantity)) } : line,
+            line.productId === productId
+              ? { ...line, quantity: Math.max(1, Math.min(99, Math.floor(quantity))) }
+              : line,
           ),
         );
       },
@@ -124,10 +127,8 @@ export function quantityLabel(lines: CartLine[]): string {
 export function QuantityControl({ productId, value }: { productId: string; value: number }) {
   const { setQuantity } = useCart();
   return (
-    <div className="quantity-control" aria-label="Cantidad">
-      <button type="button" aria-label="Reducir cantidad" onClick={() => setQuantity(productId, value - 1)}>
-        −
-      </button>
+    <div className="quantity-control" aria-label="Cantidad del producto">
+      <button type="button" aria-label="Reducir cantidad" onClick={() => setQuantity(productId, value - 1)}>−</button>
       <input
         aria-label="Cantidad"
         inputMode="numeric"
@@ -137,30 +138,40 @@ export function QuantityControl({ productId, value }: { productId: string; value
         value={value}
         onChange={(event: ChangeEvent<HTMLInputElement>) => setQuantity(productId, Number(event.currentTarget.value))}
       />
-      <button type="button" aria-label="Aumentar cantidad" onClick={() => setQuantity(productId, value + 1)}>
-        +
-      </button>
+      <button type="button" aria-label="Aumentar cantidad" onClick={() => setQuantity(productId, value + 1)}>+</button>
     </div>
   );
 }
 
-function buildWhatsAppMessage(lines: CartLine[]): string {
-  const resolved = lines
+function resolveLines(lines: CartLine[]): Array<{ line: CartLine; product: Product }> {
+  return lines
     .map((line) => ({ line, product: products.find((product) => product.id === line.productId) }))
     .filter((item): item is { line: CartLine; product: Product } => Boolean(item.product));
-  const subtotal = resolved.reduce((total, item) => total + (item.product.price ?? 0) * item.line.quantity, 0);
+}
+
+function buildWhatsAppMessage(lines: CartLine[]): string {
+  const resolved = resolveLines(lines);
+  const knownSubtotal = resolved.reduce(
+    (total, item) => total + (item.product.price ?? 0) * item.line.quantity,
+    0,
+  );
   const detail = resolved.map((item) => {
-    const lineTotal = item.product.price === null ? 'precio no disponible' : new Intl.NumberFormat('es-AR', { style: 'currency', currency: item.product.currency ?? 'ARS' }).format(item.product.price * item.line.quantity);
+    const lineTotal = item.product.price === null
+      ? 'precio a confirmar'
+      : new Intl.NumberFormat('es-AR', {
+          style: 'currency',
+          currency: item.product.currency ?? 'ARS',
+        }).format(item.product.price * item.line.quantity);
     return `• ${item.product.name} × ${item.line.quantity} — ${lineTotal}`;
   });
-  const subtotalText = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotal);
+  const subtotalText = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(knownSubtotal);
   return [
     'Hola, Shekinah. Quiero consultar disponibilidad para:',
     '',
     ...detail,
     '',
-    `Subtotal informativo: ${subtotalText}`,
-    'Entiendo que el sitio no procesa el pago y que precio/stock deben confirmarse.',
+    `Subtotal informativo de productos con precio publicado: ${subtotalText}`,
+    'Necesito confirmar precio final, disponibilidad y forma de entrega.',
   ].join('\n');
 }
 
@@ -169,9 +180,7 @@ export function CartDialog() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const resolved = lines
-    .map((line) => ({ line, product: products.find((product) => product.id === line.productId) }))
-    .filter((item): item is { line: CartLine; product: Product } => Boolean(item.product));
+  const resolved = resolveLines(lines);
   const subtotal = resolved.reduce((total, item) => total + (item.product.price ?? 0) * item.line.quantity, 0);
 
   useEffect(() => {
@@ -208,6 +217,10 @@ export function CartDialog() {
   if (!open) return null;
   const whatsapp = `https://wa.me/${verifiedStore.whatsappNumber}?text=${encodeURIComponent(buildWhatsAppMessage(lines))}`;
 
+  const clearCart = () => {
+    if (window.confirm('¿Querés eliminar todos los productos del carrito?')) clear();
+  };
+
   return (
     <div className="cart-overlay" role="presentation" onMouseDown={() => setOpen(false)}>
       <div
@@ -220,11 +233,11 @@ export function CartDialog() {
       >
         <header>
           <div>
-            <p className="eyebrow">Consulta comercial</p>
+            <p className="eyebrow">Revisá antes de consultar</p>
             <h2 id="cart-title">Carrito</h2>
           </div>
-          <button ref={closeRef} className="cart-close" type="button" aria-label="Cerrar carrito" onClick={() => setOpen(false)}>
-            ×
+          <button ref={closeRef} className="cart-close" type="button" onClick={() => setOpen(false)}>
+            Cerrar
           </button>
         </header>
         {resolved.length ? (
@@ -234,12 +247,10 @@ export function CartDialog() {
                 <li key={product.id}>
                   <div>
                     <a href={toSitePath(product.path)}>{product.name}</a>
-                    <span>{formatPrice(product) ?? 'Precio no disponible'}</span>
+                    <span>{formatPrice(product) ?? 'Precio a confirmar'}</span>
                   </div>
                   <QuantityControl productId={product.id} value={line.quantity} />
-                  <button className="cart-remove" type="button" onClick={() => remove(product.id)}>
-                    Eliminar
-                  </button>
+                  <button className="cart-remove" type="button" onClick={() => remove(product.id)}>Eliminar producto</button>
                 </li>
               ))}
             </ul>
@@ -247,39 +258,19 @@ export function CartDialog() {
               <span>Subtotal informativo</span>
               <strong>{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotal)}</strong>
             </div>
-            <p className="checkout-disclaimer">No se procesa el pago en este sitio. WhatsApp se abre únicamente al activar el enlace.</p>
+            <p className="checkout-disclaimer">El precio y la disponibilidad se confirman por WhatsApp. Este sitio no procesa pagos.</p>
             <div className="cart-actions">
-              <a className="button" href={whatsapp} target="_blank" rel="noreferrer">
-                Consultar por WhatsApp
-              </a>
-              <button className="button button--secondary" type="button" onClick={clear}>
-                Vaciar carrito
-              </button>
+              <a className="button" href={whatsapp} target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
+              <button className="button button--secondary" type="button" onClick={clearCart}>Vaciar carrito</button>
             </div>
           </>
         ) : (
           <div className="cart-empty">
             <p>El carrito está vacío.</p>
-            <a className="button" href={toSitePath('/tienda/')} onClick={() => setOpen(false)}>
-              Ir a la tienda
-            </a>
+            <a className="button" href={toSitePath('/tienda/')} onClick={() => setOpen(false)}>Volver a productos</a>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-export function CommerceDock() {
-  const { lines, setOpen } = useCart();
-  return (
-    <div className="commerce-dock" aria-label="Acciones comerciales">
-      <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog">
-        Carrito ({lines.reduce((total, line) => total + line.quantity, 0)})
-      </button>
-      <a href={`https://wa.me/${verifiedStore.whatsappNumber}`} target="_blank" rel="noreferrer">
-        WhatsApp
-      </a>
     </div>
   );
 }
