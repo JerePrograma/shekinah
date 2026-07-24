@@ -21,6 +21,7 @@ const activeDynamicEndpoints = [
   /<form\b[^>]*\saction=["']https?:\/\//giu,
 ];
 const textExtensions = new Set(['.html', '.css', '.js', '.json', '.xml', '.txt', '.webmanifest', '.svg']);
+const specialTextFiles = new Set(['_redirects']);
 const inferableExtensions = new Set([
   ...textExtensions,
   '.avif',
@@ -109,8 +110,11 @@ if (!(await exists(root))) {
     }
 
     const extension = path.extname(file).toLowerCase();
-    if (!inferableExtensions.has(extension)) report.errors.push(`${relative}: tipo MIME no inferible por extensión`);
-    if (!textExtensions.has(extension)) continue;
+    const isSpecialTextFile = specialTextFiles.has(relative);
+    if (!inferableExtensions.has(extension) && !isSpecialTextFile) {
+      report.errors.push(`${relative}: tipo MIME no inferible por extensión`);
+    }
+    if (!textExtensions.has(extension) && !isSpecialTextFile) continue;
     const content = await readFile(file, 'utf8').catch(() => '');
 
     for (const pattern of forbidden) {
@@ -168,7 +172,7 @@ if (!(await exists(root))) {
     }
   }
 
-  for (const requiredFile of ['index.html', '404.html', 'robots.txt', 'sitemap.xml']) {
+  for (const requiredFile of ['index.html', '404.html', '_redirects', 'robots.txt', 'sitemap.xml']) {
     if (!(await exists(path.join(root, requiredFile)))) report.errors.push(`falta ${requiredFile}`);
   }
 
@@ -184,6 +188,14 @@ if (!(await exists(root))) {
   if (await exists(sitemapPath)) {
     const sitemap = await readFile(sitemapPath, 'utf8');
     if (!sitemap.includes(`${siteOrigin}/`)) report.errors.push('sitemap.xml no referencia el dominio final');
+  }
+
+  const redirectsPath = path.join(root, '_redirects');
+  if (await exists(redirectsPath)) {
+    const redirects = await readFile(redirectsPath, 'utf8');
+    if (!/^\/[^\s]+\s+\/[^\s]+\s+301$/mu.test(redirects)) {
+      report.errors.push('_redirects no contiene redirecciones permanentes válidas');
+    }
   }
 
   const printable = {
