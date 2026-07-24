@@ -7,9 +7,9 @@ export const siteBasePath =
 
 export const site = {
   name: 'Shekinah',
-  tagline: 'Herbolario & tienda gourmet',
+  tagline: 'Herbolario y tienda gourmet',
   description:
-    'Especias, hierbas, semillas, productos naturales y recetas para disfrutar todos los días.',
+    'Especias, hierbas, semillas y productos naturales para disfrutar todos los días.',
   locale: 'es-AR',
   origin: 'https://shekinah-7dl.pages.dev',
   email: 'german.gauna@yahoo.com.ar',
@@ -20,10 +20,9 @@ export const site = {
 
 export const navigation = [
   { href: '/', label: 'Inicio' },
+  { href: '/tienda/', label: 'Productos' },
   { href: '/nosotros/', label: 'Nosotros' },
-  { href: '/tienda/', label: 'Tienda' },
-  { href: '/recetas/', label: 'Recetas' },
-  { href: '/blog/', label: 'Blog' },
+  { href: '/contacto/', label: 'Contacto' },
 ] as const;
 
 export type Block =
@@ -34,7 +33,7 @@ export type Block =
 
 export interface ContentEntry {
   path: string;
-  kind: 'page' | 'post' | 'recipe';
+  kind: 'page' | 'post';
   title: string;
   description: string;
   eyebrow: string;
@@ -42,8 +41,6 @@ export interface ContentEntry {
   imageAlt: string;
   publishedAt?: string;
   categories?: string[];
-  ingredients?: string[];
-  instructions?: string[];
   blocks: Block[];
 }
 
@@ -53,14 +50,11 @@ interface EditorialContent {
 
 export const entries: ContentEntry[] = (editorialData as unknown as EditorialContent).entries;
 export const posts = entries.filter((entry) => entry.kind === 'post');
-export const recipes = entries.filter((entry) => entry.kind === 'recipe');
 
 const editorialRoutes = [
   '/nosotros/',
   '/el-viaje-de-las-especias-sabor-y-bienestar/',
   '/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/',
-  '/chocolate-casero/',
-  '/receta-barra-de-cereal/',
   '/terms-and-conditions/',
 ] as const;
 
@@ -69,7 +63,7 @@ export const canonicalRoutes: string[] = [
     '/',
     '/tienda/',
     '/blog/',
-    '/recetas/',
+    '/contacto/',
     ...editorialRoutes,
     ...entries.map((entry) => entry.path),
     '/category/uncategorized/',
@@ -79,6 +73,9 @@ export const canonicalRoutes: string[] = [
 export const redirects = [
   { from: '/inicio/', to: '/', status: 301 },
   { from: '/terminos-condiciones/', to: '/terms-and-conditions/', status: 301 },
+  { from: '/recetas/', to: '/tienda/', status: 301 },
+  { from: '/chocolate-casero/', to: '/tienda/', status: 301 },
+  { from: '/receta-barra-de-cereal/', to: '/tienda/', status: 301 },
 ] as const;
 
 export function toSitePath(value: string): string {
