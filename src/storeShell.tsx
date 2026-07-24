@@ -1,36 +1,72 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { verifiedStore } from './catalog';
+import { navigation, site, toSitePath } from './content';
 import { quantityLabel, useCart } from './cart';
-import { toSitePath } from './content';
 
-function StoreHeader() {
-  const { lines, setOpen } = useCart();
+function isCurrent(currentPath: string, href: string): boolean {
+  return href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href);
+}
+
+function StoreHeader({ currentPath }: { currentPath: string }) {
+  const { lines, setOpen: setCartOpen } = useCart();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const quantity = lines.reduce((total, line) => total + line.quantity, 0);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('has-open-menu', menuOpen);
+    return () => document.body.classList.remove('has-open-menu');
+  }, [menuOpen]);
+
   return (
-    <>
-      <div className="commercial-bar">
-        <div className="container commercial-bar__inner">
-          <span>LOS OLORES NO SE TRANSMITEN · LA CALIDAD SÍ</span>
-          <a href={`https://wa.me/${verifiedStore.whatsappNumber}`}>{verifiedStore.whatsappVisible}</a>
-        </div>
+    <header className="store-header">
+      <div className="container store-header__inner">
+        <a className="store-brand" href={toSitePath('/')} aria-label="Shekinah, volver al inicio">
+          <img src={toSitePath('/images/brand-horizontal.webp')} alt="Shekinah" width="600" height="162" />
+        </a>
+        <button
+          className="store-menu-toggle"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls="store-navigation"
+          onClick={() => setMenuOpen((value) => !value)}
+        >
+          {menuOpen ? 'Cerrar menú' : 'Menú'}
+        </button>
+        <nav
+          id="store-navigation"
+          className={`store-navigation${menuOpen ? ' is-open' : ''}`}
+          aria-label="Navegación principal"
+        >
+          {navigation.map((item) => (
+            <a
+              key={item.href}
+              href={toSitePath(item.href)}
+              aria-current={isCurrent(currentPath, item.href) ? 'page' : undefined}
+              onClick={() => setMenuOpen(false)}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+        <button
+          className="cart-trigger"
+          type="button"
+          onClick={() => setCartOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`Abrir carrito, ${quantityLabel(lines)}`}
+        >
+          Carrito <span aria-hidden="true">{quantity}</span>
+        </button>
       </div>
-      <header className="store-header">
-        <div className="container store-header__inner">
-          <a className="store-brand" href={toSitePath('/')} aria-label="Shekinah, inicio">
-            <img src={toSitePath('/images/brand-horizontal.webp')} alt="Shekinah" width="600" height="162" />
-          </a>
-          <nav aria-label="Navegación principal de la tienda">
-            <a href={toSitePath('/')}>Inicio</a>
-            <a href={toSitePath('/tienda/')}>Tienda</a>
-            <a href={toSitePath('/recetas/')}>Recetas</a>
-            <a href={toSitePath('/blog/')}>Blog</a>
-            <a href={toSitePath('/nosotros/')}>Nosotros</a>
-          </nav>
-          <button className="cart-trigger" type="button" onClick={() => setOpen(true)} aria-haspopup="dialog">
-            Carrito <span aria-label={quantityLabel(lines)}>{lines.reduce((total, line) => total + line.quantity, 0)}</span>
-          </button>
-        </div>
-      </header>
-    </>
+    </header>
   );
 }
 
@@ -39,33 +75,31 @@ function StoreFooter() {
     <footer className="store-footer">
       <div className="container store-footer__grid">
         <div>
-          <img src={toSitePath('/images/brand-lockup.webp')} alt="Shekinah" width="1200" height="670" />
-          <p>Herbolario y tienda gourmet con productos seleccionados para tu cocina.</p>
+          <img src={toSitePath('/images/brand-horizontal.webp')} alt="Shekinah" width="600" height="162" />
+          <p>{site.description}</p>
         </div>
-        <nav aria-label="Navegación legal">
+        <nav aria-label="Enlaces útiles">
+          <strong>Enlaces útiles</strong>
+          <a href={toSitePath('/nosotros/')}>Nosotros</a>
+          <a href={toSitePath('/blog/')}>Guías y consejos</a>
           <a href={toSitePath('/terms-and-conditions/')}>Términos y condiciones</a>
-          <a href={toSitePath('/blog/')}>Blog</a>
-          <a href={toSitePath('/recetas/')}>Recetas</a>
         </nav>
         <div>
-          <strong>Consultas</strong>
-          <p>
-            <a href={`https://wa.me/${verifiedStore.whatsappNumber}`}>{verifiedStore.whatsappVisible}</a>
-          </p>
-          <p>Mar del Plata, Buenos Aires, Argentina.</p>
+          <strong>Contacto</strong>
+          <p><a href={`https://wa.me/${verifiedStore.whatsappNumber}`} target="_blank" rel="noreferrer">WhatsApp {verifiedStore.whatsappVisible}</a></p>
+          <p><a href={`mailto:${site.email}`}>{site.email}</a></p>
+          <p>{site.address}</p>
         </div>
       </div>
     </footer>
   );
 }
 
-export function StoreLayout({ children }: { children: ReactNode }) {
+export function StoreLayout({ children, currentPath }: { children: ReactNode; currentPath: string }) {
   return (
     <>
-      <a className="skip-link" href="#main-content">
-        Saltar al contenido
-      </a>
-      <StoreHeader />
+      <a className="skip-link" href="#main-content">Saltar al contenido</a>
+      <StoreHeader currentPath={currentPath} />
       <main id="main-content">{children}</main>
       <StoreFooter />
     </>
