@@ -72,8 +72,10 @@ async function findUnexpectedReferences() {
 }
 
 const unexpectedReferences = await findUnexpectedReferences();
-const referenceDiagnostic = unexpectedReferences[0] ? `: ${unexpectedReferences[0]}` : '';
+const referenceTestName = unexpectedReferences[0]
+  ? `referencia residual: ${unexpectedReferences[0]}`
+  : 'las referencias técnicas necesarias quedan limitadas a redirecciones y pruebas';
 
-test(`las referencias técnicas necesarias quedan limitadas a redirecciones y pruebas${referenceDiagnostic}`, () => {
+test(referenceTestName, () => {
   assert.deepEqual(unexpectedReferences, []);
 });
