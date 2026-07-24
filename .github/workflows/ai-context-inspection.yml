@@ -1,0 +1,201 @@
+name: Temporary AI context inspection
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: shekinah-ai-context-inspection
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.event.issue.title == 'internal-ai-context-inspection-20260724'
+    name: Inspect repository and validate current tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Collect repository evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/shekinah-ai-context"
+          snapshot="$root/snapshot"
+          logs="$root/logs"
+          mkdir -p "$snapshot" "$logs"
+
+          {
+            echo '=== git status ==='
+            git status --short --branch
+            echo
+            echo '=== branch ==='
+            git branch --show-current
+            echo
+            echo '=== remotes ==='
+            git remote -v
+            echo
+            echo '=== revisions ==='
+            printf 'HEAD='
+            git rev-parse HEAD
+            printf 'origin/main='
+            git rev-parse origin/main
+            echo
+            echo '=== recent commits ==='
+            git log -30 --date=iso-strict --pretty=format:'%H%x09%ad%x09%s'
+            echo
+            echo
+            echo '=== tracked file count ==='
+            git ls-files | wc -l
+          } > "$root/git-metadata.txt"
+
+          git ls-files | LC_ALL=C sort > "$root/tracked-files.txt"
+          find . -maxdepth 4 -type f -not -path './.git/*' -printf '%P\n' | LC_ALL=C sort > "$root/files-maxdepth4.txt"
+
+          for expression in \
+            'TODO|FIXME|HACK|XXX|deprecated|legacy|pending|pendiente|temporal|workaround' \
+            'hostinger|wordpress|website builder|snapshot|scrap|migrat|recover|template|generator|herbalarioonline|zyrosite' \
+            'receta|recetas|chocolate-casero|receta-barra-de-cereal' \
+            'password|secret|token|api[_-]?key|private[_-]?key|credential'; do
+            slug=$(printf '%s' "$expression" | sha256sum | cut -c1-12)
+            git grep -n -i -E "$expression" > "$root/grep-$slug.txt" || true
+          done
+
+          python <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          destination = Path("${RUNNER_TEMP}") / "shekinah-ai-context" / "snapshot"
+          excluded_prefixes = (
+              ".clean-room-bundle/",
+              ".clean-room-finalizer/",
+              ".clean-room-finalizer-v2/",
+              ".clean-room-finalizer-v3/",
+              ".clean-room-finalizer-v5/",
+              "public/images/",
+              "reference-snapshot/site/",
+              "reference-snapshot/screenshots/",
+          )
+          excluded_exact = {"src/generated/products.json"}
+          paths = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          copied = []
+          skipped = []
+          for value in paths:
+              if value in excluded_exact or value.startswith(excluded_prefixes):
+                  skipped.append(f"excluded\t{value}")
+                  continue
+              source = Path(value)
+              try:
+                  size = source.stat().st_size
+              except FileNotFoundError:
+                  skipped.append(f"missing\t{value}")
+                  continue
+              if size > 2_000_000:
+                  skipped.append(f"oversize:{size}\t{value}")
+                  continue
+              body = source.read_bytes()
+              try:
+                  body.decode("utf-8")
+              except UnicodeDecodeError:
+                  skipped.append(f"binary:{size}\t{value}")
+                  continue
+              target = destination / value
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(body)
+              copied.append(f"{size}\t{value}")
+          root = destination.parent
+          (root / "snapshot-copied.txt").write_text("\n".join(copied) + "\n", encoding="utf-8")
+          (root / "snapshot-skipped.txt").write_text("\n".join(skipped) + "\n", encoding="utf-8")
+          PY
+
+      - name: Install dependencies
+        shell: bash
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Install Chromium
+        shell: bash
+        run: npm run install:browsers:ci
+
+      - name: Run validations and capture results
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/shekinah-ai-context"
+          logs="$root/logs"
+          results="$root/validation-results.tsv"
+          printf 'name\texit_code\n' > "$results"
+
+          run_check() {
+            local name="$1"
+            shift
+            set +e
+            "$@" > "$logs/$name.log" 2>&1
+            local code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$results"
+          }
+
+          run_check lint npm run lint
+          run_check format-check npm run format:check
+          run_check validate-content npm run validate:content
+          run_check typecheck npm run typecheck
+          run_check build npm run build
+          run_check test-unit npm run test:unit
+          run_check test-e2e npm run test:e2e
+          run_check audit-output npm run audit:output
+          run_check audit-copy npm run audit:copy
+          run_check audit-secrets npm run audit:secrets
+          run_check npm-audit bash -lc 'npm audit --omit=dev --audit-level=high'
+
+          node -e "const p=require('./package.json'); console.log(JSON.stringify({name:p.name,version:p.version,engines:p.engines,scripts:p.scripts,dependencies:p.dependencies,devDependencies:p.devDependencies},null,2))" > "$root/package-summary.json"
+          find tests -type f -maxdepth 4 -print 2>/dev/null | LC_ALL=C sort > "$root/test-files.txt" || true
+          find .github/workflows -maxdepth 1 -type f -print | LC_ALL=C sort > "$root/workflow-files.txt"
+          find src -maxdepth 3 -type f -print | LC_ALL=C sort > "$root/src-files.txt"
+          find scripts -maxdepth 2 -type f -print | LC_ALL=C sort > "$root/script-files.txt"
+
+      - id: artifact
+        name: Upload inspection evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: shekinah-ai-context-inspection-${{ github.run_id }}
+          path: ${{ runner.temp }}/shekinah-ai-context
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Report artifact and close issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          body=$(cat <<EOF
+          Inspección técnica remota completada.
+
+          - Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Artifact ID: ${ARTIFACT_ID:-no-disponible}
+          - Artifact: ${ARTIFACT_URL:-no-disponible}
+          - Commit inspeccionado: ${GITHUB_SHA}
+          EOF
+          )
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" -f body="$body"
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" -f state='closed' -f state_reason='completed' >/dev/null
