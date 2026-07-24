@@ -188,9 +188,10 @@ jobs:
             local route="$2"
             local headers
             headers=$(curl --silent --show-error --head --retry 8 --retry-delay 4 --retry-all-errors "$base$route")
+            headers=${headers//$'\r'/}
             grep -Eqi '^HTTP/[^ ]+ 301' <<< "$headers" \
               || { echo "::error::$base$route no responde 301"; exit 1; }
-            grep -Eqi '^location: .*\/tienda\/?\r?$' <<< "$headers" \
+            grep -Eqi '^location: .*/tienda/?$' <<< "$headers" \
               || { echo "::error::$base$route no redirige a /tienda/"; exit 1; }
           }
 
