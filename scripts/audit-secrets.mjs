@@ -11,7 +11,11 @@ const ignoredDirectories = new Set([
   'playwright-report',
   'test-results',
 ]);
-const ignoredFiles = new Set(['.ci/build.log']);
+const ignoredFiles = new Set([
+  '.ci/build.log',
+  '.ci/unit-tests.log',
+  '.ci/browser-tests.log',
+]);
 const binaryExtensions = new Set([
   '.avif',
   '.eot',
