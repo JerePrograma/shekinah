@@ -45,7 +45,7 @@ function productJsonLd(product: Product): Array<Record<string, unknown>> {
       '@type': 'BreadcrumbList',
       itemListElement: [
         { '@type': 'ListItem', position: 1, name: 'Inicio', item: absolute('/') },
-        { '@type': 'ListItem', position: 2, name: 'Tienda', item: absolute('/tienda/') },
+        { '@type': 'ListItem', position: 2, name: 'Productos', item: absolute('/tienda/') },
         { '@type': 'ListItem', position: 3, name: product.name, item: absolute(product.path) },
       ],
     },
@@ -58,7 +58,11 @@ function commerceHead(pathValue: string): string | null {
   const category = findCategory(path);
   if (!product && !category && path !== '/tienda/') return null;
 
-  const title = product ? `${product.name} — Shekinah` : category ? `${category.name} — Tienda Shekinah` : 'Tienda — Shekinah';
+  const title = product
+    ? `${product.name} — Shekinah`
+    : category
+      ? `${category.name} — Productos Shekinah`
+      : 'Productos — Shekinah';
   const description = product
     ? productDescription(product)
     : category
@@ -191,7 +195,7 @@ export function getCommerceSeoSummary(pathValue: string): { title: string; descr
     };
   }
   const category = findCategory(path);
-  if (category) return { title: `${category.name} — Tienda Shekinah`, description: `Productos de ${category.name} disponibles en Shekinah.` };
-  if (path === '/tienda/') return { title: 'Tienda — Shekinah', description: 'Catálogo de productos de Shekinah.' };
+  if (category) return { title: `${category.name} — Productos Shekinah`, description: `Productos de ${category.name} disponibles en Shekinah.` };
+  if (path === '/tienda/') return { title: 'Productos — Shekinah', description: 'Catálogo de productos de Shekinah.' };
   return null;
 }
