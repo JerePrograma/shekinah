@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - '.clean-room-bundle/**'
+      - '.clean-room-finalizer/**'
       - '.github/workflows/finalize-clean-room.yml'
 
 permissions:
   contents: write
   actions: write
+  statuses: write
 
 concurrency:
   group: shekinah-finalize-clean-room
@@ -19,7 +21,7 @@ jobs:
   finalize:
     name: Validate and publish audited tree
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout staged commit
@@ -27,261 +29,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Synchronize main
-        shell: bash
-        run: |
-          set -euo pipefail
-          git status
-          git branch --show-current
-          git switch main
-          git fetch origin
-          git pull --ff-only origin main
-          git status
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
-      - name: Download immutable audit inputs
+      - name: Execute verified finalizer payload
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/clean-room-input /tmp/dependency-lock
+          rm -rf /tmp/shekinah-finalizer
 
-          curl --fail --location --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8598453328/zip" \
-            --output /tmp/clean-room-input.zip
-          curl --fail --location --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8598697162/zip" \
-            --output /tmp/dependency-lock.zip
-
-          unzip -q /tmp/clean-room-input.zip -d /tmp/clean-room-input
-          unzip -q /tmp/dependency-lock.zip -d /tmp/dependency-lock
+          cat .clean-room-finalizer/part-* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            > /tmp/shekinah-finalizer-payload.tar.gz
 
           printf '%s  %s\n' \
-            'f27bc2c1a80cd01956d9563e2ea95fa53b15f23c95ee3083f84234f056009b5a' \
-            '/tmp/clean-room-input/categories.json' \
-            '3b2ec7c0c03172179bd194be841c32a63925dbbf571560affe52fbd67ba04e77' \
-            '/tmp/clean-room-input/products.json' \
-            '3042c136e81229cb84d3ae9c329898a841dc815dc78c7b8396751fbdb01efaf2' \
-            '/tmp/clean-room-input/site.json' \
-            '9ab9c70e5b6f32ae2d3e3a1682ff722e8aa06b7f20511c65bce2b567afaf6249' \
-            '/tmp/dependency-lock/package-lock.json' \
+            '8d07f73da1415b32c6da73c67cdb6bb59524b6152897eef189bddab9f85e24cc' \
+            '/tmp/shekinah-finalizer-payload.tar.gz' \
             | sha256sum --check --strict
 
-      - name: Reconstruct audited source bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat .clean-room-bundle/part-* | tr -d '\r\n' | base64 --decode > /tmp/shekinah-clean-room.tar.gz
-          printf '%s  %s\n' \
-            '58bd67ad72957150a067cd6ed8e84b8d094f5865e8bea8b41201f19ae832102f' \
-            '/tmp/shekinah-clean-room.tar.gz' \
-            | sha256sum --check --strict
-          tar --extract --gzip --file /tmp/shekinah-clean-room.tar.gz --directory .
+          tar --extract --gzip \
+            --file /tmp/shekinah-finalizer-payload.tar.gz \
+            --directory /tmp
 
-      - name: Generate minimal operational catalog
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p src/data
-          cp /tmp/clean-room-input/categories.json src/data/categories.json
-          cp /tmp/clean-room-input/site.json src/data/site.json
-          cp /tmp/dependency-lock/package-lock.json package-lock.json
-
-          node <<'NODE'
-          const fs = require('node:fs');
-          const input = JSON.parse(fs.readFileSync('/tmp/clean-room-input/products.json', 'utf8'));
-          const products = input.map(({ id, name, slug, path, price, currency, unit, sku, categoryIds }) => ({
-            id,
-            name,
-            slug,
-            path,
-            description: null,
-            shortDescription: null,
-            price,
-            currency,
-            unit,
-            sku,
-            categoryIds,
-            images: [],
-          }));
-          fs.writeFileSync('src/data/products.json', `${JSON.stringify(products, null, 2)}\n`);
-          NODE
-
-          printf '%s  %s\n' \
-            'c87b5bafd6498b93335041e8f29efb9a382022fb6cb2935e92e70947dfcc2011' \
-            'src/data/products.json' \
-            'f27bc2c1a80cd01956d9563e2ea95fa53b15f23c95ee3083f84234f056009b5a' \
-            'src/data/categories.json' \
-            '3042c136e81229cb84d3ae9c329898a841dc815dc78c7b8396751fbdb01efaf2' \
-            'src/data/site.json' \
-            '9ab9c70e5b6f32ae2d3e3a1682ff722e8aa06b7f20511c65bce2b567afaf6249' \
-            'package-lock.json' \
-            | sha256sum --check --strict
-
-      - name: Remove every file outside the audited manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/final-paths.txt <<'EOF'
-          .editorconfig
-          .gitattributes
-          .github/dependabot.yml
-          .github/workflows/ci.yml
-          .github/workflows/deploy-cloudflare.yml
-          .gitignore
-          .nvmrc
-          .prettierignore
-          .prettierrc
-          README.md
-          THIRD_PARTY_NOTICES.md
-          docs/CONTENT-INVENTORY.md
-          docs/MAINTENANCE.md
-          docs/ROUTE-MAP.md
-          docs/assets-provenance.json
-          docs/provenance-audit.md
-          eslint.config.js
-          index.html
-          package-lock.json
-          package.json
-          playwright.config.ts
-          public/images/brand-emblem.svg
-          public/images/brand-horizontal.svg
-          public/images/shekinah-identity.svg
-          public/manifest.webmanifest
-          public/robots.txt
-          scripts/audit-licenses.mjs
-          scripts/audit-output.mjs
-          scripts/audit-provenance.mjs
-          scripts/audit-public-copy.mjs
-          scripts/audit-secrets.mjs
-          scripts/check-format.mjs
-          scripts/deploy-cloudflare.mjs
-          scripts/prerender.mjs
-          scripts/serve-dist.mjs
-          scripts/validate-catalog.mjs
-          src/App.tsx
-          src/cart.tsx
-          src/catalog-pagination.css
-          src/catalog.css
-          src/catalog.ts
-          src/content.ts
-          src/data/categories.json
-          src/data/products.json
-          src/data/site.json
-          src/editorial-content.json
-          src/entry-client.tsx
-          src/entry-server.tsx
-          src/seo.ts
-          src/siteApp.tsx
-          src/siteSeo.ts
-          src/storePages.tsx
-          src/storeShell.tsx
-          src/styles.css
-          tests/react-e2e/commerce.spec.ts
-          tests/react-e2e/site.spec.ts
-          tests/react/architecture.test.mjs
-          tests/react/editorial-content.test.mjs
-          tests/react/removed-content.test.mjs
-          tsconfig.json
-          vite.config.ts
-          wrangler.jsonc
-          EOF
-
-          sed -i 's/^          //' /tmp/final-paths.txt
-          while IFS= read -r -d '' path; do
-            if ! grep --fixed-strings --line-regexp --quiet -- "$path" /tmp/final-paths.txt; then
-              rm -f -- "$path"
-            fi
-          done < <(git ls-files -z)
-
-          while IFS= read -r expected; do
-            [[ -f "$expected" ]] || { echo "::error::Falta archivo auditado: $expected"; exit 1; }
-          done < /tmp/final-paths.txt
-
-          find . -path './.git' -prune -o -type f -print \
-            | sed 's#^./##' \
-            | sort -u > /tmp/actual-paths.txt
-          sort -u /tmp/final-paths.txt > /tmp/expected-paths.txt
-          diff --unified /tmp/expected-paths.txt /tmp/actual-paths.txt
-
-      - name: Install dependencies from audited lockfile
-        run: npm ci --no-audit --no-fund
-
-      - name: Install Playwright Chromium
-        run: npm run install:browsers:ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Validate catalog
-        run: npm run validate:content
-
-      - name: Build application
-        run: npm run build
-
-      - name: Run unit tests
-        run: npm run test:unit
-
-      - name: Run browser tests
-        run: npm run test:e2e
-
-      - name: Audit generated output
-        run: npm run audit:output
-
-      - name: Audit public copy
-        run: npm run audit:copy
-
-      - name: Audit repository security
-        run: npm run audit:secrets:only
-
-      - name: Audit provenance controls
-        run: npm run audit:provenance
-
-      - name: Audit licenses
-        run: npm run audit:licenses
-
-      - name: Audit production dependency vulnerabilities
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: Review and publish final commit
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git status
-          git diff --check
-          git diff --stat
-          git diff > /tmp/final-review.diff
-          sha256sum /tmp/final-review.diff
-          wc -l /tmp/final-review.diff
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --all
-          git diff --cached --check
-          git commit -m 'refactor: complete provenance audit and clean-room rebuild'
-          final_sha=$(git rev-parse HEAD)
-          git push origin HEAD:main
-
-          for attempt in $(seq 1 10); do
-            if gh workflow run ci.yml --ref main; then
-              echo "CI dispatched for ${final_sha}"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo '::error::No se pudo iniciar CI para el commit final'
-          exit 1
+          bash /tmp/shekinah-finalizer/run.sh
