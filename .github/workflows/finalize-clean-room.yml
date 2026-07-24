@@ -85,6 +85,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: clean-room-finalizer-${{ github.run_id }}
-          path: /tmp/shekinah-finalizer.log
+          path: |
+            /tmp/shekinah-finalizer.log
+            scripts/validate-catalog.mjs
+            src/editorial-content.json
+            docs/assets-provenance.json
+            docs/provenance-audit.md
           if-no-files-found: warn
           retention-days: 1
