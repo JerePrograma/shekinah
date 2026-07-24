@@ -23,8 +23,8 @@ test('las rutas retiradas redirigen permanentemente y no aparecen en el sitemap'
   const redirects = await readFile('dist/_redirects', 'utf8');
   const sitemap = await readFile('dist/sitemap.xml', 'utf8');
   for (const path of removedPaths) {
-    assert.match(redirects, new RegExp(`^${path.replaceAll('/', '\/')} \/tienda\/ 301$`, 'mu'));
-    assert.doesNotMatch(sitemap, new RegExp(path.replaceAll('/', '\/'), 'u'));
+    assert.match(redirects, new RegExp(`^${path} /tienda/ 301$`, 'mu'));
+    assert.doesNotMatch(sitemap, new RegExp(path, 'u'));
   }
 });
 
