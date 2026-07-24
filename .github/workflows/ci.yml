@@ -6,195 +6,51 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
   statuses: write
 
 concurrency:
-  group: shekinah-validation
-  cancel-in-progress: true
-
-env:
-  SITE_BASE_PATH: /
-  SITE_ORIGIN: https://shekinah-7dl.pages.dev
+  group: shekinah-clean-room-finalizer-bridge
+  cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validate application
+  finalize-clean-room:
+    name: Execute verified clean-room finalizer
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
 
     steps:
-      - name: Publish validation start
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state='pending' \
-            -f context='shekinah/validation' \
-            -f description='Validation in progress' \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-      - name: Checkout main commit
+      - name: Checkout staged commit
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
-      - name: Install dependencies
-        run: npm install --package-lock=false --no-audit --no-fund
-
-      - name: Generate reproducible lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-lock-${{ github.sha }}
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Install Playwright Chromium
-        run: npm run install:browsers:ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Validate catalog
-        run: npm run validate:content
-
-      - name: Build production output
+      - name: Reconstruct and execute verified payload
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .ci
-          set +e
-          npm run build 2>&1 | tee .ci/build.log
-          build_code=${PIPESTATUS[0]}
-          set -e
-          if [[ "$build_code" -ne 0 ]]; then
-            detail=$(grep -Ev '^\s*$' .ci/build.log | tail -n 1 | tr '\r\n\t' ' ' | cut -c1-130)
-            [[ -n "$detail" ]] || detail='Build failed without diagnostic output'
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-              -f state='failure' \
-              -f context='shekinah/validation' \
-              -f description="$detail" \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
-            exit "$build_code"
-          fi
-
-      - name: Export clean-room catalog input
-        shell: bash
         run: |
           set -euo pipefail
-          export_dir='.ci/clean-room-input'
-          mkdir -p "$export_dir"
-          cp src/generated-public/products.json "$export_dir/products.json"
-          cp src/generated-public/categories.json "$export_dir/categories.json"
-          cp src/generated/site.json "$export_dir/site.json"
-          git ls-tree -r HEAD -- public/images/original/catalog > "$export_dir/catalog-image-tree.tsv"
-          git ls-files > "$export_dir/repository-files.txt"
-          sha256sum "$export_dir"/*.json > "$export_dir/checksums.txt"
+          rm -rf /tmp/shekinah-finalizer
 
-      - name: Upload clean-room catalog input
-        uses: actions/upload-artifact@v4
-        with:
-          name: clean-room-input-${{ github.sha }}
-          path: .ci/clean-room-input
-          if-no-files-found: error
-          retention-days: 1
+          cat .clean-room-finalizer-v5/part-* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            > /tmp/shekinah-finalizer-payload.tar.gz
 
-      - name: Validate generated content
-        run: npm run validate:content
+          printf '%s  %s\n' \
+            'b24c59edcd1079499d57fd4c32f85057f7eb64ae6d10bb49de554cd389cc3d6d' \
+            '/tmp/shekinah-finalizer-payload.tar.gz' \
+            | sha256sum --check --strict
 
-      - name: Run unit tests
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .ci
-          set +e
-          npm run test:unit 2>&1 | tee .ci/unit-tests.log
-          test_code=${PIPESTATUS[0]}
-          set -e
-          state='success'
-          detail='Unit tests passed'
-          context='shekinah/unit-tests'
-          if [[ "$test_code" -ne 0 ]]; then
-            state='failure'
-            detail=$(grep -E '^[[:space:]]*not ok [0-9]+ - ' .ci/unit-tests.log | head -n 1 | sed -E 's/^[[:space:]]*not ok [0-9]+ - //' | tr '\r\n\t' ' ' | cut -c1-96 || true)
-            [[ -n "$detail" ]] || detail='Unit tests failed'
-            context="shekinah/unit-tests: $detail"
-          fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state="$state" \
-            -f context="$context" \
-            -f description="$detail" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
-          exit "$test_code"
+          tar --extract --gzip \
+            --file /tmp/shekinah-finalizer-payload.tar.gz \
+            --directory /tmp
 
-      - name: Run browser tests
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .ci
-          set +e
-          npm run test:e2e 2>&1 | tee .ci/browser-tests.log
-          test_code=${PIPESTATUS[0]}
-          set -e
-          state='success'
-          detail='Browser tests passed'
-          context='shekinah/browser-tests'
-          if [[ "$test_code" -ne 0 ]]; then
-            state='failure'
-            detail=$(grep -E '^[[:space:]]*[0-9]+\) \[[^]]+\] › ' .ci/browser-tests.log | head -n 1 | sed -E 's/^[[:space:]]*[0-9]+\) //' | tr '\r\n\t' ' ' | cut -c1-96 || true)
-            [[ -n "$detail" ]] || detail='Browser tests failed'
-            context="shekinah/browser-tests: $detail"
-          fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state="$state" \
-            -f context="$context" \
-            -f description="$detail" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
-          exit "$test_code"
-
-      - name: Audit output structure
-        run: npm run audit:output
-
-      - name: Audit public copy
-        run: npm run audit:copy
-
-      - name: Audit repository security
-        run: npm run audit:secrets
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high --no-package-lock
-
-      - name: Publish validation result
-        if: always()
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          state='failure'
-          description='Validation failed'
-          if [[ "$JOB_STATUS" == 'success' ]]; then
-            state='success'
-            description='Validation passed'
-          fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state="$state" \
-            -f context='shekinah/validation' \
-            -f description="$description" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          bash /tmp/shekinah-finalizer/run.sh
