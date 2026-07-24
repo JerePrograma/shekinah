@@ -7,6 +7,7 @@ on:
       - '.clean-room-bundle/**'
       - '.clean-room-finalizer/**'
       - '.clean-room-finalizer-v2/**'
+      - '.clean-room-finalizer-v3/**'
       - '.github/workflows/finalize-clean-room.yml'
 
 permissions:
@@ -43,13 +44,13 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/shekinah-finalizer
 
-          cat .clean-room-finalizer-v2/part-* \
+          cat .clean-room-finalizer-v3/part-* \
             | tr -d '\r\n' \
             | base64 --decode \
             > /tmp/shekinah-finalizer-payload.tar.gz
 
           printf '%s  %s\n' \
-            '11305d48353d5e3ab75aabf84f475a02e1ed288eda6feb4e707b7874f8dce58d' \
+            '797c08e3e2ce262d9010cb92d9196fbe97b670bbe6ccfa3651f47038a56a477d' \
             '/tmp/shekinah-finalizer-payload.tar.gz' \
             | sha256sum --check --strict
 
