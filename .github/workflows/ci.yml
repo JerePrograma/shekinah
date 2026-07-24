@@ -47,6 +47,17 @@ jobs:
       - name: Install dependencies
         run: npm install --package-lock=false --no-audit --no-fund
 
+      - name: Generate reproducible lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lock-${{ github.sha }}
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Install Playwright Chromium
         run: npm run install:browsers:ci
 
