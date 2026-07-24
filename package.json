@@ -19,7 +19,7 @@
     "build": "npm run typecheck && vite build && vite build --ssr src/entry-server.tsx --outDir .ssr && node scripts/prerender.mjs",
     "preview": "node scripts/serve-dist.mjs --host 127.0.0.1 --port 4321",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "node --test tests/react/*.test.mjs",
+    "test:unit": "node --test --test-reporter=tap tests/react/*.test.mjs",
     "test:e2e": "playwright test",
     "audit:output": "node scripts/audit-output.mjs",
     "audit:copy": "node scripts/audit-public-copy.mjs",
