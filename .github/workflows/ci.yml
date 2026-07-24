@@ -80,6 +80,27 @@ jobs:
             exit "$build_code"
           fi
 
+      - name: Export clean-room catalog input
+        shell: bash
+        run: |
+          set -euo pipefail
+          export_dir='.ci/clean-room-input'
+          mkdir -p "$export_dir"
+          cp src/generated-public/products.json "$export_dir/products.json"
+          cp src/generated-public/categories.json "$export_dir/categories.json"
+          cp src/generated/site.json "$export_dir/site.json"
+          git ls-tree -r HEAD -- public/images/original/catalog > "$export_dir/catalog-image-tree.tsv"
+          git ls-files > "$export_dir/repository-files.txt"
+          sha256sum "$export_dir"/*.json > "$export_dir/checksums.txt"
+
+      - name: Upload clean-room catalog input
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-room-input-${{ github.sha }}
+          path: .ci/clean-room-input
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Validate generated content
         run: npm run validate:content
 
