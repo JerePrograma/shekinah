@@ -53,7 +53,7 @@
         },
         {
           "type": "paragraph",
-          "text": "Tu confianza es nuestro ingrediente principal. Amamos profundamente el poder curativo de las plantas y la riqueza de la gastronomía global. Por eso, cada producto de nuestra tienda ha sido seleccionado a mano, garantizando que recibas únicamente lo mejor del mundo botánico. Sabores reales, orígenes éticos y un compromiso absoluto con la excelencia de tus recetas."
+          "text": "Tu confianza es nuestro ingrediente principal. Amamos profundamente el poder curativo de las plantas y la riqueza de la gastronomía global. Por eso, cada producto de nuestra tienda ha sido seleccionado a mano, garantizando que recibas únicamente lo mejor del mundo botánico. Sabores reales, orígenes éticos y un compromiso absoluto con la excelencia de tus preparaciones."
         }
       ]
     },
@@ -128,208 +128,6 @@
         {
           "type": "paragraph",
           "text": "Explora nuestra selección de hierbas y comienza a experimentar con el poder de la naturaleza."
-        }
-      ]
-    },
-    {
-      "path": "/chocolate-casero/",
-      "kind": "recipe",
-      "title": "Chocolate casero",
-      "description": "Una receta sencilla para preparar chocolate casero delicioso y natural.",
-      "eyebrow": "Receta artesanal",
-      "image": "/images/culinary-kitchen.webp",
-      "imageAlt": "Cocina de preparación artesanal con mesadas y utensilios.",
-      "ingredients": [
-        "250 g de semillas de cacao naturales y orgánicas",
-        "50 a 80 g de manteca de cacao pura",
-        "80 a 100 g de azúcar impalpable o eritritol en polvo",
-        "Una pizca de sal marina fina",
-        "Media cucharadita de canela de Ceylán, opcional",
-        "Pistachos salados, opcionales",
-        "Pétalos de flor de oropel, opcionales"
-      ],
-      "instructions": [
-        "Tostar las semillas a unos 120 °C durante 15 a 20 minutos y dejarlas enfriar.",
-        "Retirar las cáscaras y conservar los nibs de cacao.",
-        "Procesar los nibs en tandas, haciendo pausas, hasta obtener una pasta espesa y brillante.",
-        "Agregar la manteca de cacao derretida, el endulzante seco, la sal y la canela.",
-        "Procesar de 5 a 10 minutos más, volcar en un molde seco y retirar las burbujas.",
-        "Agregar pistachos o pétalos y refrigerar durante un par de horas hasta que quede firme."
-      ],
-      "publishedAt": "2026-07-20",
-      "blocks": [
-        {
-          "type": "heading",
-          "text": "🍫 Guía para Principiantes: Tu Primer Chocolate Artesanal"
-        },
-        {
-          "type": "paragraph",
-          "text": "Hacer chocolate en casa es como hacer alquimia. Vamos a transformar una semilla dura y cruda en una tableta que se derrite en la boca. Al no usar máquinas industriales, tu chocolate tendrá una textura ligeramente más rústica y crujiente, un sello inconfundible de los verdaderos chocolates artesanales de alta gama."
-        },
-        {
-          "type": "heading",
-          "text": "🛒 Los Ingredientes (La clave del éxito)"
-        },
-        {
-          "type": "paragraph",
-          "text": "Para que el resultado sea increíble, la materia prima debe ser excelente:"
-        },
-        {
-          "type": "list",
-          "items": [
-            "El Alma del Chocolate: 250 gr de nuestras Semillas de Cacao Naturales y Orgánicas . Al ser importadas y puras, te garantizan ese sabor intenso y real a cacao que los chocolates de kiosco no tienen.",
-            "La Textura: 50 gr a 80 gr de Manteca de Cacao pura (se consigue fácilmente en dietéticas o casas de repostería). Viene en trozos duros amarillentos y es fundamental para que el chocolate fluya y se derrita en la boca.",
-            "El Dulzor: 80 gr a 100 gr de Azúcar impalpable (o eritritol en polvo si buscás una versión sin azúcar). Regla de oro: ¡Nunca uses miel, edulcorante líquido ni agua! Cualquier líquido hará que tu chocolate se corte y se convierta en una pasta dura imposible de salvar.",
-            "Aroma cálido: Media cucharadita de nuestra Canela de Ceylán . A diferencia de la canela común, esta es sutil, dulce y no pica, dándole un perfume espectacular a la mezcla.",
-            "El Crunch perfecto: Un puñado de nuestros Pistachos Salados . El contraste entre el chocolate amargo y el crocante salado del pistacho es un viaje de ida.",
-            "Un horno común.",
-            "Una procesadora de alimentos (la clásica de cuchillas) o una licuadora muy potente.",
-            "Bowls o recipientes de vidrio/metal limpios y totalmente secos .",
-            "Prendé el horno a fuego muy, muy bajito (unos 120°C).",
-            "Poné nuestras semillas de cacao en una fuente para horno, bien esparcidas.",
-            "Dejalas tostar por unos 15 a 20 minutos. Vas a saber que están listas porque tu cocina se va a llenar de un aroma a brownie recién horneado y algunas semillas pueden hacer un pequeño ruidito (como un \"pop\").",
-            "Agarrá las semillas tostadas y frotalas con los dedos. Vas a ver que la cáscara finita se rompe y sale súper fácil.",
-            "Poné los nibs pelados en tu procesadora o licuadora.",
-            "Empezá a licuar. Al principio se va a hacer un polvo seco. No te asustes, es normal.",
-            "Importante: Pará la máquina cada un par de minutos para que el motor no se queme, y con una cuchara seca raspá los bordes para ayudar a que todo se mezcle.",
-            "A esa pasta que tenés en la procesadora, agregale la manteca de cacao (que tenés que derretir previamente en el microondas o a bañomaría para que esté líquida).",
-            "Sumá el azúcar impalpable, la pizca de sal marina y la media cucharadita de nuestra Canela de Ceylán ."
-          ]
-        },
-        {
-          "type": "heading",
-          "text": "🍫 Preguntas Frecuentes: Tu Primer Chocolate Artesanal"
-        },
-        {
-          "type": "paragraph",
-          "text": "1. ¿Puedo usar miel, stevia líquida o esencias para endulzar y dar sabor? ¡No! Este es el error más común. El chocolate puro y los líquidos son enemigos íntimos. Cualquier ingrediente con base de agua (miel, siropes, o esencias líquidas) hará que la grasa del cacao se corte. Tu mezcla se va a convertir instantáneamente en una pasta grumosa y dura que no podrás moldear. Usá siempre ingredientes 100% secos, como azúcar impalpable, eritritol en polvo o especias secas."
-        },
-        {
-          "type": "paragraph",
-          "text": "2. Mi licuadora se está calentando mucho, ¿es normal? Sí, transformar los nibs sólidos en licor líquido exige bastante al motor. Si sentís que tu máquina está muy caliente al tacto, apagala y dejala descansar 5 o 10 minutos. Aprovechá esas pausas para raspar los bordes con una espátula de silicona (¡que esté completamente seca!) para ayudar a que la mezcla baje hacia las cuchillas."
-        },
-        {
-          "type": "paragraph",
-          "text": "3. El chocolate me quedó un poco \"arenoso\" al paladar, ¿hice algo mal? Para nada, ¡es una característica del chocolate artesanal! Al hacerlo en casa sin una máquina conchadora industrial (que muele el cacao por 48 horas seguidas), es natural sentir una textura ligeramente rústica. De hecho, este estilo es muy codiciado en Europa, similar al famoso chocolate de Módica. Si lo preferís más suave, la próxima vez procesá la mezcla por más tiempo."
-        },
-        {
-          "type": "paragraph",
-          "text": "4. ¿Es obligatorio comprar y agregar manteca de cacao extra? Sí, es fundamental. Aunque nuestras semillas ya tienen su propia grasa natural, al molerlas en una licuadora casera no logramos la fluidez necesaria. La manteca de cacao extra es el secreto para poder volcarlo en el molde fácilmente y lograr esa textura sedosa que se derrite en la boca."
-        },
-        {
-          "type": "paragraph",
-          "text": "5. ¿Por qué tengo que guardarlo en la heladera? Como en esta guía para principiantes omitimos el complejo proceso del \"templado\" (que requiere termómetros de precisión y curvas de temperatura exactas), tu chocolate no tiene la estructura de cristales necesaria para soportar el calor ambiente. Guardarlo en la heladera o nevera asegura que mantenga su firmeza y haga ese hermoso sonido de \"crack\" al morderlo."
-        },
-        {
-          "type": "paragraph",
-          "text": "6. ¿En qué momento le agrego los pistachos u otros extras? Todo lo que sea en polvo (como la canela de Ceylán) va a la licuadora junto con el azúcar. Pero los agregados que querés que mantengan su textura crujiente (como nuestros pistachos salados o escamas de sal) y las decoraciones visuales (como la flor de oropel) van directamente en el molde, justo después de volcar el chocolate líquido y antes de meterlo a la heladera."
-        },
-        {
-          "type": "heading",
-          "text": "¿Cuánto tiempo tarda?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Preparar y enfriar el chocolate casero suele tomar alrededor de una hora en total."
-        },
-        {
-          "type": "heading",
-          "text": "¿Puedo usar otros sabores?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Sí, puedes añadir vainilla, nueces o frutas secas para darle un toque personal y delicioso."
-        },
-        {
-          "type": "heading",
-          "text": "¿Cómo conservarlo mejor?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Guarda el chocolate en un lugar fresco y seco, preferiblemente en un recipiente hermético."
-        },
-        {
-          "type": "heading",
-          "text": "¿Es apto para niños?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Sí, es una receta sencilla y segura para que los niños disfruten con supervisión."
-        }
-      ]
-    },
-    {
-      "path": "/receta-barra-de-cereal/",
-      "kind": "recipe",
-      "title": "Barras caseras",
-      "description": "Recetas fáciles y deliciosas para tus barras de cereales hechas en casa.",
-      "eyebrow": "Receta recuperada",
-      "image": "/images/culinary-kitchen.webp",
-      "imageAlt": "Frascos de productos secos sobre una mesada luminosa.",
-      "ingredients": [
-        "Avena",
-        "Frutos secos",
-        "Miel",
-        "Semillas naturales"
-      ],
-      "instructions": [],
-      "publishedAt": "2026-07-20",
-      "blocks": [
-        {
-          "type": "paragraph",
-          "text": "Barras caseras"
-        },
-        {
-          "type": "heading",
-          "text": "Galería"
-        },
-        {
-          "type": "paragraph",
-          "text": "Deliciosas barras caseras hechas con amor"
-        },
-        {
-          "type": "heading",
-          "text": "Preguntas frecuentes"
-        },
-        {
-          "type": "heading",
-          "text": "¿Qué ingredientes uso?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Utilizo avena, frutos secos, miel y semillas naturales para barras saludables."
-        },
-        {
-          "type": "heading",
-          "text": "¿Son aptas para veganos?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Sí, todas las recetas pueden adaptarse fácilmente para ser 100% veganas sin perder sabor."
-        },
-        {
-          "type": "heading",
-          "text": "¿Cuánto duran las barras?"
-        },
-        {
-          "type": "paragraph",
-          "text": "Las barras caseras duran hasta dos semanas si se guardan en un recipiente hermético y en lugar fresco."
-        },
-        {
-          "type": "paragraph",
-          "text": "Recomiendo conservarlas en la nevera para mayor frescura."
-        },
-        {
-          "type": "heading",
-          "text": "¿Puedo personalizar las recetas?"
-        },
-        {
-          "type": "heading",
-          "text": "¿Son difíciles de hacer?"
-        },
-        {
-          "type": "paragraph",
-          "text": "No, las recetas son simples y perfectas para principiantes en la cocina."
         }
       ]
     },
@@ -517,98 +315,6 @@
       "imageAlt": "Frascos con hierbas y especias.",
       "publishedAt": "2026-07-20",
       "blocks": []
-    },
-    {
-      "path": "/recetas/",
-      "kind": "page",
-      "title": "Recetas",
-      "description": "Tu brújula en la cocina: recetas y preparaciones recuperadas del sitio original.",
-      "eyebrow": "Recetario",
-      "image": "/images/culinary-kitchen.webp",
-      "imageAlt": "Cocina preparada para recetas artesanales.",
-      "publishedAt": "2026-07-20",
-      "blocks": [
-        {
-          "type": "heading",
-          "text": "Recetas únicas"
-        },
-        {
-          "type": "paragraph",
-          "text": "Tu brújula en la cocina. Buscá por especia o ingrediente y descubrí exactamente qué plato podés preparar. Encontrá la receta perfecta para sacarle el máximo provecho a cada tesoro que te lleves."
-        },
-        {
-          "type": "heading",
-          "text": "Chocolate Casero"
-        },
-        {
-          "type": "paragraph",
-          "text": "Huevos, patatas y cebolla, paso a paso."
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "heading",
-          "text": "Barra de Cereal Casero"
-        },
-        {
-          "type": "paragraph",
-          "text": "Nuestros productos especiales"
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "heading",
-          "text": "Sopa Caliente"
-        },
-        {
-          "type": "paragraph",
-          "text": "Caldo de verduras con toque de ajo y perejil."
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "heading",
-          "text": "Pasta Rápida"
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "paragraph",
-          "text": "Espaguetis con salsa de tomate y albahaca fresca."
-        },
-        {
-          "type": "heading",
-          "text": "Postre Dulce"
-        },
-        {
-          "type": "paragraph",
-          "text": "Yogur con miel y frutas de temporada."
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "heading",
-          "text": "Gratis"
-        },
-        {
-          "type": "heading",
-          "text": "Pan Casero"
-        },
-        {
-          "type": "paragraph",
-          "text": "Receta fácil para hacer pan en casa sin complicaciones."
-        }
-      ]
     }
   ],
   "sourceIndex": [
@@ -637,22 +343,6 @@
       "sourceHtmlBytes": 1583
     },
     {
-      "path": "/chocolate-casero/",
-      "postId": "32",
-      "postType": "page",
-      "status": "publish",
-      "sourceHtmlSha256": "98aa6eaea613bafdddbeb121420b5d7e3a51a0dc9e3af2a9413fe24e89e212b0",
-      "sourceHtmlBytes": 11320
-    },
-    {
-      "path": "/receta-barra-de-cereal/",
-      "postId": "34",
-      "postType": "page",
-      "status": "publish",
-      "sourceHtmlSha256": "e813c73f9279e4cb0b2690ab28f13ebe8f6ca9dd8bc378ecf9772bad8017cf2f",
-      "sourceHtmlBytes": 2915
-    },
-    {
       "path": "/terms-and-conditions/",
       "postId": "25",
       "postType": "page",
@@ -675,14 +365,6 @@
       "status": "publish",
       "sourceHtmlSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "sourceHtmlBytes": 0
-    },
-    {
-      "path": "/recetas/",
-      "postId": "30",
-      "postType": "page",
-      "status": "publish",
-      "sourceHtmlSha256": "da46d5c82eb8c4e26a96f6040fe6dfcc31e77e7339a74f98b8c9fd50888749ea",
-      "sourceHtmlBytes": 1654
     }
   ],
   "excludedWordPressItems": [
@@ -707,12 +389,6 @@
       "reason": "Plantilla en inglés con marcadores sin completar; se conserva el redirect a la página legal válida."
     }
   ],
-  "attachments": {
-    "declared": 20,
-    "originalFilesPresent": 20,
-    "mediaVariantsPresent": 98,
-    "note": "Los activos comerciales y editoriales ya están versionados bajo public/images y public/images/original."
-  },
   "storeCrossCheck": {
     "productsRecovered": 510,
     "categoriesRecovered": 16,
