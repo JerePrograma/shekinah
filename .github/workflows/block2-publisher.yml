@@ -33,10 +33,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_parent='e0076931369cebdae007326c8c9e1223814b0213'
-          [[ "$(git rev-parse HEAD^)" == "$expected_parent" ]]
-          [[ "$(git log -1 --pretty=%s)" == 'chore: stage verified block 2 publisher' ]]
-          changed=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          expected_base='e0076931369cebdae007326c8c9e1223814b0213'
+          git merge-base --is-ancestor "$expected_base" HEAD
+          [[ "$(git rev-list --count "$expected_base"..HEAD)" == '2' ]]
+          [[ "$(git log -1 --pretty=%s)" == 'chore: support chunked block 2 payload' ]]
+          changed=$(git diff --name-only "$expected_base"..HEAD | LC_ALL=C sort -u)
           [[ "$changed" == '.github/workflows/block2-publisher.yml' ]]
           git fetch origin main
           [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]]
@@ -82,7 +83,7 @@ jobs:
                       raise SystemExit(f"Parte duplicada: {index:02d}")
                   parts[index] = match.group(2)
 
-          expected_indexes = list(range(5))
+          expected_indexes = list(range(17))
           if sorted(parts) != expected_indexes:
               raise SystemExit(
                   f"Partes incorrectas: obtenidas={sorted(parts)}, esperadas={expected_indexes}"
