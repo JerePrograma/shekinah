@@ -33,14 +33,15 @@ for (const route of routes) {
 test('el menú móvil expone su estado y etiquetas completas', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-375x812', 'Caso específico de navegación móvil');
   await page.goto('/');
-  const toggle = page.getByRole('button', { name: 'Menú' });
+  const toggle = page.getByRole('button', { name: 'Menú', exact: true });
+  const navigation = page.getByRole('navigation', { name: 'Navegación principal' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
-  await expect(page.getByRole('button', { name: 'Cerrar menú' })).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Productos' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cerrar menú', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(navigation).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Productos', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Menú' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: 'Menú', exact: true })).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('las rutas retiradas llevan al catálogo', async ({ page }) => {
