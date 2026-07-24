@@ -14,29 +14,29 @@ export interface SeoData {
 
 const routeDefaults: Record<string, Pick<SeoData, 'title' | 'description' | 'image' | 'type' | 'noindex'>> = {
   '/': {
-    title: 'Shekinah — Herbolario & tienda gourmet',
+    title: 'Shekinah — Herbolario y tienda gourmet',
     description: site.description,
     image: '/images/original/home-spice-chest.jpg',
     type: 'website',
     noindex: false,
   },
   '/blog/': {
-    title: 'Blog — Shekinah',
-    description: 'Historias, usos culinarios y cultura alrededor de hierbas y especias.',
+    title: 'Guías y consejos — Shekinah',
+    description: 'Información sobre hierbas, especias y sus usos culinarios.',
     image: '/images/original/post-spice-journey.png',
     type: 'website',
     noindex: false,
   },
-  '/recetas/': {
-    title: 'Recetas — Shekinah',
-    description: 'Recetas e ideas para descubrir nuevos sabores en casa.',
-    image: '/images/original/recipe-chocolate.jpg',
+  '/contacto/': {
+    title: 'Contacto — Shekinah',
+    description: 'Contactá a Shekinah por WhatsApp o correo electrónico.',
+    image: '/images/original/home-storefront.jpg',
     type: 'website',
     noindex: false,
   },
   '/category/uncategorized/': {
     title: 'Archivo sin categoría — Shekinah',
-    description: 'Archivo de publicaciones de Shekinah. El contenido actualizado se encuentra en el blog.',
+    description: 'Archivo de publicaciones de Shekinah. El contenido actualizado se encuentra en guías y consejos.',
     image: '/images/original/home-spice-chest.jpg',
     type: 'website',
     noindex: true,
@@ -54,7 +54,7 @@ export function getSeo(pathValue: string): SeoData {
   const title = entry ? `${entry.title} — Shekinah` : (base?.title ?? 'Página no encontrada — Shekinah');
   const description = entry?.description ?? base?.description ?? 'La página solicitada no existe.';
   const image = getOriginalMedia(path)?.hero.src ?? entry?.image ?? base?.image ?? '/images/original/home-spice-chest.jpg';
-  const type = entry?.kind === 'post' || entry?.kind === 'recipe' ? 'article' : (base?.type ?? 'website');
+  const type = entry?.kind === 'post' ? 'article' : (base?.type ?? 'website');
   const noindex = path === '/404/' || (!entry && !base) || Boolean(base?.noindex);
 
   const organization = {
@@ -79,16 +79,13 @@ export function getSeo(pathValue: string): SeoData {
         organization,
         {
           '@context': 'https://schema.org',
-          '@type': entry.kind === 'recipe' ? 'Recipe' : entry.kind === 'post' ? 'Article' : 'WebPage',
+          '@type': entry.kind === 'post' ? 'Article' : 'WebPage',
           name: entry.title,
           headline: entry.title,
           description: entry.description,
           image: absolute(image),
           url: absolute(entry.path),
           ...(entry.publishedAt ? { datePublished: entry.publishedAt } : {}),
-          ...(entry.kind === 'recipe' && entry.ingredients
-            ? { recipeIngredient: entry.ingredients, recipeInstructions: entry.instructions ?? [] }
-            : {}),
         },
       ]
     : organization;
@@ -131,14 +128,14 @@ export function buildHead(path: string): string {
     `<meta name="description" content="${escapeAttribute(seo.description)}" />`,
     `<meta name="robots" content="${robots}" />`,
     `<link rel="canonical" href="${escapeAttribute(canonical)}" />`,
-    `<meta property="og:locale" content="es_AR" />`,
+    '<meta property="og:locale" content="es_AR" />',
     `<meta property="og:type" content="${seo.type}" />`,
-    `<meta property="og:site_name" content="Shekinah" />`,
+    '<meta property="og:site_name" content="Shekinah" />',
     `<meta property="og:title" content="${escapeAttribute(seo.title)}" />`,
     `<meta property="og:description" content="${escapeAttribute(seo.description)}" />`,
     `<meta property="og:url" content="${escapeAttribute(canonical)}" />`,
     `<meta property="og:image" content="${escapeAttribute(image)}" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
+    '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${escapeAttribute(seo.title)}" />`,
     `<meta name="twitter:description" content="${escapeAttribute(seo.description)}" />`,
     `<meta name="twitter:image" content="${escapeAttribute(image)}" />`,
