@@ -23,24 +23,29 @@ for (const route of productRoutes) {
   });
 }
 
-test('la tienda pagina, busca y filtra el catálogo completo', async ({ page }) => {
+test('el catálogo busca, filtra y limpia resultados', async ({ page }) => {
   await page.goto('/tienda/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Tienda' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Productos' })).toBeVisible();
   const initialCards = await page.locator('.product-card').count();
   expect(initialCards).toBeGreaterThan(1);
   expect(initialCards).toBeLessThanOrEqual(24);
+  await expect(page.locator('.product-card .button')).toHaveCount(initialCards);
   const resultText = await page.locator('.catalog-result').textContent();
   const total = Number(resultText?.match(/(\d+) productos\b/iu)?.[1] ?? 0);
   expect(total).toBeGreaterThan(1);
   if (total > 24) await expect(page.getByRole('navigation', { name: 'Paginación del catálogo' })).toBeVisible();
 
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill('guayaba');
+  const clear = page.getByRole('button', { name: 'Limpiar filtros' });
+  await expect(clear).toBeDisabled();
+  await page.getByRole('searchbox', { name: 'Buscar producto' }).fill('guayaba');
+  await expect(clear).toBeEnabled();
   await expect(page.locator('.product-card')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Guayaba hojas x 50 gr' })).toBeVisible();
 
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill('');
+  await clear.click();
+  await expect(page.locator('.product-card')).toHaveCount(initialCards);
   await page.getByLabel('Categoría').selectOption({ label: 'Suplementos' });
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill('melena');
+  await page.getByRole('searchbox', { name: 'Buscar producto' }).fill('melena');
   await expect(page.locator('.product-card')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Melena de león Futuro fungi 50ml' })).toBeVisible();
 });
@@ -55,19 +60,19 @@ test('el carrito agrega, persiste, actualiza, elimina y prepara WhatsApp', async
   await expect(dialog).toContainText('17.998');
   const whatsapp = dialog.getByRole('link', { name: 'Consultar por WhatsApp' });
   await expect(whatsapp).toHaveAttribute('href', /wa\.me\/542236216559\?text=/u);
-  await page.getByRole('button', { name: 'Cerrar carrito' }).click();
+  await page.getByRole('button', { name: 'Cerrar' }).click();
   await page.reload();
-  await page.getByRole('button', { name: /Carrito \(2\)/u }).click();
+  await page.getByRole('button', { name: /Abrir carrito, 2 productos/u }).click();
   await expect(dialog).toContainText('Guayaba hojas x 50 gr');
   await dialog.getByRole('button', { name: 'Aumentar cantidad' }).click();
   await expect(dialog.locator('.quantity-control input')).toHaveValue('3');
-  await dialog.getByRole('button', { name: 'Eliminar' }).click();
+  await dialog.getByRole('button', { name: 'Eliminar producto' }).click();
   await expect(dialog).toContainText('El carrito está vacío');
 });
 
 test('el carrito cierra con Escape y devuelve el foco', async ({ page }) => {
   await page.goto('/tienda/');
-  const trigger = page.getByRole('button', { name: /Carrito \(0\)/u });
+  const trigger = page.getByRole('button', { name: /Abrir carrito, 0 productos/u });
   await trigger.focus();
   await trigger.click();
   await expect(page.getByRole('dialog', { name: 'Carrito' })).toBeVisible();
