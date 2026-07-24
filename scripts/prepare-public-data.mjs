@@ -4,6 +4,11 @@ import path from 'node:path';
 
 const sourceDirectory = path.resolve('src/generated');
 const outputDirectory = path.resolve('src/generated-public');
+const removedEditorialPaths = new Set([
+  '/recetas/',
+  '/chocolate-casero/',
+  '/receta-barra-de-cereal/',
+]);
 
 const editorialOverrides = new Map([
   [
@@ -16,21 +21,8 @@ const editorialOverrides = new Map([
   [
     '/blog/',
     {
-      description: 'Historias, cultura gastronómica y usos tradicionales de hierbas y especias.',
-      eyebrow: 'Publicaciones',
-    },
-  ],
-  [
-    '/recetas/',
-    {
-      description: 'Ideas, recetas y preparaciones artesanales para disfrutar en casa.',
-      eyebrow: 'Recetario',
-    },
-  ],
-  [
-    '/receta-barra-de-cereal/',
-    {
-      eyebrow: 'Receta',
+      description: 'Información sobre hierbas, especias y sus usos culinarios.',
+      eyebrow: 'Guías y consejos',
     },
   ],
   [
@@ -91,9 +83,11 @@ function toPublicEditorialEntry(entry) {
 
 function assertPublicEditorial(entries) {
   for (const entry of entries) {
-    const serialized = JSON.stringify(entry);
+    if (removedEditorialPaths.has(entry.path)) {
+      throw new Error(`La entrada eliminada ${entry.path} no puede publicarse.`);
+    }
     for (const pattern of prohibitedEditorialPatterns) {
-      if (pattern.test(serialized)) {
+      if (pattern.test(JSON.stringify(entry))) {
         throw new Error(`La entrada pública ${entry.path ?? 'sin ruta'} conserva texto técnico no publicable.`);
       }
       pattern.lastIndex = 0;
@@ -132,7 +126,11 @@ const publicCategories = categories.map((category) => ({
   path: category.path,
 }));
 
-const publicEntries = Array.isArray(editorial.entries) ? editorial.entries.map(toPublicEditorialEntry) : [];
+const publicEntries = Array.isArray(editorial.entries)
+  ? editorial.entries
+      .filter((entry) => !removedEditorialPaths.has(entry.path) && entry.kind !== 'recipe')
+      .map(toPublicEditorialEntry)
+  : [];
 assertPublicEditorial(publicEntries);
 const publicEditorial = { entries: publicEntries };
 
