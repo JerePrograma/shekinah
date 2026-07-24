@@ -47,7 +47,7 @@ async function walk(directory) {
   return files;
 }
 
-test('las referencias técnicas necesarias quedan limitadas a redirecciones y pruebas', async () => {
+async function findUnexpectedReferences() {
   const roots = ['src', 'scripts', 'tests', 'docs', '.github'];
   const allowlist = new Set([
     'src/content.ts',
@@ -68,5 +68,12 @@ test('las referencias técnicas necesarias quedan limitadas a redirecciones y pr
       if (content.includes(removedPath)) findings.push(`${file}: ${removedPath}`);
     }
   }
-  assert.deepEqual(findings, []);
+  return findings;
+}
+
+const unexpectedReferences = await findUnexpectedReferences();
+const referenceDiagnostic = unexpectedReferences[0] ? `: ${unexpectedReferences[0]}` : '';
+
+test(`las referencias técnicas necesarias quedan limitadas a redirecciones y pruebas${referenceDiagnostic}`, () => {
+  assert.deepEqual(unexpectedReferences, []);
 });
