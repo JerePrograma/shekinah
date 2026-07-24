@@ -63,12 +63,13 @@ for (const redirect of redirects) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, follow" />
     <meta http-equiv="refresh" content="0; url=${escapeHtml(target)}" />
     <link rel="canonical" href="${escapeHtml(absoluteTarget)}" />
     <title>Redirigiendo — Shekinah</title>
   </head>
   <body>
-    <p>La página cambió de dirección. <a href="${escapeHtml(target)}">Continuar</a>.</p>
+    <p>La página cambió de dirección. <a href="${escapeHtml(target)}">Ir a productos</a>.</p>
   </body>
 </html>
 `;
@@ -76,6 +77,11 @@ for (const redirect of redirects) {
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, html, 'utf8');
 }
+
+const cloudflareRedirects = redirects
+  .map((redirect) => `${publicPath(redirect.from)} ${publicPath(redirect.to)} ${redirect.status}`)
+  .join('\n');
+await writeFile(path.join(dist, '_redirects'), `${cloudflareRedirects}\n`, 'utf8');
 
 const notFound = render('/404/');
 await writeFile(
