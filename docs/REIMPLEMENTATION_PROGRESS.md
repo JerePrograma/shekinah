@@ -1,8 +1,8 @@
 # Registro de reimplementación de Shekinah
 
-Estado del documento: en curso  
-Fecha de última actualización: 2026-07-24  
-Rama de trabajo: `main`  
+Estado del documento: en curso
+Fecha de última actualización: 2026-07-24
+Rama de trabajo: `main`
 Repositorio: `JerePrograma/shekinah`
 
 ## Propósito
@@ -110,6 +110,8 @@ Entorno:
 - Node.js `24.18.0`
 - npm `11.16.0`
 
+Resultado real: fallido.
+
 Hallazgos:
 
 1. `@testing-library/jest-dom` cargaba tipos de Jest en un proyecto configurado con Vitest.
@@ -156,30 +158,69 @@ Corrección aplicada en la candidata v3:
 - Vitest queda limitado a `src/**/*.test.{ts,tsx}`;
 - `tests/e2e/**` queda excluido expresamente del runner unitario;
 - `tests/e2e/app.spec.ts` permanece bajo Playwright;
-- el lockfile no cambia porque no se modificaron dependencias;
-- se debe repetir `npm run verify` completo antes de publicar la base.
+- el lockfile no cambia porque no se modificaron dependencias.
 
 ### Validación candidata v3
-
-Estado: preparada; validación local pendiente.
 
 ZIP candidato:
 
 `265036198ad60729e9241086c2a34b0c00fb8c765dc6539d1a51ecab83f8e91c`
 
-SHA-256 del lockfile sin cambios:
+ZIP de resultados informado:
 
-`d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`
+`40be0f511f674c8edfb3d7fa721fd911f316573128ec17dd81ef208f95ce51cb`
 
-Archivo corregido:
+Entorno:
 
-`vitest.config.ts`
+- Node.js `24.18.0`
+- npm `11.16.0`
 
-Cambio funcional de infraestructura:
+Resultado real: fallido en el control final de formato Git.
 
-- separación explícita entre pruebas unitarias de Vitest y pruebas E2E de Playwright;
-- sin cambios en dependencias, código de producción o logo;
-- el resultado se registrará después de ejecutar la verificación completa.
+Controles aprobados:
+
+- `npm ci`: 201 paquetes instalados;
+- instalación de Chromium;
+- ESLint;
+- TypeScript;
+- Vitest: 1 archivo y 1 prueba aprobados;
+- build de Vite;
+- verificación del logo por ruta, dimensiones, tamaño y SHA-256;
+- Playwright: 1 prueba aprobada sin errores de consola.
+
+Resultado del build:
+
+- `dist/index.html`: generado;
+- CSS productivo: generado;
+- JavaScript productivo: generado;
+- compilación finalizada correctamente.
+
+Fallo final:
+
+`git diff --cached --check` detectó espacios al final de las líneas 3, 4 y 5 de `docs/REIMPLEMENTATION_PROGRESS.md`.
+
+La aplicación, las pruebas y el build estaban correctos. El candidato no se publicó porque el diff no estaba limpio.
+
+Corrección aplicada en la candidata v4:
+
+- se eliminaron los tres espacios finales detectados;
+- se mantuvo la separación Vitest/Playwright;
+- no cambiaron dependencias, lockfile, código de producción ni bytes del logo;
+- se añadió documentación detallada de las validaciones del BLOQUE 2;
+- se debe validar el candidato exacto v4 antes de sustituir el árbol remoto.
+
+### Validación candidata v4
+
+Estado: preparada; validación local pendiente.
+
+Integridad:
+
+- ZIP candidato: `ab4080dc01c0ced0cc7be9b29ca6fa3dc3cd75fcf4230b621f6d7a67bbe567fa`;
+- logo: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`;
+- lockfile: `d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`;
+- `vitest.config.ts`: `8d83d602ff000af87287049bc469b48dd514a5fe3b6f52cc7290152fb5c4d41d`;
+- registro principal: `0b83ff4c61f55f3424ba9dcbba68b31a465c9c230eaaf94db629b4b43dcd5008`;
+- registro detallado: `a7e6f2835b347d017aef2a2a3b06f7b55329d265219df1c11a77ff26ac971063`.
 
 ### Estado de publicación
 
@@ -188,6 +229,9 @@ No se publicó ninguna versión candidata fallida. El árbol funcional anterior 
 ## Commits del registro de avance
 
 - `c4898a9715469a061cfc8d83d66f5070183e84fa` — `docs: record reimplementation progress`
+- `cfb3268331500bcd7fa8aab9fb51a080b5fc93df` — `docs: record third validation candidate`
+
+Los SHA de las actualizaciones documentales posteriores se informan en los reportes remotos. No se intenta autorreferenciar un commit dentro de sí mismo.
 
 ## Reglas de actualización de este registro
 
