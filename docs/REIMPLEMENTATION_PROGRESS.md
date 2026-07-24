@@ -151,16 +151,43 @@ Fallo:
 
 Vitest utilizó su patrón de descubrimiento predeterminado y recogió también `tests/e2e/app.spec.ts`. Ese archivo pertenece a Playwright y no puede ejecutarse dentro del runtime de Vitest, por lo que la suite falló con `Playwright Test did not expect test() to be called here`.
 
-Corrección seleccionada:
+Corrección aplicada en la candidata v3:
 
-- limitar Vitest a `src/**/*.test.{ts,tsx}`;
-- excluir expresamente `tests/e2e/**`;
-- mantener `tests/e2e/app.spec.ts` bajo el runner de Playwright;
-- repetir `npm run verify` completo antes de publicar la base.
+- Vitest queda limitado a `src/**/*.test.{ts,tsx}`;
+- `tests/e2e/**` queda excluido expresamente del runner unitario;
+- `tests/e2e/app.spec.ts` permanece bajo Playwright;
+- el lockfile no cambia porque no se modificaron dependencias;
+- se debe repetir `npm run verify` completo antes de publicar la base.
+
+### Validación candidata v3
+
+Estado: preparada; validación local pendiente.
+
+ZIP candidato:
+
+`265036198ad60729e9241086c2a34b0c00fb8c765dc6539d1a51ecab83f8e91c`
+
+SHA-256 del lockfile sin cambios:
+
+`d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`
+
+Archivo corregido:
+
+`vitest.config.ts`
+
+Cambio funcional de infraestructura:
+
+- separación explícita entre pruebas unitarias de Vitest y pruebas E2E de Playwright;
+- sin cambios en dependencias, código de producción o logo;
+- el resultado se registrará después de ejecutar la verificación completa.
 
 ### Estado de publicación
 
 No se publicó ninguna versión candidata fallida. El árbol funcional anterior continúa presente temporalmente, pero sus workflows fueron neutralizados. La sustitución completa se hará solamente después de una validación íntegra y reproducible.
+
+## Commits del registro de avance
+
+- `c4898a9715469a061cfc8d83d66f5070183e84fa` — `docs: record reimplementation progress`
 
 ## Reglas de actualización de este registro
 
