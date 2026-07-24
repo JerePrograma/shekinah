@@ -23,8 +23,8 @@ test('las rutas retiradas redirigen permanentemente y no aparecen en el sitemap'
   const redirects = await readFile('dist/_redirects', 'utf8');
   const sitemap = await readFile('dist/sitemap.xml', 'utf8');
   for (const path of removedPaths) {
-    assert.match(redirects, new RegExp(`^${path.replaceAll('/', '\\/')} \\/tienda\\/ 301$`, 'mu'));
-    assert.doesNotMatch(sitemap, new RegExp(path.replaceAll('/', '\\/'), 'u'));
+    assert.match(redirects, new RegExp(`^${path.replaceAll('/', '\/')} \/tienda\/ 301$`, 'mu'));
+    assert.doesNotMatch(sitemap, new RegExp(path.replaceAll('/', '\/'), 'u'));
   }
 });
 
@@ -52,6 +52,7 @@ test('las referencias técnicas necesarias quedan limitadas a redirecciones y pr
   const allowlist = new Set([
     'src/content.ts',
     'scripts/prepare-public-data.mjs',
+    'tests/react/editorial-content.test.mjs',
     'tests/react/removed-content.test.mjs',
     'tests/react-e2e/site.spec.ts',
     '.github/workflows/deploy-cloudflare.yml',
