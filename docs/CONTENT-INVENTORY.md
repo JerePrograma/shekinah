@@ -1,51 +1,71 @@
 # Inventario de contenido
 
-Fuente primaria: SQL. Corroboración: WXR y, para medios, ZIP. El autor original se conserva internamente como ID 1; su identificador de acceso no se publica porque no es necesario para el sitio.
+Este documento distingue el contenido público vigente de las rutas históricas retiradas. La aplicación y los datos versionados del repositorio son la fuente de verdad operativa.
 
-## Contenido público migrado
+## Contenido público vigente
 
-|  ID | Tipo original | Título                                                         | Slug original                                                   | Estado    | Fecha / modificación | Ruta final                 | Fuente               | Confianza | Observaciones                                                                       |
-| --: | ------------- | -------------------------------------------------------------- | --------------------------------------------------------------- | --------- | -------------------- | -------------------------- | -------------------- | --------- | ----------------------------------------------------------------------------------- |
-|  31 | página        | Inicio                                                         | `inicio`                                                        | publicado | 2026-07-20 13:58:48  | `/`                        | SQL + WXR + archivos | Alta      | Elegida como portada; `/inicio/` redirige a `/`                                     |
-|  27 | página        | Nosotros                                                       | `nosotros`                                                      | publicado | 2026-07-20 13:58:48  | `/nosotros/`               | SQL + WXR + archivos | Alta      | HTML saneado y estructura rediseñada                                                |
-|  26 | página        | Tienda                                                         | `tienda`                                                        | publicado | 2026-07-20 13:58:48  | `/tienda/`                 | SQL + WXR            | Media     | Página original vacía; catálogo derivado solo de productos mencionados en contenido |
-|  29 | página        | Blog                                                           | `blog`                                                          | publicado | 2026-07-20 13:58:48  | `/blog/`                   | SQL + WXR            | Alta      | Índice generado desde colección `posts`                                             |
-|  30 | página        | Recetas                                                        | `recetas`                                                       | publicado | 2026-07-20 13:58:48  | `/recetas/`                | SQL + WXR            | Alta      | Índice generado desde colección `recipes`                                           |
-|  25 | página        | Términos y condiciones                                         | `terms-and-conditions`                                          | publicado | 2026-07-20 13:58:48  | `/terms-and-conditions/`   | SQL + WXR            | Alta      | Se retiraron referencias a funciones ya inexistentes                                |
-|  32 | página        | Chocolate Casero                                               | `chocolate-casero`                                              | publicado | 2026-07-20 13:58:48  | `/chocolate-casero/`       | SQL + WXR + archivos | Alta      | Reclasificada como receta; ingredientes y pasos estructurados                       |
-|  34 | página        | Receta Barra de Cereal                                         | `receta-barra-de-cereal`                                        | publicado | 2026-07-20 13:58:49  | `/receta-barra-de-cereal/` | SQL + WXR + archivos | Media     | Reclasificada como receta; fuente incompleta y señalizada                           |
-|  28 | entrada       | El viaje de las especias: sabor y bienestar                    | `el-viaje-de-las-especias-sabor-y-bienestar`                    | publicado | 2026-05-07 15:00:00  | ruta homónima              | SQL + WXR + archivos | Alta      | Afirmaciones de salud moderadas y contextualizadas                                  |
-|  33 | entrada       | El poder del romero: memoria milenaria y frescura en tu cocina | `el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina` | publicado | 2026-04-25 15:00:00  | ruta homónima              | SQL + WXR + archivos | Alta      | Afirmaciones de salud moderadas y contextualizadas                                  |
+| Área | Ruta | Fuente actual | Estado | Observaciones |
+| --- | --- | --- | --- | --- |
+| Inicio | `/` | `src/App.tsx` y medios versionados | Pública | Portada simplificada con una acción principal hacia productos |
+| Catálogo | `/tienda/` | `src/generated/products.json` y `src/generated/categories.json` | Pública | 510 productos y 16 categorías validados por script |
+| Categorías | `/tienda/categoria/<slug>/` | Categorías versionadas | Públicas | Filtro directo del catálogo |
+| Productos | `/<slug>/` | Productos versionados | Públicos | Detalle, cantidad, carrito y consulta por WhatsApp |
+| Nosotros | `/nosotros/` | Contenido editorial versionado | Pública | Presentación institucional y medios propios |
+| Contacto | `/contacto/` | Datos comerciales versionados | Pública | WhatsApp, correo y domicilio confirmados |
+| Guías y consejos | `/blog/` | Entradas editoriales versionadas | Pública | Índice de artículos informativos |
+| Viaje de las especias | `/el-viaje-de-las-especias-sabor-y-bienestar/` | Contenido editorial versionado | Pública | Artículo informativo |
+| Poder del romero | `/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/` | Contenido editorial versionado | Pública | Artículo informativo |
+| Términos y condiciones | `/terms-and-conditions/` | Contenido legal versionado | Pública | Información legal, cambios y reembolsos |
+| Archivo sin categoría | `/category/uncategorized/` | Compatibilidad histórica | Pública con `noindex` | Enlaza hacia las guías actuales |
+
+## Rutas históricas retiradas
+
+Estas direcciones ya no generan páginas, contenido editorial, componentes, datos estructurados ni entradas de sitemap. Se conservan únicamente como redirecciones permanentes para evitar enlaces rotos.
+
+| Contenido anterior | Ruta histórica | Tratamiento vigente |
+| --- | --- | --- |
+| Índice de recetas | `/recetas/` | Redirección 301 a `/tienda/` |
+| Chocolate casero | `/chocolate-casero/` | Redirección 301 a `/tienda/` |
+| Barra de cereal | `/receta-barra-de-cereal/` | Redirección 301 a `/tienda/` |
+
+Los componentes, datos editoriales, pruebas visuales, estilos e imágenes exclusivos de estas páginas fueron retirados. Las menciones de ingredientes pertenecientes a productos permanecen intactas.
 
 ## Contenido no publicado como página autónoma
 
-|  ID | Tipo       | Título               | Estado     | Tratamiento                              | Motivo                                                   |
-| --: | ---------- | -------------------- | ---------- | ---------------------------------------- | -------------------------------------------------------- |
-|   1 | entrada    | Hello world!         | publicado  | redirección a `/blog/`                   | Contenido de demostración estándar                       |
-|   3 | página     | Privacy Policy       | borrador   | redirección temporal a términos          | Plantilla genérica no adaptada y nunca publicada         |
-|   4 | navegación | Navigation           | publicado  | reemplazada por `src/data/navigation.ts` | Contenido técnico `wp_navigation`                        |
-|  35 | página     | Terminos condiciones | publicado  | redirección a `/terms-and-conditions/`   | Plantilla genérica duplicada con marcadores y otra marca |
-|  36 | entrada    | Borrador automático  | auto-draft | descartado                               | Registro técnico sin slug ni contenido público           |
+| Elemento histórico | Tratamiento | Motivo |
+| --- | --- | --- |
+| `Hello world!` | No publicado | Contenido de demostración estándar |
+| `Privacy Policy` | No publicado | Borrador genérico nunca adaptado |
+| Bloque `Navigation` | Sustituido por `src/content.ts` | Navegación automática no adecuada para la experiencia actual |
+| Duplicado `Terminos condiciones` | Redirección a `/terms-and-conditions/` | Plantilla duplicada con marcadores incompletos |
+| Borradores automáticos | Descartados | Registros técnicos sin contenido público |
 
-## Adjuntos registrados
+## Catálogo
 
-Los IDs 5 a 24 son 20 registros `attachment` con estado `inherit`. Todos tienen archivo físico localizado en el ZIP. Sus detalles y tratamiento están en `MEDIA-INVENTORY.md`.
+- Los 510 productos y 16 categorías permanecen versionados.
+- No se modificaron nombres, precios, monedas, unidades, SKU, descripciones, slugs ni relaciones de categoría como parte del rediseño.
+- La proyección pública se genera con `scripts/prepare-public-data.mjs`.
+- `scripts/validate-catalog.mjs` controla integridad, rutas, relaciones y medios.
+- El sitio no procesa pagos: el carrito prepara una consulta por WhatsApp para confirmar disponibilidad y precio final.
 
-## Taxonomías y menús
+## Contacto comercial
 
-- Única categoría original: `Uncategorized`.
-- No se detectaron etiquetas públicas útiles.
-- Las dos entradas migradas se reclasificaron semánticamente como `Especias` y `Hierbas` para evitar conservar una taxonomía vacía de significado.
-- El menú original era un bloque automático de listado de páginas. Se sustituyó por navegación explícita, estable y accesible.
+- WhatsApp: `+54 9 223 621-6559`.
+- Correo: `german.gauna@yahoo.com.ar`.
+- Domicilio: Moreno 2575, Mar del Plata Norte (7600), Buenos Aires, Argentina.
+- No se publican redes sociales, horarios o enlaces comerciales no confirmados.
 
-## Enlaces y relaciones
+## Taxonomías y navegación
 
-- Los enlaces internos a `/blog`, `/tienda`, `/recetas`, `/chocolate-casero` y `/receta-barra-de-cereal` se normalizaron con barra final.
-- No se conservan enlaces administrativos ni rutas PHP.
-- No se publicó enlace a Mercado Libre porque la evidencia no proporciona un destino verificable.
-- No se publicó WhatsApp porque no se encontró un número público verificable.
-- El correo y domicilio del pie de página provienen de la página legal publicada.
+- La navegación principal vigente contiene Inicio, Productos, Nosotros y Contacto.
+- Guías y consejos se mantiene como contenido secundario accesible desde el pie de página.
+- No existen menús profundos ni destinos funcionales basados en recetas.
+- Las categorías del catálogo se derivan exclusivamente de los datos versionados.
 
-## SEO recuperado
+## SEO y redirecciones
 
-No se detectaron metadatos SEO específicos de un plugin. Los títulos, descripciones, imágenes sociales y datos estructurados se construyeron desde el contenido comprobado. No se inventaron redes sociales, horarios, teléfono, precios ni testimonios.
+- Las rutas canónicas vigentes se prerenderizan como HTML estático.
+- Productos y categorías conservan metadatos, canonicals, Open Graph y datos estructurados válidos.
+- El sitemap excluye las rutas retiradas y el archivo sin categoría.
+- `dist/_redirects` contiene las redirecciones 301 para Cloudflare Pages.
+- Las páginas de redirección de respaldo usan `noindex, follow`.
