@@ -12,6 +12,17 @@ const blockText = (entry) =>
     .flatMap((block) => (block.type === 'list' ? block.items : [block.text]))
     .join('\n');
 
+const activeEditorialPaths = [
+  '/nosotros/',
+  '/tienda/',
+  '/blog/',
+  '/terms-and-conditions/',
+  '/el-viaje-de-las-especias-sabor-y-bienestar/',
+  '/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/',
+];
+
+const removedEditorialPaths = ['/recetas/', '/chocolate-casero/', '/receta-barra-de-cereal/'];
+
 test('los metadatos internos del contenido son estables', () => {
   assert.equal(
     content.source.archiveSha256,
@@ -22,33 +33,17 @@ test('los metadatos internos del contenido son estables', () => {
   assert.equal(content.source.capturedDate, '2026-07-20');
 });
 
-test('conserva todas las rutas editoriales publicadas', () => {
-  assert.equal(content.entries.length, 9);
-  for (const path of [
-    '/nosotros/',
-    '/tienda/',
-    '/blog/',
-    '/recetas/',
-    '/chocolate-casero/',
-    '/receta-barra-de-cereal/',
-    '/terms-and-conditions/',
-    '/el-viaje-de-las-especias-sabor-y-bienestar/',
-    '/el-poder-del-romero-memoria-milenaria-y-frescura-en-tu-cocina/',
-  ]) {
-    assert.ok(byPath.has(path), `Falta la ruta editorial ${path}`);
+test('conserva las rutas editoriales activas y retira las recetas', () => {
+  assert.equal(content.entries.length, activeEditorialPaths.length);
+  for (const path of activeEditorialPaths) {
+    assert.ok(byPath.has(path), `Falta la ruta editorial activa ${path}`);
+  }
+  for (const path of removedEditorialPaths) {
+    assert.equal(byPath.has(path), false, `La ruta retirada ${path} sigue en el contenido editorial`);
   }
 });
 
-test('conserva los detalles completos de recetas y términos', () => {
-  const chocolate = blockText(byPath.get('/chocolate-casero/'));
-  assert.match(chocolate, /flor de oropel/iu);
-  assert.match(chocolate, /Guía para Principiantes: Tu Primer Chocolate Artesanal/u);
-  assert.match(chocolate, /¿Por qué tengo que guardarlo en la heladera\?/u);
-
-  const cereal = blockText(byPath.get('/receta-barra-de-cereal/'));
-  assert.match(cereal, /hasta dos semanas/u);
-  assert.match(cereal, /100% veganas/u);
-
+test('conserva los detalles completos de términos y condiciones', () => {
   const terms = blockText(byPath.get('/terms-and-conditions/'));
   assert.match(terms, /Mercado Pago/u);
   assert.match(terms, /10 días corridos/u);
