@@ -35,8 +35,8 @@ jobs:
           set -euo pipefail
           expected_base='e0076931369cebdae007326c8c9e1223814b0213'
           git merge-base --is-ancestor "$expected_base" HEAD
-          [[ "$(git rev-list --count "$expected_base"..HEAD)" == '4' ]]
-          [[ "$(git log -1 --pretty=%s)" == 'chore: restore validated payload chunking' ]]
+          [[ "$(git rev-list --count "$expected_base"..HEAD)" == '5' ]]
+          [[ "$(git log -1 --pretty=%s)" == 'chore: compact remaining block 2 payload' ]]
           changed=$(git diff --name-only "$expected_base"..HEAD | LC_ALL=C sort -u)
           [[ "$changed" == '.github/workflows/block2-publisher.yml' ]]
           git fetch origin main
@@ -83,7 +83,7 @@ jobs:
                       raise SystemExit(f"Parte duplicada: {index:02d}")
                   parts[index] = match.group(2)
 
-          expected_indexes = list(range(17))
+          expected_indexes = list(range(8))
           if sorted(parts) != expected_indexes:
               raise SystemExit(
                   f"Partes incorrectas: obtenidas={sorted(parts)}, esperadas={expected_indexes}"
