@@ -109,15 +109,6 @@ Se eliminaron únicamente esos espacios finales. No se modificaron dependencias,
 
 Estado: preparada y pendiente de validación local completa.
 
-Integridad:
-
-- ZIP candidato: `ab4080dc01c0ced0cc7be9b29ca6fa3dc3cd75fcf4230b621f6d7a67bbe567fa`;
-- logo: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`;
-- lockfile: `d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`;
-- `vitest.config.ts`: `8d83d602ff000af87287049bc469b48dd514a5fe3b6f52cc7290152fb5c4d41d`;
-- registro principal: `0b83ff4c61f55f3424ba9dcbba68b31a465c9c230eaaf94db629b4b43dcd5008`;
-- este documento: `a7e6f2835b347d017aef2a2a3b06f7b55329d265219df1c11a77ff26ac971063`.
-
 Criterios de aceptación:
 
 1. hashes del ZIP, logo, lockfile, configuración Vitest y documentación coincidentes;
@@ -130,3 +121,40 @@ Criterios de aceptación:
 ## Regla de publicación
 
 La sustitución del árbol remoto se realizará únicamente cuando todos los criterios de la candidata exacta resulten aprobados.
+
+## Resultado final de la candidata v4
+
+Estado: `SUCCESS`.
+
+Controles verificados:
+
+- integridad del ZIP candidato;
+- integridad del logo;
+- integridad de `package-lock.json`;
+- integridad de `vitest.config.ts`;
+- integridad de los documentos de seguimiento;
+- Node.js `24.18.0`;
+- npm `11.16.0`;
+- `npm ci`;
+- instalación de Chromium;
+- `npm run verify`;
+- `git diff --cached --check`;
+- `npm ls --depth=0`.
+
+Resultados observables:
+
+- Vitest: 1 prueba aprobada;
+- Vite: build productivo generado;
+- logo: 383 × 383 px, 105443 bytes y SHA-256 autorizado;
+- Playwright: 1 prueba aprobada en Chromium;
+- errores de consola: ninguno detectado.
+
+ZIP de resultados:
+
+`bb61e9a685533c4fe19fe7588bbce7f3fe35c1d3cf62c9d4a4545aac97e3ac53`
+
+## Incidencia de transporte remoto
+
+El workflow temporal de transporte nunca fue disparado. Se retiró antes de publicar la base porque el conector no podía adjuntar directamente el ZIP binario y la fragmentación por comentarios no era una vía suficientemente simple.
+
+La incidencia no invalida la candidata: la validación local completa fue exitosa. La publicación queda pendiente mediante el checkout autorizado y deberá volver a comprobar el SHA remoto, el diff, la validación y el push.

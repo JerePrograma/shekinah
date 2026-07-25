@@ -110,8 +110,6 @@ Entorno:
 - Node.js `24.18.0`
 - npm `11.16.0`
 
-Resultado real: fallido.
-
 Hallazgos:
 
 1. `@testing-library/jest-dom` cargaba tipos de Jest en un proyecto configurado con Vitest.
@@ -158,69 +156,30 @@ Corrección aplicada en la candidata v3:
 - Vitest queda limitado a `src/**/*.test.{ts,tsx}`;
 - `tests/e2e/**` queda excluido expresamente del runner unitario;
 - `tests/e2e/app.spec.ts` permanece bajo Playwright;
-- el lockfile no cambia porque no se modificaron dependencias.
+- el lockfile no cambia porque no se modificaron dependencias;
+- se debe repetir `npm run verify` completo antes de publicar la base.
 
 ### Validación candidata v3
+
+Estado: preparada; validación local pendiente.
 
 ZIP candidato:
 
 `265036198ad60729e9241086c2a34b0c00fb8c765dc6539d1a51ecab83f8e91c`
 
-ZIP de resultados informado:
+SHA-256 del lockfile sin cambios:
 
-`40be0f511f674c8edfb3d7fa721fd911f316573128ec17dd81ef208f95ce51cb`
+`d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`
 
-Entorno:
+Archivo corregido:
 
-- Node.js `24.18.0`
-- npm `11.16.0`
+`vitest.config.ts`
 
-Resultado real: fallido en el control final de formato Git.
+Cambio funcional de infraestructura:
 
-Controles aprobados:
-
-- `npm ci`: 201 paquetes instalados;
-- instalación de Chromium;
-- ESLint;
-- TypeScript;
-- Vitest: 1 archivo y 1 prueba aprobados;
-- build de Vite;
-- verificación del logo por ruta, dimensiones, tamaño y SHA-256;
-- Playwright: 1 prueba aprobada sin errores de consola.
-
-Resultado del build:
-
-- `dist/index.html`: generado;
-- CSS productivo: generado;
-- JavaScript productivo: generado;
-- compilación finalizada correctamente.
-
-Fallo final:
-
-`git diff --cached --check` detectó espacios al final de las líneas 3, 4 y 5 de `docs/REIMPLEMENTATION_PROGRESS.md`.
-
-La aplicación, las pruebas y el build estaban correctos. El candidato no se publicó porque el diff no estaba limpio.
-
-Corrección aplicada en la candidata v4:
-
-- se eliminaron los tres espacios finales detectados;
-- se mantuvo la separación Vitest/Playwright;
-- no cambiaron dependencias, lockfile, código de producción ni bytes del logo;
-- se añadió documentación detallada de las validaciones del BLOQUE 2;
-- se debe validar el candidato exacto v4 antes de sustituir el árbol remoto.
-
-### Validación candidata v4
-
-Estado: preparada; validación local pendiente.
-
-Integridad:
-
-- ZIP candidato: `ab4080dc01c0ced0cc7be9b29ca6fa3dc3cd75fcf4230b621f6d7a67bbe567fa`;
-- logo: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`;
-- lockfile: `d9ee83f246dccfc14a704f0b2887b6057f99725eff001e32f120461fe217e7dc`;
-- `vitest.config.ts`: `8d83d602ff000af87287049bc469b48dd514a5fe3b6f52cc7290152fb5c4d41d`;
-- registro principal: `0b83ff4c61f55f3424ba9dcbba68b31a465c9c230eaaf94db629b4b43dcd5008`;
-- registro detallado: `a7e6f2835b347d017aef2a2a3b06f7b55329d265219df1c11a77ff26ac971063`.
+- separación explícita entre pruebas unitarias de Vitest y pruebas E2E de Playwright;
+- sin cambios en dependencias, código de producción o logo;
+- el resultado se registrará después de ejecutar la verificación completa.
 
 ### Estado de publicación
 
@@ -231,7 +190,7 @@ No se publicó ninguna versión candidata fallida. El árbol funcional anterior 
 - `c4898a9715469a061cfc8d83d66f5070183e84fa` — `docs: record reimplementation progress`
 - `cfb3268331500bcd7fa8aab9fb51a080b5fc93df` — `docs: record third validation candidate`
 
-Los SHA de las actualizaciones documentales posteriores se informan en los reportes remotos. No se intenta autorreferenciar un commit dentro de sí mismo.
+El SHA del commit que incorpora esta actualización se informa en el reporte remoto y no se intenta autorreferenciar dentro del propio commit.
 
 ## Reglas de actualización de este registro
 
@@ -246,3 +205,46 @@ Este archivo debe actualizarse cuando ocurra cualquiera de los siguientes evento
 - aparece un bloqueo real.
 
 Los resultados deben clasificarse como `verificado`, `revisado por código`, `no disponible` o `fallido`. No se debe presentar como aprobada una etapa que no haya terminado.
+
+## Validación candidata v4
+
+Resultado local: verificado y exitoso.
+
+Evidencia:
+
+- ZIP candidato: `ab4080dc01c0ced0cc7be9b29ca6fa3dc3cd75fcf4230b621f6d7a67bbe567fa`;
+- ZIP de resultados: `bb61e9a685533c4fe19fe7588bbce7f3fe35c1d3cf62c9d4a4545aac97e3ac53`;
+- Node.js: `24.18.0`;
+- npm: `11.16.0`;
+- `npm ci`: aprobado, 201 paquetes instalados;
+- instalación de Chromium: aprobada;
+- ESLint: aprobado;
+- TypeScript: aprobado;
+- Vitest: 1 prueba aprobada;
+- build de Vite: aprobado;
+- verificación criptográfica del logo: aprobada;
+- Playwright: 1 prueba aprobada, sin errores de consola;
+- `git diff --cached --check`: aprobado;
+- `npm ls --depth=0`: aprobado;
+- estado final del script: `SUCCESS`.
+
+La candidata exacta v4 está autorizada técnicamente para publicación. La sustitución del árbol aún no se había realizado al crear este registro.
+
+## Transporte remoto y limpieza
+
+Se ensayó un workflow temporal para transportar el ZIP validado mediante un evento controlado de GitHub. El conector disponible no admite adjuntar directamente un archivo binario local a GitHub y el mecanismo fragmentado mediante comentarios resultó innecesariamente complejo.
+
+No se emitió el comentario de disparo, el workflow no ejecutó la sustitución y ningún candidato parcial fue publicado.
+
+Commits temporales conservados en el historial:
+
+- `d6c952b3f927c34803f8f6f3edb5c8e7a78938a7` — `chore: stage verified block 2 publisher`;
+- `c1d51c8975713a86c98ec5537a28e3b51facc35f` — `chore: support chunked block 2 payload`;
+- `48a8b1f33168bcf4b3f6cadd90282cf43373ebf6` — `chore: reduce block 2 payload chunks`;
+- `6aa67b0d0856853c782f856c1f7f448dd876283f` — `chore: restore validated payload chunking`;
+- `c1c543daacb1117a707cebe8910e042884edbea6` — `chore: compact remaining block 2 payload`;
+- `646e25145433cf623170584873a2b7980503aaf4` — `chore: retire temporary block 2 publisher`.
+
+Los issues técnicos `#26` y `#27` se cerraron como no planificados. El archivo temporal de Google Drive utilizado durante una alternativa de transporte fue eliminado. No queda ningún workflow temporal rastreado.
+
+La publicación continuará mediante el checkout local autorizado `C:\laburo\shekinah`, con verificación de SHA, sincronización fast-forward, validación completa, commit atómico y push sin force.
