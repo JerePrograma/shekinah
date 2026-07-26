@@ -7,10 +7,10 @@ Estado del BLOQUE 2: en curso.
 - candidata v4: validada localmente con resultado `SUCCESS`;
 - árbol funcional anterior: todavía presente en `main`;
 - publicación de la base React: pendiente;
-- intentos de publicación local: 2;
+- intentos de publicación local: 3;
 - commits de sustitución: ninguno;
 - pushes de la base nueva: ninguno;
-- último bloqueo: se volvió a ejecutar el bloque PowerShell anterior, que aún contenía accesos `[0].Trim()` sobre resultados escalares.
+- último bloqueo: `git add -u -- .` devolvió código 128 después de que `git rm -r -- .` ya hubiera preparado todas las eliminaciones.
 
 ## Alcance
 
@@ -110,6 +110,76 @@ La versión corregida:
 - no contiene ninguna aparición de `[0].Trim()`;
 - valida su propio SHA antes de ejecutarse;
 - exige que `HEAD` y `origin/main` coincidan con el SHA remoto documentado en ese momento.
+
+## Intento 3 — 2026-07-26
+
+### Qué funcionó
+
+- el lanzador verificó el SHA-256 del script v3;
+- se confirmó que el archivo no contenía el patrón defectuoso `[0].Trim()`;
+- se confirmó la presencia de `Get-CheckedNativeScalar`;
+- `git switch main`, `git fetch origin` y `git pull --ff-only origin main` finalizaron correctamente;
+- se verificaron los hashes del ZIP candidato, ZIP de resultados, logo, lockfile y configuración Vitest;
+- `npm ci` del candidato: aprobado, 201 paquetes instalados;
+- instalación de Chromium: aprobada;
+- ESLint: aprobado;
+- TypeScript: aprobado;
+- Vitest: 1 prueba aprobada;
+- build de Vite: aprobado;
+- verificación criptográfica del logo: aprobada;
+- Playwright: 1 prueba aprobada, sin errores de consola;
+- `git diff --cached --check` del candidato temporal: aprobado;
+- `npm ls --depth=0`: aprobado;
+- `git rm -r --ignore-unmatch -- .` retiró y preparó las eliminaciones de la implementación anterior;
+- los 24 archivos de la candidata fueron copiados al checkout local.
+
+### Qué falló
+
+El primer comando fallido fue:
+
+```powershell
+git add -u -- .
+```
+
+Resultado:
+
+```text
+STAGE DE ELIMINACIONES falló con código 128.
+```
+
+`git rm -r -- .` ya había preparado todas las eliminaciones. Por lo tanto, la llamada posterior a `git add -u -- .` era redundante y no es necesaria para construir el índice final.
+
+La salida recibida no contiene el mensaje fatal específico emitido por Git antes del código 128. No se atribuye el error a una variante concreta de `pathspec`, bloqueo del índice u otra causa interna sin evidencia adicional.
+
+### Impacto verificado
+
+- el checkout local quedó modificado;
+- las eliminaciones de los archivos rastreados anteriores quedaron preparadas en el índice;
+- los archivos de la candidata quedaron copiados en el árbol de trabajo;
+- no se llegó al bucle que prepara individualmente los 24 archivos nuevos;
+- no se ejecutó la validación del índice final;
+- no se creó el commit de sustitución;
+- no se hizo push;
+- `origin/main` no recibió la base React.
+
+Este intento sí dejó un estado local parcial y requiere recuperación controlada antes de volver a sincronizar.
+
+### Corrección seleccionada
+
+El intento siguiente debe:
+
+1. verificar que `HEAD` continúa en el SHA desde el que comenzó el intento 3;
+2. comprobar que no existe ningún commit local nuevo;
+3. restaurar únicamente archivos rastreados desde `HEAD` mediante `git restore --source=HEAD --staged --worktree -- .`;
+4. identificar archivos no rastreados residuales que coincidan exactamente con la candidata y retirarlos únicamente después de verificar sus hashes;
+5. preservar ZIP, resultados, scripts y cualquier otro archivo no rastreado ajeno;
+6. ejecutar `git fetch origin` y `git pull --ff-only origin main`;
+7. repetir la validación completa;
+8. ejecutar `git rm -r --ignore-unmatch -- .`;
+9. copiar la candidata;
+10. preparar únicamente cada uno de los 24 archivos esperados con `git add -- <ruta>`;
+11. no volver a ejecutar `git add -u -- .`;
+12. verificar que `git ls-files` contiene exactamente el conjunto esperado antes de crear el commit.
 
 ## Incidencia de documentación remota
 
