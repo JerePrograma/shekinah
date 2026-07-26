@@ -111,6 +111,20 @@ La versión corregida:
 - valida su propio SHA antes de ejecutarse;
 - exige que `HEAD` y `origin/main` coincidan con el SHA remoto documentado en ese momento.
 
+## Incidencia de documentación remota
+
+Durante la documentación del intento 2, varias operaciones auxiliares del conector crearon archivos temporales en `docs/validation/`. La incidencia fue detectada antes de entregar la corrección.
+
+Impacto:
+
+- no afectó código de producción, dependencias, logo ni candidata v4;
+- no ejecutó workflows;
+- no sustituyó el árbol funcional;
+- no creó commits de la base React;
+- no realizó force-push ni reescritura de historial.
+
+Los archivos temporales fueron eliminados inmediatamente mediante commits normales. El árbol actual conserva únicamente `docs/validation/BLOCK_2_PUBLICATION_ATTEMPTS.md` como registro canónico del intento. Los commits auxiliares permanecen en el historial por la regla de no reescritura y se consideran evidencia de la incidencia documental.
+
 ## Regla de actualización
 
 Después de cada salida recibida se debe registrar:
