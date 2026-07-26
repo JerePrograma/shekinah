@@ -7,10 +7,10 @@ Estado del BLOQUE 2: en curso.
 - candidata v4: validada localmente con resultado `SUCCESS`;
 - árbol funcional anterior: todavía presente en `main`;
 - publicación de la base React: pendiente;
-- intentos de publicación local: 3;
+- intentos de publicación local: 4;
 - commits de sustitución: ninguno;
 - pushes de la base nueva: ninguno;
-- último bloqueo: `git add -u -- .` devolvió código 128 después de que `git rm -r -- .` ya hubiera preparado todas las eliminaciones.
+- último bloqueo: ESLint recorrió un directorio local no rastreado de resultados de validación y trató de analizar su `vitest.config.ts` fuera del proyecto TypeScript.
 
 ## Alcance
 
@@ -180,6 +180,88 @@ El intento siguiente debe:
 10. preparar únicamente cada uno de los 24 archivos esperados con `git add -- <ruta>`;
 11. no volver a ejecutar `git add -u -- .`;
 12. verificar que `git ls-files` contiene exactamente el conjunto esperado antes de crear el commit.
+
+## Intento 4 — 2026-07-26
+
+### Qué funcionó
+
+- el lanzador verificó el SHA-256 del script v4;
+- se confirmó la ausencia de `[0].Trim()`;
+- se confirmó la presencia de `Get-CheckedNativeScalar`;
+- se confirmó la recuperación controlada del intento 3;
+- se restauraron desde `HEAD` los archivos rastreados y el índice;
+- se retiraron únicamente residuos no rastreados que coincidían por SHA-256 con la candidata;
+- `git fetch origin` y `git pull --ff-only origin main` finalizaron correctamente;
+- el checkout local avanzó por fast-forward hasta `fd25d752a28b3e84ae1f8349a8064e2f910b97e0`;
+- se verificaron nuevamente los hashes del ZIP candidato, ZIP de resultados, logo, lockfile y configuración Vitest;
+- `npm ci` del candidato: aprobado;
+- instalación de Chromium del candidato: aprobada;
+- ESLint del candidato: aprobado;
+- TypeScript del candidato: aprobado;
+- Vitest del candidato: 1 prueba aprobada;
+- build de Vite del candidato: aprobado;
+- verificación criptográfica del logo: aprobada;
+- Playwright del candidato: 1 prueba aprobada, sin errores de consola;
+- `git diff --cached --check` del candidato temporal: aprobado;
+- `npm ls --depth=0` del candidato: aprobado;
+- se retiró nuevamente el árbol rastreado anterior;
+- se copiaron y prepararon individualmente los 24 archivos de la candidata;
+- `git ls-files` quedó limitado al conjunto esperado;
+- `git diff --cached --check` de la sustitución: aprobado;
+- `npm ci` del árbol final: aprobado;
+- instalación de Chromium del árbol final: aprobada.
+
+### Incidencia operativa no bloqueante
+
+La orden de resumen del diff abrió el paginador interactivo `less`. Esto no invalidó el índice ni las validaciones, pero interrumpió innecesariamente el flujo de consola.
+
+La siguiente versión utilizará `git --no-pager diff --cached --stat` y establecerá `GIT_PAGER=cat`.
+
+### Qué falló
+
+El primer control fallido fue `npm run lint`, ejecutado dentro de `npm run verify` sobre el árbol final.
+
+ESLint recorrió este archivo local no rastreado:
+
+```text
+_block2-validation-result-v4/vitest.config.ts
+```
+
+El archivo no pertenece a los 24 archivos de la candidata ni está incluido en el `tsconfig.json` publicado. Como la configuración de TypeScript ESLint utiliza `projectService: true`, el análisis terminó con:
+
+```text
+Parsing error: ... vitest.config.ts was not found by the project service.
+```
+
+La candidata no falló: la misma candidata exacta había superado la validación completa en el directorio temporal limpio inmediatamente antes.
+
+### Impacto verificado
+
+- el checkout local volvió a quedar en un estado parcial;
+- el índice contiene la sustitución preparada con los 24 archivos esperados;
+- el árbol anterior está preparado para eliminación;
+- no se creó el commit de sustitución;
+- no se hizo push de la base React;
+- `origin/main` continúa sin la implementación nueva;
+- los ZIP, resultados, scripts y directorios de validación no rastreados permanecen preservados.
+
+### Corrección seleccionada
+
+El intento siguiente debe:
+
+1. verificar que `HEAD` continúa en `fd25d752a28b3e84ae1f8349a8064e2f910b97e0`;
+2. comprobar que el índice contiene exactamente el árbol candidato esperado y que no existen modificaciones rastreadas sin preparar;
+3. restaurar de forma controlada `HEAD` antes de sincronizar la nueva documentación remota;
+4. volver a aplicar y validar la candidata;
+5. detectar archivos no rastreados con extensiones procesadas por ESLint (`.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`);
+6. mover temporalmente fuera del repositorio únicamente sus entradas superiores, preservando ruta e integridad;
+7. ejecutar todas las validaciones del árbol final mientras esos artefactos operativos están suspendidos;
+8. mantenerlos suspendidos también durante la validación documental;
+9. restaurarlos en un bloque `finally`, incluso ante error;
+10. desactivar el paginador de Git;
+11. crear y subir los commits únicamente después de todas las validaciones.
+
+No se modifica la configuración ESLint de la candidata porque el archivo que causó el fallo es un artefacto operativo externo al árbol rastreado.
 
 ## Incidencia de documentación remota
 
