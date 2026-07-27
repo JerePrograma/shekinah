@@ -75,7 +75,7 @@ La actualización fue fast-forward y no reescribió el historial.
 
 ## BLOQUE 2 — Sustitución del árbol y base técnica
 
-Resultado actual: en curso; la base todavía no fue publicada.
+Resultado actual: completado; la base técnica nueva fue publicada.
 
 ### Base candidata
 
@@ -239,3 +239,22 @@ Este archivo debe actualizarse cuando ocurra cualquiera de los siguientes evento
 - aparece un bloqueo real.
 
 Los resultados deben clasificarse como `verificado`, `revisado por código`, `no disponible` o `fallido`. No se debe presentar como aprobada una etapa que no haya terminado.
+
+## Publicación definitiva del BLOQUE 2
+
+Resultado: verificado y publicado.
+
+- SHA remoto previo: `7e39c5535800fdda31a48846f977fe5c1c05eb3f`
+- ZIP candidato: `ab4080dc01c0ced0cc7be9b29ca6fa3dc3cd75fcf4230b621f6d7a67bbe567fa`
+- ZIP de resultados: `bb61e9a685533c4fe19fe7588bbce7f3fe35c1d3cf62c9d4a4545aac97e3ac53`
+- Node.js: `24.18.0`
+- npm: `11.16.0`
+- `npm ci`: aprobado
+- `npm run verify`: aprobado
+- `git diff --cached --check`: aprobado
+- `npm ls --depth=0`: aprobado
+- commit de sustitución: `45af35eedfcc9fc4629b70fc5380cf0e70695d26`
+
+La implementación anterior fue retirada del árbol actual mediante un commit normal. El historial Git anterior continúa conservado y accesible.
+
+El transporte temporal mediante workflows fue cancelado antes de ejecutarse. Sus commits permanecen únicamente como evidencia histórica y el workflow temporal no forma parte del árbol final.

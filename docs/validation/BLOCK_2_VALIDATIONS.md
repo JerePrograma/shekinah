@@ -107,7 +107,7 @@ Se eliminaron únicamente esos espacios finales. No se modificaron dependencias,
 
 ## Candidata v4
 
-Estado: preparada y pendiente de validación local completa.
+Estado: validada y publicada.
 
 Criterios de aceptación:
 
@@ -121,3 +121,17 @@ Criterios de aceptación:
 ## Regla de publicación
 
 La sustitución del árbol remoto se realizará únicamente cuando todos los criterios de la candidata exacta resulten aprobados.
+
+## Publicación definitiva
+
+- resultado: `SUCCESS`;
+- SHA remoto previo: `7e39c5535800fdda31a48846f977fe5c1c05eb3f`;
+- commit de sustitución: `45af35eedfcc9fc4629b70fc5380cf0e70695d26`;
+- instalación reproducible: aprobada;
+- validación completa: aprobada;
+- diff: aprobado;
+- push: fast-forward;
+- force-push: no utilizado;
+- historial: conservado.
+
+El árbol publicado contiene únicamente los 24 archivos de la candidata v4 validada antes del commit documental final.
