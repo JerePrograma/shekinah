@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://shekinah-7dl.pages.dev/sitemap.xml

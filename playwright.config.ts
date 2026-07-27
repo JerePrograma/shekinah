@@ -1,36 +1,28 @@
-import { defineConfig } from '@playwright/test';
-
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-const sharedUse = {
-  browserName: 'chromium' as const,
-  deviceScaleFactor: 1,
-  hasTouch: false,
-  isMobile: false,
-  serviceWorkers: 'block' as const,
-  trace: 'on-first-retry' as const,
-  ...(executablePath ? { launchOptions: { executablePath } } : {}),
-};
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests/react-e2e',
+  testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  ...(process.env.CI ? { workers: 2 } : {}),
-  reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'line',
+  ...(process.env.CI ? { workers: 1 } : {}),
+  reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:4321',
-    ...sharedUse,
-  },
-  webServer: {
-    command: 'npm run preview',
-    url: 'http://127.0.0.1:4321',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    baseURL: 'http://127.0.0.1:4173',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'off',
   },
   projects: [
-    { name: 'mobile-375x812', use: { ...sharedUse, viewport: { width: 375, height: 812 } } },
-    { name: 'tablet-768x1024', use: { ...sharedUse, viewport: { width: 768, height: 1024 } } },
-    { name: 'desktop-1440x1200', use: { ...sharedUse, viewport: { width: 1440, height: 1200 } } },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://127.0.0.1:4173',
+    reuseExistingServer: false,
+    timeout: 120_000,
+  },
 });

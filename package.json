@@ -1,6 +1,6 @@
 {
   "name": "shekinah",
-  "version": "2.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,41 +8,39 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "prepare:data": "node scripts/prepare-public-data.mjs",
-    "dev": "npm run prepare:data && vite --host 127.0.0.1 --port 4321",
-    "typecheck": "npm run prepare:data && tsc --noEmit",
-    "lint": "eslint src scripts tests vite.config.ts",
-    "format:check": "node scripts/check-format.mjs",
-    "validate:content": "node scripts/validate-catalog.mjs",
-    "install:browsers": "playwright install chromium",
-    "install:browsers:ci": "playwright install --with-deps chromium",
-    "build": "npm run typecheck && vite build && vite build --ssr src/entry-server.tsx --outDir .ssr && node scripts/prerender.mjs",
-    "preview": "node scripts/serve-dist.mjs --host 127.0.0.1 --port 4321",
-    "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "node --test --test-reporter=tap tests/react/*.test.mjs",
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "audit:output": "node scripts/audit-output.mjs",
-    "audit:copy": "node scripts/audit-public-copy.mjs",
-    "audit:secrets": "node scripts/audit-secrets.mjs",
-    "verify": "npm run lint && npm run format:check && npm run validate:content && npm run build && npm run validate:content && npm run test:unit && npm run test:e2e && npm run audit:output && npm run audit:copy && npm run audit:secrets",
-    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
+    "install:browsers": "playwright install chromium",
+    "verify:assets": "node scripts/verify-assets.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run test:e2e"
   },
   "dependencies": {
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@typescript-eslint/eslint-plugin": "8.65.0",
-    "@typescript-eslint/parser": "8.65.0",
+    "@vitejs/plugin-react": "6.0.3",
     "eslint": "10.7.0",
     "globals": "17.7.0",
+    "jsdom": "29.1.1",
     "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
     "vite": "8.1.5",
-    "wrangler": "4.112.0"
+    "vitest": "4.1.10"
   },
-  "description": "Sitio oficial de Shekinah construido con React, TypeScript y Vite."
+  "description": "Aplicación web estática de Shekinah, hierbas y especias."
 }
