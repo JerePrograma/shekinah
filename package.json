@@ -42,7 +42,7 @@
     "globals": "17.7.0",
     "typescript": "6.0.3",
     "vite": "8.1.5",
-    "wrangler": "4.112.0"
+    "wrangler": "4.114.0"
   },
   "description": "Sitio oficial de Shekinah construido con React, TypeScript y Vite."
 }
