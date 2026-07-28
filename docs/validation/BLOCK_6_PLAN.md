@@ -10,13 +10,14 @@ La secuencia histórica recuperada no asignaba un nombre exacto al bloque poster
 
 ## Estado
 
-Plan iniciado. Candidata ejecutable pendiente.
+Candidata v1 preparada. Validación ejecutable pendiente.
 
-## Base remota
+## Base remota inspeccionada
 
 - repositorio: `JerePrograma/shekinah`;
 - rama: `main`;
-- SHA de partida: `694681033cdb5573d12ac455e6ff7f7a65545954`;
+- SHA de partida funcional y documental: `694681033cdb5573d12ac455e6ff7f7a65545954`;
+- commit de inicio del bloque: `cd656300d58825c5009325914b99e34e734a88ea`;
 - BLOQUE 5: verificado y publicado.
 
 ## Decisión de automatización
@@ -72,7 +73,21 @@ No se afirmará que el despliegue está conectado o actualizado hasta verificarl
 - documentar pasos manuales verificables para conectar o revisar Cloudflare Pages;
 - mantener intacta la aplicación publicada en el BLOQUE 5.
 
-## Archivos previstos
+## Candidata v1
+
+Archivo:
+
+`shekinah-block6-validation-candidate-v1.zip`
+
+SHA-256:
+
+`3ac28d6391b0aa7226c7fc38f829121ddb6d767daa9fab46f3c6d16bd446e3f8`
+
+Tamaño:
+
+`13655 bytes`
+
+Archivos incluidos:
 
 - `.github/workflows/ci.yml`;
 - `.node-version`;
@@ -87,6 +102,34 @@ No se afirmará que el despliegue está conectado o actualizado hasta verificarl
 - `docs/THIRD_PARTY_NOTICES.md`;
 - `docs/design/BLOCK_6_AUTOMATION_DEPLOYMENT.md`;
 - `docs/validation/BLOCK_6_VALIDATION.md`.
+
+## Acciones fijadas
+
+- `actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd` — versión 6.0.2;
+- `actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238` — versión 6.2.0;
+- `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` — versión 7.0.1.
+
+## Controles de preparación realizados
+
+- lista del ZIP limitada a trece archivos;
+- YAML analizado sintácticamente;
+- `package.json` analizado;
+- sintaxis de `scripts/verify-automation.mjs` comprobada con Node.js;
+- verificador ejecutado sobre la propia candidata;
+- terminaciones LF y UTF-8 sin BOM;
+- ausencia de espacios finales;
+- ausencia de dependencias nuevas;
+- ausencia de cambios previstos en `package-lock.json`;
+- ausencia de archivos bajo `src`, `public` y `tests`;
+- un único workflow;
+- acciones limitadas a GitHub y fijadas a SHA completo;
+- permisos limitados a `contents: read`;
+- checkout sin persistencia de credenciales;
+- ausencia de secretos, Wrangler, permisos de escritura y comandos remotos;
+- documentación obligatoria incluida;
+- documentación de despliegue redactada sin afirmar conexión o publicación no verificadas.
+
+Estas comprobaciones no sustituyen la validación ejecutable con Node.js 24.18.0, npm 11, Chromium, el repositorio completo y `package-lock.json`.
 
 ## Exclusiones
 
@@ -141,7 +184,7 @@ Este bloque no incorpora:
 
 ## Validación requerida antes de publicar
 
-1. comprobar que `origin/main` coincide con la base registrada;
+1. comprobar que `origin/main` coincide con la base que registra la candidata;
 2. comprobar SHA-256 y lista exacta del candidato;
 3. aplicar el candidato en una exportación limpia;
 4. inicializar Git temporal antes de ejecutar verificadores que usan `git ls-files`;
