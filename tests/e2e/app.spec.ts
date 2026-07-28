@@ -1,19 +1,57 @@
 import { expect, test } from '@playwright/test';
 
-test('carga la base de Shekinah sin errores de consola', async ({ page }) => {
-  const consoleErrors: string[] = [];
+test('muestra la estructura principal en escritorio sin errores', async ({ page }) => {
+  const runtimeErrors: string[] = [];
 
   page.on('console', (message) => {
     if (message.type() === 'error') {
-      consoleErrors.push(message.text());
+      runtimeErrors.push(message.text());
     }
   });
 
+  page.on('pageerror', (error) => {
+    runtimeErrors.push(error.message);
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Shekinah' })).toBeVisible();
   await expect(
-    page.getByRole('img', { name: 'Shekinah, hierbas y especias' }),
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Una experiencia simple para descubrir nuevos sabores.',
+    }),
   ).toBeVisible();
-  expect(consoleErrors).toEqual([]);
+  await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+
+  await page.getByRole('link', { name: 'Explorar catálogo' }).click();
+  await expect(page).toHaveURL(/#catalogo$/);
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Todavía no hay productos publicados' }),
+  ).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/block3-desktop.png', fullPage: true });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test('mantiene foco visible y evita desbordamiento en móvil', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const skipLink = page.getByRole('link', { name: 'Saltar al contenido' });
+  await page.keyboard.press('Tab');
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeVisible();
+
+  const dimensions = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Todavía no hay productos publicados');
+
+  await page.screenshot({ path: 'test-results/block3-mobile.png', fullPage: true });
 });
