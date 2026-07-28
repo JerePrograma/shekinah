@@ -6,17 +6,18 @@ Navegación, 404, seguridad y privacidad.
 
 ## Estado
 
-Plan iniciado. Candidata ejecutable pendiente.
+Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
 
-## Base remota
+## Base remota inspeccionada
 
 - rama: `main`;
 - SHA de partida: `e748f12c4dc1a37bff9002aee697d1039616b01b`;
+- commit de inicio del bloque: `3fc2d2013618e56baa7a4c527615adee8bee5f8d`;
 - BLOQUE 4: verificado y publicado.
 
 ## Decisión de navegación
 
-La aplicación incorporará rutas internas sin añadir una dependencia de enrutamiento. El alcance actual es pequeño y puede resolverse mediante History API, enlaces HTML reales y un resolvedor tipado propio.
+La aplicación incorpora rutas internas sin añadir una dependencia de enrutamiento. El alcance actual es pequeño y puede resolverse mediante History API, enlaces HTML reales y un resolvedor tipado propio.
 
 Rutas previstas:
 
@@ -28,7 +29,7 @@ Rutas previstas:
 
 ## Fallback estático
 
-Se utilizará el comportamiento SPA nativo de Cloudflare Pages. No se creará un `404.html` de nivel raíz, porque su presencia desactiva el fallback automático de SPA.
+Se utiliza el comportamiento SPA nativo de Cloudflare Pages. No se crea un `404.html` de nivel raíz, porque su presencia desactiva el fallback automático de SPA.
 
 Limitación documentada:
 
@@ -78,25 +79,83 @@ Este bloque no incorpora:
 
 ## Encabezados previstos
 
-El archivo `public/_headers` deberá incluir, como mínimo:
+El archivo `public/_headers` incluye:
 
 - Content Security Policy sin `unsafe-inline` ni `unsafe-eval`;
-- bloqueo de marcos y objetos;
+- bloqueo de marcos, objetos, formularios, conexiones y workers;
 - política de referencia restrictiva;
 - política de permisos;
 - protección MIME;
 - aislamiento de apertura y recursos;
-- HSTS sin solicitar precarga.
+- HSTS sin precarga.
 
 ## Privacidad
 
-La vista de privacidad solamente describirá comportamientos comprobables:
+La vista de privacidad solamente describe comportamientos comprobables:
 
 - no existen formularios, cuentas, carrito ni pagos;
 - la aplicación no integra analítica, publicidad ni trackers;
 - no solicita APIs ni recursos externos;
 - la aplicación no crea una base de datos;
 - el proveedor de alojamiento y la red pueden generar registros técnicos propios que la aplicación no consulta.
+
+## Candidata v1
+
+Archivo:
+
+`shekinah-block5-validation-candidate-v1.zip`
+
+SHA-256:
+
+`4b1ce4b4f354303ce781636f57a087832aa8f708c6d46074c5bb16a8dda8a6f9`
+
+Tamaño:
+
+`22663 bytes`
+
+Archivos incluidos:
+
+- `docs/design/BLOCK_5_NAVIGATION_SECURITY.md`;
+- `docs/validation/BLOCK_5_VALIDATION.md`;
+- `package.json`;
+- `public/_headers`;
+- `scripts/verify-security.mjs`;
+- `src/App.test.tsx`;
+- `src/App.tsx`;
+- `src/catalog/CatalogSection.tsx`;
+- `src/content/site-content.ts`;
+- `src/main.tsx`;
+- `src/pages/ApproachPage.tsx`;
+- `src/pages/CatalogPage.tsx`;
+- `src/pages/HomePage.tsx`;
+- `src/pages/NotFoundPage.tsx`;
+- `src/pages/PrivacyPage.tsx`;
+- `src/routing.css`;
+- `src/routing/AppLink.tsx`;
+- `src/routing/routes.test.ts`;
+- `src/routing/routes.ts`;
+- `src/routing/useBrowserRoute.ts`;
+- `tests/e2e/app.spec.ts`.
+
+## Controles de preparación realizados
+
+- lista del ZIP limitada a veintiún archivos;
+- sintaxis TypeScript y TSX analizada con el compilador TypeScript;
+- código de producción comprobado con opciones estrictas y declaraciones aisladas;
+- lógica de normalización y resolución de rutas ejecutada;
+- sintaxis del verificador de seguridad comprobada con Node;
+- `package.json` analizado;
+- CSS analizado sintácticamente;
+- terminaciones LF;
+- ausencia de espacios finales;
+- `git diff --cached --check` aprobado en un repositorio temporal;
+- verificador de seguridad ejecutado sobre una salida estática simulada;
+- ausencia de `404.html` y `_redirects`;
+- ausencia de dependencia nueva;
+- productos autorizados vacíos;
+- contacto autorizado `null`.
+
+Estas comprobaciones no sustituyen `npm ci`, Vitest, Vite, Playwright ni la inspección del `dist` real.
 
 ## Criterios de aceptación
 
@@ -134,5 +193,5 @@ La vista de privacidad solamente describirá comportamientos comprobables:
 7. ejecutar la inspección de seguridad estática;
 8. ejecutar `git diff --check`;
 9. revisar los archivos modificados;
-10. revisar capturas de inicio, privacidad y 404;
+10. revisar capturas de inicio, privacidad, 404 y móvil;
 11. publicar mediante fast-forward solamente después de un resultado íntegramente exitoso.
