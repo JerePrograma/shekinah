@@ -6,7 +6,7 @@ Diseño visual y estructura principal.
 
 ## Estado
 
-Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
+Candidata v1 validada y publicada.
 
 ## Base remota inspeccionada
 
@@ -116,3 +116,19 @@ Estas comprobaciones son estáticas y no sustituyen la validación ejecutable co
 14. confirmación de que no se muestran productos ni contacto.
 
 La publicación funcional se realizará solamente después de validar el candidato exacto y revisar la evidencia visual.
+## Publicación definitiva
+
+- resultado de validación: `SUCCESS`;
+- SHA remoto previo: `59452200fc6bd7fea0f25f3f4035cef6decdd7c0`;
+- ZIP candidato: `11bd3139513a3750cc00b49760688f11cd68a2b04ff3705d7f766b54b223b790`;
+- ZIP de resultados: `f1afe6d9e8e4c9238b9d3156910bfa7483a8cea6eeb17c3ca0e5bee23ac3c2bb`;
+- commit funcional: `b8d65dd3988a5715603bb5540af13a51d8a9afab`;
+- instalación reproducible: aprobada;
+- validación completa: aprobada;
+- capturas de escritorio y móvil: revisadas;
+- diff: aprobado;
+- push: fast-forward;
+- force-push: no utilizado;
+- historial Git: conservado.
+
+La publicación aplicó exactamente los siete archivos enumerados en este plan sobre la base remota validada.

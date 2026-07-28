@@ -1,7 +1,7 @@
 # Registro de reimplementación de Shekinah
 
 Estado del documento: en curso
-Fecha de última actualización: 2026-07-24
+Fecha de última actualización: 2026-07-27
 Rama de trabajo: `main`
 Repositorio: `JerePrograma/shekinah`
 
@@ -258,3 +258,27 @@ Resultado: verificado y publicado.
 La implementación anterior fue retirada del árbol actual mediante un commit normal. El historial Git anterior continúa conservado y accesible.
 
 El transporte temporal mediante workflows fue cancelado antes de ejecutarse. Sus commits permanecen únicamente como evidencia histórica y el workflow temporal no forma parte del árbol final.
+## BLOQUE 3 — Diseño visual y estructura principal
+
+Resultado: verificado y publicado.
+
+- SHA remoto previo: `59452200fc6bd7fea0f25f3f4035cef6decdd7c0`
+- ZIP candidato: `11bd3139513a3750cc00b49760688f11cd68a2b04ff3705d7f766b54b223b790`
+- ZIP de validación: `f1afe6d9e8e4c9238b9d3156910bfa7483a8cea6eeb17c3ca0e5bee23ac3c2bb`
+- Node.js: `24.18.0`
+- npm: `11.16.0`
+- `npm ci`: aprobado
+- `npm run verify`: aprobado
+- ESLint: aprobado
+- TypeScript: aprobado
+- Vitest: 1 prueba aprobada
+- build de Vite: aprobado
+- verificación criptográfica del logo: aprobada
+- Playwright: 2 pruebas aprobadas en Chromium
+- revisión visual de escritorio y móvil: aprobada
+- `git diff --cached --check`: aprobado
+- commit funcional: `b8d65dd3988a5715603bb5540af13a51d8a9afab`
+- push funcional: fast-forward a `origin/main`
+- force-push: no utilizado
+
+El bloque incorpora únicamente la estructura visual, el layout responsive, la navegación interna, el estado vacío del catálogo y su documentación. No incorpora productos, precios, contacto, recetas, blog, carrito, pagos, backend ni recursos visuales adicionales.

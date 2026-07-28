@@ -48,3 +48,18 @@ Archivos modificados o creados:
 ## Criterio de publicación
 
 El candidato no debe publicarse hasta que la validación completa resulte exitosa y las capturas permitan comprobar que la composición visual es legible en escritorio y móvil.
+## Publicación definitiva
+
+- estado: `SUCCESS`;
+- base validada: `59452200fc6bd7fea0f25f3f4035cef6decdd7c0`;
+- candidato validado: `11bd3139513a3750cc00b49760688f11cd68a2b04ff3705d7f766b54b223b790`;
+- evidencia validada: `f1afe6d9e8e4c9238b9d3156910bfa7483a8cea6eeb17c3ca0e5bee23ac3c2bb`;
+- logo autorizado: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`;
+- commit funcional: `b8d65dd3988a5715603bb5540af13a51d8a9afab`;
+- pruebas unitarias: aprobadas;
+- build: aprobado;
+- pruebas E2E: aprobadas;
+- revisión visual: aprobada;
+- publicación en `origin/main`: confirmada.
+
+No se publicaron archivos distintos de los siete componentes del candidato durante el commit funcional.
