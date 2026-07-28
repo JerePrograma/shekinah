@@ -307,3 +307,42 @@ Resultado: verificado y publicado.
 - force-push: no utilizado
 
 El bloque incorpora el modelo validado de producto, la fuente centralizada de datos comerciales autorizados, búsqueda normalizada, categorías derivadas, filtros combinables y presentación condicional del catálogo. La fuente pública permanece sin productos y el contacto permanece ausente. No se incorporaron datos comerciales ficticios, imágenes de producto, dependencias nuevas, backend, carrito ni pagos.
+## BLOQUE 5 — Navegación, 404, seguridad y privacidad
+
+Resultado: verificado y publicado.
+
+- SHA remoto previo: `6ccae0839ab7c114eac7fee096c7aa7b7eb5b6f5`
+- ZIP candidato: `867fba2e3e8f4f71b920343acef828bb701e3df9f1198372e1742ba998db3d8f`
+- ZIP de validación: `711a8fd6eb92f27a32f80347fa0f44541efff4fa047d929dcd5d85fa7b216a53`
+- script de validación: `f47ecf420c588a3c575b1ac0db62ff0d01becd504d3e649c7172210af29b28ef`
+- intento de publicación v1: fallido antes de sincronizar o modificar Git
+- ZIP de resultado fallido v1: `a3df0927340060ed281c44cc92e3ccb44b8e374ba1571bf8e789040725209b6d`
+- causa del fallo v1: prechequeo buscaba literales `path` que el candidato representa mediante `appPaths`
+- intento de publicación v2: fallido durante la revalidación limpia, antes de aplicar archivos, crear commits o hacer push
+- ZIP de resultado fallido v2: `bb7ee39840db14ae396041b511f143290018691603d1da8b820f93122881e100`
+- causa del fallo v2: el auditor ejecutó `git ls-files` antes de inicializar el repositorio Git temporal
+- intento de publicación v3: fallido durante la inspección de evidencia, antes de sincronizar o modificar Git
+- ZIP de resultado fallido v3: `1fe15c9064b7770b4529c44acc949cdb99fb757375d3b33ba36f43368f8201c3`
+- causa del fallo v3: el transcript de PowerShell no conservó el stderr nativo que el prechequeo exigía aunque el JSON estructurado ya acreditaba el fallo v2
+- script de publicación v2: `bd9962128bf1646ddcb597fdd5b40a889e308b5c79756016e98fccc03ef7f17f`
+- script de publicación v3: `88973b3e7be6c568cb24626408805d89ba31d3141cc7619919cd89f84603cd72`
+- script de publicación v4: `8a495c347bacc85a464b63139e2f9b7d9162c1a029b9987ac395457a2301c233`
+- Node.js: `24.18.0`
+- npm: `11.16.0`
+- `npm ci`: aprobado
+- `npm run verify`: aprobado
+- ESLint: aprobado
+- TypeScript: aprobado
+- Vitest: 4 archivos y 21 pruebas aprobados
+- build de Vite: aprobado
+- verificación criptográfica del logo: aprobada
+- auditoría estática de seguridad: aprobada
+- `public/_headers` y `dist/_headers`: idénticos y aprobados
+- Playwright: 3 pruebas aprobadas en Chromium
+- revisión visual de inicio, privacidad, 404 y móvil: aprobada
+- `git diff --cached --check`: aprobado
+- commit funcional: `5bc26706f5e971ae1bcb2c15ef46c1f6ed2b9bae`
+- push funcional: fast-forward a `origin/main`
+- force-push: no utilizado
+
+El bloque incorpora navegación interna mediante History API, rutas directas, metadatos por vista, foco posterior a navegación, privacidad comprobable, vista 404 de aplicación y encabezados restrictivos para Cloudflare Pages. La fuente pública permanece sin productos y el contacto permanece ausente. No se incorporaron dependencias, backend, formularios, analítica, trackers, recursos externos ni secretos.

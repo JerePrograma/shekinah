@@ -6,7 +6,7 @@ Navegación, 404, seguridad y privacidad.
 
 ## Estado
 
-Candidata v2 preparada. Validación ejecutable y revisión visual pendientes.
+Candidata v2 validada y publicada.
 
 ## Base remota inspeccionada
 
@@ -212,3 +212,34 @@ Estas comprobaciones no sustituyen `npm ci`, Vitest, Vite, Playwright ni la insp
 9. revisar los archivos modificados;
 10. revisar capturas de inicio, privacidad, 404 y móvil;
 11. publicar mediante fast-forward solamente después de un resultado íntegramente exitoso.
+## Publicación definitiva
+
+- resultado de validación: `SUCCESS`;
+- SHA remoto previo: `6ccae0839ab7c114eac7fee096c7aa7b7eb5b6f5`;
+- ZIP candidato v2: `867fba2e3e8f4f71b920343acef828bb701e3df9f1198372e1742ba998db3d8f`;
+- ZIP de resultados v2: `711a8fd6eb92f27a32f80347fa0f44541efff4fa047d929dcd5d85fa7b216a53`;
+- script de validación v2: `f47ecf420c588a3c575b1ac0db62ff0d01becd504d3e649c7172210af29b28ef`;
+- intento de publicación v1: fallido durante la inspección previa, sin commit ni push;
+- ZIP de resultado fallido v1: `a3df0927340060ed281c44cc92e3ccb44b8e374ba1571bf8e789040725209b6d`;
+- intento de publicación v2: fallido durante la revalidación limpia, sin aplicar el candidato, crear commit ni hacer push;
+- ZIP de resultado fallido v2: `bb7ee39840db14ae396041b511f143290018691603d1da8b820f93122881e100`;
+- intento de publicación v3: fallido durante la inspección de evidencia, sin sincronizar, aplicar el candidato, crear commit ni hacer push;
+- ZIP de resultado fallido v3: `1fe15c9064b7770b4529c44acc949cdb99fb757375d3b33ba36f43368f8201c3`;
+- script de publicación v2: `bd9962128bf1646ddcb597fdd5b40a889e308b5c79756016e98fccc03ef7f17f`;
+- script de publicación v3: `88973b3e7be6c568cb24626408805d89ba31d3141cc7619919cd89f84603cd72`;
+- script de publicación v4: `8a495c347bacc85a464b63139e2f9b7d9162c1a029b9987ac395457a2301c233`;
+- commit funcional: `5bc26706f5e971ae1bcb2c15ef46c1f6ed2b9bae`;
+- instalación reproducible: aprobada;
+- validación completa: aprobada;
+- productos autorizados: colección vacía;
+- contacto autorizado: `null`;
+- Vitest: 4 archivos y 21 pruebas aprobados;
+- auditoría estática de seguridad: aprobada;
+- Playwright: 3 pruebas aprobadas;
+- capturas de inicio, privacidad, 404 y móvil: revisadas;
+- diff: aprobado;
+- push: fast-forward;
+- force-push: no utilizado;
+- historial Git: conservado.
+
+La publicación aplicó exactamente los veintiún archivos enumerados en este plan sobre la base remota validada.
