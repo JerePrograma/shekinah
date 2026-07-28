@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('muestra la estructura principal en escritorio sin errores', async ({ page }) => {
+test('muestra el catálogo vacío autorizado en escritorio sin errores', async ({ page }) => {
   const runtimeErrors: string[] = [];
 
   page.on('console', (message) => {
@@ -31,7 +31,12 @@ test('muestra la estructura principal en escritorio sin errores', async ({ page 
     page.getByRole('heading', { level: 3, name: 'Todavía no hay productos publicados' }),
   ).toBeVisible();
 
-  await page.screenshot({ path: 'test-results/block3-desktop.png', fullPage: true });
+  await expect(page.getByRole('searchbox')).toHaveCount(0);
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await expect(page.locator('[data-product]')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /contacto/i })).toHaveCount(0);
+
+  await page.screenshot({ path: 'test-results/block4-desktop.png', fullPage: true });
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -52,6 +57,7 @@ test('mantiene foco visible y evita desbordamiento en móvil', async ({ page }) 
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
   await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('Todavía no hay productos publicados');
+  await expect(page.locator('[data-product]')).toHaveCount(0);
 
-  await page.screenshot({ path: 'test-results/block3-mobile.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/block4-mobile.png', fullPage: true });
 });

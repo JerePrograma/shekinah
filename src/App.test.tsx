@@ -1,6 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 
 import { App } from './App';
+import {
+  authorizedContact,
+  authorizedProducts,
+} from './data/authorized-commercial-data';
 
 describe('App', () => {
   it('muestra la estructura principal sin inventar información comercial', () => {
@@ -35,9 +39,13 @@ describe('App', () => {
       '#catalogo',
     );
 
+    expect(authorizedProducts).toHaveLength(0);
+    expect(authorizedContact).toBeNull();
     expect(screen.getByRole('status')).toHaveTextContent(
       'Todavía no hay productos publicados',
     );
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /contacto/i })).not.toBeInTheDocument();
     expect(document.querySelector('[data-product]')).not.toBeInTheDocument();
 
