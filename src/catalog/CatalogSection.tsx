@@ -10,11 +10,17 @@ import {
 } from './catalog';
 import type { Product } from './model';
 
+type HeadingLevel = 1 | 2;
+
 type CatalogSectionProps = Readonly<{
+  headingLevel?: HeadingLevel;
   products: readonly Product[];
 }>;
 
-export function CatalogSection({ products }: CatalogSectionProps) {
+export function CatalogSection({
+  headingLevel = 2,
+  products,
+}: CatalogSectionProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(ALL_CATEGORIES);
 
@@ -23,19 +29,22 @@ export function CatalogSection({ products }: CatalogSectionProps) {
     () => filterProducts(products, { query, category }),
     [category, products, query],
   );
+  const resultHeadingLevel = headingLevel === 1 ? 2 : 3;
 
   if (products.length === 0) {
     return (
-      <section className="catalog-section section" id="catalogo" aria-labelledby="catalog-title">
+      <section className="catalog-section section" aria-labelledby="catalog-title">
         <div className="container catalog-layout">
-          <CatalogHeading />
+          <CatalogHeading level={headingLevel} />
 
           <div className="empty-state" role="status" aria-live="polite">
             <span className="empty-state-mark" aria-hidden="true">
               S
             </span>
             <div>
-              <h3>{siteContent.catalog.emptyTitle}</h3>
+              <CatalogResultHeading level={resultHeadingLevel}>
+                {siteContent.catalog.emptyTitle}
+              </CatalogResultHeading>
               <p>{siteContent.catalog.emptyDescription}</p>
             </div>
           </div>
@@ -50,9 +59,9 @@ export function CatalogSection({ products }: CatalogSectionProps) {
       : `${filteredProducts.length} productos encontrados`;
 
   return (
-    <section className="catalog-section section" id="catalogo" aria-labelledby="catalog-title">
+    <section className="catalog-section section" aria-labelledby="catalog-title">
       <div className="container catalog-shell">
-        <CatalogHeading />
+        <CatalogHeading level={headingLevel} />
 
         <div className="catalog-controls" aria-label="Controles del catálogo">
           <label className="catalog-field">
@@ -99,7 +108,9 @@ export function CatalogSection({ products }: CatalogSectionProps) {
               S
             </span>
             <div>
-              <h3>{siteContent.catalog.noResultsTitle}</h3>
+              <CatalogResultHeading level={resultHeadingLevel}>
+                {siteContent.catalog.noResultsTitle}
+              </CatalogResultHeading>
               <p>{siteContent.catalog.noResultsDescription}</p>
             </div>
           </div>
@@ -111,7 +122,9 @@ export function CatalogSection({ products }: CatalogSectionProps) {
               return (
                 <article className="product-card" data-product={product.id} key={product.id}>
                   <p className="product-category">{product.category}</p>
-                  <h3>{product.name}</h3>
+                  <CatalogResultHeading level={resultHeadingLevel}>
+                    {product.name}
+                  </CatalogResultHeading>
                   <dl className="product-details">
                     <div>
                       <dt>Presentación</dt>
@@ -134,12 +147,26 @@ export function CatalogSection({ products }: CatalogSectionProps) {
   );
 }
 
-function CatalogHeading() {
+function CatalogHeading({ level }: Readonly<{ level: HeadingLevel }>) {
+  const Heading = level === 1 ? 'h1' : 'h2';
+
   return (
     <div className="section-heading catalog-heading">
       <p className="eyebrow">{siteContent.catalog.eyebrow}</p>
-      <h2 id="catalog-title">{siteContent.catalog.title}</h2>
+      <Heading id="catalog-title">{siteContent.catalog.title}</Heading>
       <p>{siteContent.catalog.summary}</p>
     </div>
   );
+}
+
+function CatalogResultHeading({
+  children,
+  level,
+}: Readonly<{
+  children: string;
+  level: 2 | 3;
+}>) {
+  const Heading = level === 2 ? 'h2' : 'h3';
+
+  return <Heading>{children}</Heading>;
 }

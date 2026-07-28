@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "install:browsers": "playwright install chromium",
     "verify:assets": "node scripts/verify-assets.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run test:e2e"
+    "verify:security": "node scripts/verify-security.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run verify:security && npm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",
