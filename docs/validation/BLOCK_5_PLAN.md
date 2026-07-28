@@ -6,7 +6,7 @@ Navegación, 404, seguridad y privacidad.
 
 ## Estado
 
-Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
+Candidata v2 preparada. Validación ejecutable y revisión visual pendientes.
 
 ## Base remota inspeccionada
 
@@ -99,7 +99,7 @@ La vista de privacidad solamente describe comportamientos comprobables:
 - la aplicación no crea una base de datos;
 - el proveedor de alojamiento y la red pueden generar registros técnicos propios que la aplicación no consulta.
 
-## Candidata v1
+## Candidata v1 descartada antes de validar
 
 Archivo:
 
@@ -109,9 +109,23 @@ SHA-256:
 
 `4b1ce4b4f354303ce781636f57a087832aa8f708c6d46074c5bb16a8dda8a6f9`
 
+La candidata v1 no se ejecutó ni se publicó. Durante la revisión previa se detectó que el control de foco dependía de una marca de primer render que podía activarse durante la doble invocación inicial de efectos en `StrictMode`. Eso podía volver inestable la primera navegación por teclado.
+
+La candidata v2 reemplaza esa condición por una comparación entre el `pathname` anterior y el actual. El foco se traslada únicamente después de un cambio real de ruta. También amplía las pruebas de títulos y descripciones por vista.
+
+## Candidata v2
+
+Archivo:
+
+`shekinah-block5-validation-candidate-v2.zip`
+
+SHA-256:
+
+`867fba2e3e8f4f71b920343acef828bb701e3df9f1198372e1742ba998db3d8f`
+
 Tamaño:
 
-`22663 bytes`
+`22887 bytes`
 
 Archivos incluidos:
 
@@ -143,6 +157,8 @@ Archivos incluidos:
 - sintaxis TypeScript y TSX analizada con el compilador TypeScript;
 - código de producción comprobado con opciones estrictas y declaraciones aisladas;
 - lógica de normalización y resolución de rutas ejecutada;
+- control de foco revisado para no ejecutarse durante el montaje inicial de `StrictMode`;
+- títulos y descripciones cubiertos en pruebas E2E;
 - sintaxis del verificador de seguridad comprobada con Node;
 - `package.json` analizado;
 - CSS analizado sintácticamente;
@@ -167,25 +183,26 @@ Estas comprobaciones no sustituyen `npm ci`, Vitest, Vite, Playwright ni la insp
 6. botones atrás y adelante soportados;
 7. `aria-current` correcto;
 8. título y descripción por ruta;
-9. foco trasladado al contenido principal;
-10. un único `h1` por vista;
-11. vista 404 accesible;
-12. página de privacidad fiel al comportamiento real;
-13. catálogo vacío y contacto ausente;
-14. `public/_headers` copiado a `dist`;
-15. CSP sin `unsafe-inline` ni `unsafe-eval`;
-16. ausencia de `404.html` superior;
-17. ausencia de `_redirects` innecesario;
-18. ausencia de URLs y peticiones externas;
-19. ausencia de scripts remotos, fuentes remotas, iframes y trackers;
-20. ausencia de secretos y archivos `.env` rastreados;
-21. ausencia de source maps en `dist`;
-22. ausencia de funcionalidad excluida.
+9. foco trasladado al contenido principal únicamente después de navegación real;
+10. enlace de salto como primer destino de Tab en la carga inicial;
+11. un único `h1` por vista;
+12. vista 404 accesible;
+13. página de privacidad fiel al comportamiento real;
+14. catálogo vacío y contacto ausente;
+15. `public/_headers` copiado a `dist`;
+16. CSP sin `unsafe-inline` ni `unsafe-eval`;
+17. ausencia de `404.html` superior;
+18. ausencia de `_redirects` innecesario;
+19. ausencia de URLs y peticiones externas;
+20. ausencia de scripts remotos, fuentes remotas, iframes y trackers;
+21. ausencia de secretos y archivos `.env` rastreados;
+22. ausencia de source maps en `dist`;
+23. ausencia de funcionalidad excluida.
 
 ## Validación requerida antes de publicar
 
 1. verificar la base remota exacta;
-2. verificar SHA-256 y lista del candidato;
+2. verificar SHA-256 y lista del candidato v2;
 3. aplicar el candidato en una exportación limpia;
 4. ejecutar `npm ci`;
 5. instalar Chromium;
