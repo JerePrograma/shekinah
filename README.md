@@ -54,6 +54,14 @@ npm run build:pages
 
 El resultado queda en `dist`. Este comando ejecuta lint, tipos, pruebas unitarias, build y verificaciones de activos, seguridad y automatización. Las pruebas E2E se ejecutan en GitHub Actions mediante `npm run verify`.
 
+## Inicio para agentes
+
+- [Instrucciones operativas](AGENTS.md)
+- [Estado actual](docs/CURRENT_STATE.md)
+- [Continuación del proyecto](docs/CONTINUATION.md)
+
+Esos documentos forman la ruta de entrada para una sesión nueva. Los SHA registrados son fotografías históricas y deben revalidarse contra `origin/main`.
+
 ## Arquitectura y operación
 
 - [Procedencia](docs/PROVENANCE.md)
@@ -62,6 +70,9 @@ El resultado queda en `dist`. Este comando ejecuta lint, tipos, pruebas unitaria
 - [Accesibilidad](docs/ACCESSIBILITY.md)
 - [Despliegue](docs/DEPLOYMENT.md)
 - [Avisos de terceros](docs/THIRD_PARTY_NOTICES.md)
+- [Registro de reimplementación](docs/REIMPLEMENTATION_PROGRESS.md)
+
+Las decisiones de cada bloque se conservan en `docs/design/`. Los planes, fallos y resultados de validación se conservan en `docs/validation/` como evidencia histórica y no deben reescribirse para ocultar etapas anteriores.
 
 ## Automatización
 
