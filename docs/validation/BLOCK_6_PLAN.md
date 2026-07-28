@@ -10,7 +10,7 @@ La secuencia histórica recuperada no asignaba un nombre exacto al bloque poster
 
 ## Estado
 
-Candidata v1 preparada. Validación ejecutable pendiente.
+Candidata v1 validada y publicada en el commit funcional `d39fd3d03a4dd7fe34636e58ff7bf969d98c37be`. El registro documental se completó mediante una recuperación posterior al fallo de orquestación del script de publicación.
 
 ## Base remota inspeccionada
 

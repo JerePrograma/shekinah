@@ -346,3 +346,46 @@ Resultado: verificado y publicado.
 - force-push: no utilizado
 
 El bloque incorpora navegación interna mediante History API, rutas directas, metadatos por vista, foco posterior a navegación, privacidad comprobable, vista 404 de aplicación y encabezados restrictivos para Cloudflare Pages. La fuente pública permanece sin productos y el contacto permanece ausente. No se incorporaron dependencias, backend, formularios, analítica, trackers, recursos externos ni secretos.
+## BLOQUE 6 — CI, Cloudflare Pages y documentación operativa
+
+Resultado: validado y publicado; registro documental recuperado después de un fallo de orquestación posterior al push funcional.
+
+### Alcance publicado
+
+- workflow CI único y de solo lectura;
+- Node.js `24.18.0` fijado en `.node-version`;
+- instalación reproducible con `npm ci`;
+- Chromium con dependencias del sistema en CI;
+- ejecución de `npm run verify`;
+- artefacto efímero limitado a `dist`;
+- comando `npm run build:pages`;
+- verificación estática de automatización;
+- documentación de arquitectura, accesibilidad, procedencia, activos, despliegue y dependencias de terceros;
+- preparación para Cloudflare Pages mediante integración Git, sin secretos de despliegue en el repositorio.
+
+### Evidencia
+
+- base remota validada: `5b9da6eba55bfbea437f29ca192f64982224303e`;
+- ZIP candidato: `3ac28d6391b0aa7226c7fc38f829121ddb6d767daa9fab46f3c6d16bd446e3f8`;
+- ZIP de validación: `8f8f78748e76005ce1e8196e63d4b3470945bba078fc123cc5e99a30d64baf90`;
+- commit funcional: `d39fd3d03a4dd7fe34636e58ff7bf969d98c37be`;
+- validación completa: aprobada;
+- Vitest: 21 pruebas aprobadas;
+- Playwright: 3 pruebas aprobadas;
+- build para Pages: aprobado;
+- push funcional: fast-forward;
+- force-push: no utilizado.
+
+### Incidente de registro
+
+El script de publicación falló en `REGISTRAR PUBLICACIÓN`, después del push funcional, porque su parámetro obligatorio `Lines` no admitía las líneas vacías válidas del Markdown.
+
+Antes del fallo había modificado localmente los documentos de plan y validación. La recuperación preservó esos archivos y su diff antes de reconstruir el registro desde el commit funcional.
+
+- resultado fallido preservado: `shekinah-block6-publication-result-v2.zip`;
+- SHA-256: `a17d3af9f0651d046954336ec27f44d48d88c1b93265abdb75614b9c6e0f3e66`;
+- respaldo parcial: `shekinah-block6-partial-local-backup-20260728-150448.zip`;
+- SHA-256 del respaldo parcial: `60b8155d4444ec103834bfb78410355bd6d05b069231d5d9159c7d673fa8076f`;
+- impacto: no se creó el commit documental previsto;
+- impacto funcional: ninguno;
+- recuperación: commit documental posterior, limitado a los archivos de registro.
