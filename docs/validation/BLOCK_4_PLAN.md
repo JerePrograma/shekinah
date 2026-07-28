@@ -6,7 +6,7 @@ Modelo comercial y catálogo.
 
 ## Estado
 
-Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
+Candidata v1 validada y publicada.
 
 ## Base remota inspeccionada
 
@@ -152,3 +152,24 @@ Estas comprobaciones no sustituyen la instalación reproducible, las pruebas rea
 9. comprobar ausencia de datos comerciales no autorizados;
 10. revisar capturas de escritorio y móvil;
 11. publicar mediante fast-forward sobre `origin/main` solo después de un resultado íntegramente exitoso.
+## Publicación definitiva
+
+- resultado de validación: `SUCCESS`;
+- SHA remoto previo: `2ed2241648bde43ce405f47ca27fc592813bcd86`;
+- ZIP candidato: `8dd069418f12ccfea2343a5eb7f6fb15b8f882d7eb64588121bf9746a3986bd5`;
+- ZIP de resultados: `e7b666d57d2f4c415c49bb2ce6e9dfc5489e69654caf13475670c4656d7b80dd`;
+- script de validación: `1a08f572be4f9be5e835c6365ebe61601cf07245ad3536622e48c8da8a66f284`;
+- commit funcional: `300e59de90539619b110499bcbad0ceb2c7722b9`;
+- instalación reproducible: aprobada;
+- validación completa: aprobada;
+- productos autorizados: colección vacía;
+- contacto autorizado: `null`;
+- Vitest: 3 archivos y 14 pruebas aprobados;
+- Playwright: 2 pruebas aprobadas;
+- capturas de escritorio y móvil: revisadas;
+- diff: aprobado;
+- push: fast-forward;
+- force-push: no utilizado;
+- historial Git: conservado.
+
+La publicación aplicó exactamente los dieciséis archivos enumerados en este plan sobre la base remota validada.

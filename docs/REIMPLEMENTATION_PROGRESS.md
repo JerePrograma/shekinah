@@ -1,7 +1,7 @@
 # Registro de reimplementación de Shekinah
 
 Estado del documento: en curso
-Fecha de última actualización: 2026-07-27
+Fecha de última actualización: 2026-07-28
 Rama de trabajo: `main`
 Repositorio: `JerePrograma/shekinah`
 
@@ -282,3 +282,28 @@ Resultado: verificado y publicado.
 - force-push: no utilizado
 
 El bloque incorpora únicamente la estructura visual, el layout responsive, la navegación interna, el estado vacío del catálogo y su documentación. No incorpora productos, precios, contacto, recetas, blog, carrito, pagos, backend ni recursos visuales adicionales.
+## BLOQUE 4 — Modelo comercial y catálogo
+
+Resultado: verificado y publicado.
+
+- SHA remoto previo: `2ed2241648bde43ce405f47ca27fc592813bcd86`
+- ZIP candidato: `8dd069418f12ccfea2343a5eb7f6fb15b8f882d7eb64588121bf9746a3986bd5`
+- ZIP de validación: `e7b666d57d2f4c415c49bb2ce6e9dfc5489e69654caf13475670c4656d7b80dd`
+- script de validación: `1a08f572be4f9be5e835c6365ebe61601cf07245ad3536622e48c8da8a66f284`
+- Node.js: `24.18.0`
+- npm: `11.16.0`
+- `npm ci`: aprobado
+- `npm run verify`: aprobado
+- ESLint: aprobado
+- TypeScript: aprobado
+- Vitest: 3 archivos y 14 pruebas aprobados
+- build de Vite: aprobado
+- verificación criptográfica del logo: aprobada
+- Playwright: 2 pruebas aprobadas en Chromium
+- revisión visual de escritorio y móvil: aprobada
+- `git diff --cached --check`: aprobado
+- commit funcional: `300e59de90539619b110499bcbad0ceb2c7722b9`
+- push funcional: fast-forward a `origin/main`
+- force-push: no utilizado
+
+El bloque incorpora el modelo validado de producto, la fuente centralizada de datos comerciales autorizados, búsqueda normalizada, categorías derivadas, filtros combinables y presentación condicional del catálogo. La fuente pública permanece sin productos y el contacto permanece ausente. No se incorporaron datos comerciales ficticios, imágenes de producto, dependencias nuevas, backend, carrito ni pagos.
