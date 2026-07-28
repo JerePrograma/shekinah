@@ -6,12 +6,13 @@ Modelo comercial y catálogo.
 
 ## Estado
 
-Plan iniciado. Candidata ejecutable pendiente.
+Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
 
-## Base remota
+## Base remota inspeccionada
 
 - rama: `main`;
 - SHA de partida: `bb4c6181e7c308cce1c597f854c89d869596f7aa`;
+- commit de inicio del bloque: `839d5789cf52d57ca0843634e10b6b3374d191df`;
 - BLOQUE 3: verificado y publicado.
 
 ## Decisión sobre datos comerciales
@@ -70,6 +71,55 @@ El precio es opcional. Cuando exista debe contener un importe finito y positivo 
 
 Los datos inválidos deben rechazarse de forma explícita y no llegar al renderizado.
 
+## Candidata v1
+
+Archivo:
+
+`shekinah-block4-validation-candidate-v1.zip`
+
+SHA-256:
+
+`8dd069418f12ccfea2343a5eb7f6fb15b8f882d7eb64588121bf9746a3986bd5`
+
+Tamaño:
+
+`14763 bytes`
+
+Archivos incluidos:
+
+- `docs/design/BLOCK_4_CATALOG_MODEL.md`;
+- `docs/validation/BLOCK_4_VALIDATION.md`;
+- `src/App.test.tsx`;
+- `src/App.tsx`;
+- `src/catalog.css`;
+- `src/catalog/CatalogSection.test.tsx`;
+- `src/catalog/CatalogSection.tsx`;
+- `src/catalog/catalog.test.ts`;
+- `src/catalog/catalog.ts`;
+- `src/catalog/model.ts`;
+- `src/config/authorized-assets.ts`;
+- `src/content/site-content.ts`;
+- `src/data/authorized-commercial-data.ts`;
+- `src/main.tsx`;
+- `src/test/fixtures/catalog-products.ts`;
+- `tests/e2e/app.spec.ts`.
+
+## Controles de preparación realizados
+
+- lista del ZIP limitada a dieciséis archivos;
+- sintaxis TypeScript y TSX analizada con el compilador TypeScript;
+- código de producción comprobado con opciones estrictas, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noUnusedLocals` y `noUnusedParameters`;
+- lógica del modelo, normalización, categorías y filtros ejecutada mediante una comprobación aislada;
+- terminaciones LF;
+- ausencia de espacios finales;
+- ausencia de URLs HTTP o HTTPS;
+- un único elemento `h1` en `src/App.tsx`;
+- fuente comercial de producción vacía;
+- contacto autorizado establecido en `null`;
+- fixtures separados de la fuente comercial.
+
+Estas comprobaciones no sustituyen la instalación reproducible, las pruebas reales con React/Vitest ni Playwright.
+
 ## Criterios de aceptación
 
 1. búsqueda insensible a mayúsculas y minúsculas;
@@ -91,7 +141,7 @@ Los datos inválidos deben rechazarse de forma explícita y no llegar al renderi
 
 ## Validación requerida antes de publicar
 
-1. registrar el SHA-256 del candidato exacto;
+1. verificar el SHA-256 del candidato exacto;
 2. exportar el `origin/main` esperado a un directorio temporal;
 3. aplicar únicamente los archivos candidatos;
 4. ejecutar `npm ci`;
