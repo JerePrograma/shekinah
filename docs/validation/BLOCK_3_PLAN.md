@@ -6,12 +6,12 @@ Diseño visual y estructura principal.
 
 ## Estado
 
-Candidata v1 preparada; validación ejecutable y revisión visual pendientes.
+Candidata v1 preparada. Validación ejecutable y revisión visual pendientes.
 
-## Base remota
+## Base remota inspeccionada
 
 - rama: `main`;
-- SHA funcional y documental de partida: `423149fc38ee077994b3d5a3d6e8d0236a45d48d`;
+- SHA funcional y documental inspeccionado: `2d8d8883a8285edd94da0f41569a00cb26b4b7db`;
 - BLOQUE 2: completado y verificado.
 
 ## Alcance autorizado
@@ -32,7 +32,7 @@ Candidata v1 preparada; validación ejecutable y revisión visual pendientes.
 Este bloque no incorpora:
 
 - productos;
-- precios;
+- precios concretos;
 - categorías comerciales reales;
 - datos de contacto;
 - recetas;
@@ -47,11 +47,19 @@ Este bloque no incorpora:
 
 ## Candidata v1
 
-ZIP SHA-256:
+Archivo:
 
-`aaa4a661071283c35cfbfe12c687d27b0b652f50cadcecc54fa9af2ad77b79df`
+`shekinah-block3-validation-candidate-v1.zip`
 
-Archivos que propone modificar o crear:
+SHA-256:
+
+`11bd3139513a3750cc00b49760688f11cd68a2b04ff3705d7f766b54b223b790`
+
+Tamaño:
+
+`9996 bytes`
+
+Archivos incluidos:
 
 - `index.html`;
 - `src/App.tsx`;
@@ -63,25 +71,48 @@ Archivos que propone modificar o crear:
 
 ## Paleta candidata
 
-- verde oscuro observado: `#13380c`;
-- verde vegetal observado: `#5b873d`;
-- salvia observado: `#b6cab1`;
-- blanco observado: `#ffffff`;
+Colores observados mediante cuantización del logo autorizado:
+
+- verde oscuro: `#13380c`;
+- verde vegetal: `#5b873d`;
+- salvia: `#b6cab1`;
+- blanco: `#ffffff`.
+
+Colores derivados para interfaz:
+
 - verde de acción ajustado para contraste: `#3f6f2a`;
-- fondo salvia claro: `#eef4ec`.
+- fondo salvia claro: `#eef4ec`;
+- borde: `#c9d8c4`.
+
+## Controles de preparación realizados
+
+- lista del ZIP limitada a siete archivos;
+- TypeScript y TSX analizados sintácticamente mediante el compilador TypeScript disponible en el entorno;
+- CSS analizado sintácticamente mediante PostCSS;
+- terminaciones LF;
+- ausencia de espacios finales;
+- ausencia de URLs HTTP o HTTPS;
+- un único elemento `h1` en `src/App.tsx`;
+- ausencia de recursos visuales adicionales;
+- ausencia de productos y contacto.
+
+Estas comprobaciones son estáticas y no sustituyen la validación ejecutable con Node.js 24, npm 11 y Chromium.
 
 ## Validaciones requeridas antes de publicar
 
 1. hash del ZIP candidato;
 2. hash, dimensiones y tamaño del logo ya publicado;
-3. `npm ci`;
-4. `npm run verify`;
-5. `git diff --check`;
-6. ausencia de URLs o recursos externos;
-7. revisión de capturas en escritorio y móvil;
-8. ausencia de desbordamiento horizontal a 390 px;
-9. navegación por teclado y foco visible;
-10. confirmación de un único `h1`;
-11. confirmación de que no se muestran productos ni contacto.
+3. exportación del `origin/main` esperado a un directorio temporal;
+4. aplicación exacta de los siete archivos;
+5. `npm ci`;
+6. instalación de Chromium;
+7. `npm run verify`;
+8. `git diff --check`;
+9. ausencia de URLs o recursos externos;
+10. revisión de capturas en escritorio y móvil;
+11. ausencia de desbordamiento horizontal a 390 px;
+12. navegación por teclado y foco visible;
+13. confirmación de un único `h1`;
+14. confirmación de que no se muestran productos ni contacto.
 
 La publicación funcional se realizará solamente después de validar el candidato exacto y revisar la evidencia visual.
