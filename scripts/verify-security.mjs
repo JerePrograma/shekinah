@@ -305,6 +305,7 @@ function verifyDist() {
     /\b(?:prod|variant|pcol|store)_[a-z0-9]+\b/iu,
     /\boriginalUrl\b/iu,
     /\bdescriptionHtml\b/iu,
+    /\bfetch\s*\(/u,
     /\bXMLHttpRequest\b/u,
     /\bWebSocket\s*\(/u,
     /\bEventSource\s*\(/u,
