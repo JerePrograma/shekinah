@@ -18,6 +18,7 @@ describe('CatalogSection', () => {
     expect(screen.getByText('Página 1 de 22')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
+    expect(document.querySelector('.catalog-notices')).not.toBeInTheDocument();
   });
 
   it('renderiza imagen local, ausencia de imagen y acceso a la ficha', () => {
@@ -67,7 +68,7 @@ describe('CatalogSection', () => {
     expect(screen.getByText('Página 1 de 1')).toBeVisible();
   });
 
-  it('mantiene fija la categoría de una ruta histórica', () => {
+  it('mantiene fija la categoría de una ruta pública', () => {
     render(
       <CatalogSection
         fixedCategorySlug="especias"
@@ -83,7 +84,8 @@ describe('CatalogSection', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1 producto encontrado');
     const card = screen.getByRole('heading', { name: 'Pimentón dulce' }).closest('article');
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText('Precio registrado')).toBeVisible();
+    expect(within(card as HTMLElement).getByText('Precio')).toBeVisible();
+    expect(within(card as HTMLElement).queryByText('Precio registrado')).not.toBeInTheDocument();
   });
 
   it('anuncia una combinación sin resultados', () => {

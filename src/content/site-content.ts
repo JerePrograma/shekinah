@@ -2,7 +2,6 @@ import { appPaths } from '../routing/routes';
 
 export const navigationItems = [
   { href: appPaths.home, label: 'Inicio' },
-  { href: appPaths.approach, label: 'Enfoque' },
   { href: appPaths.catalog, label: 'Catálogo' },
 ] as const;
 
@@ -18,48 +17,16 @@ export const siteContent = {
   },
   hero: {
     eyebrow: 'Hierbas y especias',
-    title: 'Una experiencia simple para descubrir nuevos sabores.',
+    title: 'Sabores naturales para todos los días.',
     summary:
-      'Shekinah presenta un espacio claro y accesible para consultar el catálogo comercial recuperado.',
-    primaryAction: 'Explorar catálogo',
-    secondaryAction: 'Ver el enfoque',
-    points: ['Lectura simple', 'Navegación directa', 'Datos verificables'],
-  },
-  approach: {
-    eyebrow: 'Enfoque',
-    title: 'Diseñado para orientarte con facilidad.',
-    summary:
-      'La estructura prioriza decisiones simples, información legible y una experiencia consistente en cualquier tamaño de pantalla.',
-    principles: [
-      {
-        number: '01',
-        title: 'Orientación inmediata',
-        description:
-          'Una jerarquía visual clara permite identificar cada sección sin esfuerzo.',
-      },
-      {
-        number: '02',
-        title: 'Contenido verificable',
-        description:
-          'Los datos comerciales indican su fecha de captura y conservan los faltantes de la fuente.',
-      },
-      {
-        number: '03',
-        title: 'Experiencia adaptable',
-        description:
-          'El diseño conserva su legibilidad en escritorio, tablet y teléfono.',
-      },
-    ],
+      'Explorá hierbas, especias, alimentos y productos naturales en un catálogo amplio y fácil de recorrer.',
+    primaryAction: 'Ver catálogo',
   },
   catalog: {
     eyebrow: 'Catálogo',
-    title: 'Catálogo de productos.',
+    title: 'Nuestros productos.',
     summary:
-      'Explorá 510 productos recuperados con sus precios, categorías y datos disponibles.',
-    historicalNotice:
-      'Información comercial capturada el 23/07/2026. Los precios y la disponibilidad no se actualizan en tiempo real.',
-    healthNotice:
-      'La información reproduce el catálogo comercial recuperado y no sustituye el asesoramiento de profesionales de la salud. Ante dudas sobre consumo, interacciones o tratamientos, consultá a un profesional.',
+      'Buscá por nombre o explorá las categorías para encontrar lo que necesitás.',
     searchLabel: 'Buscar productos',
     searchPlaceholder: 'Buscar por nombre, categoría, presentación o SKU',
     categoryLabel: 'Filtrar por categoría',
@@ -70,37 +37,37 @@ export const siteContent = {
   },
   privacy: {
     eyebrow: 'Privacidad',
-    title: 'Privacidad clara, sin funciones ocultas.',
+    title: 'Privacidad.',
     summary:
-      'Esta versión es una aplicación estática y describe únicamente comportamientos comprobables en su código publicado.',
+      'Este sitio no solicita datos personales ni utiliza herramientas de seguimiento.',
     sections: [
       {
-        id: 'privacy-no-collection',
-        title: 'Sin recolección desde la aplicación',
+        id: 'privacy-personal-data',
+        title: 'Datos personales',
         description:
-          'No existen formularios, cuentas, carrito, pagos ni una base de datos de la aplicación.',
+          'No solicitamos registros, cuentas ni información personal mediante este sitio.',
       },
       {
-        id: 'privacy-no-tracking',
-        title: 'Sin seguimiento integrado',
+        id: 'privacy-tracking',
+        title: 'Sin seguimiento',
         description:
-          'La aplicación no integra analítica, publicidad, trackers, iframes ni identificadores de terceros.',
+          'No utilizamos analítica, publicidad ni rastreadores de terceros.',
       },
       {
         id: 'privacy-local-resources',
-        title: 'Recursos del mismo origen',
+        title: 'Recursos del sitio',
         description:
-          'No se solicitan APIs externas ni se cargan scripts, fuentes o imágenes remotas.',
+          'Las imágenes y los recursos necesarios se cargan directamente desde Shekinah.',
       },
     ],
     hostingNote:
-      'El proveedor de alojamiento y la red pueden generar registros técnicos propios para operar y proteger el servicio. Esta aplicación estática no consulta esos registros.',
+      'El proveedor de alojamiento puede generar registros técnicos necesarios para operar y proteger el servicio.',
   },
   notFound: {
     eyebrow: 'Error 404',
     title: 'Página no encontrada.',
     description:
-      'La dirección solicitada no corresponde a una ruta pública de esta versión de Shekinah.',
+      'La dirección solicitada no corresponde a una página de Shekinah.',
     action: 'Volver al inicio',
   },
 } as const;

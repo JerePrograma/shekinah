@@ -56,11 +56,6 @@ export function CatalogSection({
       <div className="container catalog-shell">
         <CatalogHeading level={headingLevel} summary={summary} title={title} />
 
-        <div className="catalog-notices" aria-label="Avisos del catálogo">
-          <p>{siteContent.catalog.historicalNotice}</p>
-          <p>{siteContent.catalog.healthNotice}</p>
-        </div>
-
         <div className="catalog-controls" aria-label="Controles del catálogo">
           <label className="catalog-field">
             <span>{siteContent.catalog.searchLabel}</span>
@@ -208,7 +203,7 @@ function ProductCard({
             </div>
           )}
           <div>
-            <dt>Precio registrado</dt>
+            <dt>Precio</dt>
             <dd>{formatProductPrice(product.salePrice ?? product.price)}</dd>
           </div>
         </dl>

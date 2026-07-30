@@ -103,7 +103,7 @@
       "sha256": "2c2977388329f8ad0cb1f2a5235aa4be94e5c2414b4a523ae6f8250c62a81ca1"
     },
     "index": {
-      "path": "src/catalog-data/catalog-index.json",
+      "path": "catalog/internal/catalog-index.json",
       "sha256": "7bf1752bed4f2e2e3aa2876f448a5a852b38cf8119332a7423d9738ef099604e"
     },
     "details": {

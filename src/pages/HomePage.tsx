@@ -20,7 +20,7 @@ export function HomePage({ navigate }: HomePageProps) {
             <h1 id="hero-title">{siteContent.hero.title}</h1>
             <p className="hero-summary">{siteContent.hero.summary}</p>
 
-            <div className="hero-actions" aria-label="Acciones principales">
+            <div className="hero-actions" aria-label="Acción principal">
               <AppLink
                 className="button button-primary"
                 navigate={navigate}
@@ -28,20 +28,7 @@ export function HomePage({ navigate }: HomePageProps) {
               >
                 {siteContent.hero.primaryAction}
               </AppLink>
-              <AppLink
-                className="button button-secondary"
-                navigate={navigate}
-                to={appPaths.approach}
-              >
-                {siteContent.hero.secondaryAction}
-              </AppLink>
             </div>
-
-            <ul className="hero-points" aria-label="Principios de la experiencia">
-              {siteContent.hero.points.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
           </div>
 
           <div className="hero-visual" aria-hidden="true">
@@ -55,28 +42,6 @@ export function HomePage({ navigate }: HomePageProps) {
                 alt=""
               />
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="approach section" aria-labelledby="approach-title">
-        <div className="container">
-          <div className="section-heading">
-            <p className="eyebrow">{siteContent.approach.eyebrow}</p>
-            <h2 id="approach-title">{siteContent.approach.title}</h2>
-            <p>{siteContent.approach.summary}</p>
-          </div>
-
-          <div className="principle-grid">
-            {siteContent.approach.principles.map((principle) => (
-              <article className="principle-card" key={principle.number}>
-                <span className="principle-number" aria-hidden="true">
-                  {principle.number}
-                </span>
-                <h3>{principle.title}</h3>
-                <p>{principle.description}</p>
-              </article>
-            ))}
           </div>
         </div>
       </section>

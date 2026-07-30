@@ -1,4 +1,4 @@
-import catalogIndexSource from '../catalog-data/catalog-index.json';
+import catalogIndexSource from 'virtual:shekinah-catalog-index';
 import categorySource from '../catalog-data/categories.json';
 import {
   parseCategories,

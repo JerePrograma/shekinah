@@ -1,96 +1,76 @@
 # Shekinah
 
-Aplicación web estática de **Shekinah, hierbas y especias**, reconstruida por bloques verificables.
+Catálogo comercial de hierbas, especias, alimentos y productos naturales construido como una SPA estática con React, TypeScript estricto y Vite.
 
-## Estado actual
+## Funcionalidad
 
-La aplicación incluye:
+- 510 productos y 16 categorías;
+- búsqueda por nombre, categoría, presentación, SKU y descripción corta;
+- filtro por categoría;
+- paginación de 24 productos;
+- fichas individuales con carga diferida del detalle;
+- soporte para productos sin imagen o sin descripción;
+- política de privacidad y vista 404;
+- navegación mediante History API con foco administrado;
+- activos locales y cero conexiones remotas en ejecución.
 
-- interfaz responsive;
-- navegación interna mediante History API;
-- páginas de inicio, enfoque, catálogo y privacidad;
-- 510 productos históricos con 16 categorías, búsqueda, filtros y paginación;
-- fichas individuales y rutas históricas de productos y categorías;
-- vista 404 controlada por la aplicación;
-- catálogo comercial capturado el 23/07/2026, sin afirmar precios o stock actuales;
-- encabezados de seguridad para Cloudflare Pages;
-- pruebas unitarias, de componentes y E2E;
-- integración continua de solo lectura.
+El sitio no incorpora backend, autenticación, carrito, checkout, formularios, analítica ni rastreadores.
 
-El catálogo conserva los datos y faltantes de la fuente histórica versionada: 15 productos no tienen descripción completa y `Caldo sin sal en polvo` no tiene imagen. El contacto permanece ausente y no se publican datos comerciales ficticios.
+## Rutas
 
-## Requisitos
+- `/`: inicio y acceso directo al catálogo;
+- `/catalogo`: catálogo completo;
+- `/privacidad`: política de privacidad;
+- `/<slug>/`: ficha de producto;
+- `/tienda/categoria/<slug>/`: categoría;
+- cualquier otra dirección: vista 404 normal.
 
-- Node.js `24.18.0`;
-- npm `11` o superior;
-- Chromium de Playwright para la validación completa.
+## Datos
 
-La versión exacta de Node.js se registra en `.node-version`.
+La aplicación publica únicamente el modelo comercial necesario para el navegador. El índice público no contiene fechas internas, procedencia, IDs técnicos ni HTML de origen.
 
-## Instalación
-
-```bash
-npm ci
-```
+- `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo;
+- `src/catalog-data/categories.json`: categorías;
+- `src/catalog-data/catalog-details.json`: detalles cargados de forma diferida;
+- `catalog/internal/catalog-index.json`: insumo interno de integridad, fuera de `dist`;
+- `config/catalog-index-plugin.ts`: genera el módulo público sin metadatos internos;
+- `catalog/catalog-manifest.json`: métricas y hashes internos;
+- `catalog/catalog-assets.json`: inventario exacto de imágenes.
 
 ## Desarrollo
 
+Requisitos:
+
+- Node.js `24.18.0`;
+- npm `>=11.0.0`.
+
 ```bash
+npm ci
+npm run install:browsers
 npm run dev
 ```
 
-## Validación completa
+## Validación
 
 ```bash
-npm run install:browsers
 npm run verify
-```
-
-En Linux CI, Chromium se instala con sus dependencias del sistema antes de ejecutar `npm run verify`.
-
-## Build para Cloudflare Pages
-
-```bash
 npm run build:pages
+git diff --check
+git diff --cached --check
 ```
 
-El resultado queda en `dist`. Este comando ejecuta la integridad del catálogo, lint, tipos, pruebas unitarias, build y verificaciones de activos, seguridad y automatización. Las pruebas E2E se ejecutan en GitHub Actions mediante `npm run verify`.
+`npm run verify` ejecuta ESLint, TypeScript, Vitest, validadores de catálogo, activos, seguridad y automatización, build de producción y Playwright.
 
-## Catálogo versionado
+## Producción
 
-Los datos públicos sanitizados se encuentran en `src/catalog-data/`; los manifiestos de integridad están en `catalog/` y las imágenes exactas en `public/images/original/catalog/`. El detalle completo se carga mediante un chunk local diferido, sin `fetch` ni APIs remotas.
+Cloudflare Pages debe usar:
 
-Para regenerar esos archivos se debe exportar primero la fuente histórica documentada en `docs/PROVENANCE.md` y ejecutar:
+- repositorio: `JerePrograma/shekinah`;
+- rama: `main`;
+- comando: `npm run build:pages`;
+- salida: `dist`;
+- directorio raíz: raíz del repositorio;
+- Node.js: `24.18.0`;
+- dominio: `shekinah-7dl.pages.dev`.
 
-```bash
-node scripts/prepare-catalog-data.mjs <directorio-histórico-extraído>
-npm run verify:catalog
-```
-
-El build de producción usa los archivos ya versionados y no depende de Git ni de Hostinger.
-
-## Inicio para agentes
-
-- [Instrucciones operativas](AGENTS.md)
-- [Estado actual](docs/CURRENT_STATE.md)
-- [Continuación del proyecto](docs/CONTINUATION.md)
-
-Esos documentos forman la ruta de entrada para una sesión nueva. Los SHA registrados son fotografías históricas y deben revalidarse contra `origin/main`.
-
-## Arquitectura y operación
-
-- [Procedencia](docs/PROVENANCE.md)
-- [Activos autorizados](docs/AUTHORIZED_ASSETS.md)
-- [Arquitectura](docs/ARCHITECTURE.md)
-- [Accesibilidad](docs/ACCESSIBILITY.md)
-- [Despliegue](docs/DEPLOYMENT.md)
-- [Avisos de terceros](docs/THIRD_PARTY_NOTICES.md)
-- [Registro de reimplementación](docs/REIMPLEMENTATION_PROGRESS.md)
-
-Las decisiones de cada bloque se conservan en `docs/design/`. Los planes, fallos y resultados de validación se conservan en `docs/validation/` como evidencia histórica y no deben reescribirse para ocultar etapas anteriores.
-
-## Automatización
-
-`.github/workflows/ci.yml` valida pushes a `main`, pull requests y ejecuciones manuales. El workflow no despliega, no usa secretos y solo dispone de permiso de lectura del repositorio.
-
-Cloudflare Pages debe configurarse mediante integración Git usando `main`, `npm run build:pages` y `dist`. La conexión y el estado del despliegue se verifican fuera del repositorio, en el panel de Cloudflare.
+La CSP mantiene `connect-src 'none'`, no admite `unsafe-inline` ni `unsafe-eval`, y limita scripts, estilos e imágenes al mismo origen.

@@ -6,7 +6,6 @@ import {
   navigationItems,
   siteContent,
 } from './content/site-content';
-import { ApproachPage } from './pages/ApproachPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -140,8 +139,6 @@ function RouteView({
   switch (route.id) {
     case 'home':
       return <HomePage navigate={navigate} />;
-    case 'approach':
-      return <ApproachPage navigate={navigate} />;
     case 'catalog':
       return <CatalogPage navigate={navigate} />;
     case 'category':

@@ -3,7 +3,6 @@ import {
   ALL_CATEGORIES,
   CATALOG_PAGE_SIZE,
   filterProducts,
-  formatCapturedDate,
   formatProductPrice,
   getProductCategories,
   normalizeSearchText,
@@ -25,7 +24,6 @@ const baseProduct = {
   categorySlugs: ['hierbas'],
   categoryNames: ['Hierbas'],
   price: { amount: 1500, currency: 'ARS' },
-  capturedAt: '2026-07-23',
 } as const;
 
 describe('modelo de producto', () => {
@@ -67,7 +65,7 @@ describe('modelo de producto', () => {
     expect(detail.variants[0]?.options[0]).toEqual({ name: 'Tamaño', value: 'Grande' });
   });
 
-  it('rechaza importes, monedas y fechas inválidos', () => {
+  it('rechaza importes y monedas inválidos', () => {
     expect(() => parseProduct({ ...baseProduct, price: { amount: 0, currency: 'ARS' } })).toThrow(
       InvalidProductError,
     );
@@ -75,9 +73,6 @@ describe('modelo de producto', () => {
       parseProduct({ ...baseProduct, price: { amount: Number.POSITIVE_INFINITY, currency: 'ARS' } }),
     ).toThrow(InvalidProductError);
     expect(() => parseProduct({ ...baseProduct, price: { amount: 10, currency: 'USD' } })).toThrow(
-      InvalidProductError,
-    );
-    expect(() => parseProduct({ ...baseProduct, capturedAt: '23/07/2026' })).toThrow(
       InvalidProductError,
     );
   });
@@ -172,8 +167,7 @@ describe('consulta del catálogo', () => {
     expect(paginateProducts(products, 99)).toMatchObject({ page: 3, totalPages: 3 });
   });
 
-  it('formatea precio y fecha para Argentina', () => {
+  it('formatea precios para Argentina', () => {
     expect(formatProductPrice(baseProduct.price)).toContain('1.500');
-    expect(formatCapturedDate('2026-07-23')).toBe('23/07/2026');
   });
 });

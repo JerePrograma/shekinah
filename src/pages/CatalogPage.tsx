@@ -25,7 +25,7 @@ export function CatalogPage({ categorySlug, navigate }: CatalogPageProps) {
       ? {}
       : {
           fixedCategorySlug: category.slug,
-          summary: `${category.productCount} productos registrados en esta categoría.`,
+          summary: `${category.productCount} productos en esta categoría.`,
           title: category.name,
         };
 

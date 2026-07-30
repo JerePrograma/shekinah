@@ -43,7 +43,6 @@ export type CatalogProductSummary = Readonly<{
   availability?: string;
   shortDescription?: string;
   primaryImage?: ProductImage;
-  capturedAt: string;
 }>;
 
 export type Product = CatalogProductSummary;
@@ -136,18 +135,6 @@ function parseTextArray(value: unknown, field: string): readonly string[] {
   return Object.freeze(result);
 }
 
-function parseCapturedAt(value: unknown): string {
-  if (
-    typeof value !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
-    Number.isNaN(Date.parse(`${value}T00:00:00Z`))
-  ) {
-    throw new InvalidProductError('La fecha de captura debe usar el formato YYYY-MM-DD.');
-  }
-
-  return value;
-}
-
 export function parseCategory(value: unknown): CatalogCategory {
   if (!isRecord(value)) {
     throw new InvalidProductError('La categoría debe ser un objeto válido.');
@@ -233,7 +220,6 @@ export function parseProduct(value: unknown): Product {
     ...(availability === undefined ? {} : { availability }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
-    capturedAt: parseCapturedAt(value.capturedAt),
   });
 }
 

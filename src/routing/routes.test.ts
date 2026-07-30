@@ -10,11 +10,13 @@ import {
 } from './routes';
 
 describe('rutas de la aplicación', () => {
-  it('prioriza las rutas institucionales conocidas', () => {
+  it('resuelve las rutas institucionales vigentes y retira Enfoque', () => {
     expect(resolveRoute('/').id).toBe('home');
-    expect(resolveRoute('/enfoque').id).toBe('approach');
     expect(resolveRoute('/catalogo').id).toBe('catalog');
     expect(resolveRoute('/privacidad').id).toBe('privacy');
+    expect(resolveRoute('/enfoque').id).toBe('not-found');
+    expect(Object.keys(appPaths)).not.toContain('approach');
+    expect(Object.values(appPaths)).not.toContain('/enfoque');
   });
 
   it('normaliza barra final, query, hash y separadores repetidos', () => {
@@ -24,7 +26,7 @@ describe('rutas de la aplicación', () => {
     expect(resolveRoute('/guayaba/?origen=prueba#detalle').id).toBe('product');
   });
 
-  it('resuelve programáticamente los 510 paths históricos', () => {
+  it('resuelve programáticamente los 510 paths de producto', () => {
     expect(authorizedProducts).toHaveLength(510);
     for (const product of authorizedProducts) {
       expect(resolveRoute(product.path)).toMatchObject({
@@ -35,20 +37,24 @@ describe('rutas de la aplicación', () => {
     }
   });
 
-  it('resuelve las 16 categorías históricas con título y conteo', () => {
+  it('resuelve las 16 categorías con título, conteo y copy comercial', () => {
     expect(authorizedCategories).toHaveLength(16);
     for (const category of authorizedCategories) {
       const route = resolveRoute(category.path);
       expect(route).toMatchObject({ id: 'category', categorySlug: category.slug });
       expect(route.title).toBe(`${category.name} | Catálogo Shekinah`);
-      expect(route.description).toContain(String(category.productCount));
+      expect(route.description).toBe(
+        `Explorá ${category.productCount} productos de la categoría ${category.name} en Shekinah.`,
+      );
     }
   });
 
-  it('produce metadatos propios para productos representativos', () => {
+  it('produce metadatos comerciales para productos representativos', () => {
     expect(resolveRoute('/guayaba/')).toMatchObject({
       id: 'product',
       title: 'Guayaba hojas x 50 gr | Shekinah',
+      description:
+        'Conocé Guayaba hojas x 50 gr, su presentación, precio y detalles en Shekinah.',
     });
     expect(resolveRoute('/melena-de-leon-futuro-fungi-50ml/').title).toBe(
       'Melena de león Futuro fungi 50ml | Shekinah',
@@ -73,6 +79,7 @@ describe('rutas de la aplicación', () => {
     });
     expect(isAppPath('/guayaba/')).toBe(true);
     expect(isAppPath('/tienda/categoria/hierbas-medicinales/')).toBe(true);
+    expect(isAppPath('/enfoque')).toBe(false);
     expect(isAppPath('/otra-ruta')).toBe(false);
   });
 });

@@ -5,7 +5,6 @@ import {
 
 export const appPaths = {
   home: '/',
-  approach: '/enfoque',
   catalog: '/catalogo',
   privacy: '/privacidad',
 } as const;
@@ -51,25 +50,22 @@ const knownRoutes: readonly KnownRoute[] = [
     id: 'home',
     path: appPaths.home,
     title: 'Shekinah | Hierbas y especias',
-    description: 'Shekinah presenta una experiencia clara y accesible de hierbas y especias.',
-  },
-  {
-    id: 'approach',
-    path: appPaths.approach,
-    title: 'Enfoque | Shekinah',
-    description: 'Conocé el enfoque claro, verificable y adaptable de la experiencia Shekinah.',
+    description:
+      'Explorá el catálogo de hierbas, especias y productos naturales de Shekinah.',
   },
   {
     id: 'catalog',
     path: appPaths.catalog,
     title: 'Catálogo | Shekinah',
-    description: 'Consultá los 510 productos del catálogo comercial recuperado de Shekinah.',
+    description:
+      'Conocé los productos y categorías disponibles en el catálogo de Shekinah.',
   },
   {
     id: 'privacy',
     path: appPaths.privacy,
     title: 'Privacidad | Shekinah',
-    description: 'Conocé el comportamiento de privacidad de la aplicación estática de Shekinah.',
+    description:
+      'Conocé cómo protege tu privacidad el sitio de Shekinah.',
   },
 ];
 
@@ -102,7 +98,7 @@ for (const category of authorizedCategories) {
     path: categoryPath,
     categorySlug: category.slug,
     title: `${category.name} | Catálogo Shekinah`,
-    description: `${category.productCount} productos registrados en la categoría ${category.name} de Shekinah.`,
+    description: `Explorá ${category.productCount} productos de la categoría ${category.name} en Shekinah.`,
   });
 }
 
@@ -116,7 +112,7 @@ for (const product of authorizedProducts) {
     path: productPath,
     productSlug: product.slug,
     title: `${product.name} | Shekinah`,
-    description: `Información comercial registrada de ${product.name} en el catálogo de Shekinah.`,
+    description: `Conocé ${product.name}, su presentación, precio y detalles en Shekinah.`,
   });
 }
 
@@ -128,7 +124,8 @@ export function resolveRoute(pathname: string): AppRoute {
     id: 'not-found',
     path: normalizedPath,
     title: 'Página no encontrada | Shekinah',
-    description: 'La dirección solicitada no corresponde a una ruta pública de Shekinah.',
+    description:
+      'La dirección solicitada no corresponde a una página de Shekinah.',
   };
 }
 

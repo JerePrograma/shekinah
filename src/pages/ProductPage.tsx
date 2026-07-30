@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react';
 
 import {
   formatAvailability,
-  formatCapturedDate,
   formatProductPrice,
 } from '../catalog/catalog';
 import type { CatalogProductDetail } from '../catalog/model';
-import { siteContent } from '../content/site-content';
 import {
   getAuthorizedProduct,
   loadAuthorizedProductDetail,
@@ -120,12 +118,12 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
                 </div>
               )}
               <div>
-                <dt>Precio registrado</dt>
+                <dt>Precio</dt>
                 <dd>{formatProductPrice(summary.price)}</dd>
               </div>
               {summary.salePrice === undefined ? null : (
                 <div>
-                  <dt>Precio promocional registrado</dt>
+                  <dt>Precio promocional</dt>
                   <dd>{formatProductPrice(summary.salePrice)}</dd>
                 </div>
               )}
@@ -137,22 +135,13 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
               )}
               {availability === null ? null : (
                 <div>
-                  <dt>Disponibilidad registrada</dt>
+                  <dt>Disponibilidad</dt>
                   <dd>{availability}</dd>
                 </div>
               )}
-              <div>
-                <dt>Datos comerciales capturados</dt>
-                <dd>{formatCapturedDate(summary.capturedAt)}</dd>
-              </div>
             </dl>
           </div>
         </div>
-
-        <aside className="catalog-notices" aria-label="Avisos del producto">
-          <p>{siteContent.catalog.historicalNotice}</p>
-          <p>{siteContent.catalog.healthNotice}</p>
-        </aside>
 
         {detail === null && loadError === null ? (
           <p role="status" aria-live="polite">Cargando información detallada…</p>
@@ -170,7 +159,7 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
 
         {detail === null || detail.variants.length === 0 ? null : (
           <section className="product-variants" aria-labelledby="product-variants-title">
-            <h2 id="product-variants-title">Variantes registradas</h2>
+            <h2 id="product-variants-title">Presentaciones disponibles</h2>
             <ul>
               {detail.variants.map((variant, index) => (
                 <li key={`${summary.slug}-variant-${index}`}>

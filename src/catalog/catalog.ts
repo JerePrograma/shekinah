@@ -26,12 +26,6 @@ const arsFormatter = new Intl.NumberFormat('es-AR', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
-const dateFormatter = new Intl.DateTimeFormat('es-AR', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
 
 export function normalizeSearchText(value: string): string {
   return value
@@ -120,10 +114,6 @@ export function paginateProducts(
 
 export function formatProductPrice(price: ProductPrice | undefined): string | null {
   return price === undefined ? null : arsFormatter.format(price.amount);
-}
-
-export function formatCapturedDate(value: string): string {
-  return dateFormatter.format(new Date(`${value}T00:00:00Z`));
 }
 
 export function formatAvailability(value: string | undefined): string | null {

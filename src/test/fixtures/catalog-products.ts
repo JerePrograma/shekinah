@@ -10,7 +10,6 @@ export const catalogProductFixtures = parseProducts([
     categoryNames: ['Hierbas'],
     presentation: 'Bolsa de 50 g',
     price: { amount: 900, currency: 'ARS' },
-    capturedAt: '2026-07-23',
   },
   {
     id: 'pimenton-dulce',
@@ -27,6 +26,5 @@ export const catalogProductFixtures = parseProducts([
       src: '/images/original/catalog/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg',
       alt: 'Pimentón dulce',
     },
-    capturedAt: '2026-07-23',
   },
 ]);

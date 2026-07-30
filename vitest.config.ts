@@ -1,8 +1,10 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
+import { catalogIndexPlugin } from './config/catalog-index-plugin';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [catalogIndexPlugin(), react()],
   test: {
     environment: 'jsdom',
     globals: true,
