@@ -4,7 +4,7 @@ import {
   normalizePathname,
   resolveRoute,
 } from './routes';
-import type { AppPath, Navigate } from './routes';
+import type { Navigate } from './routes';
 
 function readCurrentPathname(): string {
   return normalizePathname(window.location.pathname);
@@ -25,7 +25,7 @@ export function useBrowserRoute() {
     };
   }, []);
 
-  const navigate: Navigate = useCallback((path: AppPath) => {
+  const navigate: Navigate = useCallback((path: string) => {
     const normalizedPath = normalizePathname(path);
 
     if (readCurrentPathname() !== normalizedPath) {

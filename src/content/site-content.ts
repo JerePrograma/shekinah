@@ -20,7 +20,7 @@ export const siteContent = {
     eyebrow: 'Hierbas y especias',
     title: 'Una experiencia simple para descubrir nuevos sabores.',
     summary:
-      'Shekinah presenta un espacio claro y accesible. El catálogo se incorporará únicamente cuando la información comercial esté confirmada.',
+      'Shekinah presenta un espacio claro y accesible para consultar el catálogo comercial recuperado.',
     primaryAction: 'Explorar catálogo',
     secondaryAction: 'Ver el enfoque',
     points: ['Lectura simple', 'Navegación directa', 'Datos verificables'],
@@ -41,7 +41,7 @@ export const siteContent = {
         number: '02',
         title: 'Contenido verificable',
         description:
-          'Los datos comerciales se publicarán únicamente después de ser confirmados.',
+          'Los datos comerciales indican su fecha de captura y conservan los faltantes de la fuente.',
       },
       {
         number: '03',
@@ -53,14 +53,15 @@ export const siteContent = {
   },
   catalog: {
     eyebrow: 'Catálogo',
-    title: 'Información comercial en preparación.',
+    title: 'Catálogo de productos.',
     summary:
-      'Este espacio está listo para recibir el catálogo cuando sus datos hayan sido revisados y autorizados.',
-    emptyTitle: 'Todavía no hay productos publicados',
-    emptyDescription:
-      'Se incorporarán únicamente nombres, presentaciones, categorías y precios confirmados.',
+      'Explorá 510 productos recuperados con sus precios, categorías y datos disponibles.',
+    historicalNotice:
+      'Información comercial capturada el 23/07/2026. Los precios y la disponibilidad no se actualizan en tiempo real.',
+    healthNotice:
+      'La información reproduce el catálogo comercial recuperado y no sustituye el asesoramiento de profesionales de la salud. Ante dudas sobre consumo, interacciones o tratamientos, consultá a un profesional.',
     searchLabel: 'Buscar productos',
-    searchPlaceholder: 'Buscar por nombre, categoría o presentación',
+    searchPlaceholder: 'Buscar por nombre, categoría, presentación o SKU',
     categoryLabel: 'Filtrar por categoría',
     allCategoriesLabel: 'Todas las categorías',
     noResultsTitle: 'No se encontraron productos',

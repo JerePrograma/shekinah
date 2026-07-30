@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-23",
+  "source": {
+    "commit": "7e39c5535800fdda31a48846f977fe5c1c05eb3f",
+    "productsBlob": "e224b0ff241547a038f53c84bb006ef7cf3e56bb",
+    "categoriesBlob": "1649e6c27d92d1e26a45408c54bb8f499a023d64",
+    "imageTree": "9015d8a4ca17410c423ec50633d031f61695b385",
+    "productsSha256": "5b26bf5a44822646693fa3aaaf9530799da60115a7e3bcfb4bf8d09a1d9d137e",
+    "categoriesSha256": "4a2922171eee12d91f5b803469b8351a896b9b20423af034d8f3948ac7f1c25b"
+  },
+  "sanitizer": "scripts/prepare-catalog-data.mjs",
+  "metrics": {
+    "products": 510,
+    "uniqueIds": 510,
+    "uniqueSlugs": 510,
+    "uniquePaths": 510,
+    "categories": 16,
+    "prices": 510,
+    "descriptions": 495,
+    "skus": 432,
+    "imageReferences": 509,
+    "images": 484,
+    "productsWithoutImage": 1,
+    "productsWithoutDescription": 15,
+    "productsWithSignificantVariants": 0
+  },
+  "missingImages": [
+    {
+      "slug": "caldo-sin-sal-en-polvo",
+      "name": "Caldo sin sal en polvo"
+    }
+  ],
+  "missingDescriptions": [
+    {
+      "slug": "pomelo-deshidratado-x-250-gr",
+      "name": "Pomelo deshidratado x 250 gr"
+    },
+    {
+      "slug": "ciruelas-presidente-100gr",
+      "name": "Ciruelas presidente 100gr"
+    },
+    {
+      "slug": "blend-floral-1",
+      "name": "Blend Floral N°1 x 75 gr"
+    },
+    {
+      "slug": "blend-floral-2",
+      "name": "Blend floral N°2 x 75gr"
+    },
+    {
+      "slug": "blend-silvestre",
+      "name": "Blend silvestre 75gr"
+    },
+    {
+      "slug": "cascarilla-de-cacao-00d3",
+      "name": "Cascarilla de cacao 200gr"
+    },
+    {
+      "slug": "pasas-rubias",
+      "name": "Pasas rubias 250gr"
+    },
+    {
+      "slug": "mani-tostado-pelado-con-sal",
+      "name": "Maní tostado pelado con sal 1kg"
+    },
+    {
+      "slug": "mani-tostado-pelado-sin-sal",
+      "name": "Maní tostado pelado sin sal 1kg"
+    },
+    {
+      "slug": "quinoa-pop",
+      "name": "Quinoa pop 150gr"
+    },
+    {
+      "slug": "tutucas-fa53",
+      "name": "Tutucas 100gr"
+    },
+    {
+      "slug": "almohaditas-limon",
+      "name": "Almohaditas de avena rellena con Limón 250gr"
+    },
+    {
+      "slug": "almohaditas-frutilla",
+      "name": "Almohaditas de avena rellenas de frutilla 250gr"
+    },
+    {
+      "slug": "almohaditas-salvado-sin-relleno",
+      "name": "Almohaditas de salvado sin relleno 200gr"
+    },
+    {
+      "slug": "clavo-de-olor-en-grano",
+      "name": "Clavo de olor en grano 50gr"
+    }
+  ],
+  "collisions": {
+    "staticRoutes": [],
+    "productAndCategoryRoutes": []
+  },
+  "outputs": {
+    "categories": {
+      "path": "src/catalog-data/categories.json",
+      "sha256": "2c2977388329f8ad0cb1f2a5235aa4be94e5c2414b4a523ae6f8250c62a81ca1"
+    },
+    "index": {
+      "path": "src/catalog-data/catalog-index.json",
+      "sha256": "7bf1752bed4f2e2e3aa2876f448a5a852b38cf8119332a7423d9738ef099604e"
+    },
+    "details": {
+      "path": "src/catalog-data/catalog-details.json",
+      "sha256": "1d6bb2c2dd4a0755a18f75d96465ae19023a3bd71f1be261abf8a94c17c31620"
+    },
+    "assets": {
+      "path": "catalog/catalog-assets.json",
+      "sha256": "51a53a1e922c53f7d2746f8a1a17b48f9ff37bded19ca965cb0ab75164600337"
+    }
+  }
+}

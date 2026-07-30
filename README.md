@@ -9,13 +9,15 @@ La aplicación incluye:
 - interfaz responsive;
 - navegación interna mediante History API;
 - páginas de inicio, enfoque, catálogo y privacidad;
+- 510 productos históricos con 16 categorías, búsqueda, filtros y paginación;
+- fichas individuales y rutas históricas de productos y categorías;
 - vista 404 controlada por la aplicación;
-- catálogo preparado para datos autorizados;
+- catálogo comercial capturado el 23/07/2026, sin afirmar precios o stock actuales;
 - encabezados de seguridad para Cloudflare Pages;
 - pruebas unitarias, de componentes y E2E;
 - integración continua de solo lectura.
 
-Los productos autorizados permanecen vacíos y el contacto permanece ausente. No se publican datos comerciales ficticios.
+El catálogo conserva los datos y faltantes de la fuente histórica versionada: 15 productos no tienen descripción completa y `Caldo sin sal en polvo` no tiene imagen. El contacto permanece ausente y no se publican datos comerciales ficticios.
 
 ## Requisitos
 
@@ -52,7 +54,20 @@ En Linux CI, Chromium se instala con sus dependencias del sistema antes de ejecu
 npm run build:pages
 ```
 
-El resultado queda en `dist`. Este comando ejecuta lint, tipos, pruebas unitarias, build y verificaciones de activos, seguridad y automatización. Las pruebas E2E se ejecutan en GitHub Actions mediante `npm run verify`.
+El resultado queda en `dist`. Este comando ejecuta la integridad del catálogo, lint, tipos, pruebas unitarias, build y verificaciones de activos, seguridad y automatización. Las pruebas E2E se ejecutan en GitHub Actions mediante `npm run verify`.
+
+## Catálogo versionado
+
+Los datos públicos sanitizados se encuentran en `src/catalog-data/`; los manifiestos de integridad están en `catalog/` y las imágenes exactas en `public/images/original/catalog/`. El detalle completo se carga mediante un chunk local diferido, sin `fetch` ni APIs remotas.
+
+Para regenerar esos archivos se debe exportar primero la fuente histórica documentada en `docs/PROVENANCE.md` y ejecutar:
+
+```bash
+node scripts/prepare-catalog-data.mjs <directorio-histórico-extraído>
+npm run verify:catalog
+```
+
+El build de producción usa los archivos ya versionados y no depende de Git ni de Hostinger.
 
 ## Inicio para agentes
 

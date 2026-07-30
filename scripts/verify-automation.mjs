@@ -70,10 +70,11 @@ function verifyPackageScripts() {
 
   const expectedScripts = {
     'build:pages':
-      'npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation',
+      'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation',
+    'verify:catalog': 'node scripts/verify-catalog.mjs',
     'verify:automation': 'node scripts/verify-automation.mjs',
     verify:
-      'npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e',
+      'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e',
   };
 
   for (const [name, value] of Object.entries(expectedScripts)) {

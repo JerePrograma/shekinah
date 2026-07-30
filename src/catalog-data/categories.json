@@ -1,0 +1,98 @@
+[
+  {
+    "slug": "aceites",
+    "path": "/tienda/categoria/aceites/",
+    "name": "Aceites",
+    "productCount": 9
+  },
+  {
+    "slug": "agroecologicos",
+    "path": "/tienda/categoria/agroecologicos/",
+    "name": "Agroecologicos",
+    "productCount": 18
+  },
+  {
+    "slug": "amazonas",
+    "path": "/tienda/categoria/amazonas/",
+    "name": "Amazonas",
+    "productCount": 6
+  },
+  {
+    "slug": "armados-de-blends-medicinales",
+    "path": "/tienda/categoria/armados-de-blends-medicinales/",
+    "name": "Armados de blends medicinales",
+    "productCount": 29
+  },
+  {
+    "slug": "cacao",
+    "path": "/tienda/categoria/cacao/",
+    "name": "CACAO",
+    "productCount": 8
+  },
+  {
+    "slug": "desayuno",
+    "path": "/tienda/categoria/desayuno/",
+    "name": "Desayuno",
+    "productCount": 12
+  },
+  {
+    "slug": "especias-gourmet",
+    "path": "/tienda/categoria/especias-gourmet/",
+    "name": "Especias Gourmet",
+    "productCount": 78
+  },
+  {
+    "slug": "frutos-secos-y-deshidratados",
+    "path": "/tienda/categoria/frutos-secos-y-deshidratados/",
+    "name": "Frutos Secos y deshidratados",
+    "productCount": 35
+  },
+  {
+    "slug": "harinas",
+    "path": "/tienda/categoria/harinas/",
+    "name": "Harinas",
+    "productCount": 9
+  },
+  {
+    "slug": "hierbas-medicinales",
+    "path": "/tienda/categoria/hierbas-medicinales/",
+    "name": "Hierbas Medicinales",
+    "productCount": 205
+  },
+  {
+    "slug": "legumbres-y-cereales-en-grano",
+    "path": "/tienda/categoria/legumbres-y-cereales-en-grano/",
+    "name": "Legumbres y Cereales en grano",
+    "productCount": 19
+  },
+  {
+    "slug": "otros",
+    "path": "/tienda/categoria/otros/",
+    "name": "Otros",
+    "productCount": 1
+  },
+  {
+    "slug": "sales-ancestrales",
+    "path": "/tienda/categoria/sales-ancestrales/",
+    "name": "Sales Ancestrales",
+    "productCount": 4
+  },
+  {
+    "slug": "semillas",
+    "path": "/tienda/categoria/semillas/",
+    "name": "Semillas",
+    "productCount": 27
+  },
+  {
+    "slug": "suplementos",
+    "path": "/tienda/categoria/suplementos/",
+    "name": "Suplementos",
+    "productCount": 8
+  },
+  {
+    "slug": "tinturas",
+    "path": "/tienda/categoria/tinturas/",
+    "name": "Tinturas",
+    "productCount": 2
+  }
+]

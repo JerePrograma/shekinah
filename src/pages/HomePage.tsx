@@ -81,7 +81,7 @@ export function HomePage({ navigate }: HomePageProps) {
         </div>
       </section>
 
-      <CatalogSection products={authorizedProducts} />
+      <CatalogSection navigate={navigate} products={authorizedProducts} />
     </>
   );
 }

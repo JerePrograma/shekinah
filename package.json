@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4173",
     "build": "vite build",
-    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
+    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -19,9 +19,10 @@
     "test:e2e": "playwright test",
     "install:browsers": "playwright install chromium",
     "verify:assets": "node scripts/verify-assets.mjs",
+    "verify:catalog": "node scripts/verify-catalog.mjs",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:automation": "node scripts/verify-automation.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",

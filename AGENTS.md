@@ -58,13 +58,13 @@ Si el entorno no permite un checkout local, registrar la limitación y utilizar 
 - Sin backend, base de datos, autenticación ni peticiones a APIs.
 - Navegación mediante History API sin dependencia externa de routing.
 - Rutas públicas: `/`, `/enfoque`, `/catalogo` y `/privacidad`.
-- Las demás rutas muestran la vista 404 de la aplicación.
+- Las rutas históricas de los 510 productos y las 16 categorías se resuelven dentro de la SPA; las demás rutas muestran la vista 404 de la aplicación.
 - La fuente comercial única es `src/data/authorized-commercial-data.ts`.
-- La colección pública de productos puede y actualmente debe permanecer vacía.
+- La colección pública contiene los 510 productos recuperados y validados desde el historial Git.
 - El contacto autorizado puede y actualmente debe permanecer en `null`.
 - No inventar productos, precios, contacto, horarios, redes, promociones, testimonios, certificaciones ni afirmaciones sanitarias.
 - No reincorporar recetas.
-- El único activo visual autorizado es `public/assets/logo-shekinah.png`.
+- Los activos visuales autorizados son el logo y las 484 imágenes exactas declaradas en `catalog/catalog-assets.json`.
 - No añadir recursos remotos, analítica, trackers, iframes, fuentes externas ni imágenes adicionales sin autorización y actualización deliberada de verificadores.
 - El historial anterior se conserva; no afirmar que fue eliminado.
 

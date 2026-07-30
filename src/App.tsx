@@ -11,6 +11,7 @@ import { CatalogPage } from './pages/CatalogPage';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PrivacyPage } from './pages/PrivacyPage';
+import { ProductPage } from './pages/ProductPage';
 import { AppLink } from './routing/AppLink';
 import { appPaths } from './routing/routes';
 import type { AppRoute, Navigate } from './routing/routes';
@@ -38,7 +39,12 @@ export function App() {
     mainRef.current?.focus({ preventScroll: false });
   }, [pathname]);
 
-  const activePath = route.id === 'not-found' ? null : route.path;
+  const activePath =
+    route.id === 'not-found'
+      ? null
+      : route.id === 'product' || route.id === 'category'
+        ? appPaths.catalog
+        : route.path;
 
   return (
     <>
@@ -137,7 +143,23 @@ function RouteView({
     case 'approach':
       return <ApproachPage navigate={navigate} />;
     case 'catalog':
-      return <CatalogPage />;
+      return <CatalogPage navigate={navigate} />;
+    case 'category':
+      return (
+        <CatalogPage
+          categorySlug={route.categorySlug}
+          key={route.path}
+          navigate={navigate}
+        />
+      );
+    case 'product':
+      return (
+        <ProductPage
+          key={route.path}
+          navigate={navigate}
+          productSlug={route.productSlug}
+        />
+      );
     case 'privacy':
       return <PrivacyPage navigate={navigate} />;
     case 'not-found':

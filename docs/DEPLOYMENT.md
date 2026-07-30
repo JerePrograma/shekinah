@@ -38,15 +38,24 @@ Comprobar en el panel:
 - rama `main`;
 - salida `dist`;
 - encabezados de seguridad;
+- carga del catálogo con `510 productos encontrados`;
+- una ruta `/tienda/categoria/<slug>/`;
+- rutas representativas de productos con y sin imagen;
 - navegación directa a `/privacidad`;
 - navegación directa a una ruta desconocida;
-- ausencia de productos y contacto no autorizados.
+- ausencia de contacto no autorizado, recursos remotos, IDs internos y llamadas de red.
+
+La verificación pública debe distinguir la conclusión de GitHub Actions, el SHA informado por Cloudflare y el contenido servido. El HTML público puede no exponer el SHA desplegado; en ese caso no se debe inferir esa asociación.
 
 ## CI versus despliegue
 
 `.github/workflows/ci.yml` no contiene secretos, permisos de escritura ni comandos de Cloudflare. Su artefacto `dist` sirve como evidencia del build verificado, pero no se publica automáticamente.
 
 No debe añadirse Wrangler hasta confirmar si el proyecto existente usa Git integration o Direct Upload. Cambiar de modalidad puede requerir un proyecto nuevo o una reconfiguración deliberada.
+
+## Catálogo en producción
+
+El build usa los datasets sanitizados y las 484 imágenes versionadas. No consulta Git, Hostinger ni una API durante instalación, build o ejecución. Deben comprobarse los 510 paths mediante solicitudes HTTP programáticas y una muestra representativa mediante navegador, sin abrir 510 sesiones completas.
 
 ## Rollback
 

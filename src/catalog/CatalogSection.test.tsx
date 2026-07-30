@@ -1,70 +1,98 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
+import { authorizedProducts } from '../data/authorized-commercial-data';
 import { catalogProductFixtures } from '../test/fixtures/catalog-products';
 import { CatalogSection } from './CatalogSection';
 
 describe('CatalogSection', () => {
-  it('muestra un estado vacío sin controles inútiles', () => {
-    render(<CatalogSection products={[]} />);
-
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Todavía no hay productos publicados',
+  it('informa 510 resultados y renderiza sólo la primera página de 24', () => {
+    render(
+      <CatalogSection
+        navigate={vi.fn()}
+        products={authorizedProducts}
+      />,
     );
-    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-product]')).not.toBeInTheDocument();
+
+    expect(screen.getByRole('status')).toHaveTextContent('510 productos encontrados');
+    expect(document.querySelectorAll('[data-product]')).toHaveLength(24);
+    expect(screen.getByText('Página 1 de 22')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
   });
 
-  it('renderiza tarjetas sin imágenes ni precios inventados', () => {
-    render(<CatalogSection products={catalogProductFixtures} />);
+  it('renderiza imagen local, ausencia de imagen y acceso a la ficha', () => {
+    const navigate = vi.fn();
+    render(<CatalogSection navigate={navigate} products={catalogProductFixtures} />);
 
-    expect(document.querySelectorAll('[data-product]')).toHaveLength(2);
-    expect(document.querySelector('.catalog-grid img')).not.toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Pimentón dulce' })).toHaveAttribute(
+      'loading',
+      'lazy',
+    );
+    expect(screen.getByRole('img', { name: 'Imagen no disponible' })).toBeVisible();
 
-    const mentaCard = screen.getByRole('heading', { name: 'Menta seca' }).closest('article');
-    const pimentonCard = screen
-      .getByRole('heading', { name: 'Pimentón dulce' })
-      .closest('article');
-
-    expect(mentaCard).not.toBeNull();
-    expect(pimentonCard).not.toBeNull();
-
-    expect(within(mentaCard as HTMLElement).queryByText('Precio')).not.toBeInTheDocument();
-    expect(within(pimentonCard as HTMLElement).getByText('Precio')).toBeVisible();
+    const productLink = screen.getByRole('link', { name: 'Pimentón dulce' });
+    expect(productLink).toHaveAttribute('href', '/pimenton-dulce/');
+    fireEvent.click(productLink);
+    expect(navigate).toHaveBeenCalledWith('/pimenton-dulce/');
   });
 
   it('filtra por búsqueda normalizada y categoría', () => {
-    render(<CatalogSection products={catalogProductFixtures} />);
+    render(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
 
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: '  PIMENTON  ' },
     });
-
     expect(screen.getByRole('heading', { name: 'Pimentón dulce' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Menta seca' })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('searchbox'), {
-      target: { value: '' },
-    });
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'Hierbas' },
-    });
-
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hierbas' } });
     expect(screen.getByRole('heading', { name: 'Menta seca' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Pimentón dulce' })).not.toBeInTheDocument();
   });
 
-  it('informa cuando una combinación no produce resultados', () => {
-    render(<CatalogSection products={catalogProductFixtures} />);
+  it('reinicia la página cuando cambia la búsqueda', () => {
+    const products = Array.from({ length: 30 }, (_, index) => ({
+      ...catalogProductFixtures[0]!,
+      id: `menta-${index}`,
+      slug: `menta-${index}`,
+      path: `/menta-${index}/`,
+      name: `Menta ${index}`,
+    }));
+    render(<CatalogSection navigate={vi.fn()} products={products} />);
 
-    fireEvent.change(screen.getByRole('searchbox'), {
-      target: { value: 'menta' },
-    });
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'Especias' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(screen.getByText('Página 2 de 2')).toBeVisible();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'menta 1' } });
+    expect(screen.getByText('Página 1 de 1')).toBeVisible();
+  });
+
+  it('mantiene fija la categoría de una ruta histórica', () => {
+    render(
+      <CatalogSection
+        fixedCategorySlug="especias"
+        headingLevel={1}
+        navigate={vi.fn()}
+        products={catalogProductFixtures}
+        title="Especias"
+      />,
+    );
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Especias' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('1 producto encontrado');
+    const card = screen.getByRole('heading', { name: 'Pimentón dulce' }).closest('article');
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText('Precio registrado')).toBeVisible();
+  });
+
+  it('anuncia una combinación sin resultados', () => {
+    render(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'menta' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'especias' } });
 
     expect(screen.getByText('No se encontraron productos')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('0 productos encontrados');
     expect(document.querySelector('[data-product]')).not.toBeInTheDocument();
   });
 });

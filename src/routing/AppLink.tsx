@@ -3,7 +3,7 @@ import type {
   ReactNode,
 } from 'react';
 
-import type { AppPath, Navigate } from './routes';
+import type { Navigate } from './routes';
 
 type AppLinkProps = Readonly<{
   'aria-current'?: 'page' | undefined;
@@ -11,7 +11,7 @@ type AppLinkProps = Readonly<{
   children: ReactNode;
   className?: string | undefined;
   navigate: Navigate;
-  to: AppPath;
+  to: string;
 }>;
 
 function shouldUseBrowserNavigation(

@@ -1,92 +1,92 @@
 # Estado actual
 
-Fecha de la fotografía: 2026-07-28.
+Fecha de la fotografía: 2026-07-30.
 
-Base remota inspeccionada antes de iniciar este cierre documental:
+Base remota sincronizada antes de iniciar la incorporación integral del catálogo:
 
-`bb84220780321d42828725de0d53309c1ef86129` — `docs: recover block 6 publication record`.
+`2ff352a350097b40403543ef2490857f9043ebf6` — `fix: publish compiled Pages output`.
 
-Este SHA es una referencia de inspección, no un valor permanente. Resolver nuevamente `origin/main` antes de cualquier trabajo y consultar el historial para identificar el commit que contiene esta fotografía.
+Este SHA es la base de la implementación, no un valor permanente. Resolver nuevamente `origin/main` antes de cualquier trabajo.
 
 ## Producto
 
-Shekinah es una aplicación web estática para un negocio de hierbas y especias.
+Shekinah es una SPA estática de React, TypeScript estricto y Vite para un negocio de hierbas y especias. Publica el catálogo comercial histórico capturado el 23/07/2026 sin afirmar que sus precios o disponibilidades sean actuales.
 
-El estado actual no publica productos ni datos de contacto. La ausencia de esos datos es deliberada y no constituye un defecto que deba completarse con información ficticia.
+El catálogo de producción contiene:
 
-## Arquitectura
+- 510 productos con ID público, slug y path únicos;
+- 16 categorías;
+- 510 precios registrados en ARS;
+- 495 descripciones completas;
+- 432 SKU;
+- 509 referencias a 484 imágenes locales únicas;
+- 15 productos sin descripción completa;
+- un producto sin imagen: `Caldo sin sal en polvo`.
 
-- React y React DOM.
-- TypeScript estricto.
-- Vite.
-- SPA estática con salida en `dist`.
-- Navegación con History API y enlaces HTML reales.
-- Sin dependencia externa de routing.
-- Sin backend.
-- Sin base de datos.
-- Sin autenticación.
-- Sin peticiones a APIs.
-- Sin formularios, carrito, pagos, analítica, publicidad ni trackers.
+`authorizedContact` permanece en `null`. No existen backend, autenticación, compra, carrito, stock en tiempo real, formularios, analítica ni trackers.
 
-El mapa técnico completo se mantiene en `docs/ARCHITECTURE.md`.
+## Datos y arquitectura
+
+- `src/catalog-data/catalog-index.json`: índice liviano de listado y resolución de rutas;
+- `src/catalog-data/catalog-details.json`: descripciones completas, galerías y variantes, cargadas mediante `import()` local diferido;
+- `src/catalog-data/categories.json`: categorías públicas;
+- `src/data/authorized-commercial-data.ts`: fuente tipada de producción;
+- `catalog/catalog-manifest.json`: procedencia, métricas, faltantes y hashes;
+- `catalog/catalog-assets.json`: inventario exacto de activos comerciales;
+- `scripts/prepare-catalog-data.mjs`: regeneración offline y determinista desde una extracción histórica;
+- `scripts/verify-catalog.mjs`: validación integral del dataset público.
+
+El build de producción no depende de Git ni realiza descargas. El bundle inicial no contiene las 495 descripciones completas.
 
 ## Rutas públicas
+
+Rutas institucionales estáticas:
 
 - `/`;
 - `/enfoque`;
 - `/catalogo`;
 - `/privacidad`.
 
-Cualquier otra ruta se resuelve como `not-found` y muestra la vista 404 de la aplicación. Bajo el fallback SPA estático, esa vista puede recibirse con estado HTTP `200`; la limitación está documentada en `docs/design/BLOCK_5_NAVIGATION_SECURITY.md`.
+Rutas comerciales dinámicas:
 
-## Datos comerciales
+- 510 paths históricos de producto, con y sin barra final;
+- 16 rutas `/tienda/categoria/<slug>/`.
 
-Fuente única:
+Las rutas estáticas tienen prioridad. Query string y hash no alteran la resolución. Cualquier path desconocido muestra la vista 404 de la aplicación; por el fallback SPA puede recibirse con estado HTTP `200`.
 
-`src/data/authorized-commercial-data.ts`.
+## Experiencia del catálogo
 
-Estado verificado por lectura de código:
+- búsqueda insensible a mayúsculas, tildes y espacios repetidos;
+- búsqueda por nombre, categoría, presentación, SKU y descripción corta;
+- filtro por las 16 categorías;
+- paginación determinista de 24 productos;
+- contador y cambios anunciados mediante `aria-live`;
+- fichas individuales con campos opcionales solamente cuando existen;
+- imagen local con carga diferida o superficie textual `Imagen no disponible`;
+- advertencias visibles sobre la fecha comercial y las descripciones de salud.
 
-- `authorizedProducts`: colección vacía;
-- `authorizedContact`: `null`.
+## Activos
 
-Los productos utilizados en pruebas se encuentran únicamente en `src/test/fixtures/` y no forman parte de la fuente de producción.
+El logo autorizado conserva su hash SHA-256 `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`.
 
-## Activo visual
+Las 484 imágenes comerciales son los binarios históricos exactos declarados en `catalog/catalog-assets.json`. El verificador comprueba allowlist, firma, extensión, tamaño, SHA-256, referencias y ausencia de huérfanos.
 
-Único activo autorizado:
+## Calidad y seguridad
 
-- ruta: `public/assets/logo-shekinah.png`;
-- formato: PNG;
-- dimensiones: 383 × 383 px;
-- tamaño: 105443 bytes;
-- modo original: RGBA;
-- SHA-256: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`.
+Entorno canónico:
 
-`scripts/verify-assets.mjs` valida firma, dimensiones, profundidad, tipo de color, tamaño y hash.
-
-## Calidad y pruebas
-
-Versiones y herramientas:
-
-- Node.js fijado en `.node-version` como `24.18.0`;
+- Node.js `24.18.0` mediante `.node-version`;
 - npm `>=11.0.0`;
-- ESLint con reglas tipadas;
+- ESLint tipado;
 - Vitest y React Testing Library;
 - Playwright con Chromium.
 
-Cobertura estructural actual:
+Cobertura local de esta incorporación:
 
-- cuatro pruebas de aplicación;
-- nueve pruebas del modelo y consulta de catálogo;
-- cuatro pruebas del componente de catálogo;
-- cuatro pruebas del resolvedor de rutas;
-- tres escenarios E2E.
-
-Total documentado y verificado en el cierre del BLOQUE 6:
-
-- Vitest: 4 archivos y 21 pruebas aprobadas;
-- Playwright: 3 pruebas aprobadas.
+- Vitest: 4 archivos y 31 pruebas;
+- Playwright: 5 escenarios sobre el build compilado;
+- resolución programática de los 510 paths y las 16 categorías;
+- verificadores de catálogo, activos, seguridad y automatización.
 
 Comandos canónicos:
 
@@ -97,85 +97,24 @@ npm run verify
 npm run build:pages
 ```
 
-`npm run verify` incluye E2E. `npm run build:pages` no ejecuta Playwright, pero sí lint, tipos, pruebas Vitest, build y verificadores estáticos.
+La CSP continúa con `default-src 'none'`, `connect-src 'none'`, `img-src 'self'`, `script-src 'self'` y `style-src 'self'`, sin `unsafe-inline`, `unsafe-eval`, formularios, frames ni conexiones remotas.
 
-## Seguridad
+## CI y despliegue
 
-- `public/_headers` define CSP y encabezados restrictivos para Cloudflare Pages.
-- La CSP no admite `unsafe-inline` ni `unsafe-eval`.
-- `scripts/verify-security.mjs` rechaza recursos externos, peticiones de red, trackers, secretos, activos adicionales, source maps y fallbacks incompatibles.
-- `scripts/verify-automation.mjs` exige un único workflow, permisos de lectura y acciones oficiales fijadas a SHA completo.
+`.github/workflows/ci.yml` conserva permisos `contents: read`, ejecuta `npm ci` y `npm run verify`, y publica `dist` como artefacto efímero. No despliega ni utiliza secretos.
 
-## Bloques publicados
-
-- BLOQUE 1 — neutralización de automatizaciones legacy: `afae521d156feb2dead946f205e142a3a260d3a9`.
-- BLOQUE 2 — base React/TypeScript/Vite: `45af35eedfcc9fc4629b70fc5380cf0e70695d26`.
-- BLOQUE 3 — estructura visual: `b8d65dd3988a5715603bb5540af13a51d8a9afab`.
-- BLOQUE 4 — modelo y catálogo: `300e59de90539619b110499bcbad0ceb2c7722b9`.
-- BLOQUE 5 — navegación, privacidad y seguridad: `5bc26706f5e971ae1bcb2c15ef46c1f6ed2b9bae`.
-- BLOQUE 6 — CI y preparación operativa: `d39fd3d03a4dd7fe34636e58ff7bf969d98c37be`.
-- Recuperación documental del BLOQUE 6: `bb84220780321d42828725de0d53309c1ef86129`.
-
-El historial anterior permanece conservado. La implementación legacy fue retirada del árbol mediante commits normales, no mediante reescritura del historial.
-
-## Documentación
-
-Documentos canónicos:
-
-- `README.md`;
-- `AGENTS.md`;
-- `docs/CURRENT_STATE.md`;
-- `docs/CONTINUATION.md`;
-- `docs/PROVENANCE.md`;
-- `docs/AUTHORIZED_ASSETS.md`;
-- `docs/ARCHITECTURE.md`;
-- `docs/ACCESSIBILITY.md`;
-- `docs/DEPLOYMENT.md`;
-- `docs/THIRD_PARTY_NOTICES.md`;
-- `docs/REIMPLEMENTATION_PROGRESS.md`.
-
-`docs/design/` conserva decisiones de cada bloque. `docs/validation/` conserva planes, intentos, fallos y evidencia de publicación. Los estados preliminares de esos registros no deben interpretarse sin leer las secciones posteriores de publicación definitiva.
-
-## CI
-
-El workflow vigente es `.github/workflows/ci.yml` y, por lectura de código:
-
-- se ejecuta en push a `main`, pull request y ejecución manual;
-- usa permisos `contents: read`;
-- ejecuta `npm ci` y `npm run verify`;
-- publica únicamente `dist` como artefacto efímero;
-- no despliega ni utiliza secretos.
-
-Durante la inspección de esta fotografía, la API disponible no expuso una ejecución de push asociada al SHA base. La configuración fue revisada por código; la conclusión remota de GitHub Actions debe verificarse nuevamente después de cada publicación.
-
-## Despliegue
-
-Estrategia documentada: Cloudflare Pages mediante integración Git.
-
-Configuración prevista:
+La estrategia de producción continúa siendo Cloudflare Pages mediante integración Git:
 
 - rama: `main`;
 - comando: `npm run build:pages`;
 - salida: `dist`;
 - Node.js: `24.18.0`;
-- URL conocida a comprobar: `shekinah-7dl.pages.dev`.
+- dominio: `shekinah-7dl.pages.dev`.
 
-La URL, el SHA desplegado y los encabezados públicos no pudieron comprobarse desde el acceso remoto utilizado para esta fotografía. No asumir que producción coincide con `main`.
+Un push no demuestra por sí solo un despliegue. GitHub Actions, el deployment de Cloudflare y el contenido público deben asociarse y verificarse para cada SHA final.
 
-## Issues y backlog
+## Historial
 
-No se encontraron pull requests abiertas ni requisitos funcionales posteriores al BLOQUE 6.
+La aplicación legacy fue retirada mediante commits normales. Su historial permanece disponible para auditoría, pero el árbol actual no reutiliza su arquitectura, código, estilos, checkout ni workflows. Solo se recuperaron datos comerciales, imágenes y metadatos de procedencia autorizados.
 
-Se observaron issues abiertos de uso técnico histórico: `#17`, `#21`, `#22` y `#25`. Sus títulos y cuerpos corresponden a finalizadores o payloads anteriores, no a requisitos vigentes del producto. No deben utilizarse como backlog funcional. Su cierre administrativo es una tarea separada y no requiere modificar la aplicación.
-
-## Próximo trabajo justificable
-
-Sin nuevos datos comerciales o requisitos explícitos, no corresponde inventar un bloque funcional.
-
-La prioridad es:
-
-1. confirmar CI del SHA final;
-2. confirmar el despliegue de Cloudflare Pages y sus rutas;
-3. corregir únicamente regresiones demostrables;
-4. incorporar requisitos comerciales solo cuando sean proporcionados y autorizados;
-5. mantener actualizada la evidencia documental.
+`docs/design/` y `docs/validation/` conservan decisiones y evidencia histórica. Sus estados preliminares no deben interpretarse sin leer los cierres posteriores.

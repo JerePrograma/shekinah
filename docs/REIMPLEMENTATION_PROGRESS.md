@@ -389,3 +389,38 @@ Antes del fallo había modificado localmente los documentos de plan y validació
 - impacto: no se creó el commit documental previsto;
 - impacto funcional: ninguno;
 - recuperación: commit documental posterior, limitado a los archivos de registro.
+
+## Incorporación integral del catálogo histórico
+
+Resultado de implementación: catálogo histórico integrado y validado localmente sobre la arquitectura React/TypeScript/Vite vigente.
+
+### Fuente y alcance
+
+- base de implementación: `2ff352a350097b40403543ef2490857f9043ebf6`;
+- revisión histórica elegida: `7e39c5535800fdda31a48846f977fe5c1c05eb3f`;
+- blob de productos: `e224b0ff241547a038f53c84bb006ef7cf3e56bb`;
+- blob de categorías: `1649e6c27d92d1e26a45408c54bb8f499a023d64`;
+- tree de imágenes: `9015d8a4ca17410c423ec50633d031f61695b385`;
+- captura comercial: 2026-07-23;
+- 510 productos, 16 categorías y 510 precios ARS;
+- 495 descripciones completas y 432 SKU;
+- 509 referencias y 484 imágenes únicas;
+- un producto sin imagen y 15 sin descripción completa;
+- cero slugs, paths o IDs históricos duplicados;
+- cero categorías o imágenes referenciadas sin resolver.
+
+### Implementación actual
+
+- índice público liviano para catálogo y rutas;
+- detalle local diferido mediante `import()` estático de Vite;
+- sanitización offline determinista sin descargas;
+- búsqueda sin distinción de mayúsculas o tildes y tolerante a espacios;
+- filtros por categoría y paginación de 24 productos;
+- 510 fichas y 16 rutas históricas de categoría;
+- advertencias comercial y sanitaria visibles;
+- allowlist exacta de logo e imágenes comerciales;
+- CSP restrictiva, sin conexiones remotas ni HTML histórico;
+- 31 pruebas Vitest y 5 escenarios Playwright sobre el build compilado;
+- validadores de datos, activos, seguridad y automatización integrados a los comandos canónicos.
+
+No se restauraron componentes, estilos, checkout, workflows ni código legacy. El contacto permanece en `null` y no se incorporaron datos comerciales inventados.

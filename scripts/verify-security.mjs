@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 const projectRoot = resolve(import.meta.dirname, '..');
 const publicHeadersPath = join(projectRoot, 'public', '_headers');
 const distRoot = join(projectRoot, 'dist');
+const catalogAssetManifestPath = join(projectRoot, 'catalog', 'catalog-assets.json');
 
 const expectedHeaders = new Map([
   [
@@ -120,7 +121,11 @@ function verifyProductionSource() {
     join(projectRoot, 'index.html'),
     ...walkFiles(join(projectRoot, 'src')),
     ...walkFiles(join(projectRoot, 'public')),
-  ].filter((path) => textExtensions.has(extname(path)));
+  ].filter(
+    (path) =>
+      textExtensions.has(extname(path)) &&
+      !path.includes(`${join('src', 'generated-public')}${path.includes('\\') ? '\\' : '/'}`),
+  );
 
   const forbiddenPatterns = [
     { name: 'URL HTTP o HTTPS', pattern: /https?:\/\//iu },
@@ -135,6 +140,14 @@ function verifyProductionSource() {
       pattern:
         /google-analytics|googletagmanager|cloudflareinsights|hotjar|facebook\.net|segment\.com/iu,
     },
+    { name: 'Hostinger API', pattern: /api-ecommerce\.hostinger\.com/iu },
+    { name: 'CDN original', pattern: /cdn\.zyrosite\.com/iu },
+    { name: 'ID interno de producto', pattern: /\bprod_[a-z0-9]+\b/iu },
+    { name: 'ID interno de variante', pattern: /\bvariant_[a-z0-9]+\b/iu },
+    { name: 'ID interno de categoría', pattern: /\bpcol_[a-z0-9]+\b/iu },
+    { name: 'ID interno de tienda', pattern: /\bstore_[a-z0-9]+\b/iu },
+    { name: 'URL original', pattern: /\boriginalUrl\b/iu },
+    { name: 'HTML histórico', pattern: /\bdescriptionHtml\b/iu },
   ];
 
   for (const path of productionFiles) {
@@ -171,15 +184,18 @@ function verifyTrackedFiles() {
     fail(`Hay archivos de entorno rastreados: ${environmentFiles.join(', ')}`);
   }
 
-  const imageFiles = trackedFiles.filter((path) =>
-    /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu.test(path),
-  );
+  const assetManifest = JSON.parse(readText(catalogAssetManifestPath));
+  const expectedImageFiles = [
+    'public/assets/logo-shekinah.png',
+    ...assetManifest.images.map(({ path }) => `public${path}`),
+  ].sort();
+  const imageFiles = walkFiles(join(projectRoot, 'public'))
+    .map((path) => relative(projectRoot, path).replaceAll('\\', '/'))
+    .filter((path) => /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu.test(path))
+    .sort();
 
-  if (
-    imageFiles.length !== 1 ||
-    imageFiles[0] !== 'public/assets/logo-shekinah.png'
-  ) {
-    fail(`Los activos visuales rastreados no coinciden: ${imageFiles.join(', ')}`);
+  if (JSON.stringify(imageFiles) !== JSON.stringify(expectedImageFiles)) {
+    fail(`Los activos visuales no coinciden con el manifiesto: ${imageFiles.join(', ')}`);
   }
 
   const secretPatterns = [
@@ -259,6 +275,9 @@ function verifyDist() {
 
   const indexPath = join(distRoot, 'index.html');
   const indexContent = readText(indexPath);
+  if (indexContent.includes('/src/main.tsx')) {
+    fail('dist/index.html todavía referencia /src/main.tsx.');
+  }
   const resourceReferences = [
     ...indexContent.matchAll(
       /<(?:img|link|script)\b[^>]*(?:href|src)=["']([^"']+)["']/giu,
@@ -280,10 +299,24 @@ function verifyDist() {
     /^https:\/\/react\.dev\/errors\//u,
   ];
 
+  const forbiddenDistPatterns = [
+    /api-ecommerce\.hostinger\.com/iu,
+    /cdn\.zyrosite\.com/iu,
+    /\b(?:prod|variant|pcol|store)_[a-z0-9]+\b/iu,
+    /\boriginalUrl\b/iu,
+    /\bdescriptionHtml\b/iu,
+    /\bXMLHttpRequest\b/u,
+    /\bWebSocket\s*\(/u,
+    /\bEventSource\s*\(/u,
+  ];
+
   for (const path of distFiles.filter((file) =>
     textExtensions.has(extname(file)),
   )) {
     const content = readText(path);
+    if (forbiddenDistPatterns.some((pattern) => pattern.test(content))) {
+      fail(`Contenido interno o conexión prohibida en ${relative(projectRoot, path)}.`);
+    }
     const urls = content.match(/https?:\/\/[^\s"'`<>\\)]+/gu) ?? [];
 
     for (const url of urls) {
@@ -293,6 +326,13 @@ function verifyDist() {
         );
       }
     }
+  }
+
+  const catalogImages = distFiles.filter((file) =>
+    relative(distRoot, file).replaceAll('\\', '/').startsWith('images/original/catalog/'),
+  );
+  if (catalogImages.length !== 484) {
+    fail(`dist debe contener 484 imágenes de catálogo y contiene ${catalogImages.length}.`);
   }
 }
 
