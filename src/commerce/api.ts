@@ -3,10 +3,12 @@ import type {
   CheckoutResponse,
   PublicOrderStatusResponse,
 } from './contracts';
+import type { CheckoutFulfillment } from './fulfillment';
 
 export async function createCheckoutPreference(
   items: readonly CartItem[],
   idempotencyKey: string,
+  fulfillment: CheckoutFulfillment,
 ): Promise<CheckoutResponse> {
   const response = await fetch('/api/checkout/preferences', {
     method: 'POST',
@@ -19,6 +21,7 @@ export async function createCheckoutPreference(
         productId: product.id,
         quantity,
       })),
+      fulfillment,
     }),
   });
   const payload = await readJson(response);

@@ -1,3 +1,5 @@
+import type { CheckoutFulfillment } from './fulfillment';
+
 export const MAX_CART_LINES = 50;
 export const MAX_CART_QUANTITY = 99;
 export const CHECKOUT_IDEMPOTENCY_WINDOW_MS = 30 * 60 * 1000;
@@ -11,6 +13,7 @@ export type CheckoutLineRequest = Readonly<{
 export type CheckoutRequest = Readonly<{
   idempotencyKey: string;
   items: readonly CheckoutLineRequest[];
+  fulfillment: CheckoutFulfillment;
 }>;
 
 export type CheckoutResponse = Readonly<{

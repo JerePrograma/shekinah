@@ -1,14 +1,16 @@
 import type { CartItem } from '../cart/model';
 import { cartLineFingerprint } from '../cart/model';
 import { CHECKOUT_IDEMPOTENCY_WINDOW_MS } from './contracts';
+import { fulfillmentCanonicalValue } from './fulfillment';
+import type { CheckoutFulfillment } from './fulfillment';
 
-const IDEMPOTENCY_STORAGE_KEY = 'shekinah.checkout-idempotency.v1';
+const IDEMPOTENCY_STORAGE_KEY = 'shekinah.checkout-idempotency.v2';
 const ORDER_STORAGE_KEY = 'shekinah.checkout-order.v1';
 const CHECKOUT_LOCK_NAME = 'shekinah.checkout-idempotency';
 const ORDER_MEMORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type StoredCheckoutAttempt = Readonly<{
-  fingerprint: string;
+  fingerprintHash: string;
   idempotencyKey: string;
   createdAt: number;
 }>;
@@ -27,17 +29,26 @@ type LockManagerLike = Readonly<{
   ) => Promise<T>;
 }>;
 
-export function checkoutFingerprint(items: readonly CartItem[]): string {
-  return cartLineFingerprint(
-    items.map(({ product, quantity }) => ({ productId: product.id, quantity })),
-  );
+export async function checkoutFingerprint(
+  items: readonly CartItem[],
+  fulfillment: CheckoutFulfillment,
+): Promise<string> {
+  const canonical = JSON.stringify([
+    cartFingerprint(items),
+    fulfillmentCanonicalValue(fulfillment),
+  ]);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export async function getOrCreateCheckoutIdempotencyKey(
   items: readonly CartItem[],
+  fulfillment: CheckoutFulfillment,
   now = Date.now(),
 ): Promise<string> {
-  const operation = () => getOrCreateCheckoutIdempotencyKeyUnlocked(items, now);
+  const operation = () => getOrCreateCheckoutIdempotencyKeyUnlocked(items, fulfillment, now);
   const lockManager = readLockManager();
   if (lockManager === null) return operation();
   return lockManager.request(CHECKOUT_LOCK_NAME, { mode: 'exclusive' }, operation);
@@ -51,7 +62,7 @@ export function rememberCheckoutOrder(
   if (!/^[a-f0-9]{64}$/iu.test(publicToken)) return;
   writeSessionJson(ORDER_STORAGE_KEY, {
     publicToken: publicToken.toLocaleLowerCase('en'),
-    fingerprint: checkoutFingerprint(items),
+    fingerprint: cartFingerprint(items),
     createdAt: now,
   });
 }
@@ -80,7 +91,7 @@ export function shouldClearCartAfterApproval(
   return (
     remembered !== null &&
     remembered.publicToken === publicToken.toLocaleLowerCase('en') &&
-    remembered.fingerprint === checkoutFingerprint(items)
+    remembered.fingerprint === cartFingerprint(items)
   );
 }
 
@@ -101,41 +112,46 @@ export function clearRememberedCheckoutOrder(): void {
   clearCheckoutAttempt();
 }
 
-function getOrCreateCheckoutIdempotencyKeyUnlocked(
+async function getOrCreateCheckoutIdempotencyKeyUnlocked(
   items: readonly CartItem[],
+  fulfillment: CheckoutFulfillment,
   now: number,
-): string {
-  const fingerprint = checkoutFingerprint(items);
+): Promise<string> {
+  const fingerprintHash = await checkoutFingerprint(items, fulfillment);
   const stored = readLocalJson<StoredCheckoutAttempt>(IDEMPOTENCY_STORAGE_KEY);
-  if (isReusableAttempt(stored, fingerprint, now)) return stored.idempotencyKey;
+  if (isReusableAttempt(stored, fingerprintHash, now)) return stored.idempotencyKey;
 
   const candidate: StoredCheckoutAttempt = Object.freeze({
-    fingerprint,
+    fingerprintHash,
     idempotencyKey: crypto.randomUUID(),
     createdAt: now,
   });
   writeLocalJson(IDEMPOTENCY_STORAGE_KEY, candidate);
-
-  // Una segunda lectura hace que pestañas sin Web Locks converjan cuando compiten
-  // antes de iniciar la solicitud. El servidor sigue siendo la última defensa.
   const persisted = readLocalJson<StoredCheckoutAttempt>(IDEMPOTENCY_STORAGE_KEY);
-  return isReusableAttempt(persisted, fingerprint, now)
+  return isReusableAttempt(persisted, fingerprintHash, now)
     ? persisted.idempotencyKey
     : candidate.idempotencyKey;
 }
 
 function isReusableAttempt(
   value: StoredCheckoutAttempt | null,
-  fingerprint: string,
+  fingerprintHash: string,
   now: number,
 ): value is StoredCheckoutAttempt {
   return (
     value !== null &&
-    value.fingerprint === fingerprint &&
+    value.fingerprintHash === fingerprintHash &&
+    /^[a-f0-9]{64}$/u.test(value.fingerprintHash) &&
     isUuid(value.idempotencyKey) &&
     Number.isFinite(value.createdAt) &&
     now - value.createdAt >= 0 &&
     now - value.createdAt <= CHECKOUT_IDEMPOTENCY_WINDOW_MS
+  );
+}
+
+function cartFingerprint(items: readonly CartItem[]): string {
+  return cartLineFingerprint(
+    items.map(({ product, quantity }) => ({ productId: product.id, quantity })),
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import { trackAnalyticsEvent } from '../analytics/client';
@@ -11,6 +11,16 @@ import {
   rememberCheckoutOrder,
 } from '../commerce/checkout-session';
 import {
+  calculateShippingQuote,
+  deliveryMethodLabel,
+  validateFulfillment,
+} from '../commerce/fulfillment';
+import type {
+  DeliveryMethod,
+  FulfillmentDraft,
+  FulfillmentField,
+} from '../commerce/fulfillment';
+import {
   getAuthorizedWhatsappNumber,
   isCommerceClientEnabled,
 } from '../commerce/env';
@@ -18,21 +28,78 @@ import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
 
+const INITIAL_FULFILLMENT: FulfillmentDraft = Object.freeze({
+  method: 'coordinated_pickup',
+  fullName: '',
+  phone: '',
+  address: '',
+  locality: '',
+  province: '',
+  postalCode: '',
+});
+
+const fields: readonly Readonly<{
+  key: Exclude<FulfillmentField, 'method' | 'form'>;
+  label: string;
+  autoComplete: string;
+  inputMode?: 'tel' | 'text';
+}>[] = [
+  { key: 'fullName', label: 'Nombre completo', autoComplete: 'name' },
+  { key: 'phone', label: 'Celular', autoComplete: 'tel', inputMode: 'tel' },
+  { key: 'address', label: 'Dirección', autoComplete: 'street-address' },
+  { key: 'locality', label: 'Localidad', autoComplete: 'address-level2' },
+  { key: 'province', label: 'Provincia', autoComplete: 'address-level1' },
+  { key: 'postalCode', label: 'Código postal', autoComplete: 'postal-code' },
+];
+
 export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, remove, setQuantity, total } = useCart();
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
+  const [fulfillmentDraft, setFulfillmentDraft] = useState<FulfillmentDraft>(INITIAL_FULFILLMENT);
+  const [showErrors, setShowErrors] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const commerceEnabled = isCommerceClientEnabled();
+  const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
+  const quote = useMemo(
+    () => calculateShippingQuote(
+      items.map(({ product, quantity }) => ({
+        name: product.name,
+        ...(product.presentation === undefined ? {} : { presentation: product.presentation }),
+        quantity,
+      })),
+      fulfillmentDraft.method === '' ? 'coordinated_pickup' : fulfillmentDraft.method,
+    ),
+    [fulfillmentDraft.method, items],
+  );
+  const productsTotalMinor = Math.round(total * 100);
+  const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
 
   async function startCheckout() {
     if (items.length === 0 || checkoutPending || !commerceEnabled) return;
-    setCheckoutPending(true);
+    setShowErrors(true);
     setCheckoutError('');
+    if (validation.value === null) {
+      focusFirstError(validation.errors);
+      return;
+    }
+    if (quote.kind === 'manual') {
+      setCheckoutError(manualQuoteMessage(quote.tier));
+      return;
+    }
+    setCheckoutPending(true);
     void trackAnalyticsEvent('checkout_start', { path: appPaths.cart });
     try {
-      const checkoutKey = await getOrCreateCheckoutIdempotencyKey(items);
-      const result = await createCheckoutPreference(items, checkoutKey);
+      const checkoutKey = await getOrCreateCheckoutIdempotencyKey(
+        items,
+        validation.value,
+      );
+      const result = await createCheckoutPreference(
+        items,
+        checkoutKey,
+        validation.value,
+      );
       rememberCheckoutOrder(result.publicToken, items);
       void trackAnalyticsEvent('checkout_redirect', { path: appPaths.cart });
       window.location.assign(result.checkoutUrl);
@@ -44,6 +111,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     }
   }
 
+  function updateField(
+    field: keyof FulfillmentDraft,
+    value: string,
+  ) {
+    setFulfillmentDraft((current) => Object.freeze({ ...current, [field]: value }));
+  }
+
   function openWhatsapp() {
     if (whatsappNumber === null || items.length === 0) return;
     const lines = items.map(({ product, quantity, subtotal }) => {
@@ -52,14 +126,26 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
         formatProductPrice({ amount: subtotal, currency: 'ARS' }) ?? 'Sin precio';
       return `• ${quantity} × ${product.name}${presentation}: ${subtotalText}`;
     });
-    const totalText = formatProductPrice({ amount: total, currency: 'ARS' }) ?? 'Sin precio';
+    const customerLines = validation.value === null
+      ? []
+      : [
+          '',
+          `Modalidad: ${deliveryMethodLabel(validation.value.method)}`,
+          `Nombre: ${validation.value.fullName}`,
+          `Celular: ${validation.value.phone}`,
+          `Dirección: ${validation.value.address}, ${validation.value.locality}, ${validation.value.province} (${validation.value.postalCode})`,
+        ];
+    const totalText = formatMinor(checkoutTotalMinor);
     const message = [
       'Hola, quiero consultar por este carrito de Shekinah:',
       '',
       ...lines,
+      ...customerLines,
       '',
       `Total de referencia: ${totalText}`,
-      'Por favor, confirmen disponibilidad e importe final.',
+      quote.kind === 'manual'
+        ? manualQuoteMessage(quote.tier)
+        : 'Por favor, confirmen disponibilidad y preparación.',
     ].join('\n');
     void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart });
     window.open(
@@ -94,100 +180,131 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           </div>
         ) : (
           <div className="cart-layout">
-            <div className="cart-items" aria-label="Productos del carrito">
-              {items.map(({ product, quantity, unitPrice, subtotal }) => (
-                <article className="cart-line" key={product.id}>
-                  {product.primaryImage === undefined ? (
-                    <div
-                      className="product-image-placeholder cart-line-image"
-                      role="img"
-                      aria-label="Imagen no disponible"
-                    >
-                      Imagen no disponible
+            <div className="cart-main-column">
+              <div className="cart-items" aria-label="Productos del carrito">
+                {items.map(({ product, quantity, unitPrice, subtotal }) => (
+                  <article className="cart-line" key={product.id}>
+                    <div className="cart-line-content">
+                      <h2>
+                        <AppLink navigate={navigate} to={product.path}>
+                          {product.name}
+                        </AppLink>
+                      </h2>
+                      <p className="cart-line-meta">
+                        {formatProductPrice({ amount: unitPrice, currency: 'ARS' })}
+                        {product.presentation === undefined ? null : ` · ${product.presentation}`}
+                      </p>
+                      <div className="cart-line-controls">
+                        <label htmlFor={`quantity-${product.id}`}>
+                          Cantidad
+                          <input
+                            id={`quantity-${product.id}`}
+                            type="number"
+                            min="1"
+                            max={MAX_CART_QUANTITY}
+                            inputMode="numeric"
+                            value={quantity}
+                            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                              const nextQuantity = Number.parseInt(event.currentTarget.value, 10);
+                              if (Number.isInteger(nextQuantity)) setQuantity(product.id, nextQuantity);
+                            }}
+                          />
+                        </label>
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => {
+                            remove(product.id);
+                            void trackAnalyticsEvent('cart_remove', {
+                              path: appPaths.cart,
+                              productId: product.id,
+                            });
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <img
-                      className="cart-line-image"
-                      src={product.primaryImage.src}
-                      alt={product.primaryImage.alt}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  )}
-                  <div className="cart-line-content">
-                    <h2>
-                      <AppLink navigate={navigate} to={product.path}>
-                        {product.name}
-                      </AppLink>
-                    </h2>
-                    <p>
-                      {formatProductPrice({ amount: unitPrice, currency: 'ARS' })}
-                      {product.presentation === undefined
-                        ? null
-                        : ` · ${product.presentation}`}
+                    <p className="cart-line-subtotal">
+                      {formatProductPrice({ amount: subtotal, currency: 'ARS' })}
                     </p>
-                    <label htmlFor={`quantity-${product.id}`}>
-                      Cantidad
-                    </label>
-                    <input
-                      id={`quantity-${product.id}`}
-                      className="cart-quantity"
-                      type="number"
-                      min="1"
-                      max={MAX_CART_QUANTITY}
-                      inputMode="numeric"
-                      value={quantity}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                        const nextQuantity = Number.parseInt(event.currentTarget.value, 10);
-                        if (Number.isInteger(nextQuantity)) {
-                          setQuantity(product.id, nextQuantity);
-                        }
-                      }}
-                    />
-                    <button
-                      className="text-button"
-                      type="button"
-                      onClick={() => {
-                        remove(product.id);
-                        void trackAnalyticsEvent('cart_remove', {
-                          path: appPaths.cart,
-                          productId: product.id,
-                        });
-                      }}
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                  <p className="cart-line-subtotal">
-                    {formatProductPrice({ amount: subtotal, currency: 'ARS' })}
-                  </p>
-                </article>
-              ))}
+                  </article>
+                ))}
+              </div>
+
+              <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
+                <div>
+                  <h2 id="fulfillment-title">Datos de entrega</h2>
+                  <p>No se guardan en el carrito del navegador. Se registran sólo al iniciar el pedido.</p>
+                </div>
+                <label htmlFor="fulfillment-method">
+                  Modalidad
+                  <select
+                    id="fulfillment-method"
+                    value={fulfillmentDraft.method}
+                    aria-invalid={showErrors && validation.errors.method !== undefined}
+                    aria-describedby={showErrors && validation.errors.method !== undefined ? 'error-method' : undefined}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                      updateField('method', event.currentTarget.value as DeliveryMethod);
+                    }}
+                  >
+                    <option value="coordinated_pickup">Retiro o entrega personal coordinada</option>
+                    <option value="correo_argentino">Correo Argentino a todo el país</option>
+                  </select>
+                  <FieldError id="error-method" message={showErrors ? validation.errors.method : undefined} />
+                </label>
+                <div className="fulfillment-grid">
+                  {fields.map((field) => {
+                    const error = showErrors ? validation.errors[field.key] : undefined;
+                    return (
+                      <label htmlFor={`fulfillment-${field.key}`} key={field.key}>
+                        {field.label}
+                        <input
+                          id={`fulfillment-${field.key}`}
+                          value={fulfillmentDraft[field.key]}
+                          autoComplete={field.autoComplete}
+                          inputMode={field.inputMode}
+                          aria-invalid={error !== undefined}
+                          aria-describedby={error === undefined ? undefined : `error-${field.key}`}
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                            updateField(field.key, event.currentTarget.value);
+                          }}
+                        />
+                        <FieldError id={`error-${field.key}`} message={error} />
+                      </label>
+                    );
+                  })}
+                </div>
+                <FieldError id="error-form" message={showErrors ? validation.errors.form : undefined} />
+              </div>
             </div>
 
             <aside className="cart-summary" aria-labelledby="cart-summary-title">
               <h2 id="cart-summary-title">Resumen</h2>
-              <p className="cart-total">
-                <span>Total</span>
-                <strong>
-                  {formatProductPrice({ amount: total, currency: 'ARS' })}
-                </strong>
-              </p>
+              <dl className="cart-totals">
+                <div><dt>Productos</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
+                <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
+                <div className="cart-total"><dt>Total</dt><dd>{quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
+              </dl>
+              {fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
+                <p className="cart-disclaimer">Peso calculado: {formatWeight(quote.totalWeightGrams)}.</p>
+              ) : null}
+              {quote.kind === 'manual' ? (
+                <p className="form-error" role="status">{manualQuoteMessage(quote.tier)}</p>
+              ) : null}
               <p className="cart-disclaimer">
-                El servidor vuelve a validar disponibilidad y precios antes de crear el pago.
+                El servidor recalcula productos, peso, envío y total. La disponibilidad se confirma al preparar el pedido.
               </p>
               <button
                 className="button button-primary"
                 type="button"
-                disabled={checkoutPending || !commerceEnabled}
+                disabled={checkoutPending || !commerceEnabled || quote.kind === 'manual'}
                 onClick={() => void startCheckout()}
               >
                 {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
               </button>
               {!commerceEnabled ? (
-                <p className="cart-configuration-note">
-                  El pago estará disponible cuando el comercio esté habilitado.
-                </p>
+                <p className="cart-configuration-note">El pago estará disponible cuando el comercio esté habilitado.</p>
               ) : null}
               <button
                 className="button button-secondary"
@@ -198,22 +315,39 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 Enviar carrito por WhatsApp
               </button>
               {whatsappNumber === null ? (
-                <p className="cart-configuration-note">
-                  WhatsApp estará disponible cuando se configure un número autorizado.
-                </p>
+                <p className="cart-configuration-note">WhatsApp estará disponible cuando se configure un número autorizado.</p>
               ) : null}
-              <button className="text-button" type="button" onClick={clear}>
-                Vaciar carrito
-              </button>
-              {checkoutError === '' ? null : (
-                <p className="form-error" role="alert">
-                  {checkoutError}
-                </p>
-              )}
+              <button className="text-button" type="button" onClick={clear}>Vaciar carrito</button>
+              {checkoutError === '' ? null : <p className="form-error" role="alert">{checkoutError}</p>}
             </aside>
           </div>
         )}
       </div>
     </section>
   );
+
+  function focusFirstError(errors: Readonly<Partial<Record<FulfillmentField, string>>>) {
+    const first = ['method', 'fullName', 'phone', 'address', 'locality', 'province', 'postalCode']
+      .find((field) => errors[field as FulfillmentField] !== undefined);
+    if (first === undefined) return;
+    formRef.current?.querySelector<HTMLElement>(`#fulfillment-${first}`)?.focus();
+  }
+}
+
+function FieldError({ id, message }: Readonly<{ id: string; message: string | undefined }>) {
+  return message === undefined ? null : <span className="field-error" id={id}>{message}</span>;
+}
+
+function formatMinor(value: number): string {
+  return formatProductPrice({ amount: value / 100, currency: 'ARS' }) ?? '$ 0';
+}
+
+function formatWeight(grams: number): string {
+  return grams >= 1_000 ? `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(grams / 1_000)} kg` : `${grams} g`;
+}
+
+function manualQuoteMessage(tier: string): string {
+  return tier === 'manual_unknown_weight'
+    ? 'Uno de los productos no tiene un peso determinístico. Solicitá la cotización por WhatsApp.'
+    : 'El pedido supera los 5 kg. Solicitá la cotización por WhatsApp.';
 }

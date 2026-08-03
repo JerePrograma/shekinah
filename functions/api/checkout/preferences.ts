@@ -5,6 +5,11 @@ import {
   requirePublicSiteUrl,
 } from '../../../server/config';
 import {
+  createPaymentCart,
+  persistOrderFulfillment,
+  reserveCheckoutIntent,
+} from '../../../server/fulfillment';
+import {
   HttpError,
   jsonResponse,
   methodNotAllowedResponse,
@@ -60,10 +65,18 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     if (!isRecord(body)) {
       throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
     }
-    assertExactKeys(body, ['idempotencyKey', 'items'], 'INVALID_CHECKOUT', 'La solicitud contiene campos no permitidos.');
+    assertExactKeys(
+      body,
+      ['idempotencyKey', 'items', 'fulfillment'],
+      'INVALID_CHECKOUT',
+      'La solicitud contiene campos no permitidos.',
+    );
     const idempotencyKey = assertUuid(body.idempotencyKey, 'idempotencyKey');
     const cart = recalculateCart(body);
+    await reserveCheckoutIntent(database, idempotencyKey, cart.fulfillment);
     const prepared = await prepareOrder({ cart, database, idempotencyKey, tokenSecret });
+    await persistOrderFulfillment(database, prepared.order.id, cart);
+    const paymentCart = createPaymentCart(cart);
     const { order } = prepared;
 
     if (order.status === 'approved' || order.status === 'refunded') {
@@ -73,7 +86,12 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       return checkoutResponse(order.mp_checkout_url, prepared.publicToken, 200);
     }
     if (order.mp_preference_attempted_at !== null) {
-      const recovered = await recoverMercadoPagoPreference({ accessToken, cart, mode, orderId: order.id });
+      const recovered = await recoverMercadoPagoPreference({
+        accessToken,
+        cart: paymentCart,
+        mode,
+        orderId: order.id,
+      });
       if (recovered === null) {
         throw new HttpError(
           409,
@@ -96,7 +114,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     try {
       const preference = await createMercadoPagoPreference({
         accessToken,
-        cart,
+        cart: paymentCart,
         mode,
         orderId: order.id,
         publicToken: prepared.publicToken,

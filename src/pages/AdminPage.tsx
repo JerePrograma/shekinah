@@ -31,7 +31,17 @@ type AdminOrder = Readonly<{
   id: string;
   status: string;
   totalMinor: number;
+  productsTotalMinor: number;
+  shippingMinor: number;
   itemCount: number;
+  deliveryMethod: string;
+  fullName: string;
+  phone: string;
+  address: string;
+  locality: string;
+  province: string;
+  postalCode: string;
+  totalWeightGrams: number | null;
   createdAt: string;
 }>;
 type AdminData = Readonly<{
@@ -173,13 +183,33 @@ export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           <>
             <SummaryCards summary={data.summary} />
             <AdminTable
-              caption="Pedidos recientes"
-              columns={['Pedido', 'Estado', 'Total', 'Unidades', 'Fecha']}
+              caption="Pedidos recientes y entrega"
+              columns={[
+                'Pedido',
+                'Estado',
+                'Cliente',
+                'Celular',
+                'Modalidad',
+                'Dirección',
+                'Productos',
+                'Envío',
+                'Total',
+                'Unidades',
+                'Peso',
+                'Fecha',
+              ]}
               rows={data.orders.map((order) => [
                 order.id,
                 humanStatus(order.status),
+                order.fullName,
+                order.phone,
+                deliveryLabel(order.deliveryMethod),
+                addressLabel(order),
+                formatMinor(order.productsTotalMinor),
+                formatMinor(order.shippingMinor),
                 formatMinor(order.totalMinor),
                 String(order.itemCount),
+                formatWeight(order.totalWeightGrams),
                 formatDate(order.createdAt),
               ])}
             />
@@ -369,7 +399,17 @@ function parseOrders(value: unknown): readonly AdminOrder[] {
       id,
       status,
       totalMinor: readNonNegativeInteger(candidate.total_minor),
+      productsTotalMinor: readNonNegativeInteger(candidate.products_total_minor),
+      shippingMinor: readNonNegativeInteger(candidate.shipping_minor),
       itemCount: readNonNegativeInteger(candidate.item_count),
+      deliveryMethod: readNullableText(candidate.delivery_method),
+      fullName: readNullableText(candidate.full_name),
+      phone: readNullableText(candidate.phone),
+      address: readNullableText(candidate.address),
+      locality: readNullableText(candidate.locality),
+      province: readNullableText(candidate.province),
+      postalCode: readNullableText(candidate.postal_code),
+      totalWeightGrams: readNullableInteger(candidate.total_weight_grams),
       createdAt,
     })];
   });
@@ -391,7 +431,10 @@ function readApiMessage(value: unknown): string | null {
 }
 
 function readText(row: UnknownRow, key: string): string {
-  const value = row[key];
+  return readNullableText(row[key]);
+}
+
+function readNullableText(value: unknown): string {
   return typeof value === 'string' && value.trim() !== '' ? value : '—';
 }
 
@@ -402,6 +445,13 @@ function readNumberText(row: UnknownRow, key: string): string {
 function readNonNegativeInteger(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0;
+}
+
+function readNullableInteger(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return value === null || value === undefined || !Number.isSafeInteger(numeric) || numeric <= 0
+    ? null
+    : numeric;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -417,6 +467,25 @@ function formatDate(value: string): string {
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+function formatWeight(value: number | null): string {
+  if (value === null) return '—';
+  return value >= 1_000
+    ? `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(value / 1_000)} kg`
+    : `${value} g`;
+}
+
+function deliveryLabel(value: string): string {
+  if (value === 'coordinated_pickup') return 'Coordinada';
+  if (value === 'correo_argentino') return 'Correo Argentino';
+  return 'Pedido previo';
+}
+
+function addressLabel(order: AdminOrder): string {
+  return [order.address, order.locality, order.province, order.postalCode]
+    .filter((value) => value !== '—')
+    .join(', ') || '—';
 }
 
 function humanStatus(value: string): string {

@@ -63,6 +63,7 @@ const temporaryPath = `${outputPath}.tmp`;
 writeFileSync(temporaryPath, `${JSON.stringify(generated, null, 2)}\n`, 'utf8');
 renameSync(temporaryPath, outputPath);
 console.log(`Catálogo de Functions generado: ${generated.length} productos.`);
+await import('./verify-shipping-weights.mjs');
 
 function isArsPrice(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;

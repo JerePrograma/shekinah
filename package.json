@@ -20,6 +20,7 @@
     "install:browsers": "playwright install chromium",
     "generate:commerce-catalog": "node scripts/generate-commerce-catalog.mjs",
     "verify:commerce-catalog": "node scripts/verify-commerce-catalog.mjs",
+    "verify:shipping-weights": "node scripts/verify-shipping-weights.mjs",
     "verify:assets": "node scripts/verify-assets.mjs",
     "verify:catalog": "node scripts/verify-catalog.mjs",
     "verify:security": "node scripts/verify-security.mjs",

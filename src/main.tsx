@@ -8,6 +8,7 @@ import './styles.css';
 import './catalog.css';
 import './routing.css';
 import './commerce.css';
+import './fulfillment.css';
 
 const rootElement = document.getElementById('root');
 

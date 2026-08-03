@@ -1,0 +1,89 @@
+.cart-main-column,
+.cart-items,
+.fulfillment-form,
+.fulfillment-grid,
+.cart-totals {
+  display: grid;
+  gap: 1rem;
+}
+
+.cart-line-content {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.fulfillment-form {
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface);
+  box-shadow: 0 0.8rem 2rem rgb(19 56 12 / 8%);
+}
+
+.fulfillment-form h2,
+.fulfillment-form p {
+  margin: 0;
+}
+
+.fulfillment-form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 750;
+}
+
+.fulfillment-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fulfillment-form input,
+.fulfillment-form select {
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #779072;
+  border-radius: var(--radius-small);
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.fulfillment-form [aria-invalid='true'] {
+  border-color: #8e2f2f;
+  outline-color: #8e2f2f;
+}
+
+.field-error {
+  color: #681f1f;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.cart-totals {
+  margin: 0;
+}
+
+.cart-totals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cart-totals dt,
+.cart-totals dd {
+  margin: 0;
+}
+
+.cart-totals dd {
+  font-weight: 850;
+  text-align: right;
+}
+
+.cart-totals .cart-total {
+  padding-block: 1rem;
+}
+
+@media (max-width: 700px) {
+  .fulfillment-grid {
+    grid-template-columns: 1fr;
+  }
+}

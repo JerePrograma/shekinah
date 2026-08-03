@@ -18,6 +18,7 @@ const migration = readFileSync(
 
 function cart(quantity = 1): RecalculatedCart {
   const unitPriceMinor = 75_000;
+  const productsTotalMinor = unitPriceMinor * quantity;
   return Object.freeze({
     currency: 'ARS',
     lines: Object.freeze([
@@ -31,11 +32,24 @@ function cart(quantity = 1): RecalculatedCart {
           unitPriceMinor,
         }),
         quantity,
-        subtotalMinor: unitPriceMinor * quantity,
+        subtotalMinor: productsTotalMinor,
       }),
     ]),
     itemCount: quantity,
-    totalMinor: unitPriceMinor * quantity,
+    productsTotalMinor,
+    shippingMinor: 0,
+    shippingTier: 'coordinated_pickup',
+    totalWeightGrams: 50 * quantity,
+    fulfillment: Object.freeze({
+      method: 'coordinated_pickup',
+      fullName: 'Ana Pérez',
+      phone: '5491155554444',
+      address: 'Calle 123',
+      locality: 'CABA',
+      province: 'Buenos Aires',
+      postalCode: 'C1234ABC',
+    }),
+    totalMinor: productsTotalMinor,
   });
 }
 
