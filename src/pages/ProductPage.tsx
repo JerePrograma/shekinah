@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { trackAnalyticsEvent } from '../analytics/client';
+import { useCart } from '../cart/CartContext';
+import { isProductAvailable } from '../cart/model';
 import {
   formatAvailability,
   formatProductPrice,
@@ -12,13 +15,13 @@ import {
 import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
-
 type ProductPageProps = Readonly<{
   navigate: Navigate;
   productSlug: string;
 }>;
 
 export function ProductPage({ navigate, productSlug }: ProductPageProps) {
+  const { add } = useCart();
   const summary = getAuthorizedProduct(productSlug);
   const [detail, setDetail] = useState<CatalogProductDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -26,12 +29,13 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
   if (summary === undefined) {
     throw new Error(`No existe el producto público "${productSlug}".`);
   }
-
+  useEffect(() => {
+    void trackAnalyticsEvent('product_view', { path: summary.path, productId: summary.id });
+  }, [summary.id, summary.path]);
   useEffect(() => {
     let active = true;
     setDetail(null);
     setLoadError(null);
-
     void loadAuthorizedProductDetail(productSlug)
       .then((loadedDetail) => {
         if (active) {
@@ -51,7 +55,6 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
           );
         }
       });
-
     return () => {
       active = false;
     };
@@ -61,14 +64,13 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
     detail?.images ??
     (summary.primaryImage === undefined ? [] : [summary.primaryImage]);
   const availability = formatAvailability(summary.availability);
-
+  const available = isProductAvailable(summary);
   return (
     <section className="product-page section" aria-labelledby="product-title">
       <div className="container product-page-shell">
         <AppLink className="page-back-link" navigate={navigate} to={appPaths.catalog}>
           Volver al catálogo
         </AppLink>
-
         <div className="product-page-grid">
           <div className="product-gallery" aria-label={`Imágenes de ${summary.name}`}>
             {images.length === 0 ? (
@@ -88,11 +90,9 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
               ))
             )}
           </div>
-
           <div className="product-page-content">
             <p className="eyebrow">Producto</p>
             <h1 id="product-title">{summary.name}</h1>
-
             {summary.categorySlugs.length === 0 ? null : (
               <p className="product-category-links">
                 {summary.categorySlugs.map((slug, index) => (
@@ -105,11 +105,9 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
                 ))}
               </p>
             )}
-
             {summary.shortDescription === undefined ? null : (
               <p className="product-short-description">{summary.shortDescription}</p>
             )}
-
             <dl className="product-facts">
               {summary.presentation === undefined ? null : (
                 <div>
@@ -140,14 +138,24 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
                 </div>
               )}
             </dl>
+            <button
+              className="button button-primary product-page-add"
+              type="button"
+              disabled={!available}
+              onClick={() => {
+                if (add(summary.id)) {
+                  void trackAnalyticsEvent('cart_add', { path: summary.path, productId: summary.id });
+                }
+              }}
+            >
+              {available ? 'Agregar al carrito' : 'Producto no disponible'}
+            </button>
           </div>
         </div>
-
         {detail === null && loadError === null ? (
           <p role="status" aria-live="polite">Cargando información detallada…</p>
         ) : null}
         {loadError === null ? null : <p role="alert">{loadError}</p>}
-
         {detail?.description === undefined ? null : (
           <section className="product-description" aria-labelledby="product-description-title">
             <h2 id="product-description-title">Descripción</h2>
@@ -156,7 +164,6 @@ export function ProductPage({ navigate, productSlug }: ProductPageProps) {
             )}
           </section>
         )}
-
         {detail === null || detail.variants.length === 0 ? null : (
           <section className="product-variants" aria-labelledby="product-variants-title">
             <h2 id="product-variants-title">Presentaciones disponibles</h2>

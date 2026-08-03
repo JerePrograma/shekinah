@@ -1,76 +1,87 @@
 # Despliegue
 
-## Estrategia
-
-La publicación se realiza con Cloudflare Pages mediante integración Git. GitHub Actions valida cada commit y no ejecuta el despliegue.
-
-No se añaden tokens, IDs de cuenta ni secretos de Cloudflare al repositorio.
-
 ## Configuración de Cloudflare Pages
 
-- Rama de producción: `main`;
-- Directorio raíz: raíz del repositorio;
-- Comando de build: `npm run build:pages`;
-- Directorio de salida: `dist`;
-- Versión de Node.js: `24.18.0`;
-- Proyecto previsto: `shekinah`;
-- URL: `shekinah-7dl.pages.dev`.
+Rama de producción: `main`
 
-La conexión y el estado del despliegue deben verificarse en Cloudflare Pages. Esta documentación no acredita por sí sola que el último commit se encuentre publicado.
+Comando de build: `npm run build:pages`
 
-## Flujo esperado
+Directorio de salida: `dist`
 
-1. GitHub Actions valida el commit.
-2. Cloudflare Pages recibe el push mediante integración Git.
-3. Pages instala dependencias.
-4. Pages ejecuta `npm run build:pages`.
-5. Pages publica `dist`.
-6. Se verifica la asociación con el SHA de `main`.
+Versión de Node.js: `24.18.0`
 
-## Verificación posterior
+Directorio raíz: raíz del repositorio.
 
-Comprobar:
+Pages Functions: `functions/`.
 
-- estado exitoso del build;
-- SHA y rama desplegados;
-- salida `dist`;
-- encabezados de seguridad;
-- portada con copy comercial y CTA `Ver catálogo`;
-- catálogo con `510 productos encontrados`;
-- búsqueda, filtro y paginación;
-- una categoría;
-- productos con y sin imagen;
-- productos con y sin descripción;
-- `/privacidad`;
-- una ruta desconocida;
-- ausencia de recursos remotos, IDs internos, metadatos internos y llamadas de red.
+Configuración de referencia: `wrangler.example.jsonc`.
 
-La verificación pública debe distinguir la conclusión de GitHub Actions, el SHA informado por Cloudflare y el contenido servido. Si el proveedor no expone el SHA, no debe inferirse esa asociación.
+## Estados separados
 
-## CI versus despliegue
+Debe registrarse por separado:
 
-`.github/workflows/ci.yml` no contiene secretos, permisos de escritura ni comandos de Cloudflare. El artefacto `dist` sirve como evidencia del build validado, pero no se publica automáticamente.
+1. SHA publicado en GitHub;
+2. GitHub Actions para ese SHA;
+3. deployment de Pages;
+4. bindings disponibles;
+5. D1 creado y vinculado;
+6. migraciones aplicadas;
+7. secretos configurados;
+8. Mercado Pago y webhook;
+9. Cloudflare Access;
+10. activación de comercio;
+11. activación analítica;
+12. pruebas de humo.
 
-No debe añadirse Wrangler sin una decisión explícita sobre el modo de publicación.
+## Variables y secretos
 
-## Catálogo en producción
+No almacenar secretos en Git ni exponerlos mediante variables `VITE_*`.
 
-El build utiliza los datasets versionados y 484 imágenes locales. No consulta servicios externos durante instalación, build o ejecución. Deben comprobarse programáticamente las rutas y una muestra representativa mediante navegador.
+Los nombres y requisitos concretos se obtienen desde:
 
-## Rollback
+- `.env.example`;
+- `wrangler.example.jsonc`;
+- `server/config.ts`;
+- `docs/COMMERCE_DEPLOYMENT.md`.
 
-Ante una regresión:
+## D1
 
-1. identificar el último commit válido;
-2. revertir mediante un commit normal;
-3. ejecutar `npm run verify`;
-4. hacer push a `main`;
-5. comprobar el nuevo despliegue.
+La migración inicial está versionada en `migrations/0001_commerce.sql`.
 
-## Fuera de alcance
+Antes de aplicarla:
 
-- dominio personalizado;
-- cambios DNS;
-- Pages Functions;
-- analítica;
-- despliegue con tokens desde GitHub Actions.
+- confirmar base y entorno;
+- conservar un plan de reversión;
+- revisar el SQL real;
+- ejecutar primero en un entorno no productivo cuando exista;
+- registrar la salida completa.
+
+## Mercado Pago
+
+- usar primero credenciales de prueba;
+- configurar secretos fuera de Git;
+- registrar la URL definitiva del webhook;
+- no aceptar precios ni estados enviados por el cliente;
+- comprobar firma, consulta autoritativa e idempotencia.
+
+## Cloudflare Access
+
+Las rutas `/admin*` y `/api/admin/*` deben quedar protegidas antes de considerarse operativas.
+
+## Activación
+
+Comercio, analítica y WhatsApp permanecen deshabilitados hasta que cada requisito esté configurado y autorizado.
+
+## Verificación
+
+Después del despliegue:
+
+- comprobar rutas públicas;
+- comprobar encabezados;
+- comprobar que los endpoints deshabilitados fallen de forma segura;
+- comprobar administración protegida;
+- comprobar creación de pedidos sólo cuando Mercado Pago esté configurado;
+- comprobar webhook con eventos controlados;
+- comprobar que ningún secreto aparezca en respuestas o bundles.
+
+Este documento no afirma confirmación efectiva del despliegue, verificación efectiva de producción ni una conexión operativa de Cloudflare.

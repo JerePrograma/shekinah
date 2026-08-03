@@ -34,6 +34,31 @@ const forbiddenCopy = [
   'Variantes registradas',
   'Ver el enfoque',
 ];
+const credentialPatterns = [
+  /\bAPP_USR-[A-Za-z0-9_-]{20,}\b/u,
+  /\bTEST-[A-Za-z0-9_-]{20,}\b/u,
+  /\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_-]{16,}\b/u,
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u,
+];
+const requiredFunctions = [
+  'functions/admin.ts',
+  'functions/api/checkout/preferences.ts',
+  'functions/api/webhooks/mercadopago.ts',
+  'functions/api/orders/[publicToken]/status.ts',
+  'functions/api/analytics/events.ts',
+  'functions/api/privacy/delete-session.ts',
+  'functions/api/admin/_middleware.ts',
+  'functions/api/admin/summary.ts',
+  'functions/api/admin/orders.ts',
+  'functions/api/admin/orders/[id].ts',
+  'functions/api/admin/analytics/funnel.ts',
+  'functions/api/admin/analytics/products.ts',
+  'functions/api/admin/analytics/sources.ts',
+  'functions/api/admin/analytics/devices.ts',
+  'functions/api/admin/audit.ts',
+  'functions/api/admin/exports/orders.csv.ts',
+  'functions/api/admin/exports/analytics.csv.ts',
+];
 
 function listFiles(root) {
   if (!existsSync(root)) return [];
@@ -64,11 +89,22 @@ function verifyText(paths, label) {
   }
 }
 
+function verifyCredentials(paths) {
+  for (const path of paths) {
+    const content = readFileSync(path, 'utf8');
+    for (const pattern of credentialPatterns) {
+      if (pattern.test(content)) {
+        fail(`Se detectó una credencial potencial en ${relative(projectRoot, path)}.`);
+      }
+    }
+  }
+}
+
 if (existsSync(publicIndexPath) || !existsSync(internalIndexPath)) {
   fail('El índice del catálogo no está separado correctamente.');
 }
 
-const sourceFiles = [join(projectRoot, 'index.html')]
+const publicSourceFiles = [join(projectRoot, 'index.html')]
   .concat(listFiles(join(projectRoot, 'src')))
   .concat(listFiles(join(projectRoot, 'public')))
   .filter((path) => {
@@ -79,13 +115,44 @@ const sourceFiles = [join(projectRoot, 'index.html')]
       !/\.test\.(?:ts|tsx)$/u.test(relativePath)
     );
   });
-verifyText(sourceFiles, 'El producto público');
+verifyText(publicSourceFiles, 'El producto público');
 
-const distFiles = listFiles(distRoot).filter((path) =>
+const protectedSourceFiles = []
+  .concat(listFiles(join(projectRoot, 'server')))
+  .concat(listFiles(join(projectRoot, 'functions')))
+  .concat(listFiles(join(projectRoot, 'migrations')))
+  .filter((path) => ['.ts', '.sql'].includes(extname(path)));
+verifyCredentials(publicSourceFiles.concat(protectedSourceFiles));
+
+for (const relativePath of requiredFunctions) {
+  if (!existsSync(join(projectRoot, relativePath))) {
+    fail(`Falta la Function requerida: ${relativePath}.`);
+  }
+}
+if (!existsSync(join(projectRoot, 'migrations', '0001_commerce.sql'))) {
+  fail('Falta la migración inicial de comercio.');
+}
+
+const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');
+if (!headers.includes("connect-src 'self'")) {
+  fail("La CSP debe permitir únicamente conexiones first-party mediante connect-src 'self'.");
+}
+
+const distFiles = listFiles(distRoot);
+if (distFiles.some((path) => extname(path) === '.map')) {
+  fail('dist contiene source maps de producción.');
+}
+const inspectableDistFiles = distFiles.filter((path) =>
   ['.js', '.css', '.html', '.json', '.txt'].includes(extname(path)),
 );
-verifyText(distFiles, 'dist');
+verifyText(inspectableDistFiles, 'dist');
+verifyCredentials(inspectableDistFiles);
+for (const path of inspectableDistFiles) {
+  if (/sourceMappingURL\s*=/u.test(readFileSync(path, 'utf8'))) {
+    fail(`dist referencia un source map en ${relative(projectRoot, path)}.`);
+  }
+}
 
 console.log(
-  'Copy comercial verificado: sin ruta retirada, avisos anteriores ni metadatos internos en dist.',
+  'Seguridad verificada: copy vigente, Functions completas, sin credenciales ni source maps y CSP first-party.',
 );

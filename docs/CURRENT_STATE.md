@@ -1,102 +1,87 @@
 # Estado actual
 
-Fecha de revisión: 2026-07-30.
+Fecha de revisión: 2026-07-31.
 
-Base inspeccionada al iniciar la simplificación comercial:
+Base de integración full-stack:
 
-`53de8ad0fd09e88edcb8b10034bff89af599a28b` — `fix: enforce network-free production bundle`.
+`3b47b691e4b6d799a127678a892d44b0e475ab6d`
 
-Este SHA es una referencia de trabajo. Antes de modificar el repositorio se debe resolver nuevamente `origin/main`.
+Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
 
 ## Producto
 
-Shekinah es una SPA estática de React, TypeScript estricto y Vite que publica el catálogo comercial vigente del proyecto.
+Shekinah conserva:
 
-El catálogo contiene:
-
-- 510 productos con slug y ruta únicos;
+- 510 productos;
 - 16 categorías;
-- 510 precios en ARS;
-- 495 descripciones completas;
-- 432 SKU;
-- 509 referencias a 484 imágenes locales;
-- 15 productos sin descripción completa;
-- un producto sin imagen: `Caldo sin sal en polvo`.
+- precios en ARS;
+- activos locales autorizados.
 
-No existen backend, autenticación, cuentas, compra, carrito, stock en tiempo real, formularios, analítica ni rastreadores.
+El candidato incorpora:
 
-## Experiencia pública
+- carrito persistente;
+- Mercado Pago Checkout Pro por redirección;
+- pedidos y consulta pública de estado;
+- webhook de Mercado Pago;
+- Cloudflare Pages Functions;
+- migración inicial de Cloudflare D1;
+- administración preparada para Cloudflare Access;
+- analítica first-party con consentimiento;
+- exportaciones administrativas;
+- eliminación de sesión analítica.
 
-La navegación del encabezado contiene `Inicio` y `Catálogo`. El pie agrega `Privacidad`.
+## Estado operativo
 
-La portada presenta un hero comercial con un único CTA hacia `/catalogo` y continúa directamente con el catálogo.
+La presencia del código no implica activación productiva.
 
-El catálogo ofrece:
+Hasta completar bindings, secretos, D1, Mercado Pago, Access, dominio, retención y autorizaciones:
 
-- búsqueda insensible a mayúsculas, tildes y espacios repetidos;
-- búsqueda por nombre, categoría, presentación, SKU y descripción corta;
-- filtro por las 16 categorías;
-- paginación determinista de 24 productos;
-- contador anunciado mediante `aria-live`;
-- fichas individuales con campos opcionales;
-- imagen local o el texto `Imagen no disponible`.
+- comercio deshabilitado;
+- analítica deshabilitada;
+- WhatsApp deshabilitado;
+- administración no considerada productiva;
+- webhook no considerado productivo.
 
-## Rutas públicas
+## Arquitectura
 
-- `/`;
-- `/catalogo`;
-- `/privacidad`;
-- 510 rutas de producto;
-- 16 rutas `/tienda/categoria/<slug>/`.
+- frontend: React, TypeScript estricto y Vite;
+- servidor: Cloudflare Pages Functions;
+- persistencia: Cloudflare D1;
+- pagos: Mercado Pago Checkout Pro;
+- administración: Cloudflare Access;
+- analítica: first-party basada en consentimiento.
 
-Las rutas desconocidas se resuelven mediante la vista 404 normal. Query string y hash no alteran la resolución.
+Consultar:
 
-## Datos y arquitectura
+- `docs/FULL_STACK_COMMERCE.md`;
+- `docs/COMMERCE_OPERATIONS.md`;
+- `docs/COMMERCE_DEPLOYMENT.md`;
+- `docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md`.
 
-- `src/catalog-data/categories.json`: categorías;
-- `src/catalog-data/catalog-details.json`: descripciones, galerías y variantes;
-- `catalog/internal/catalog-index.json`: índice interno protegido de la publicación;
-- `config/catalog-index-plugin.ts`: módulo público sin metadatos internos;
-- `src/data/authorized-commercial-data.ts`: fuente tipada para la aplicación;
-- `catalog/catalog-manifest.json`: métricas y hashes internos;
-- `catalog/catalog-assets.json`: inventario de activos;
-- `scripts/prepare-catalog-data.mjs`: preparación determinista;
-- `scripts/verify-catalog.mjs`: validación integral.
-
-El detalle se carga mediante `import()` local. El build no consulta Git ni realiza descargas.
-
-## Calidad y seguridad
+## Calidad
 
 Entorno canónico:
 
 - Node.js `24.18.0`;
 - npm `>=11.0.0`;
-- ESLint;
 - TypeScript estricto;
-- Vitest y React Testing Library;
-- Playwright con Chromium.
+- ESLint;
+- Vitest;
+- Playwright;
+- verificadores de catálogo, seguridad y automatización.
 
-Comandos:
+## Separación de estados
 
-```bash
-npm ci
-npm run install:browsers
-npm run verify
-npm run build:pages
-```
+Toda continuidad debe distinguir:
 
-La CSP conserva `default-src 'none'`, `connect-src 'none'`, `img-src 'self'`, `script-src 'self'` y `style-src 'self'`, sin `unsafe-inline`, `unsafe-eval`, formularios, frames ni conexiones remotas.
+1. código integrado;
+2. validación local;
+3. commit y push;
+4. GitHub Actions;
+5. deployment de Pages;
+6. D1 y migraciones;
+7. secretos y bindings;
+8. activación productiva;
+9. pruebas de humo.
 
-## CI y despliegue
-
-`.github/workflows/ci.yml` usa permisos `contents: read`, ejecuta `npm ci`, instala Chromium, corre `npm run verify` y publica `dist` como artefacto efímero.
-
-Cloudflare Pages:
-
-- rama: `main`;
-- comando: `npm run build:pages`;
-- salida: `dist`;
-- Node.js: `24.18.0`;
-- dominio: `shekinah-7dl.pages.dev`.
-
-Cada publicación debe asociarse al SHA final y verificarse de forma independiente en GitHub Actions y Cloudflare Pages.
+Ninguna etapa demuestra automáticamente la siguiente.

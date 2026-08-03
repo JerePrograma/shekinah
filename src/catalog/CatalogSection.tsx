@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 
+import { trackAnalyticsEvent } from '../analytics/client';
+import { useCart } from '../cart/CartContext';
+import { isProductAvailable } from '../cart/model';
 import { siteContent } from '../content/site-content';
 import { AppLink } from '../routing/AppLink';
 import type { Navigate } from '../routing/routes';
@@ -14,7 +17,6 @@ import {
 import type { Product } from './model';
 
 type HeadingLevel = 1 | 2;
-
 type CatalogSectionProps = Readonly<{
   fixedCategorySlug?: string;
   headingLevel?: HeadingLevel;
@@ -23,7 +25,6 @@ type CatalogSectionProps = Readonly<{
   summary?: string;
   title?: string;
 }>;
-
 export function CatalogSection({
   fixedCategorySlug,
   headingLevel = 2,
@@ -50,12 +51,10 @@ export function CatalogSection({
     filteredProducts.length === 1
       ? '1 producto encontrado'
       : `${filteredProducts.length} productos encontrados`;
-
   return (
     <section className="catalog-section section" aria-labelledby="catalog-title">
       <div className="container catalog-shell">
         <CatalogHeading level={headingLevel} summary={summary} title={title} />
-
         <div className="catalog-controls" aria-label="Controles del catálogo">
           <label className="catalog-field">
             <span>{siteContent.catalog.searchLabel}</span>
@@ -69,7 +68,6 @@ export function CatalogSection({
               }}
             />
           </label>
-
           {fixedCategorySlug === undefined ? (
             <label className="catalog-field">
               <span>{siteContent.catalog.categoryLabel}</span>
@@ -92,11 +90,9 @@ export function CatalogSection({
             </label>
           ) : null}
         </div>
-
         <p className="catalog-results" role="status" aria-live="polite">
           {resultLabel}
         </p>
-
         {filteredProducts.length === 0 ? (
           <div className="empty-state empty-state-compact">
             <span className="empty-state-mark" aria-hidden="true">
@@ -121,7 +117,6 @@ export function CatalogSection({
                 />
               ))}
             </div>
-
             <nav className="catalog-pagination" aria-label="Paginación del catálogo">
               <button
                 type="button"
@@ -151,7 +146,6 @@ export function CatalogSection({
     </section>
   );
 }
-
 function ProductCard({
   headingLevel,
   navigate,
@@ -161,6 +155,8 @@ function ProductCard({
   navigate: Navigate;
   product: Product;
 }>) {
+  const { add } = useCart();
+  const available = isProductAvailable(product);
   return (
     <article className="product-card" data-product={product.slug}>
       {product.primaryImage === undefined ? (
@@ -176,7 +172,6 @@ function ProductCard({
           decoding="async"
         />
       )}
-
       <div className="product-card-content">
         {product.categorySlugs.length === 0 ? null : (
           <p className="product-category">
@@ -207,11 +202,23 @@ function ProductCard({
             <dd>{formatProductPrice(product.salePrice ?? product.price)}</dd>
           </div>
         </dl>
+        <button
+          className="button button-secondary product-add-button"
+          type="button"
+          disabled={!available}
+          aria-label={available ? `Agregar ${product.name} al carrito` : `${product.name} no está disponible`}
+          onClick={() => {
+            if (add(product.id)) {
+              void trackAnalyticsEvent('cart_add', { path: product.path, productId: product.id });
+            }
+          }}
+        >
+          {available ? 'Agregar al carrito' : 'No disponible'}
+        </button>
       </div>
     </article>
   );
 }
-
 function CatalogHeading({
   level,
   summary,
@@ -227,7 +234,6 @@ function CatalogHeading({
     </div>
   );
 }
-
 function CatalogResultHeading({
   children,
   level,

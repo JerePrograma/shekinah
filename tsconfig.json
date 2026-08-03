@@ -34,6 +34,8 @@
   },
   "include": [
     "src",
+    "server",
+    "functions",
     "tests",
     "vite.config.ts",
     "vitest.config.ts",

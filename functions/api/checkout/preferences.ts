@@ -1,0 +1,136 @@
+import { recalculateCart } from '../../../server/catalog';
+import {
+  requireCommerceMode,
+  requireEnabledFlag,
+  requirePublicSiteUrl,
+} from '../../../server/config';
+import {
+  HttpError,
+  jsonResponse,
+  methodNotAllowedResponse,
+  requireDatabase,
+  requireSecret,
+  responseFromError,
+} from '../../../server/http';
+import {
+  createMercadoPagoPreference,
+  recoverMercadoPagoPreference,
+} from '../../../server/mercado-pago';
+import {
+  claimPreferenceAttempt,
+  markOrderFailed,
+  markPreferenceCreated,
+  prepareOrder,
+  resetRetrySafeFailedOrder,
+} from '../../../server/orders';
+import type { PagesFunction } from '../../../server/platform';
+import {
+  assertExactKeys,
+  assertSameOrigin,
+  assertUuid,
+  isRecord,
+  readJsonBody,
+} from '../../../server/validation';
+
+export const onRequest: PagesFunction = async ({ env, request }) => {
+  if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
+  try {
+    requireEnabledFlag(
+      env.COMMERCE_ENABLED,
+      'COMMERCE_DISABLED',
+      'El checkout todavía no está habilitado.',
+    );
+    assertSameOrigin(request, env);
+    const database = requireDatabase(env);
+    const siteUrl = requirePublicSiteUrl(env);
+    const accessToken = requireSecret(
+      env.MERCADO_PAGO_ACCESS_TOKEN,
+      'PAYMENT_CREDENTIALS_MISSING',
+      'Mercado Pago no está configurado.',
+      20,
+    );
+    const tokenSecret = requireSecret(
+      env.ORDER_TOKEN_SECRET,
+      'ORDER_TOKEN_SECRET_MISSING',
+      'La protección de pedidos no está configurada.',
+      32,
+    );
+    const mode = requireCommerceMode(env);
+    const body = await readJsonBody(request, 32_768);
+    if (!isRecord(body)) {
+      throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
+    }
+    assertExactKeys(body, ['idempotencyKey', 'items'], 'INVALID_CHECKOUT', 'La solicitud contiene campos no permitidos.');
+    const idempotencyKey = assertUuid(body.idempotencyKey, 'idempotencyKey');
+    const cart = recalculateCart(body);
+    const prepared = await prepareOrder({ cart, database, idempotencyKey, tokenSecret });
+    const { order } = prepared;
+
+    if (order.status === 'approved' || order.status === 'refunded') {
+      throw new HttpError(409, 'ORDER_ALREADY_FINALIZED', 'Este pedido ya tiene un estado final.');
+    }
+    if (order.mp_preference_id !== null && order.mp_checkout_url !== null) {
+      return checkoutResponse(order.mp_checkout_url, prepared.publicToken, 200);
+    }
+    if (order.mp_preference_attempted_at !== null) {
+      const recovered = await recoverMercadoPagoPreference({ accessToken, cart, mode, orderId: order.id });
+      if (recovered === null) {
+        throw new HttpError(
+          409,
+          'PREFERENCE_RECOVERY_PENDING',
+          'Existe un intento de pago previo que todavía no puede confirmarse.',
+        );
+      }
+      await markPreferenceCreated(database, order.id, recovered.id, recovered.checkoutUrl);
+      return checkoutResponse(recovered.checkoutUrl, prepared.publicToken, 200);
+    }
+    if (order.status === 'failed') await resetRetrySafeFailedOrder(database, order.id);
+    const attemptToken = await claimPreferenceAttempt(database, order.id);
+    if (attemptToken === null) {
+      throw new HttpError(
+        409,
+        'PREFERENCE_ATTEMPT_IN_PROGRESS',
+        'Ya existe un intento de pago en curso para este pedido.',
+      );
+    }
+    try {
+      const preference = await createMercadoPagoPreference({
+        accessToken,
+        cart,
+        mode,
+        orderId: order.id,
+        publicToken: prepared.publicToken,
+        siteUrl,
+      });
+      await markPreferenceCreated(
+        database,
+        order.id,
+        preference.id,
+        preference.checkoutUrl,
+        attemptToken,
+      );
+      return checkoutResponse(
+        preference.checkoutUrl,
+        prepared.publicToken,
+        prepared.created ? 201 : 200,
+      );
+    } catch (error: unknown) {
+      const code = error instanceof HttpError ? error.code : 'PREFERENCE_PERSIST_FAILED';
+      const retrySafe = code === 'PAYMENT_PROVIDER_REJECTED';
+      try {
+        await markOrderFailed(database, order.id, attemptToken, code, retrySafe);
+      } catch (persistenceError: unknown) {
+        console.error('Could not persist checkout failure', {
+          name: persistenceError instanceof Error ? persistenceError.name : 'UnknownError',
+        });
+      }
+      throw error;
+    }
+  } catch (error: unknown) {
+    return responseFromError(error);
+  }
+};
+
+function checkoutResponse(checkoutUrl: string, publicToken: string, status: number): Response {
+  return jsonResponse({ checkoutUrl, publicToken }, status);
+}

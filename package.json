@@ -8,21 +8,23 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 4173",
-    "build": "vite build",
-    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
+    "dev": "npm run generate:commerce-catalog && vite --host 127.0.0.1 --port 4173",
+    "build": "npm run generate:commerce-catalog && vite build",
+    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "lint": "npm run generate:commerce-catalog && eslint .",
+    "typecheck": "npm run generate:commerce-catalog && tsc --noEmit",
+    "test": "npm run generate:commerce-catalog && vitest run",
+    "test:watch": "npm run generate:commerce-catalog && vitest",
     "test:e2e": "playwright test",
     "install:browsers": "playwright install chromium",
+    "generate:commerce-catalog": "node scripts/generate-commerce-catalog.mjs",
+    "verify:commerce-catalog": "node scripts/verify-commerce-catalog.mjs",
     "verify:assets": "node scripts/verify-assets.mjs",
     "verify:catalog": "node scripts/verify-catalog.mjs",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:automation": "node scripts/verify-automation.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -46,5 +48,5 @@
     "vite": "8.1.5",
     "vitest": "4.1.10"
   },
-  "description": "Aplicación web estática de Shekinah, hierbas y especias."
+  "description": "Aplicación comercial de Shekinah con catálogo, carrito y comercio seguro sobre Cloudflare Pages."
 }

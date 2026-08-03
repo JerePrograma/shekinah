@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 
 import { App } from './App';
+import { CartProvider } from './cart/CartContext';
 import {
   authorizedCategories,
   authorizedContact,
@@ -30,14 +31,23 @@ const forbiddenPublicCopy = [
   'Experiencia adaptable',
 ] as const;
 
+function renderApp() {
+  return render(
+    <CartProvider>
+      <App />
+    </CartProvider>,
+  );
+}
+
 describe('App', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
   });
 
-  it('muestra la portada comercial y navega al catálogo completo', () => {
-    render(<App />);
-
+  it('muestra la portada, el carrito accesible y navega al catálogo completo', () => {
+    renderApp();
     expect(document.title).toBe('Shekinah | Hierbas y especias');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(
@@ -48,19 +58,18 @@ describe('App', () => {
     ).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('510 productos encontrados');
     expect(document.querySelectorAll('[data-product]')).toHaveLength(24);
-
     const mainNavigation = screen.getByRole('navigation', {
       name: 'Navegación principal',
     });
-    expect(within(mainNavigation).getAllByRole('link').map(({ textContent }) => textContent)).toEqual([
-      'Inicio',
-      'Catálogo',
-    ]);
+    expect(within(mainNavigation).getAllByRole('link')).toHaveLength(3);
+    expect(within(mainNavigation).getByRole('link', { name: 'Inicio' })).toBeVisible();
+    expect(within(mainNavigation).getByRole('link', { name: 'Catálogo' })).toBeVisible();
+    expect(
+      within(mainNavigation).getByRole('link', { name: 'Carrito, 0 productos' }),
+    ).toBeVisible();
     expect(screen.queryByRole('link', { name: 'Enfoque' })).not.toBeInTheDocument();
 
-    const catalogAction = screen.getByRole('link', { name: 'Ver catálogo' });
-    fireEvent.click(catalogAction);
-
+    fireEvent.click(screen.getByRole('link', { name: 'Ver catálogo' }));
     expect(window.location.pathname).toBe('/catalogo');
     expect(document.title).toBe('Catálogo | Shekinah');
     expect(
@@ -72,16 +81,29 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: /contacto/i })).not.toBeInTheDocument();
   });
 
-  it('carga una ficha comercial con detalle diferido y texto seguro', async () => {
-    window.history.replaceState(null, '', '/guayaba/');
-    render(<App />);
+  it('agrega un producto y actualiza contador y ruta del carrito', () => {
+    renderApp();
+    const firstCard = document.querySelector<HTMLElement>('[data-product]');
+    if (firstCard === null) throw new Error('No se encontró una tarjeta de producto.');
+    fireEvent.click(within(firstCard).getByRole('button', { name: /Agregar .* al carrito/u }));
+    const cartLink = screen.getByRole('link', { name: 'Carrito, 1 producto' });
+    expect(cartLink).toBeVisible();
+    fireEvent.click(cartLink);
+    expect(window.location.pathname).toBe('/carrito');
+    expect(screen.getByRole('heading', { level: 1, name: 'Tu carrito.' })).toBeVisible();
+    expect(screen.getByText('1 unidad en el carrito.')).toBeVisible();
+  });
 
+  it('carga una ficha comercial con detalle diferido y CTA de carrito', async () => {
+    window.history.replaceState(null, '', '/guayaba/');
+    renderApp();
     expect(document.title).toBe('Guayaba hojas x 50 gr | Shekinah');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Guayaba hojas x 50 gr' }),
     ).toBeVisible();
     expect(screen.getByText('Precio', { exact: true })).toBeVisible();
     expect(screen.getByText('Disponibilidad', { exact: true })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeVisible();
     expect(screen.queryByText('23/07/2026')).not.toBeInTheDocument();
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Descripción' }),
@@ -91,16 +113,14 @@ describe('App', () => {
 
   it('conserva el producto sin imagen y el producto sin descripción', async () => {
     window.history.replaceState(null, '', '/caldo-sin-sal-en-polvo/');
-    const { unmount } = render(<App />);
-
+    const { unmount } = renderApp();
     expect(screen.getByRole('img', { name: 'Imagen no disponible' })).toBeVisible();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Caldo sin sal en polvo' }),
     ).toBeVisible();
     unmount();
-
     window.history.replaceState(null, '', '/pomelo-deshidratado-x-250-gr/');
-    render(<App />);
+    renderApp();
     await waitFor(() => {
       expect(screen.queryByText('Cargando información detallada…')).not.toBeInTheDocument();
     });
@@ -109,8 +129,7 @@ describe('App', () => {
 
   it('resuelve una categoría como catálogo filtrado', () => {
     window.history.replaceState(null, '', '/tienda/categoria/hierbas-medicinales/');
-    render(<App />);
-
+    renderApp();
     expect(document.title).toBe('Hierbas Medicinales | Catálogo Shekinah');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Hierbas Medicinales' }),
@@ -123,23 +142,23 @@ describe('App', () => {
     }
   });
 
-  it('mantiene privacidad en lenguaje comercial normal y ausencia de contacto', () => {
+  it('mantiene privacidad fiel al carrito, pagos y analítica consentida', () => {
     window.history.replaceState(null, '', '/privacidad');
-    render(<App />);
-
+    renderApp();
     expect(document.title).toBe('Privacidad | Shekinah');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Privacidad.' }),
     ).toBeVisible();
-    expect(screen.getByText(/no utilizamos analítica, publicidad ni rastreadores/i)).toBeVisible();
+    expect(screen.getByText(/analítica first-party permanece inactiva hasta un consentimiento explícito/i)).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Carrito y pagos' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Analítica first-party opcional' })).toBeVisible();
     expect(screen.queryByRole('link', { name: /contacto/i })).not.toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
   it('resuelve /enfoque como una vista 404 normal', () => {
     window.history.replaceState(null, '', '/enfoque');
-    render(<App />);
-
+    renderApp();
     expect(document.title).toBe('Página no encontrada | Shekinah');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Página no encontrada.' }),
@@ -148,18 +167,14 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: 'Enfoque' })).not.toBeInTheDocument();
   });
 
-  it('no renderiza ninguna frase retirada en la portada y el catálogo', () => {
-    render(<App />);
-
+  it('no renderiza frases retiradas y mantiene una 404 accesible', () => {
+    const { unmount } = renderApp();
     for (const text of forbiddenPublicCopy) {
       expect(screen.queryByText(text, { exact: false })).not.toBeInTheDocument();
     }
-  });
-
-  it('resuelve una ruta desconocida con una vista 404 accesible', () => {
+    unmount();
     window.history.replaceState(null, '', '/ruta-inexistente');
-    render(<App />);
-
+    renderApp();
     expect(document.title).toBe('Página no encontrada | Shekinah');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Página no encontrada.' }),

@@ -1,12 +1,18 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
+import { CartProvider } from '../cart/CartContext';
 import { authorizedProducts } from '../data/authorized-commercial-data';
 import { catalogProductFixtures } from '../test/fixtures/catalog-products';
 import { CatalogSection } from './CatalogSection';
 
+function renderCatalog(element: ReactElement) {
+  return render(<CartProvider>{element}</CartProvider>);
+}
+
 describe('CatalogSection', () => {
   it('informa 510 resultados y renderiza sólo la primera página de 24', () => {
-    render(
+    renderCatalog(
       <CatalogSection
         navigate={vi.fn()}
         products={authorizedProducts}
@@ -23,7 +29,7 @@ describe('CatalogSection', () => {
 
   it('renderiza imagen local, ausencia de imagen y acceso a la ficha', () => {
     const navigate = vi.fn();
-    render(<CatalogSection navigate={navigate} products={catalogProductFixtures} />);
+    renderCatalog(<CatalogSection navigate={navigate} products={catalogProductFixtures} />);
 
     expect(screen.getByRole('img', { name: 'Pimentón dulce' })).toHaveAttribute(
       'loading',
@@ -38,7 +44,7 @@ describe('CatalogSection', () => {
   });
 
   it('filtra por búsqueda normalizada y categoría', () => {
-    render(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
 
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: '  PIMENTON  ' },
@@ -60,7 +66,7 @@ describe('CatalogSection', () => {
       path: `/menta-${index}/`,
       name: `Menta ${index}`,
     }));
-    render(<CatalogSection navigate={vi.fn()} products={products} />);
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={products} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
     expect(screen.getByText('Página 2 de 2')).toBeVisible();
@@ -69,7 +75,7 @@ describe('CatalogSection', () => {
   });
 
   it('mantiene fija la categoría de una ruta pública', () => {
-    render(
+    renderCatalog(
       <CatalogSection
         fixedCategorySlug="especias"
         headingLevel={1}
@@ -89,7 +95,7 @@ describe('CatalogSection', () => {
   });
 
   it('anuncia una combinación sin resultados', () => {
-    render(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={catalogProductFixtures} />);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'menta' } });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'especias' } });
 

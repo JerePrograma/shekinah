@@ -3,6 +3,12 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.wrangler/
+.dev.vars
+.dev.vars.*
+server/generated/catalog.json
+wrangler.jsonc
+wrangler.toml
 *.local
 .env
 .env.*

@@ -1,14 +1,19 @@
 import { useEffect, useRef } from 'react';
 
+import { trackAnalyticsEvent } from './analytics/client';
+import { useCart } from './cart/CartContext';
 import { authorizedAssets } from './config/authorized-assets';
 import {
   footerNavigationItems,
   navigationItems,
   siteContent,
 } from './content/site-content';
+import { AdminPage } from './pages/AdminPage';
+import { CartPage } from './pages/CartPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { PaymentReturnPage } from './pages/PaymentReturnPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { ProductPage } from './pages/ProductPage';
 import { AppLink } from './routing/AppLink';
@@ -18,6 +23,7 @@ import { useBrowserRoute } from './routing/useBrowserRoute';
 
 export function App() {
   const currentYear = new Date().getFullYear();
+  const { itemCount } = useCart();
   const { navigate, pathname, route } = useBrowserRoute();
   const mainRef = useRef<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
@@ -30,10 +36,11 @@ export function App() {
   }, [route.description, route.title]);
 
   useEffect(() => {
-    if (previousPathname.current === pathname) {
-      return;
-    }
+    if (route.id !== 'admin') void trackAnalyticsEvent('page_view', { path: pathname });
+  }, [pathname, route.id]);
 
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
     mainRef.current?.focus({ preventScroll: false });
   }, [pathname]);
@@ -43,14 +50,15 @@ export function App() {
       ? null
       : route.id === 'product' || route.id === 'category'
         ? appPaths.catalog
-        : route.path;
+        : route.id === 'paymentSuccess' || route.id === 'paymentPending' || route.id === 'paymentError'
+          ? appPaths.cart
+          : route.path;
 
   return (
     <>
       <a className="skip-link" href="#main-content">
         Saltar al contenido
       </a>
-
       <header className="site-header">
         <div className="container header-inner">
           <AppLink
@@ -71,7 +79,6 @@ export function App() {
               <small>{siteContent.brand.descriptor}</small>
             </span>
           </AppLink>
-
           <nav className="primary-navigation" aria-label="Navegación principal">
             <ul>
               {navigationItems.map((item) => (
@@ -85,17 +92,23 @@ export function App() {
                   </AppLink>
                 </li>
               ))}
+              <li>
+                <AppLink
+                  aria-current={activePath === appPaths.cart ? 'page' : undefined}
+                  aria-label={`Carrito, ${itemCount} ${itemCount === 1 ? 'producto' : 'productos'}`}
+                  className="cart-navigation-link"
+                  navigate={navigate}
+                  to={appPaths.cart}
+                >
+                  Carrito <span className="cart-count" aria-hidden="true">{itemCount}</span>
+                </AppLink>
+              </li>
             </ul>
           </nav>
         </div>
       </header>
-
       <main id="main-content" ref={mainRef} tabIndex={-1}>
-        <RouteView
-          navigate={navigate}
-          pathname={pathname}
-          route={route}
-        />
+        <RouteView navigate={navigate} pathname={pathname} route={route} />
       </main>
 
       <footer className="site-footer">
@@ -104,7 +117,6 @@ export function App() {
             <strong>{siteContent.brand.name}</strong>
             <span>{siteContent.brand.descriptor}</span>
           </p>
-
           <nav className="footer-navigation" aria-label="Navegación del pie">
             {footerNavigationItems.map((item) => (
               <AppLink
@@ -117,7 +129,6 @@ export function App() {
               </AppLink>
             ))}
           </nav>
-
           <p className="copyright">
             © {currentYear} {siteContent.brand.name}.
           </p>
@@ -141,6 +152,8 @@ function RouteView({
       return <HomePage navigate={navigate} />;
     case 'catalog':
       return <CatalogPage navigate={navigate} />;
+    case 'cart':
+      return <CartPage navigate={navigate} />;
     case 'category':
       return (
         <CatalogPage
@@ -159,15 +172,17 @@ function RouteView({
       );
     case 'privacy':
       return <PrivacyPage navigate={navigate} />;
+    case 'paymentSuccess':
+      return <PaymentReturnPage expected="success" navigate={navigate} />;
+    case 'paymentPending':
+      return <PaymentReturnPage expected="pending" navigate={navigate} />;
+    case 'paymentError':
+      return <PaymentReturnPage expected="failure" navigate={navigate} />;
+    case 'admin':
+      return <AdminPage navigate={navigate} />;
     case 'not-found':
-      return (
-        <NotFoundPage
-          navigate={navigate}
-          pathname={pathname}
-        />
-      );
+      return <NotFoundPage navigate={navigate} pathname={pathname} />;
   }
-
   return assertNever(route);
 }
 

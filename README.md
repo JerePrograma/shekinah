@@ -1,41 +1,32 @@
 # Shekinah
 
-Catálogo comercial de hierbas, especias, alimentos y productos naturales construido como una SPA estática con React, TypeScript estricto y Vite.
+Aplicación comercial de hierbas, especias, alimentos y productos naturales construida con React, TypeScript estricto, Vite y Cloudflare Pages Functions.
 
 ## Funcionalidad
 
-- 510 productos y 16 categorías;
-- búsqueda por nombre, categoría, presentación, SKU y descripción corta;
-- filtro por categoría;
-- paginación de 24 productos;
-- fichas individuales con carga diferida del detalle;
-- soporte para productos sin imagen o sin descripción;
-- política de privacidad y vista 404;
-- navegación mediante History API con foco administrado;
-- activos locales y cero conexiones remotas en ejecución.
+- 510 productos y 16 categorías según la fuente canónica vigente;
+- búsqueda, filtro, paginación y fichas individuales;
+- carrito persistente y sincronizado entre pestañas;
+- Checkout Pro de Mercado Pago por redirección, sin captura de tarjetas;
+- alternativa manual por WhatsApp sólo cuando existe un número autorizado;
+- pedidos, pagos, webhooks y analítica first-party consentida sobre Cloudflare D1;
+- panel administrativo de sólo lectura protegido por Cloudflare Access;
+- política de privacidad, accesibilidad y vista 404.
 
-El sitio no incorpora backend, autenticación, carrito, checkout, formularios, analítica ni rastreadores.
+El navegador no decide precios, disponibilidad, moneda ni totales. El backend vuelve a calcular el carrito desde `catalog/internal/catalog-index.json` antes de crear un pedido.
 
-## Rutas
+## Rutas públicas
 
-- `/`: inicio y acceso directo al catálogo;
-- `/catalogo`: catálogo completo;
-- `/privacidad`: política de privacidad;
+- `/`: inicio;
+- `/catalogo`: catálogo;
+- `/carrito`: carrito;
+- `/privacidad`: política y controles de analítica;
+- `/pago/exito`, `/pago/pendiente`, `/pago/error`: retorno y consulta autoritativa del pedido;
 - `/<slug>/`: ficha de producto;
 - `/tienda/categoria/<slug>/`: categoría;
-- cualquier otra dirección: vista 404 normal.
+- cualquier otra dirección, incluida `/enfoque`: vista 404.
 
-## Datos
-
-La aplicación publica únicamente el modelo comercial necesario para el navegador. El índice público no contiene fechas internas, procedencia, IDs técnicos ni HTML de origen.
-
-- `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo;
-- `src/catalog-data/categories.json`: categorías;
-- `src/catalog-data/catalog-details.json`: detalles cargados de forma diferida;
-- `catalog/internal/catalog-index.json`: insumo interno de integridad, fuera de `dist`;
-- `config/catalog-index-plugin.ts`: genera el módulo público sin metadatos internos;
-- `catalog/catalog-manifest.json`: métricas y hashes internos;
-- `catalog/catalog-assets.json`: inventario exacto de imágenes.
+`/admin` y `/api/admin/*` no aparecen en la navegación y deben quedar protegidas por Cloudflare Access en el borde, además de la validación JWT interna.
 
 ## Desarrollo
 
@@ -59,11 +50,26 @@ git diff --check
 git diff --cached --check
 ```
 
-`npm run verify` ejecuta ESLint, TypeScript, Vitest, validadores de catálogo, activos, seguridad y automatización, build de producción y Playwright.
+`npm run verify` ejecuta ESLint, TypeScript, Vitest, verificadores de catálogo, comercio, activos, seguridad y automatización, build de producción y Playwright.
+
+## Configuración segura
+
+Los flags quedan desactivados por defecto:
+
+```text
+COMMERCE_ENABLED=false
+ANALYTICS_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+VITE_ANALYTICS_ENABLED=false
+```
+
+Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET` deben cargarse exclusivamente como secretos de Cloudflare. Nunca deben usar el prefijo `VITE_`.
+
+La configuración externa, D1, Mercado Pago, el webhook, Cloudflare Access y el número de WhatsApp deben completarse siguiendo `docs/COMMERCE_DEPLOYMENT.md`. Tener el código en `main` o un CI verde no implica que esas integraciones estén vinculadas o activas.
 
 ## Producción
 
-Cloudflare Pages debe usar:
+Cloudflare Pages debe conservar:
 
 - repositorio: `JerePrograma/shekinah`;
 - rama: `main`;
@@ -71,6 +77,6 @@ Cloudflare Pages debe usar:
 - salida: `dist`;
 - directorio raíz: raíz del repositorio;
 - Node.js: `24.18.0`;
-- dominio: `shekinah-7dl.pages.dev`.
+- dominio público configurado explícitamente mediante `PUBLIC_SITE_URL`.
 
-La CSP mantiene `connect-src 'none'`, no admite `unsafe-inline` ni `unsafe-eval`, y limita scripts, estilos e imágenes al mismo origen.
+La CSP permite conexiones únicamente al mismo origen mediante `connect-src 'self'`. Las conexiones con Mercado Pago y Cloudflare Access ocurren desde Pages Functions, no desde el navegador.

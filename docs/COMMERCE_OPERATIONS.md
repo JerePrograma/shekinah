@@ -1,0 +1,100 @@
+# Operación del comercio
+
+## Controles diarios
+
+- Revisar pedidos `pending` antiguos y contrastarlos con Mercado Pago antes de cualquier acción manual.
+- Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
+- Comparar `payments.amount_minor` y `orders.total_minor` para detectar inconsistencias.
+- Revisar que no haya pedidos aprobados sin pago asociado.
+- Controlar errores de Functions sin registrar cuerpos, access tokens, firmas ni secretos.
+
+Consultas de diagnóstico de sólo lectura:
+
+```sql
+SELECT status, COUNT(*) AS cantidad
+FROM orders
+GROUP BY status
+ORDER BY status;
+```
+
+```sql
+SELECT o.id, o.status, o.total_minor, o.created_at
+FROM orders o
+LEFT JOIN payments p ON p.order_id = o.id
+WHERE o.status = 'approved' AND p.provider_payment_id IS NULL;
+```
+
+```sql
+SELECT provider_event_key, status, attempt_count, error_code, received_at
+FROM payment_events
+WHERE status = 'failed'
+ORDER BY received_at DESC;
+```
+
+
+```sql
+SELECT id, status, mp_preference_attempted_at, last_error_code, updated_at
+FROM orders
+WHERE mp_preference_attempted_at IS NOT NULL
+  AND mp_preference_id IS NULL
+ORDER BY updated_at DESC;
+```
+
+Un pedido en este último estado no debe liberarse ni reintentarse manualmente sin confirmar primero en Mercado Pago que no existe una preferencia para su `external_reference`.
+
+## Backoffice
+
+La interfaz `/admin` consume:
+
+- `/api/admin/summary`;
+- `/api/admin/orders?limit=25`;
+- `/api/admin/exports/orders.csv`;
+- `/api/admin/exports/analytics.csv`;
+- `/api/admin/audit`.
+
+Los demás endpoints permiten detalle y reportes específicos. Todos aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
+
+La auditoría registra:
+
+- subject y email validados por Access;
+- acción administrativa de sólo lectura;
+- tipo e identificador de destino cuando corresponda;
+- resultado HTTP;
+- request ID técnico;
+- fecha del servidor.
+
+No registrar tokens JWT, cookies, cuerpos de petición, firmas de webhook ni parámetros completos de consulta.
+
+## Reportes
+
+- `summary`: pedidos, aprobados, pendientes, rechazados, facturación aprobada y ticket promedio.
+- `analytics/funnel`: page view, product view, agregado, inicio y redirección de checkout.
+- `analytics/products`: vistas y agregados por producto.
+- `analytics/sources`: fuente agrupada.
+- `analytics/devices`: clase de dispositivo agrupada.
+- CSV de pedidos: hasta 1.000 filas por rango.
+- CSV de analítica: hasta 1.000 filas por rango.
+
+Las celdas CSV que comienzan con caracteres interpretables como fórmula se prefijan con apóstrofo. Aun así, los archivos deben abrirse como datos y no habilitar macros.
+
+## Retención
+
+El código no elimina pedidos, pagos, webhooks o auditorías automáticamente. Las revocaciones analíticas conservan sólo el HMAC de la sesión para impedir su recreación. El código no impone aún una retención temporal para eventos ni para esas revocaciones. Antes de habilitar `ANALYTICS_ENABLED=true`, definir y documentar:
+
+- plazo de conservación;
+- responsable de autorizar eliminaciones;
+- frecuencia de purga;
+- respaldo previo cuando corresponda;
+- evidencia de ejecución.
+
+No ejecutar borrados masivos sin backup y plan de reversión.
+
+## Rotación de secretos
+
+- Rotar de inmediato ante sospecha de exposición.
+- `MERCADO_PAGO_ACCESS_TOKEN`: rotar en Mercado Pago y actualizar Pages antes de revocar el anterior, cuando el proveedor lo permita.
+- `MERCADO_PAGO_WEBHOOK_SECRET`: coordinar el cambio para no rechazar notificaciones legítimas durante la transición.
+- `ORDER_TOKEN_SECRET`: su rotación invalida los tokens públicos de pedidos existentes; planificar compatibilidad o conservar el valor mientras existan pedidos consultables.
+- `ANALYTICS_HMAC_SECRET`: su rotación cambia el hash de sesión y dificulta eliminar sesiones históricas con el identificador local anterior.
+
+Las dos últimas rotaciones tienen impacto funcional y no deben ejecutarse como mantenimiento rutinario sin plan específico.

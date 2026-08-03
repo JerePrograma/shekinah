@@ -1,10 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { AnalyticsConsent } from './analytics/AnalyticsConsent';
 import { App } from './App';
+import { CartProvider } from './cart/CartContext';
 import './styles.css';
 import './catalog.css';
 import './routing.css';
+import './commerce.css';
 
 const rootElement = document.getElementById('root');
 
@@ -14,6 +17,9 @@ if (!(rootElement instanceof HTMLElement)) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <CartProvider>
+      <App />
+      <AnalyticsConsent />
+    </CartProvider>
   </StrictMode>,
 );

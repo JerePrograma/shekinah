@@ -2,72 +2,76 @@
 
 ## Resumen
 
-Shekinah es una SPA estática construida con React, TypeScript estricto y Vite. No tiene backend, base de datos, autenticación, APIs remotas ni rastreadores.
+Shekinah es una aplicación full-stack liviana construida con React, TypeScript estricto y Vite, desplegada mediante Cloudflare Pages.
 
-## Entrada, vistas y estilos
+La interfaz pública continúa siendo una SPA. Las capacidades de servidor se implementan con Cloudflare Pages Functions y Cloudflare D1. Mercado Pago Checkout Pro se integra por redirección y webhook.
+
+La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md`.
+
+## Frontend
 
 - `index.html`: documento raíz;
-- `src/main.tsx`: montaje de React y carga de estilos;
+- `src/main.tsx`: montaje de React y proveedores globales;
 - `src/App.tsx`: layout, navegación y selección de vista;
-- `src/pages/`: inicio, catálogo, ficha de producto, privacidad y 404;
-- `src/styles.css`, `src/catalog.css` y `src/routing.css`: sistema visual local y responsive.
-
-Cada vista conserva un único `h1`, enlace de salto, encabezado, navegación, contenido principal y pie.
+- `src/pages/`: inicio, catálogo, producto, carrito, retornos de pago, privacidad, administración y 404;
+- `src/cart/`: estado persistente del carrito;
+- `src/commerce/`: contratos, API y sesión de checkout;
+- `src/analytics/`: consentimiento y cliente first-party;
+- `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo;
+- `src/styles.css`, `src/catalog.css`, `src/routing.css` y `src/commerce.css`: estilos locales.
 
 ## Navegación
 
-El router propio usa History API y enlaces HTML reales:
+El router propio conserva History API y enlaces HTML reales.
 
-- `src/routing/routes.ts`: rutas conocidas y resolución dinámica;
-- `src/routing/AppLink.tsx`: navegación cliente;
-- `src/routing/useBrowserRoute.ts`: historial, título, metadescripción y foco.
+`src/routing/routes.ts` resuelve las rutas públicas, comerciales y administrativas. Las rutas desconocidas continúan mostrando la vista 404.
 
-Las rutas estáticas son `/`, `/catalogo` y `/privacidad`. El resolvedor agrega 510 rutas de producto y 16 rutas `/tienda/categoria/<slug>/`, normaliza barras e ignora query y hash. Cualquier otra dirección muestra la vista 404.
+## Catálogo
 
-## Catálogo público
+La fuente canónica conserva 510 productos y 16 categorías.
 
-- `src/catalog/model.ts`: tipos inmutables y validación;
-- `src/catalog/catalog.ts`: búsqueda, filtro, paginación y formato;
-- `src/catalog/CatalogSection.tsx`: listado accesible de 24 tarjetas por página;
-- `src/pages/ProductPage.tsx`: ficha individual;
-- `src/data/authorized-commercial-data.ts`: acceso tipado y carga diferida;
-- `src/catalog-data/categories.json`: 16 categorías;
-- `src/catalog-data/catalog-details.json`: descripciones, galerías y variantes.
+El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor resuelve productos y precios desde esa fuente; no acepta nombres, precios ni totales enviados por el cliente como autoridad.
 
-El índice que utiliza la aplicación se expone como el módulo virtual `virtual:shekinah-catalog-index`. `config/catalog-index-plugin.ts` lee `catalog/internal/catalog-index.json`, valida su marca interna y elimina ese metadato antes de entregar los 510 resúmenes a Vite o Vitest.
+## Backend
 
-El archivo interno no forma parte de `dist`. Los detalles se cargan mediante un único `import()` local dinámico y Vite los emite en un chunk independiente. No se usa `fetch`, `XMLHttpRequest` ni una API.
+- `functions/api/`: endpoints públicos y administrativos;
+- `functions/admin.ts` y `functions/admin/[[path]].ts`: superficie administrativa;
+- `server/`: dominio, persistencia, Mercado Pago, validación, analítica y acceso;
+- `migrations/0001_commerce.sql`: esquema inicial de D1;
+- `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
-## Integridad de datos
+## Pagos
 
-- `scripts/prepare-catalog-data.mjs`: preparación offline y determinista;
-- `catalog/catalog-manifest.json`: métricas y hashes internos;
-- `catalog/catalog-assets.json`: allowlist exacta de imágenes;
-- `scripts/verify-catalog.mjs`: integridad de datos y separación pública;
-- `scripts/verify-assets.mjs`: binarios, firmas, hashes y referencias.
+La creación de preferencias ocurre en servidor. El navegador es redirigido a Checkout Pro y los retornos no prueban un pago.
 
-Los campos ausentes se omiten. La aplicación no publica metadatos internos, IDs técnicos, HTML de origen ni URLs remotas.
+El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. Las transiciones se registran con idempotencia y auditoría.
 
-## Contenido y activos
+## Administración
 
-- `src/content/site-content.ts`: copy comercial y política de privacidad;
-- `src/config/authorized-assets.ts`: metadatos del logo;
-- `public/assets/logo-shekinah.png`: logo;
-- `public/images/original/catalog/`: 484 imágenes.
+`/admin` y `/api/admin/*` requieren Cloudflare Access. La identidad administrativa se obtiene de cabeceras verificadas por la plataforma y se valida nuevamente en Functions.
+
+## Analítica y privacidad
+
+La analítica es first-party, opcional y condicionada al consentimiento. La retención debe configurarse sólo después de su autorización.
 
 ## Seguridad
 
-- `public/_headers`: CSP y encabezados para Cloudflare Pages;
-- `scripts/verify-security.mjs`: CSP, secretos, red, URLs, bundle, copy público y salida;
-- `scripts/verify-automation.mjs`: workflow, permisos, scripts y documentación.
-
-La CSP conserva `connect-src 'none'` y solo permite scripts, estilos e imágenes del mismo origen.
+- no exponer secretos mediante variables `VITE_*`;
+- validar entradas en el límite HTTP;
+- recalcular totales en servidor;
+- usar consultas parametrizadas;
+- aplicar idempotencia;
+- proteger administración mediante Access;
+- mantener comercio, analítica y WhatsApp deshabilitados por defecto;
+- conservar una CSP compatible únicamente con conexiones al mismo origen.
 
 ## Build
 
-- desarrollo: `npm run dev`;
-- producción local: `npm run build`;
-- Cloudflare Pages: `npm run build:pages`;
-- validación completa: `npm run verify`.
+```bash
+npm ci
+npm run install:browsers
+npm run verify
+npm run build:pages
+```
 
-La salida se genera en `dist`.
+La salida pública se genera en `dist`. Las Pages Functions se publican desde `functions/`.

@@ -39,29 +39,29 @@ export const siteContent = {
     eyebrow: 'Privacidad',
     title: 'Privacidad.',
     summary:
-      'Este sitio no solicita datos personales ni utiliza herramientas de seguimiento.',
+      'El carrito funciona localmente. Los pagos se procesan por redirección en Mercado Pago y la analítica first-party permanece inactiva hasta un consentimiento explícito.',
     sections: [
       {
         id: 'privacy-personal-data',
         title: 'Datos personales',
         description:
-          'No solicitamos registros, cuentas ni información personal mediante este sitio.',
+          'El sitio no solicita cuentas, nombre, email, teléfono ni documento. Shekinah no recopila ni procesa datos de tarjeta.',
       },
       {
-        id: 'privacy-tracking',
-        title: 'Sin seguimiento',
+        id: 'privacy-third-parties',
+        title: 'Servicios externos',
         description:
-          'No utilizamos analítica, publicidad ni rastreadores de terceros.',
+          'Al elegir pagar, el navegador se redirige a Mercado Pago. No se incorporan rastreadores, publicidad, fuentes externas ni analítica de terceros.',
       },
       {
         id: 'privacy-local-resources',
         title: 'Recursos del sitio',
         description:
-          'Las imágenes y los recursos necesarios se cargan directamente desde Shekinah.',
+          'Las imágenes y los recursos comerciales se cargan directamente desde Shekinah. El carrito y las preferencias de consentimiento se guardan en el navegador.',
       },
     ],
     hostingNote:
-      'El proveedor de alojamiento puede generar registros técnicos necesarios para operar y proteger el servicio.',
+      'Cloudflare puede generar registros técnicos necesarios para operar y proteger el servicio. La aplicación no guarda direcciones IP ni user agents completos en sus tablas analíticas.',
   },
   notFound: {
     eyebrow: 'Error 404',

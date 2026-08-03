@@ -1,0 +1,25 @@
+{
+  // Copiar a wrangler.jsonc sólo después de completar valores reales autorizados.
+  // wrangler.jsonc permanece ignorado para evitar publicar configuración de cuenta accidentalmente.
+  "name": "shekinah",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-07-31",
+  "vars": {
+    "COMMERCE_ENABLED": "false",
+    "ANALYTICS_ENABLED": "false",
+    "PUBLIC_SITE_URL": "https://REEMPLAZAR-DOMINIO-AUTORIZADO",
+    "ALLOWED_SITE_ORIGINS": "https://REEMPLAZAR-DOMINIO-AUTORIZADO",
+    "MERCADO_PAGO_CHECKOUT_MODE": "sandbox",
+    "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "REEMPLAZAR.cloudflareaccess.com",
+    "CLOUDFLARE_ACCESS_AUD": "REEMPLAZAR_AUDIENCIA",
+    "ANALYTICS_RETENTION_DAYS": "REEMPLAZAR_TRAS_APROBACION"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "REEMPLAZAR_NOMBRE_D1",
+      "database_id": "REEMPLAZAR_ID_D1",
+      "preview_database_id": "REEMPLAZAR_ID_D1_PREVIEW"
+    }
+  ]
+}
