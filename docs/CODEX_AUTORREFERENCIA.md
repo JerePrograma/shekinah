@@ -7,9 +7,9 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: b0386c12e353058cba317c6ce6b169ecac9bd609
-last_verified_at: 2026-08-04T18:19:34Z
-last_ci_run_id: 30937716940
+last_verified_sha: 884c9de407c079fcf0a834b50008286c7633ff02
+last_verified_at: 2026-08-04T19:02:01Z
+last_ci_run_id: 30938185079
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
@@ -25,6 +25,8 @@ mercado_pago_mode: no_verificado
 - **VERIFICADO:** checkout local `C:\laburo\shekinah`, repositorio remoto `JerePrograma/shekinah`, rama `main` y seguimiento `origin/main`.
 - **VERIFICADO:** aplicación React 19, TypeScript estricto y Vite 8 publicada mediante Cloudflare Pages con Pages Functions.
 - **VERIFICADO:** Node.js `24.18.0` y npm `11.16.0` en la sesión iniciada el 2026-08-04.
+- **VERIFICADO:** el proyecto Pages se llama `shekinah`, su dominio es `shekinah-7dl.pages.dev` y está conectado a `JerePrograma/shekinah`.
+- **VERIFICADO:** existe un Worker independiente también llamado `shekinah`; no comparte la configuración del proyecto Pages.
 
 ## 2. Regla de autoridad
 
@@ -35,7 +37,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 3. Estado Git verificado
 
-- **VERIFICADO:** `HEAD` y `origin/main` son `b0386c12e353058cba317c6ce6b169ecac9bd609` después del push y el `fetch` de cierre del commit funcional.
+- **VERIFICADO:** `HEAD` y `origin/main` son `884c9de407c079fcf0a834b50008286c7633ff02` al iniciar la continuación de configuración externa.
 - **VERIFICADO:** la rama activa es `main`; el worktree inicial estaba limpio y el commit funcional quedó publicado sin staged, untracked ni unmerged.
 - **VERIFICADO:** el commit de referencia `ce1c22903ad31c6ae87da4f747594b1d5184693b` coincide con la base real.
 - **VERIFICADO:** no se crearon ramas, pull requests, worktrees ni stashes; no se usó force-push ni se reescribió historial.
@@ -97,7 +99,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** `/api/admin/*` pasa por `functions/api/admin/_middleware.ts`; `server/access.ts` valida issuer, audience, expiración, `nbf`, algoritmo RS256 y firma con JWKS.
 - **REVISADO_POR_CÓDIGO:** listados y detalle toleran pedidos históricos sin fulfillment; el CSV neutraliza prefijos de fórmulas.
 - **VERIFICADO:** una petición pública no autenticada a `/admin` respondió 401 el 2026-08-04.
-- **BLOQUEADO:** la aplicación y política externas de Cloudflare Access no se comprobaron con una sesión autenticada.
+- **VERIFICADO:** la sesión autenticada de Cloudflare mostró el onboarding inicial de Zero Trust; no existe organización ni aplicación Access configurada.
+- **VERIFICADO:** la respuesta 401 de `/admin` proviene de la validación interna; todavía falta la protección de borde requerida.
 
 ## 12. Analítica, consentimiento y retención
 
@@ -109,17 +112,20 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 13. Variables, flags, bindings y secretos
 
-- **VERIFICADO:** comercio, analítica y WhatsApp están deshabilitados en preview y producción.
-- **VERIFICADO:** el webhook respondió `DATABASE_UNAVAILABLE` en preview y producción; el binding D1 no está disponible en ninguno de los dos deployments consultados.
-- **NO_VERIFICADO:** Mercado Pago y los valores externos de Cloudflare Access.
+- **VERIFICADO:** comercio, analítica y WhatsApp están deshabilitados en preview y producción por el comportamiento seguro ante variables ausentes.
+- **VERIFICADO:** producción y preview no tienen variables, secretos ni bindings configurados en el proyecto Pages.
+- **VERIFICADO:** `wrangler d1 list --json` devolvió cero bases para la cuenta autenticada; el webhook responde `DATABASE_UNAVAILABLE`.
+- **VERIFICADO:** Mercado Pago no tiene secretos cargados en Pages; el modo y la aplicación del proveedor siguen `no_verificado`.
+- **VERIFICADO:** Zero Trust y Cloudflare Access están ausentes.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
 
 ## 14. CI, artefactos y deployment
 
-- **VERIFICADO:** run CI `30937716940`, job Verify `92087942820`, conclusión `success`, sobre `b0386c12e353058cba317c6ce6b169ecac9bd609`; todos los pasos concluyeron `success`.
-- **VERIFICADO:** artefacto `8903843189`, `shekinah-dist-b0386c12e353058cba317c6ce6b169ecac9bd609`, 52.356.962 bytes, digest `sha256:2133c0a53441e962bd795a88323620f0eef9e1fd6ab6ce18712c411d48f040cb`, expira el 2026-08-11.
-- **VERIFICADO:** check Cloudflare Pages `92088244210` `success`, deployment `d43c5e35-da87-413f-ae61-dab150b017c9` y preview `https://d43c5e35.shekinah-7dl.pages.dev`; el check declara el commit `b0386c1`.
+- **VERIFICADO:** run CI `30938185079`, job Verify `92089522383`, conclusión `success`, sobre `884c9de407c079fcf0a834b50008286c7633ff02`; todos los pasos concluyeron `success`.
+- **VERIFICADO:** artefacto `8904022804`, `shekinah-dist-884c9de407c079fcf0a834b50008286c7633ff02`, 52.356.962 bytes, digest `sha256:e693d0cadff3e1386adab2bb5fe39dc808b73c2a6a2e0c8c7aab644f6c25bf99`, expira el 2026-08-11.
+- **VERIFICADO:** check Cloudflare Pages `92089972971` `success`, deployment de producción `https://62231f35.shekinah-7dl.pages.dev`; el panel autenticado declara el commit `884c9de`.
 - **VERIFICADO:** preview y `https://shekinah-7dl.pages.dev/` respondieron HTTP 200 y sirvieron `/assets/index-B1G0eFSM.js`; catálogo, carrito, flags, CSP, HSTS y Functions pasaron el smoke Playwright.
+- **VERIFICADO:** Pages usa `npm run build:pages`, salida `dist`, rama `main`, Build System v3 y deployments automáticos; previews aceptan todas las ramas no productivas.
 
 ## 15. Validaciones disponibles
 
@@ -132,6 +138,10 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `npm run verify`
 - `npm run build:pages`
 - `git diff --check` y `git diff --cached --check`
+- `npx --no-install wrangler pages project list --json`
+- `npx --no-install wrangler pages deployment list --project-name shekinah --environment production --json`
+- `npx --no-install wrangler d1 list --json`
+- `npx --no-install wrangler pages secret list --project-name shekinah`
 
 **VERIFICADO:** desde `npm ci` aprobaron instalación de Chromium, lint, TypeScript, 23 archivos/84 pruebas Vitest, el gate integral `npm run verify`, 10 pruebas Playwright y `npm run build:pages`. El catálogo conserva 510 productos, 16 categorías y 484 imágenes; no hay source maps. El bundle principal bajó de 501,73 kB a 492,62 kB minificado y ya no emite la advertencia.
 
@@ -143,6 +153,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 4. **VERIFICADO:** las migraciones publicadas no se editaron; la corrección de esquema es la migración aditiva `0003`.
 5. **VERIFICADO:** producción permanece cerrada; no se ejecutan cargos, migraciones remotas ni activaciones.
 6. **VERIFICADO:** una reserva idempotente debe fijar carrito y fulfillment; una reserva histórica sin huella de carrito admite un único reclamo y luego queda cerrada a cambios.
+7. **VERIFICADO:** `shekinah` identifica tanto un proyecto Pages como un Worker independiente; toda operación debe comprobar el tipo de recurso y la ruta del panel.
+8. **VERIFICADO:** rutas de autenticación, privacidad y pagos incluidas en `public/_routes.json` requieren `Fail closed` antes de la operación productiva.
 
 ## 17. Hallazgos abiertos
 
@@ -160,14 +172,21 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 | SHK-010 | ALTA | Producción | Cloudflare | binding D1 | El webhook público no dispone de DB. | D1, migraciones y bindings verificados antes de activar comercio. | Respuesta pública `DATABASE_UNAVAILABLE`. | Pagos no reconciliables si se activara comercio. | Mantener flags cerrados; configurar sólo con acceso y backup. | Smoke externo autenticado. | BLOQUEADO |
 | SHK-011 | MEDIA | Continuidad | `docs/CODEX_AUTORREFERENCIA.md` | archivo requerido | El archivo no existía en la base. | Memoria operativa versionada y reconciliable. | Archivo creado y `verify:automation` aprobado. | Continuación dependiente de contexto externo. | Documento y orden de lectura agregados. | Automatización documental. | VERIFICADO |
 | SHK-012 | ALTA | Idempotencia | `server/fulfillment.ts` | `reserveCheckoutIntent` | Una reserva huérfana fijaba sólo fulfillment y podía aceptar otro carrito. | La misma clave fija carrito y fulfillment aun antes de existir pedido. | Reproducción por flujo y pruebas secuencial/concurrente. | Reutilización semántica de clave y pedido inesperado. | Migración `0003`, backfill y reclamo condicional. | Mismo/diferente carrito, normalización y concurrencia. | VERIFICADO |
+| SHK-013 | ALTA | Pages/security | configuración externa | `Fail open/closed` | Producción y preview están en `Fail open`. | Rutas críticas de Functions deben fallar cerradas al agotar cuota. | Panel autenticado y documentación oficial de routing. | `/api/*` o `/admin*` puede caer a activos estáticos en vez de devolver error. | Cambiar ambos entornos a `Fail closed`. | Agotamiento simulado/no Function y smoke posterior. | VERIFICADO (abierto) |
+| SHK-014 | ALTA | Access | Zero Trust | aplicación administrativa | Zero Trust muestra onboarding y no existe aplicación Access. | `/admin*` y `/api/admin/*` protegidos en el borde y revalidados internamente. | Panel autenticado; `/admin` público llega a la Function y devuelve 401. | Falta la primera barrera administrativa exigida. | Definir Team Domain y crear política para administradores autorizados. | Usuario permitido, denegado y sin sesión. | BLOQUEADO |
+| SHK-015 | MEDIA | Operación | Cloudflare | identidad de recurso | Pages y un Worker independiente comparten el nombre `shekinah`. | Toda operación distingue `pages/view/shekinah` de `workers/services/view/shekinah`. | Inventario autenticado de Workers & Pages. | Variables o bindings pueden cargarse en el recurso equivocado. | Documentar identificadores no sensibles y validar tipo antes de mutar. | Relectura del panel después de cada cambio. | VERIFICADO |
+| SHK-016 | MEDIA | Preview | Pages | despliegues/Access | Previews públicos; cinco PRs Dependabot abiertos tienen build Pages fallido. | Previews restringidos y logs de fallos accesibles para diagnóstico. | Wrangler y checks GitHub; resumen sólo indica `Build failed`. | Cambios no productivos no tienen entorno demostrable. | Configurar Access y revisar logs sin modificar PRs. | Preview autorizado y build verde. | BLOQUEADO |
 
 ## 18. Riesgos y bloqueos externos
 
-- **BLOQUEADO:** D1 no está enlazada a preview ni producción; no aplicar migraciones remotas sin inventario y backup verificable.
-- **BLOQUEADO:** Access, aplicación de Mercado Pago y webhook del proveedor requieren configuración autenticada o datos autorizados.
+- **VERIFICADO:** el inventario autenticado contiene cero bases D1; no existe información productiva que respaldar todavía.
+- **BLOQUEADO:** el nombre `shekinah-commerce` está documentado para producción, pero no existe un nombre autorizado para D1 preview; no inventarlo ni compartir una base entre entornos.
+- **BLOQUEADO:** Access requiere crear Zero Trust y obtener Team Domain/AUD reales; la aplicación de Mercado Pago y el webhook requieren credenciales autorizadas.
 - **BLOQUEADO:** no se realizará ningún pago, devolución ni activación productiva sin confirmación inmediata.
 - **INFERENCIA:** una intención huérfana puede persistir si una operación falla tras reservarla; sólo contiene huellas, fija carrito y fulfillment y la misma solicitud puede reintentarse. No existe una política de limpieza, pero tampoco almacena PII en claro.
-- **BLOQUEADO:** Wrangler no está instalado globalmente ni en `node_modules`; la compatibilidad D1 se ejecuta con el adaptador SQLite del repositorio, no contra D1 local de Wrangler.
+- **VERIFICADO:** Wrangler `4.118.0` está disponible mediante `npx --no-install` y tiene una sesión OAuth; no está instalado globalmente ni en `node_modules`.
+- **VERIFICADO:** producción y preview están en `Fail open`; el hallazgo permanece abierto hasta cambiar ambos a `Fail closed`.
+- **VERIFICADO:** los previews son públicos; cinco PRs Dependabot abiertos conservan checks Pages fallidos cuyo resumen sólo indica `Build failed`.
 
 ## 19. Archivos y símbolos críticos
 
@@ -183,15 +202,17 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`: migraciones publicadas preservadas sin cambios.
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: migración aditiva nueva para cerrar la reserva de carrito.
 - `scripts/verify-shipping-weights.mjs`: clasificación auditable de pesos.
+- Cloudflare Pages correcto: panel bajo `pages/view/shekinah`, dominio `shekinah-7dl.pages.dev`.
+- Worker distinto: panel bajo `workers/services/view/shekinah`; no configurarlo para comercio.
 
 ## 20. Último diff aplicado
 
-- **VERIFICADO:** el commit `b0386c12e353058cba317c6ce6b169ecac9bd609` contiene las 30 rutas revisadas: lógica de fulfillment/idempotencia/Mercado Pago, migración `0003`, pruebas, gates, documentación operativa, autorreferencia y carga diferida de `/admin`.
-- Base del diff: `ce1c22903ad31c6ae87da4f747594b1d5184693b`.
+- **VERIFICADO:** `884c9de407c079fcf0a834b50008286c7633ff02` documenta la evidencia final del endurecimiento funcional iniciado en `b0386c12e353058cba317c6ce6b169ecac9bd609`.
+- **REVISADO_POR_CÓDIGO:** la continuación del 2026-08-04 actualiza únicamente documentación operativa con inventario autenticado de Cloudflare; no modifica código, migraciones ni configuración externa.
 
 ## 21. Próximo paso exacto
 
-Con acceso autenticado a Cloudflare, inventariar D1 preview/producción y obtener un backup verificable antes de vincular bases o aplicar `0001`–`0003`; mantener todos los flags cerrados.
+Cambiar producción y preview de Pages a `Fail closed`; después obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`. Mantener todos los flags cerrados.
 
 ## 22. Historial de sesiones
 
@@ -209,3 +230,18 @@ Con acceso autenticado a Cloudflare, inventariar D1 preview/producción y obtene
 - Deployment: check `92088244210` success, deployment `d43c5e35-da87-413f-ae61-dab150b017c9`; preview y producción pasaron smoke.
 - Bloqueos: D1 ausente, Wrangler/credenciales externas no disponibles, Mercado Pago y Access no verificados; producción no activada.
 - Próximo paso: inventario y backup D1 autenticados antes de cualquier configuración externa.
+
+### Sesión 2026-08-04T19:02:01Z
+
+- SHA inicial: `884c9de407c079fcf0a834b50008286c7633ff02`.
+- SHA final: pendiente de commit documental.
+- Objetivo: continuar el inventario y la configuración externa segura.
+- Hallazgos: proyecto Pages `shekinah`, Worker homónimo independiente, cero D1, cero variables/secretos/bindings, Zero Trust ausente, previews públicos y `Fail open` en ambos entornos.
+- Archivos modificados: documentación operativa y autorreferencia.
+- Pruebas: inventario Wrangler, GitHub y panel Cloudflare autenticado; `npm ci`, Chromium, lint, typecheck, 23/23 archivos y 84/84 Vitest, pesos, `npm run verify`, 10/10 Playwright y `npm run build:pages` aprobados; 0 source maps.
+- Commit: pendiente.
+- Push: pendiente.
+- CI: pendiente.
+- Deployment: producción actual `884c9de` verificada antes del nuevo diff.
+- Bloqueos: nombre exacto de D1 preview y Team Domain/AUD de Zero Trust; Mercado Pago sin credenciales.
+- Próximo paso: `Fail closed`, luego D1 preview/producción y Access sin activar comercio.

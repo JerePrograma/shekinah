@@ -11,6 +11,8 @@ ANALYTICS_ENABLED=false
 
 No cambiar esos flags hasta completar el checklist de sandbox, webhooks, D1, Access, privacidad y aprobación comercial.
 
+El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
+
 ## 1. Validar el commit exacto
 
 Desde un checkout limpio de `main`:
@@ -32,7 +34,15 @@ El último comando no debe devolver archivos. Registrar el SHA con `git rev-pars
 
 ## 2. Crear y vincular D1
 
-Crear una base separada para Shekinah:
+El inventario autenticado del 2026-08-04 encontró cero bases D1. Se requieren dos bases separadas. El nombre de producción está documentado; el de preview debe obtenerse de una decisión explícita y no puede inventarse.
+
+Crear primero preview, una vez autorizado su nombre exacto:
+
+```powershell
+npx wrangler d1 create NOMBRE_D1_PREVIEW_AUTORIZADO
+```
+
+Crear luego producción:
 
 ```powershell
 npx wrangler d1 create shekinah-commerce
@@ -41,7 +51,7 @@ npx wrangler d1 info shekinah-commerce
 
 Copiar `wrangler.example.jsonc` a `wrangler.jsonc` únicamente cuando se conozcan los valores reales. Reemplazar `database_id`, dominio primario, Team Domain y AUD; no dejar marcadores en una configuración activa.
 
-El binding debe llamarse exactamente `DB`. Para Pages local, `preview_database_id` debe permanecer configurado.
+El binding debe llamarse exactamente `DB`. Producción debe referir `shekinah-commerce`; preview debe usar exclusivamente la base no productiva autorizada. No vincular ambos entornos a la misma base.
 
 Validar la migración local:
 
@@ -77,6 +87,8 @@ CLOUDFLARE_ACCESS_AUD=AUD_REAL_DE_LA_APLICACION
 
 `VITE_WHATSAPP_NUMBER` se configura como variable de build sólo después de que el titular autorice el número internacional. No usar espacios, `+`, enlaces ni un número obtenido de artefactos históricos.
 
+El inventario autenticado del 2026-08-04 encontró producción y preview sin variables. El código mantiene los flags cerrados ante su ausencia, pero antes de pruebas externas deben cargarse explícitamente con valor `false`.
+
 ## 4. Configurar secretos
 
 Crear valores aleatorios independientes, de al menos 32 bytes, para `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET`. No pegarlos en archivos, documentación, argumentos de línea de comandos ni logs.
@@ -92,6 +104,8 @@ npx wrangler pages secret list --project-name shekinah
 ```
 
 La lista debe mostrar nombres, nunca valores.
+
+El inventario autenticado del 2026-08-04 no encontró secretos en producción ni en preview.
 
 ## 5. Configurar Mercado Pago
 
@@ -112,6 +126,8 @@ Antes de pasar a producción, cambiar el access token y `MERCADO_PAGO_CHECKOUT_M
 
 ## 6. Configurar Cloudflare Access
 
+Zero Trust no estaba configurado en el inventario autenticado del 2026-08-04. Definir primero un Team Domain autorizado; no inventarlo.
+
 Crear políticas de Access para los dos recursos:
 
 ```text
@@ -130,9 +146,13 @@ Pruebas obligatorias:
 - usuario autorizado: carga del resumen y creación de una fila en `admin_audit`;
 - AUD incorrecto o token expirado: rechazo desde la Function.
 
+En Pages > Settings > Runtime, cambiar producción y preview de `Fail open` a `Fail closed`. `public/_routes.json` incluye `/api/*`, `/admin` y `/admin/*`; no deben caer a activos estáticos si se agota la cuota de Pages Functions. Referencia oficial: <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
+
 ## 7. Validar preview
 
 Con D1 de preview y sandbox:
+
+- restringir los previews públicos mediante Cloudflare Access antes de introducir datos de prueba;
 
 - catálogo: exactamente 510 productos y 16 categorías, salvo cambio comercial autorizado en el repositorio;
 - `/enfoque`: 404 de aplicación;

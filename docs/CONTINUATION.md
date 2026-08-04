@@ -52,20 +52,28 @@ La activación requiere evidencia separada de:
 - retención analítica autorizada;
 - pruebas de humo aprobadas.
 
+## Identidad externa verificada
+
+- Proyecto Pages: `shekinah`.
+- Dominio Pages: `shekinah-7dl.pages.dev`.
+- Repositorio conectado: `JerePrograma/shekinah`.
+- Rama de producción: `main`.
+- Existe un Worker independiente también llamado `shekinah`; no usar sus settings para configurar Pages.
+
+El inventario autenticado del 2026-08-04 encontró cero bases D1, cero variables/secretos/bindings en Pages y Zero Trust sin configurar. Producción y preview están en `Fail open`; los previews son públicos.
+
 ## Próximos pasos
 
-1. validar localmente la integración;
-2. revisar el diff;
-3. crear commit atómico;
-4. hacer push a `origin/main`;
-5. verificar GitHub Actions para el SHA exacto;
-6. verificar el deployment de Cloudflare Pages;
-7. configurar infraestructura y secretos;
-8. aplicar migraciones D1;
-9. validar Mercado Pago y webhook;
-10. configurar Access;
-11. activar únicamente capacidades autorizadas;
-12. ejecutar pruebas de humo.
+1. cambiar producción y preview de Pages a `Fail closed`;
+2. obtener el nombre exacto autorizado para D1 preview; `shekinah-commerce` ya está documentado únicamente para producción;
+3. crear bases D1 separadas, migrar primero preview y comprobar el esquema;
+4. vincular ambos entornos mediante el binding exacto `DB`;
+5. definir Team Domain y crear la organización/aplicación de Cloudflare Access;
+6. proteger `/admin*` y `/api/admin/*` y comprobar permitido/denegado;
+7. configurar variables no secretas con ambos flags en `false` y cargar secretos mediante prompts protegidos;
+8. validar Mercado Pago sandbox y webhook;
+9. restringir previews con Access;
+10. activar únicamente capacidades autorizadas y ejecutar pruebas de humo.
 
 ## Prohibiciones
 

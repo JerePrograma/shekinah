@@ -2,6 +2,10 @@
 
 ## Configuración de Cloudflare Pages
 
+Nombre exacto del proyecto Pages: `shekinah`
+
+Dominio asignado: `shekinah-7dl.pages.dev`
+
 Rama de producción: `main`
 
 Comando de build: `npm run build:pages`
@@ -15,6 +19,20 @@ Directorio raíz: raíz del repositorio.
 Pages Functions: `functions/`.
 
 Configuración de referencia: `wrangler.example.jsonc`.
+
+Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
+
+## Estado externo verificado el 2026-08-04
+
+- build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
+- variables y secretos de producción/preview: ausentes;
+- bindings de producción/preview: ausentes;
+- bases D1 en la cuenta: cero;
+- Zero Trust y Access: no configurados;
+- previews: públicos;
+- runtime de producción y preview: `Fail open`.
+
+Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json` y contienen autenticación, privacidad y pagos, configurar ambos entornos como `Fail closed` antes de considerarlos operativos. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
 
 ## Estados separados
 
@@ -50,7 +68,8 @@ Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002
 
 Antes de aplicarla:
 
-- confirmar base y entorno;
+- confirmar dos bases separadas y sus entornos;
+- usar `shekinah-commerce` sólo para producción y no inventar el nombre de preview;
 - conservar un plan de reversión;
 - revisar el SQL real;
 - ejecutar primero en un entorno no productivo cuando exista;
@@ -68,6 +87,8 @@ Antes de aplicarla:
 
 Las rutas `/admin*` y `/api/admin/*` deben quedar protegidas antes de considerarse operativas.
 
+La validación JWT interna devuelve 401 sin Access, pero no sustituye la política de borde requerida. El Team Domain y el AUD deben provenir de la aplicación creada, nunca de un valor inferido.
+
 ## Activación
 
 Comercio, analítica y WhatsApp permanecen deshabilitados hasta que cada requisito esté configurado y autorizado.
@@ -84,4 +105,4 @@ Después del despliegue:
 - comprobar webhook con eventos controlados;
 - comprobar que ningún secreto aparezca en respuestas o bundles.
 
-Este documento no afirma confirmación efectiva del despliegue, verificación efectiva de producción ni una conexión operativa de Cloudflare.
+El deployment de Pages y su configuración vacía fueron verificados el 2026-08-04. D1, secretos, bindings, Access y activación productiva siguen ausentes.

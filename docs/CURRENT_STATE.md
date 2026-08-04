@@ -1,10 +1,10 @@
 # Estado actual
 
-Fecha de revisión: 2026-07-31.
+Fecha de revisión: 2026-08-04.
 
 Base de integración full-stack:
 
-`3b47b691e4b6d799a127678a892d44b0e475ab6d`
+`884c9de407c079fcf0a834b50008286c7633ff02`
 
 Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
 
@@ -41,6 +41,21 @@ Hasta completar bindings, secretos, D1, Mercado Pago, Access, dominio, retenció
 - WhatsApp deshabilitado;
 - administración no considerada productiva;
 - webhook no considerado productivo.
+
+## Estado externo verificado
+
+Consulta autenticada realizada el 2026-08-04, sin registrar IDs de cuenta, IDs de recursos, correos ni secretos:
+
+- el proyecto de Cloudflare Pages se llama exactamente `shekinah` y publica `shekinah-7dl.pages.dev`;
+- la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
+- producción sirve el commit `884c9de407c079fcf0a834b50008286c7633ff02`;
+- producción y preview no tienen variables, secretos ni bindings configurados;
+- la cuenta no contiene bases D1;
+- Zero Trust muestra el onboarding inicial: no existe todavía una organización ni una aplicación Access;
+- preview es público y producción/preview usan `Fail open`;
+- existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.
+
+Los flags permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes, no porque sus valores `false` estén cargados explícitamente en Pages.
 
 ## Arquitectura
 
