@@ -27,12 +27,14 @@ El repositorio contiene una evolución full-stack basada en:
 Consultar primero:
 
 1. `AGENTS.md`;
-2. `docs/CURRENT_STATE.md`;
-3. `docs/ARCHITECTURE.md`;
-4. `docs/FULL_STACK_COMMERCE.md`;
-5. `docs/COMMERCE_OPERATIONS.md`;
-6. `docs/COMMERCE_DEPLOYMENT.md`;
-7. `docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md`.
+2. `docs/CODEX_AUTORREFERENCIA.md`;
+3. `docs/CURRENT_STATE.md`;
+4. `docs/ARCHITECTURE.md`;
+5. `docs/FULL_STACK_COMMERCE.md`;
+6. `docs/FULFILLMENT_AND_RETENTION.md`;
+7. `docs/COMMERCE_OPERATIONS.md`;
+8. `docs/COMMERCE_DEPLOYMENT.md`;
+9. `docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md`.
 
 ## Regla de activación
 

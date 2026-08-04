@@ -18,9 +18,11 @@ const requiredDocuments = new Map([
   ['docs/DEPLOYMENT.md', ['# Despliegue', 'npm run build:pages', 'dist', 'main']],
   ['docs/THIRD_PARTY_NOTICES.md', ['# Avisos de terceros']],
   ['docs/FULL_STACK_COMMERCE.md', ['# Comercio full-stack', 'Cloudflare Pages Functions']],
+  ['docs/FULFILLMENT_AND_RETENTION.md', ['# Fulfillment, envío y retención', '0003_checkout_intent_cart_fingerprint.sql']],
   ['docs/COMMERCE_DEPLOYMENT.md', ['# Despliegue del comercio', 'COMMERCE_ENABLED']],
   ['docs/COMMERCE_OPERATIONS.md', ['# Operación del comercio']],
   ['docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md', ['# Incidentes y rollback']],
+  ['docs/CODEX_AUTORREFERENCIA.md', ['# Shekinah — Autorreferencia operativa de Codex', '## 22. Historial de sesiones']],
 ]);
 
 function fail(message) { throw new Error(message); }
@@ -44,12 +46,13 @@ if (packageJson.engines?.node !== '>=24.0.0' || packageJson.engines?.npm !== '>=
   fail('Los engines no coinciden con la base técnica.');
 }
 const expectedScripts = {
-  'build:pages': 'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation',
+  'build:pages': 'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run verify:shipping-weights && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation',
   'verify:catalog': 'node scripts/verify-catalog.mjs',
   'generate:commerce-catalog': 'node scripts/generate-commerce-catalog.mjs',
   'verify:commerce-catalog': 'node scripts/verify-commerce-catalog.mjs',
+  'verify:shipping-weights': 'node scripts/verify-shipping-weights.mjs',
   'verify:automation': 'node scripts/verify-automation.mjs',
-  verify: 'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e',
+  verify: 'npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run verify:shipping-weights && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e',
 };
 for (const [name, value] of Object.entries(expectedScripts)) {
   if (packageJson.scripts?.[name] !== value) fail(`El script ${name} no coincide con el contrato actual.`);

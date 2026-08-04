@@ -38,6 +38,8 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 - `functions/admin.ts` y `functions/admin/[[path]].ts`: superficie administrativa;
 - `server/`: dominio, persistencia, Mercado Pago, validación, analítica y acceso;
 - `migrations/0001_commerce.sql`: esquema inicial de D1;
+- `migrations/0002_fulfillment_and_retention.sql`: intención de entrega, fulfillment y mantenimiento de retención;
+- `migrations/0003_checkout_intent_cart_fingerprint.sql`: huella autoritativa del carrito en intenciones, con backfill desde pedidos existentes;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 ## Pagos

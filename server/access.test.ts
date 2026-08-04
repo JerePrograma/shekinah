@@ -38,15 +38,35 @@ describe('Cloudflare Access', () => {
       nbf: now - 10,
       sub: 'actor-1',
     });
+    const request = (assertion: string) => new Request('https://example.test/api/admin/summary', {
+      headers: { 'cf-access-jwt-assertion': assertion },
+    });
+    const env = {
+      CLOUDFLARE_ACCESS_TEAM_DOMAIN: teamDomain,
+      CLOUDFLARE_ACCESS_AUD: audience,
+    };
+    await expect(verifyCloudflareAccess(request(token), env))
+      .resolves.toEqual({ sub: 'actor-1', email: 'admin@example.test' });
+    await expect(verifyCloudflareAccess(request(token), { ...env, CLOUDFLARE_ACCESS_AUD: 'otro-audience' }))
+      .rejects.toMatchObject({ code: 'ACCESS_TOKEN_REJECTED' });
+
+    for (const claims of [
+      { aud: audience, exp: now - 1, iss: `https://${teamDomain}`, nbf: now - 10 },
+      { aud: audience, exp: now + 300, iss: `https://${teamDomain}`, nbf: now + 60 },
+      { aud: audience, exp: now + 300, iss: 'https://otro.cloudflareaccess.com', nbf: now - 10 },
+    ]) {
+      const invalidToken = await signToken(keyPair.privateKey, {
+        ...claims, email: 'admin@example.test', sub: 'actor-1',
+      });
+      await expect(verifyCloudflareAccess(request(invalidToken), env))
+        .rejects.toMatchObject({ code: 'ACCESS_TOKEN_REJECTED' });
+    }
+
+    const [header, payload] = token.split('.');
     await expect(verifyCloudflareAccess(
-      new Request('https://example.test/api/admin/summary', {
-        headers: { 'cf-access-jwt-assertion': token },
-      }),
-      {
-        CLOUDFLARE_ACCESS_TEAM_DOMAIN: teamDomain,
-        CLOUDFLARE_ACCESS_AUD: audience,
-      },
-    )).resolves.toEqual({ sub: 'actor-1', email: 'admin@example.test' });
+      request(`${header}.${payload}.${encodeBase64Url(new Uint8Array(256))}`),
+      env,
+    )).rejects.toMatchObject({ code: 'ACCESS_TOKEN_INVALID' });
   });
 
   it('rechaza algoritmos no autorizados sin consultar JWKS', async () => {

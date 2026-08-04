@@ -63,4 +63,41 @@ describe('catálogo canónico de Functions', () => {
     expect(cart.totalWeightGrams).toBe(unitWeight);
     expect(cart.shippingMinor).toBe(unitWeight <= 1_000 ? 1_900_000 : 2_500_000);
   });
+
+  it('bloquea el conflicto de peso para Correo pero conserva el retiro', () => {
+    const product = getServerCatalog().find(({ id }) => id === 'naranja-en-rodajas-deshidratada-x-250-gr');
+    expect(product).toBeDefined();
+    if (product === undefined) return;
+    expect(deriveUnitWeightGrams(product)).toBeNull();
+    expect(recalculateCart({
+      idempotencyKey: crypto.randomUUID(),
+      fulfillment,
+      items: [{ productId: product.id, quantity: 1 }],
+    })).toMatchObject({ shippingMinor: 0, totalWeightGrams: null });
+    expect(() => recalculateCart({
+      idempotencyKey: crypto.randomUUID(),
+      fulfillment: { ...fulfillment, method: 'correo_argentino' },
+      items: [{ productId: product.id, quantity: 1 }],
+    })).toThrowError(expect.objectContaining({ code: 'MANUAL_SHIPPING_WEIGHT_REQUIRED' }));
+  });
+
+  it('rechaza duplicados, inexistentes y cantidades fuera del contrato', () => {
+    const product = deterministicProduct();
+    expect(recalculateCart({
+      idempotencyKey: crypto.randomUUID(), fulfillment,
+      items: [{ productId: product.id, quantity: 99 }],
+    })).toMatchObject({ itemCount: 99, productsTotalMinor: product.unitPriceMinor * 99 });
+    expect(() => recalculateCart({
+      idempotencyKey: crypto.randomUUID(), fulfillment,
+      items: [{ productId: product.id, quantity: 1 }, { productId: product.id, quantity: 1 }],
+    })).toThrowError(expect.objectContaining({ code: 'DUPLICATE_PRODUCT' }));
+    expect(() => recalculateCart({
+      idempotencyKey: crypto.randomUUID(), fulfillment,
+      items: [{ productId: 'producto-inexistente', quantity: 1 }],
+    })).toThrowError(expect.objectContaining({ code: 'PRODUCT_NOT_FOUND' }));
+    expect(() => recalculateCart({
+      idempotencyKey: crypto.randomUUID(), fulfillment,
+      items: [{ productId: product.id, quantity: 100 }],
+    })).toThrowError();
+  });
 });

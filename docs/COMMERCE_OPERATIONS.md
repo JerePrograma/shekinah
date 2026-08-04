@@ -79,13 +79,9 @@ Las celdas CSV que comienzan con caracteres interpretables como fórmula se pref
 
 ## Retención
 
-El código no elimina pedidos, pagos, webhooks o auditorías automáticamente. Las revocaciones analíticas conservan sólo el HMAC de la sesión para impedir su recreación. El código no impone aún una retención temporal para eventos ni para esas revocaciones. Antes de habilitar `ANALYTICS_ENABLED=true`, definir y documentar:
+El código no elimina pedidos, pagos, webhooks ni auditorías automáticamente. Para analítica, `purgeAnalyticsIfDue` reclama como máximo una ejecución por mes y elimina eventos, sesiones huérfanas y revocaciones con fecha estrictamente anterior al corte. Si la purga falla, libera el reclamo para permitir un reintento.
 
-- plazo de conservación;
-- responsable de autorizar eliminaciones;
-- frecuencia de purga;
-- respaldo previo cuando corresponda;
-- evidencia de ejecución.
+La política autorizada es de 730 días. Antes de habilitar `ANALYTICS_ENABLED=true`, configurar `ANALYTICS_RETENTION_DAYS=730`, comprobar el binding D1 y registrar evidencia de la primera ejecución controlada. Las revocaciones conservan sólo el HMAC de la sesión hasta alcanzar ese mismo corte.
 
 No ejecutar borrados masivos sin backup y plan de reversión.
 

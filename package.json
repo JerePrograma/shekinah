@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run generate:commerce-catalog && vite --host 127.0.0.1 --port 4173",
     "build": "npm run generate:commerce-catalog && vite build",
-    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
+    "build:pages": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run verify:shipping-weights && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "lint": "npm run generate:commerce-catalog && eslint .",
     "typecheck": "npm run generate:commerce-catalog && tsc --noEmit",
@@ -25,7 +25,7 @@
     "verify:catalog": "node scripts/verify-catalog.mjs",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:automation": "node scripts/verify-automation.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run verify:catalog && npm run verify:commerce-catalog && npm run verify:shipping-weights && npm run build && npm run verify:assets && npm run verify:security && npm run verify:automation && npm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",

@@ -138,7 +138,11 @@ export async function recoverMercadoPagoPreference({
     throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia no corresponde al pedido.');
   }
   assertPreferenceMatchesCart(detail, cart);
-  return parsePreferencePayload(detail, mode, 'PREFERENCE_RECOVERY_INVALID_RESPONSE');
+  const recovered = parsePreferencePayload(detail, mode, 'PREFERENCE_RECOVERY_INVALID_RESPONSE');
+  if (recovered.id !== preferenceId) {
+    throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia recuperada no coincide con la solicitada.');
+  }
+  return recovered;
 }
 
 export async function getMercadoPagoPayment(
@@ -167,6 +171,10 @@ export async function getMercadoPagoPayment(
   ) {
     throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un pago incompleto.');
   }
+  const returnedId = String(payload.id);
+  if (!/^\d{1,30}$/u.test(returnedId) || returnedId !== paymentId) {
+    throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un pago diferente al solicitado.');
+  }
   const scaled = payload.transaction_amount * 100;
   const amountMinor = Math.round(scaled);
   if (
@@ -178,7 +186,7 @@ export async function getMercadoPagoPayment(
     throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un importe inválido.');
   }
   return Object.freeze({
-    id: String(payload.id),
+    id: returnedId,
     externalReference: payload.external_reference,
     status: payload.status,
     statusDetail: typeof payload.status_detail === 'string' ? payload.status_detail : null,
@@ -327,6 +335,10 @@ function parsePreferencePayload(
   if (!isRecord(payload) || (typeof payload.id !== 'string' && typeof payload.id !== 'number')) {
     throw new HttpError(502, errorCode, 'Mercado Pago devolvió una preferencia incompleta.');
   }
+  const preferenceId = String(payload.id);
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(preferenceId)) {
+    throw new HttpError(502, errorCode, 'Mercado Pago devolvió un identificador de preferencia inválido.');
+  }
   const candidate = mode === 'sandbox' ? payload.sandbox_init_point : payload.init_point;
   if (typeof candidate !== 'string') {
     throw new HttpError(502, errorCode, 'Mercado Pago no devolvió una URL de checkout.');
@@ -340,7 +352,7 @@ function parsePreferencePayload(
   if (checkoutUrl.protocol !== 'https:' || !isMercadoPagoHost(checkoutUrl.hostname)) {
     throw new HttpError(502, errorCode, 'Mercado Pago devolvió una URL no autorizada.');
   }
-  return Object.freeze({ id: String(payload.id), checkoutUrl: checkoutUrl.toString() });
+  return Object.freeze({ id: preferenceId, checkoutUrl: checkoutUrl.toString() });
 }
 
 function withOrderToken(siteUrl: URL, path: string, token: string): string {

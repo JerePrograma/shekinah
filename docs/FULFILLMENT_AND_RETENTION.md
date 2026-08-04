@@ -8,9 +8,9 @@ Modalidades:
 
 - `coordinated_pickup`: costo automático `ARS 0`;
 - `correo_argentino`: hasta 1 kg inclusive `ARS 19.000`; más de 1 kg y hasta 5 kg inclusive `ARS 25.000`;
-- peso desconocido o superior a 5 kg: cotización manual por WhatsApp y checkout online bloqueado.
+- para Correo, peso desconocido o superior a 5 kg: cotización manual por WhatsApp y checkout online bloqueado; el retiro coordinado continúa disponible por ARS 0.
 
-La presentación explícita del catálogo tiene prioridad. El nombre se usa como respaldo únicamente cuando no existe presentación y contiene una sola expresión de peso inequívoca. No existe peso por defecto.
+Una presentación explícita y válida se usa sólo cuando no contradice un peso único derivable del nombre. Si ambos valores difieren, el peso se clasifica como desconocido y Correo queda en cotización manual. El nombre se usa como respaldo únicamente cuando no existe presentación y contiene una sola expresión inequívoca. No existe peso por defecto.
 
 `orders.total_minor` conserva el total autoritativo de productos más envío. Mercado Pago recibe el envío como un ítem separado y el webhook continúa comparando moneda e importe completo contra el pedido.
 
@@ -18,9 +18,11 @@ La presentación explícita del catálogo tiene prioridad. El nombre se usa como
 
 `migrations/0002_fulfillment_and_retention.sql` añade:
 
-- `checkout_intents`, para detectar la reutilización de una clave con datos de entrega distintos;
+- `checkout_intents`, para reservar la intención idempotente y su huella de fulfillment;
 - `order_fulfillment`, como relación uno a uno aditiva y compatible con pedidos anteriores;
 - `analytics_maintenance`, para reclamar una única purga por mes.
+
+`migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella autoritativa del carrito a `checkout_intents`, backfillea desde pedidos existentes y evita reutilizar una reserva huérfana con otro carrito.
 
 `migrations/0001_commerce.sql` permanece intacta.
 

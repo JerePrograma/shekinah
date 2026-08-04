@@ -150,4 +150,40 @@ describe('pedidos e idempotencia D1', () => {
       database.close();
     }
   });
+
+  it('rechaza monto, moneda, referencia o identidad de pago incompatibles', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const first = await prepareOrder({
+        cart: cart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      const payment = {
+        id: '2001', status: 'approved', statusDetail: 'accredited',
+        amountMinor: first.order.total_minor, currency: 'ARS', externalReference: first.order.id,
+        approvedAt: '2026-08-04T10:00:00.000Z', updatedAt: '2026-08-04T10:00:00.000Z',
+      } as const;
+      for (const incompatible of [
+        { ...payment, amountMinor: payment.amountMinor + 1 },
+        { ...payment, currency: 'USD' },
+        { ...payment, externalReference: 'otro-pedido' },
+      ]) {
+        await expect(updateOrderFromPayment(database, first.order, incompatible, 'approved', crypto.randomUUID()))
+          .rejects.toMatchObject({ code: 'PAYMENT_ORDER_MISMATCH' });
+      }
+
+      await updateOrderFromPayment(database, first.order, payment, 'approved', 'first-payment-event');
+      const second = await prepareOrder({
+        cart: cart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      await expect(updateOrderFromPayment(
+        database,
+        second.order,
+        { ...payment, externalReference: second.order.id },
+        'approved',
+        'conflicting-payment-event',
+      )).rejects.toMatchObject({ code: 'PAYMENT_IDENTITY_CONFLICT' });
+    } finally {
+      database.close();
+    }
+  });
 });

@@ -43,11 +43,11 @@ La migración `migrations/0001_commerce.sql` crea:
 - `analytics_revocations`, `analytics_sessions` y `analytics_events`: bloqueo de sesiones retiradas, sesión hasheada y eventos consentidos;
 - `admin_audit`: actor de Access, acción, resultado y metadatos limitados.
 
-No se almacenan números de tarjeta, documentos, direcciones, teléfonos, correos de compradores ni el identificador de sesión analítica en claro.
+La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `checkout_intents`, `order_fulfillment` y `analytics_maintenance`; `migrations/0003_checkout_intent_cart_fingerprint.sql` vincula cada intención con la huella autoritativa del carrito y backfillea pedidos existentes. El fulfillment conserva en D1 los datos de entrega necesarios para operar el pedido; no se guardan en `localStorage`, analítica ni logs. No se almacenan números de tarjeta, documentos, correos de compradores ni el identificador de sesión analítica en claro.
 
 ## Flujo de pago
 
-1. El navegador genera una UUID de idempotencia, la reutiliza durante 30 minutos para el mismo carrito y la sincroniza mediante `localStorage`; luego envía únicamente productos y cantidades.
+1. El navegador genera una UUID de idempotencia, la reutiliza durante 30 minutos para el mismo carrito y fulfillment normalizado y la sincroniza mediante `localStorage` sin guardar PII; luego envía productos, cantidades y datos de entrega.
 2. La Function valida origen, flags, bindings y secretos.
 3. El servidor recalcula el carrito desde `catalog/internal/catalog-index.json`.
 4. D1 registra cabecera e ítems en un único `batch` y reclama atómicamente un solo intento de creación de preferencia.
@@ -96,8 +96,8 @@ No se envían IP, user agent, email, nombre ni identificadores de terceros desde
 ## Límites deliberados
 
 - No se inventa un número de WhatsApp.
-- No se recopilan datos de envío o facturación del comprador.
+- Se recopilan sólo los datos de entrega requeridos para fulfillment; no se solicitan datos de tarjeta ni facturación.
 - No hay edición administrativa de pedidos ni reembolsos desde el backoffice.
 - El retiro de consentimiento elimina los eventos de la sesión y conserva únicamente su HMAC en una lista de revocación para impedir que solicitudes en vuelo la vuelvan a crear.
-- No existe borrado automático por retención: la política y el plazo deben aprobarse antes de habilitar analítica productiva.
+- La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
 - La protección de borde, rate limiting, alertas y políticas de Access se configuran fuera del repositorio.

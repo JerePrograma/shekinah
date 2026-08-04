@@ -26,7 +26,7 @@ export type FulfillmentValidation = Readonly<{
 export type ShippingLine = Readonly<{ name: string; presentation?: string; quantity: number }>;
 export type ShippingTier = 'coordinated_pickup' | 'correo_up_to_1kg' | 'correo_up_to_5kg' | 'manual_unknown_weight' | 'manual_over_5kg';
 export type ShippingQuote =
-  | Readonly<{ kind: 'online'; tier: Exclude<ShippingTier, 'manual_unknown_weight' | 'manual_over_5kg'>; shippingMinor: number; totalWeightGrams: number }>
+  | Readonly<{ kind: 'online'; tier: Exclude<ShippingTier, 'manual_unknown_weight' | 'manual_over_5kg'>; shippingMinor: number; totalWeightGrams: number | null }>
   | Readonly<{ kind: 'manual'; tier: 'manual_unknown_weight' | 'manual_over_5kg'; shippingMinor: 0; totalWeightGrams: number | null }>;
 
 export const CORREO_UP_TO_1KG_MINOR = 1_900_000;
@@ -59,25 +59,38 @@ export function fulfillmentCanonicalValue(value: CheckoutFulfillment): string {
 }
 
 export function deriveUnitWeightGrams(product: Readonly<{ name: string; presentation?: string }>): number | null {
-  return product.presentation === undefined ? parseNameWeight(product.name) : parseExactWeight(product.presentation);
+  const nameWeight = parseNameWeight(product.name);
+  if (product.presentation === undefined) return nameWeight;
+  const presentationWeight = parseExactWeight(product.presentation);
+  return presentationWeight !== null && nameWeight !== null && presentationWeight !== nameWeight
+    ? null
+    : presentationWeight;
 }
 
 export function calculateShippingQuote(lines: readonly ShippingLine[], method: DeliveryMethod): ShippingQuote {
-  let total = 0;
-  for (const line of lines) {
-    if (!Number.isSafeInteger(line.quantity) || line.quantity < 1) return manual('manual_unknown_weight', null);
-    const unit = deriveUnitWeightGrams(line);
-    if (unit === null) return manual('manual_unknown_weight', null);
-    const lineWeight = unit * line.quantity;
-    if (!Number.isSafeInteger(lineWeight) || lineWeight <= 0) return manual('manual_unknown_weight', null);
-    total += lineWeight;
-    if (!Number.isSafeInteger(total) || total <= 0) return manual('manual_unknown_weight', null);
+  const total = calculateTotalWeight(lines);
+  if (method === 'coordinated_pickup') {
+    return Object.freeze({ kind: 'online', tier: 'coordinated_pickup', shippingMinor: 0, totalWeightGrams: total });
   }
+  if (total === null) return manual('manual_unknown_weight', null);
   if (total > 5_000) return manual('manual_over_5kg', total);
-  if (method === 'coordinated_pickup') return Object.freeze({ kind: 'online', tier: 'coordinated_pickup', shippingMinor: 0, totalWeightGrams: total });
   return total <= 1_000
     ? Object.freeze({ kind: 'online', tier: 'correo_up_to_1kg', shippingMinor: CORREO_UP_TO_1KG_MINOR, totalWeightGrams: total })
     : Object.freeze({ kind: 'online', tier: 'correo_up_to_5kg', shippingMinor: CORREO_UP_TO_5KG_MINOR, totalWeightGrams: total });
+}
+
+function calculateTotalWeight(lines: readonly ShippingLine[]): number | null {
+  let total = 0;
+  for (const line of lines) {
+    if (!Number.isSafeInteger(line.quantity) || line.quantity < 1) return null;
+    const unit = deriveUnitWeightGrams(line);
+    if (unit === null) return null;
+    const lineWeight = unit * line.quantity;
+    if (!Number.isSafeInteger(lineWeight) || lineWeight <= 0) return null;
+    total += lineWeight;
+    if (!Number.isSafeInteger(total) || total <= 0) return null;
+  }
+  return total > 0 ? total : null;
 }
 
 export function deliveryMethodLabel(method: DeliveryMethod): string {
@@ -151,6 +164,7 @@ function toGrams(rawAmount: string | undefined, rawUnit: string | undefined): nu
 }
 function normalizeSpace(value: string): string { return value.normalize('NFKC').trim().replace(/\s+/gu, ' '); }
 function containsControl(value: string): boolean {
+  if (/\p{Bidi_Control}/u.test(value)) return true;
   for (const character of value) {
     const codePoint = character.codePointAt(0);
     if (

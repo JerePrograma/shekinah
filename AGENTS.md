@@ -10,19 +10,21 @@ El repositorio, su historial, sus pruebas y su configuración son la única fuen
 
 Antes de editar:
 
-1. `README.md`;
-2. `docs/CURRENT_STATE.md`;
-3. `docs/CONTINUATION.md`;
-4. `docs/ARCHITECTURE.md`;
-5. `docs/FULL_STACK_COMMERCE.md`;
-6. `docs/COMMERCE_OPERATIONS.md`;
-7. `docs/COMMERCE_DEPLOYMENT.md`;
-8. `docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md`;
-9. `docs/PROVENANCE.md`;
-10. `docs/AUTHORIZED_ASSETS.md`;
-11. `docs/ACCESSIBILITY.md`;
-12. `docs/DEPLOYMENT.md`;
-13. documentos pertinentes de `docs/design/` y `docs/validation/`.
+1. `docs/CODEX_AUTORREFERENCIA.md`;
+2. `README.md`;
+3. `docs/CURRENT_STATE.md`;
+4. `docs/CONTINUATION.md`;
+5. `docs/ARCHITECTURE.md`;
+6. `docs/FULL_STACK_COMMERCE.md`;
+7. `docs/FULFILLMENT_AND_RETENTION.md`;
+8. `docs/COMMERCE_OPERATIONS.md`;
+9. `docs/COMMERCE_DEPLOYMENT.md`;
+10. `docs/COMMERCE_INCIDENTS_AND_ROLLBACK.md`;
+11. `docs/PROVENANCE.md`;
+12. `docs/AUTHORIZED_ASSETS.md`;
+13. `docs/ACCESSIBILITY.md`;
+14. `docs/DEPLOYMENT.md`;
+15. documentos pertinentes de `docs/design/` y `docs/validation/`.
 
 Los archivos de `docs/validation/` son registros históricos. Preservar intentos fallidos, causas, hashes y secuencias aunque una sección posterior documente el cierre exitoso.
 

@@ -73,7 +73,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     );
     const idempotencyKey = assertUuid(body.idempotencyKey, 'idempotencyKey');
     const cart = recalculateCart(body);
-    await reserveCheckoutIntent(database, idempotencyKey, cart.fulfillment);
+    await reserveCheckoutIntent(database, idempotencyKey, cart);
     const prepared = await prepareOrder({ cart, database, idempotencyKey, tokenSecret });
     await persistOrderFulfillment(database, prepared.order.id, cart);
     const paymentCart = createPaymentCart(cart);

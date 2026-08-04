@@ -24,7 +24,7 @@ El candidato incorpora:
 - pedidos y consulta pública de estado;
 - webhook de Mercado Pago;
 - Cloudflare Pages Functions;
-- migración inicial de Cloudflare D1;
+- migraciones aditivas de Cloudflare D1 para comercio, fulfillment y retención;
 - administración preparada para Cloudflare Access;
 - analítica first-party con consentimiento;
 - exportaciones administrativas;

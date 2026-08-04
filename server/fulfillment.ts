@@ -1,6 +1,7 @@
 import type { RecalculatedCart } from './catalog';
 import { sha256Hex } from './crypto';
 import { HttpError } from './http';
+import { cartFingerprint } from './orders';
 import type { D1Database } from './platform';
 import {
   fulfillmentCanonicalValue,
@@ -18,32 +19,58 @@ export function requireCheckoutFulfillment(value: unknown): CheckoutFulfillment 
 export async function reserveCheckoutIntent(
   database: D1Database,
   idempotencyKey: string,
-  fulfillment: CheckoutFulfillment,
+  cart: RecalculatedCart,
 ): Promise<void> {
-  const fingerprint = await sha256Hex(fulfillmentCanonicalValue(fulfillment));
+  const fulfillmentFingerprint = await sha256Hex(fulfillmentCanonicalValue(cart.fulfillment));
+  const authoritativeCartFingerprint = await cartFingerprint(cart);
   const now = new Date().toISOString();
   await database
     .prepare(
       `INSERT OR IGNORE INTO checkout_intents (
-        checkout_idempotency_key, fulfillment_fingerprint, created_at
-      ) VALUES (?, ?, ?)`,
+        checkout_idempotency_key, fulfillment_fingerprint, cart_fingerprint, created_at
+      ) VALUES (?, ?, ?, ?)`,
     )
-    .bind(idempotencyKey, fingerprint, now)
+    .bind(idempotencyKey, fulfillmentFingerprint, authoritativeCartFingerprint, now)
     .run();
-  const persisted = await database
+  let persisted = await database
     .prepare(
-      `SELECT fulfillment_fingerprint
+      `SELECT fulfillment_fingerprint, cart_fingerprint
        FROM checkout_intents
        WHERE checkout_idempotency_key = ?
        LIMIT 1`,
     )
     .bind(idempotencyKey)
-    .first<Readonly<{ fulfillment_fingerprint: string }>>();
-  if (persisted?.fulfillment_fingerprint !== fingerprint) {
+    .first<Readonly<{ fulfillment_fingerprint: string; cart_fingerprint: string | null }>>();
+  if (persisted?.fulfillment_fingerprint !== fulfillmentFingerprint) {
     throw new HttpError(
       409,
       'IDEMPOTENCY_CONFLICT',
-      'La clave de idempotencia ya fue usada con otros datos de entrega.',
+      'La clave de idempotencia ya fue usada con otra intención de compra.',
+    );
+  }
+  if (persisted.cart_fingerprint === null) {
+    await database
+      .prepare(
+        `UPDATE checkout_intents SET cart_fingerprint = ?
+         WHERE checkout_idempotency_key = ? AND cart_fingerprint IS NULL`,
+      )
+      .bind(authoritativeCartFingerprint, idempotencyKey)
+      .run();
+    persisted = await database
+      .prepare(
+        `SELECT fulfillment_fingerprint, cart_fingerprint
+         FROM checkout_intents
+         WHERE checkout_idempotency_key = ?
+         LIMIT 1`,
+      )
+      .bind(idempotencyKey)
+      .first<Readonly<{ fulfillment_fingerprint: string; cart_fingerprint: string | null }>>();
+  }
+  if (persisted?.cart_fingerprint !== authoritativeCartFingerprint) {
+    throw new HttpError(
+      409,
+      'IDEMPOTENCY_CONFLICT',
+      'La clave de idempotencia ya fue usada con otra intención de compra.',
     );
   }
 }

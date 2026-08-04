@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 
 import { trackAnalyticsEvent } from './analytics/client';
 import { useCart } from './cart/CartContext';
@@ -8,7 +8,6 @@ import {
   navigationItems,
   siteContent,
 } from './content/site-content';
-import { AdminPage } from './pages/AdminPage';
 import { CartPage } from './pages/CartPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { HomePage } from './pages/HomePage';
@@ -20,6 +19,8 @@ import { AppLink } from './routing/AppLink';
 import { appPaths } from './routing/routes';
 import type { AppRoute, Navigate } from './routing/routes';
 import { useBrowserRoute } from './routing/useBrowserRoute';
+
+const AdminPage = lazy(() => import('./pages/AdminPage').then(({ AdminPage: component }) => ({ default: component })));
 
 export function App() {
   const currentYear = new Date().getFullYear();
@@ -179,7 +180,11 @@ function RouteView({
     case 'paymentError':
       return <PaymentReturnPage expected="failure" navigate={navigate} />;
     case 'admin':
-      return <AdminPage navigate={navigate} />;
+      return (
+        <Suspense fallback={<p className="container" role="status">Cargando administración…</p>}>
+          <AdminPage navigate={navigate} />
+        </Suspense>
+      );
     case 'not-found':
       return <NotFoundPage navigate={navigate} pathname={pathname} />;
   }
