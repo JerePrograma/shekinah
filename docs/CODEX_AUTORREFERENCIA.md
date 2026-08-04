@@ -7,15 +7,15 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: ce1c22903ad31c6ae87da4f747594b1d5184693b
-last_verified_at: 2026-08-04T18:11:46Z
-last_ci_run_id: 30914349947
+last_verified_sha: b0386c12e353058cba317c6ce6b169ecac9bd609
+last_verified_at: 2026-08-04T18:19:34Z
+last_ci_run_id: 30937716940
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
 analytics_enabled: false
-whatsapp_enabled: no_verificado
-d1_preview: no_verificado
+whatsapp_enabled: false
+d1_preview: ausente
 d1_production: ausente
 mercado_pago_mode: no_verificado
 ```
@@ -35,8 +35,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 3. Estado Git verificado
 
-- **VERIFICADO:** `HEAD` y `origin/main` son `ce1c22903ad31c6ae87da4f747594b1d5184693b` después de `fetch` y `pull --ff-only`.
-- **VERIFICADO:** la rama activa es `main`; el worktree inicial estaba limpio, sin staged, untracked ni unmerged.
+- **VERIFICADO:** `HEAD` y `origin/main` son `b0386c12e353058cba317c6ce6b169ecac9bd609` después del push y el `fetch` de cierre del commit funcional.
+- **VERIFICADO:** la rama activa es `main`; el worktree inicial estaba limpio y el commit funcional quedó publicado sin staged, untracked ni unmerged.
 - **VERIFICADO:** el commit de referencia `ce1c22903ad31c6ae87da4f747594b1d5184693b` coincide con la base real.
 - **VERIFICADO:** no se crearon ramas, pull requests, worktrees ni stashes; no se usó force-push ni se reescribió historial.
 
@@ -109,17 +109,17 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 13. Variables, flags, bindings y secretos
 
-- **VERIFICADO:** el comercio y la analítica públicos están deshabilitados.
-- **VERIFICADO:** el webhook respondió `DATABASE_UNAVAILABLE`; el binding D1 de producción no está disponible en el deployment público consultado.
-- **NO_VERIFICADO:** WhatsApp, D1 preview, Mercado Pago y los valores externos de Cloudflare Access.
+- **VERIFICADO:** comercio, analítica y WhatsApp están deshabilitados en preview y producción.
+- **VERIFICADO:** el webhook respondió `DATABASE_UNAVAILABLE` en preview y producción; el binding D1 no está disponible en ninguno de los dos deployments consultados.
+- **NO_VERIFICADO:** Mercado Pago y los valores externos de Cloudflare Access.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
 
 ## 14. CI, artefactos y deployment
 
-- **VERIFICADO:** run de CI inicial `30914349947`, job Verify `92008572787`, conclusión `success`, sobre `ce1c22903ad31c6ae87da4f747594b1d5184693b`.
-- **VERIFICADO:** artefacto inicial `8894433999`, `shekinah-dist-ce1c22903ad31c6ae87da4f747594b1d5184693b`, digest `sha256:89a42e537b9c8d66fd314235fcbcae9636c7933e48b28e222ca64f60a684e8d7`.
-- **VERIFICADO:** check inicial Cloudflare Pages `success`; deployment `d23fa0ab-b90e-472b-853c-f81050809aa1` y URL de preview `https://d23fa0ab.shekinah-7dl.pages.dev`.
-- **VERIFICADO:** `https://shekinah-7dl.pages.dev/` respondió HTTP 200 el 2026-08-04.
+- **VERIFICADO:** run CI `30937716940`, job Verify `92087942820`, conclusión `success`, sobre `b0386c12e353058cba317c6ce6b169ecac9bd609`; todos los pasos concluyeron `success`.
+- **VERIFICADO:** artefacto `8903843189`, `shekinah-dist-b0386c12e353058cba317c6ce6b169ecac9bd609`, 52.356.962 bytes, digest `sha256:2133c0a53441e962bd795a88323620f0eef9e1fd6ab6ce18712c411d48f040cb`, expira el 2026-08-11.
+- **VERIFICADO:** check Cloudflare Pages `92088244210` `success`, deployment `d43c5e35-da87-413f-ae61-dab150b017c9` y preview `https://d43c5e35.shekinah-7dl.pages.dev`; el check declara el commit `b0386c1`.
+- **VERIFICADO:** preview y `https://shekinah-7dl.pages.dev/` respondieron HTTP 200 y sirvieron `/assets/index-B1G0eFSM.js`; catálogo, carrito, flags, CSP, HSTS y Functions pasaron el smoke Playwright.
 
 ## 15. Validaciones disponibles
 
@@ -163,8 +163,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 18. Riesgos y bloqueos externos
 
-- **BLOQUEADO:** D1 de producción no está enlazada al deployment público consultado; no aplicar migraciones remotas sin inventario y backup verificable.
-- **BLOQUEADO:** D1 preview, Access, aplicación de Mercado Pago, webhook del proveedor y WhatsApp requieren configuración autenticada o datos autorizados.
+- **BLOQUEADO:** D1 no está enlazada a preview ni producción; no aplicar migraciones remotas sin inventario y backup verificable.
+- **BLOQUEADO:** Access, aplicación de Mercado Pago y webhook del proveedor requieren configuración autenticada o datos autorizados.
 - **BLOQUEADO:** no se realizará ningún pago, devolución ni activación productiva sin confirmación inmediata.
 - **INFERENCIA:** una intención huérfana puede persistir si una operación falla tras reservarla; sólo contiene huellas, fija carrito y fulfillment y la misma solicitud puede reintentarse. No existe una política de limpieza, pero tampoco almacena PII en claro.
 - **BLOQUEADO:** Wrangler no está instalado globalmente ni en `node_modules`; la compatibilidad D1 se ejecuta con el adaptador SQLite del repositorio, no contra D1 local de Wrangler.
@@ -186,26 +186,26 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 20. Último diff aplicado
 
-- **VERIFICADO:** 30 rutas forman el cambio revisado: lógica de fulfillment/idempotencia/Mercado Pago, migración `0003`, pruebas, gates, documentación operativa, autorreferencia y carga diferida de `/admin`.
+- **VERIFICADO:** el commit `b0386c12e353058cba317c6ce6b169ecac9bd609` contiene las 30 rutas revisadas: lógica de fulfillment/idempotencia/Mercado Pago, migración `0003`, pruebas, gates, documentación operativa, autorreferencia y carga diferida de `/admin`.
 - Base del diff: `ce1c22903ad31c6ae87da4f747594b1d5184693b`.
 
 ## 21. Próximo paso exacto
 
-Preparar únicamente las 30 rutas revisadas, comprobar el diff staged, crear el commit de implementación y publicar en `origin/main`; después verificar CI, artefacto y Pages sobre ese SHA.
+Con acceso autenticado a Cloudflare, inventariar D1 preview/producción y obtener un backup verificable antes de vincular bases o aplicar `0001`–`0003`; mantener todos los flags cerrados.
 
 ## 22. Historial de sesiones
 
 ### Sesión 2026-08-04T17:45:46Z
 
 - SHA inicial: `ce1c22903ad31c6ae87da4f747594b1d5184693b`.
-- SHA final: pendiente.
+- SHA final funcional: `b0386c12e353058cba317c6ce6b169ecac9bd609`.
 - Objetivo: auditar y endurecer fulfillment, pagos, persistencia, privacidad, Access, analítica, CI y operación.
 - Hallazgos: conflicto de peso silencioso, retiro bloqueado, verificador acoplado, brechas de validación/pruebas/documentación y D1 productiva ausente.
 - Archivos modificados: 30 rutas revisadas de fulfillment, idempotencia, Mercado Pago, pruebas, gates, documentación y `src/App.tsx`.
 - Pruebas: `npm ci`, Chromium, lint, typecheck, 23/23 archivos y 84/84 pruebas Vitest, verificadores, seguridad, build Pages y 10/10 Playwright aprobados; 0 source maps y bundle principal 492,62 kB.
-- Commit: pendiente.
-- Push: pendiente.
-- CI: baseline `30914349947` success; falta el SHA final.
-- Deployment: baseline público HTTP 200; falta el SHA final y D1 productiva está ausente.
-- Bloqueos: configuración externa autenticada y activación productiva.
-- Próximo paso: commit de implementación, push y evidencia remota sobre el SHA exacto.
+- Commit: `b0386c12e353058cba317c6ce6b169ecac9bd609` (`fix: harden checkout integrity and fulfillment`).
+- Push: `origin/main`, fast-forward, `HEAD == origin/main` verificado.
+- CI: run `30937716940`, job `92087942820`, `success`; artefacto `8903843189` y digest registrados.
+- Deployment: check `92088244210` success, deployment `d43c5e35-da87-413f-ae61-dab150b017c9`; preview y producción pasaron smoke.
+- Bloqueos: D1 ausente, Wrangler/credenciales externas no disponibles, Mercado Pago y Access no verificados; producción no activada.
+- Próximo paso: inventario y backup D1 autenticados antes de cualquier configuración externa.
