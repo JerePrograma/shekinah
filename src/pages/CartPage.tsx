@@ -16,7 +16,6 @@ import {
   validateFulfillment,
 } from '../commerce/fulfillment';
 import type {
-  DeliveryMethod,
   FulfillmentDraft,
   FulfillmentField,
 } from '../commerce/fulfillment';
@@ -245,7 +244,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     aria-invalid={showErrors && validation.errors.method !== undefined}
                     aria-describedby={showErrors && validation.errors.method !== undefined ? 'error-method' : undefined}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                      updateField('method', event.currentTarget.value as DeliveryMethod);
+                      updateField('method', event.currentTarget.value);
                     }}
                   >
                     <option value="coordinated_pickup">Retiro o entrega personal coordinada</option>

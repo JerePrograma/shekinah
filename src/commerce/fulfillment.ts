@@ -150,5 +150,16 @@ function toGrams(rawAmount: string | undefined, rawUnit: string | undefined): nu
   return Number.isSafeInteger(rounded) && rounded > 0 && Math.abs(grams - rounded) < 0.000001 ? rounded : null;
 }
 function normalizeSpace(value: string): string { return value.normalize('NFKC').trim().replace(/\s+/gu, ' '); }
-function containsControl(value: string): boolean { return /[\u0000-\u001f\u007f-\u009f]/u.test(value); }
+function containsControl(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (
+      codePoint !== undefined &&
+      (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
