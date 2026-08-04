@@ -7,11 +7,11 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: 9ae41ccbc288dada19733558f342636957292e37
-last_verified_at: 2026-08-04T19:11:00Z
-last_ci_run_id: 30941961984
+last_verified_sha: d552fbef4cd5763ffc81864feaeb716767fdfeb8
+last_verified_at: 2026-08-04T19:17:14Z
+last_ci_run_id: 30942296797
 last_ci_conclusion: success
-cloudflare_pages_check: failure
+cloudflare_pages_check: success
 commerce_enabled: false
 analytics_enabled: false
 whatsapp_enabled: false
@@ -121,10 +121,10 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 14. CI, artefactos y deployment
 
-- **VERIFICADO:** run CI `30938185079`, job Verify `92089522383`, conclusión `success`, sobre `884c9de407c079fcf0a834b50008286c7633ff02`; todos los pasos concluyeron `success`.
-- **VERIFICADO:** artefacto `8904022804`, `shekinah-dist-884c9de407c079fcf0a834b50008286c7633ff02`, 52.356.962 bytes, digest `sha256:e693d0cadff3e1386adab2bb5fe39dc808b73c2a6a2e0c8c7aab644f6c25bf99`, expira el 2026-08-11.
-- **VERIFICADO:** check Cloudflare Pages `92089972971` `success`, deployment de producción `https://62231f35.shekinah-7dl.pages.dev`; el panel autenticado declara el commit `884c9de`.
-- **VERIFICADO:** preview y `https://shekinah-7dl.pages.dev/` respondieron HTTP 200 y sirvieron `/assets/index-B1G0eFSM.js`; catálogo, carrito, flags, CSP, HSTS y Functions pasaron el smoke Playwright.
+- **VERIFICADO:** run CI `30942296797`, job Verify `92103489580`, conclusión `success`, sobre `d552fbef4cd5763ffc81864feaeb716767fdfeb8`; todos los pasos concluyeron `success`.
+- **VERIFICADO:** artefacto `8905654182`, `shekinah-dist-d552fbef4cd5763ffc81864feaeb716767fdfeb8`, 52.356.962 bytes, digest `sha256:0ea9d9848c19b230af55864e87369e93766a9407fa1d152159eaabbd3c606233`, expira el 2026-08-11.
+- **VERIFICADO:** check Cloudflare Pages `92103913671` `success`, deployment de producción `https://0031660e.shekinah-7dl.pages.dev`; Cloudflare declara el commit `d552fbe`.
+- **VERIFICADO:** deployment y `https://shekinah-7dl.pages.dev/` respondieron HTTP 200 y sirvieron `/assets/index-B1G0eFSM.js`; `/admin` y `/api/admin/orders` respondieron 401, y los `GET` no permitidos de checkout/analítica respondieron 405 con `no-store`.
 - **VERIFICADO:** Pages usa `npm run build:pages`, salida `dist`, rama `main`, Build System v3 y deployments automáticos; previews aceptan todas las ramas no productivas.
 
 ## 15. Validaciones disponibles
@@ -207,12 +207,13 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 20. Último diff aplicado
 
-- **VERIFICADO:** `9ae41ccbc288dada19733558f342636957292e37` actualiza únicamente documentación operativa con inventario autenticado de Cloudflare; no modifica código, migraciones ni configuración externa.
-- **VERIFICADO:** el diff contiene cinco documentos, 135 inserciones y 35 eliminaciones; `verify:automation`, `npm run verify`, `npm run build:pages` y `git diff --check` aprobaron antes del commit.
+- **VERIFICADO:** `9ae41ccbc288dada19733558f342636957292e37` actualiza cinco documentos con el inventario autenticado de Cloudflare; `d552fbef4cd5763ffc81864feaeb716767fdfeb8` registra en esta autorreferencia el fallo transitorio de Pages del primer commit. Ninguno modifica código, migraciones ni configuración externa.
+- **VERIFICADO:** `verify:automation`, `npm run verify`, `npm run build:pages` y los controles de diff aprobaron; el SHA `d552fbef4cd5763ffc81864feaeb716767fdfeb8` obtuvo CI, artefacto, Pages y smoke HTTP verdes.
+- **REGLA DE AUTORREFERENCIA:** el commit que contiene una actualización de cierre no puede incluir su propio hash; resolver siempre el SHA contenedor con Git y validar ese commit por separado.
 
 ## 21. Próximo paso exacto
 
-Reintentar desde el panel autenticado el deployment Pages fallido de `9ae41ccbc288dada19733558f342636957292e37` y obtener su log si vuelve a fallar. No crear un commit artificial para forzar el retry. Después cambiar producción y preview a `Fail closed`; obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`.
+Cambiar producción y preview a `Fail closed` y comprobar que la SPA, `/api/*` y `/admin*` conservan sus respuestas esperadas. Después obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`.
 
 ## 22. Historial de sesiones
 
@@ -234,14 +235,14 @@ Reintentar desde el panel autenticado el deployment Pages fallido de `9ae41ccbc2
 ### Sesión 2026-08-04T19:02:01Z
 
 - SHA inicial: `884c9de407c079fcf0a834b50008286c7633ff02`.
-- SHA final documentado: `9ae41ccbc288dada19733558f342636957292e37`.
+- SHA final verificado externamente: `d552fbef4cd5763ffc81864feaeb716767fdfeb8`.
 - Objetivo: continuar el inventario y la configuración externa segura.
 - Hallazgos: proyecto Pages `shekinah`, Worker homónimo independiente, cero D1, cero variables/secretos/bindings, Zero Trust ausente, previews públicos y `Fail open` en ambos entornos.
 - Archivos modificados: documentación operativa y autorreferencia.
 - Pruebas: inventario Wrangler, GitHub y panel Cloudflare autenticado; `npm ci`, Chromium, lint, typecheck, 23/23 archivos y 84/84 Vitest, pesos, `npm run verify`, 10/10 Playwright y `npm run build:pages` aprobados; 0 source maps.
-- Commit: `9ae41ccbc288dada19733558f342636957292e37` (`docs: record authenticated Cloudflare state`).
-- Push: fast-forward a `origin/main`; igualdad de SHA verificada.
-- CI: run `30941961984`, job Verify `92102383744`, `success`; artefacto `8905529836`, digest `sha256:4fe9bb9a76b499f624c2d33ac04669d5877fc3ad651faa735e10580869984e8e`.
-- Deployment: **FALLIDO**; check Cloudflare Pages `92102651798`, preview `https://d645dd34.shekinah-7dl.pages.dev`; el resumen público sólo informa `Build failed`.
+- Commit: `9ae41ccbc288dada19733558f342636957292e37` (`docs: record authenticated Cloudflare state`) y `d552fbef4cd5763ffc81864feaeb716767fdfeb8` (`docs: record Cloudflare deployment blocker`).
+- Push: ambos fast-forward a `origin/main`; igualdad de SHA verificada para `d552fbef4cd5763ffc81864feaeb716767fdfeb8`.
+- CI: run `30942296797`, job Verify `92103489580`, `success`; artefacto `8905654182`, digest `sha256:0ea9d9848c19b230af55864e87369e93766a9407fa1d152159eaabbd3c606233`.
+- Deployment: el primer intento sobre `9ae41cc` falló; el siguiente sobre `d552fbe` cerró `success` con check `92103913671`, `https://0031660e.shekinah-7dl.pages.dev` y smoke HTTP aprobado.
 - Bloqueos: nombre exacto de D1 preview y Team Domain/AUD de Zero Trust; Mercado Pago sin credenciales.
-- Próximo paso: reintentar el mismo deployment desde Cloudflare y leer el log si falla; luego `Fail closed`, D1 preview/producción y Access sin activar comercio.
+- Próximo paso: `Fail closed`, luego D1 preview/producción y Access con identificadores autorizados, sin activar comercio.
