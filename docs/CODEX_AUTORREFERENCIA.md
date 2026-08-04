@@ -7,11 +7,11 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: 884c9de407c079fcf0a834b50008286c7633ff02
-last_verified_at: 2026-08-04T19:02:01Z
-last_ci_run_id: 30938185079
+last_verified_sha: 9ae41ccbc288dada19733558f342636957292e37
+last_verified_at: 2026-08-04T19:11:00Z
+last_ci_run_id: 30941961984
 last_ci_conclusion: success
-cloudflare_pages_check: success
+cloudflare_pages_check: failure
 commerce_enabled: false
 analytics_enabled: false
 whatsapp_enabled: false
@@ -207,12 +207,12 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 20. Último diff aplicado
 
-- **VERIFICADO:** `884c9de407c079fcf0a834b50008286c7633ff02` documenta la evidencia final del endurecimiento funcional iniciado en `b0386c12e353058cba317c6ce6b169ecac9bd609`.
-- **REVISADO_POR_CÓDIGO:** la continuación del 2026-08-04 actualiza únicamente documentación operativa con inventario autenticado de Cloudflare; no modifica código, migraciones ni configuración externa.
+- **VERIFICADO:** `9ae41ccbc288dada19733558f342636957292e37` actualiza únicamente documentación operativa con inventario autenticado de Cloudflare; no modifica código, migraciones ni configuración externa.
+- **VERIFICADO:** el diff contiene cinco documentos, 135 inserciones y 35 eliminaciones; `verify:automation`, `npm run verify`, `npm run build:pages` y `git diff --check` aprobaron antes del commit.
 
 ## 21. Próximo paso exacto
 
-Cambiar producción y preview de Pages a `Fail closed`; después obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`. Mantener todos los flags cerrados.
+Reintentar desde el panel autenticado el deployment Pages fallido de `9ae41ccbc288dada19733558f342636957292e37` y obtener su log si vuelve a fallar. No crear un commit artificial para forzar el retry. Después cambiar producción y preview a `Fail closed`; obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`.
 
 ## 22. Historial de sesiones
 
@@ -234,14 +234,14 @@ Cambiar producción y preview de Pages a `Fail closed`; después obtener del usu
 ### Sesión 2026-08-04T19:02:01Z
 
 - SHA inicial: `884c9de407c079fcf0a834b50008286c7633ff02`.
-- SHA final: pendiente de commit documental.
+- SHA final documentado: `9ae41ccbc288dada19733558f342636957292e37`.
 - Objetivo: continuar el inventario y la configuración externa segura.
 - Hallazgos: proyecto Pages `shekinah`, Worker homónimo independiente, cero D1, cero variables/secretos/bindings, Zero Trust ausente, previews públicos y `Fail open` en ambos entornos.
 - Archivos modificados: documentación operativa y autorreferencia.
 - Pruebas: inventario Wrangler, GitHub y panel Cloudflare autenticado; `npm ci`, Chromium, lint, typecheck, 23/23 archivos y 84/84 Vitest, pesos, `npm run verify`, 10/10 Playwright y `npm run build:pages` aprobados; 0 source maps.
-- Commit: pendiente.
-- Push: pendiente.
-- CI: pendiente.
-- Deployment: producción actual `884c9de` verificada antes del nuevo diff.
+- Commit: `9ae41ccbc288dada19733558f342636957292e37` (`docs: record authenticated Cloudflare state`).
+- Push: fast-forward a `origin/main`; igualdad de SHA verificada.
+- CI: run `30941961984`, job Verify `92102383744`, `success`; artefacto `8905529836`, digest `sha256:4fe9bb9a76b499f624c2d33ac04669d5877fc3ad651faa735e10580869984e8e`.
+- Deployment: **FALLIDO**; check Cloudflare Pages `92102651798`, preview `https://d645dd34.shekinah-7dl.pages.dev`; el resumen público sólo informa `Build failed`.
 - Bloqueos: nombre exacto de D1 preview y Team Domain/AUD de Zero Trust; Mercado Pago sin credenciales.
-- Próximo paso: `Fail closed`, luego D1 preview/producción y Access sin activar comercio.
+- Próximo paso: reintentar el mismo deployment desde Cloudflare y leer el log si falla; luego `Fail closed`, D1 preview/producción y Access sin activar comercio.
