@@ -2,9 +2,9 @@
 
 Fecha de revisión: 2026-08-10.
 
-Base de integración full-stack:
+Base inicial de esta evolución administrativa:
 
-`884c9de407c079fcf0a834b50008286c7633ff02`
+`f704424f614b917ffd42eb47ab31e5057a7ba5ec`
 
 Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
 
@@ -26,8 +26,8 @@ El candidato incorpora:
 - pedidos y consulta pública de estado para Checkout Pro;
 - webhook de Mercado Pago para Checkout Pro;
 - Cloudflare Pages Functions;
-- migraciones aditivas de Cloudflare D1 para comercio, fulfillment y retención;
-- administración preparada para Cloudflare Access;
+- migraciones aditivas de Cloudflare D1 para comercio, fulfillment, catálogo, retención y rate limiting administrativo;
+- autenticación administrativa propia con PBKDF2, cookie firmada, login/logout y fallback opcional de Cloudflare Access;
 - ABM de productos basado en catálogo canónico más mutaciones y tombstones D1;
 - analítica first-party con consentimiento;
 - exportaciones administrativas;
@@ -51,25 +51,28 @@ No se requiere VPS para este fallback. La arquitectura automatizada tampoco depe
 
 La presencia del código no implica activación del Checkout Pro automatizado.
 
-Hasta completar bindings, secretos, D1, Mercado Pago, Access y las comprobaciones productivas:
+Checkout Pro y analítica continúan separados del backoffice. Al cierre de configuración del 2026-08-10:
 
 - Checkout Pro automatizado deshabilitado;
 - analítica deshabilitada;
 - fallback manual de Link de Pago autorizado en el código;
 - WhatsApp manual autorizado en el código;
-- administración no considerada productiva hasta configurar Access; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
+- D1, binding, migraciones y secretos administrativos están configurados de forma aislada en production y preview;
+- la administración sólo se considera productiva para un SHA cuyo deployment, login, logout y smoke ABM hayan sido verificados por separado; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
 ## Estado externo verificado
 
-Consulta autenticada realizada el 2026-08-04, sin registrar IDs de cuenta, IDs de recursos, correos ni secretos:
+Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar IDs de cuenta, correos ni valores secretos:
 
 - el proyecto de Cloudflare Pages se llama exactamente `shekinah` y publica `shekinah-7dl.pages.dev`;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
-- producción y preview no tenían variables, secretos ni bindings configurados;
-- la cuenta no contenía bases D1;
-- Zero Trust mostraba el onboarding inicial: no existía todavía una organización ni una aplicación Access;
-- preview era público y producción/preview usaban `Fail open`;
+- producción usa `shekinah-commerce` y preview `shekinah-commerce-preview`, ambas creadas vacías y vinculadas como `DB`;
+- `d1_migrations` registra `0001` a `0005` en ambos entornos; `0004_catalog_admin.sql` y `0005_admin_auth.sql` están aplicadas;
+- los cuatro nombres `ADMIN_*` requeridos existen como secretos cifrados separados en production y preview;
+- `PUBLIC_SITE_URL`, `ALLOWED_SITE_ORIGINS`, flags cerrados y retención están configurados como variables no secretas;
+- Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
+- producción y preview usan `Fail closed`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.
 
 Los flags server-side permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
@@ -81,7 +84,7 @@ Los flags server-side permanecen cerrados por el comportamiento fail-closed del 
 - persistencia automatizada: Cloudflare D1;
 - pagos automatizados: Mercado Pago Checkout Pro;
 - fallback temporal: Link de Pago manual más WhatsApp;
-- administración: Cloudflare Access;
+- administración: credencial propia y sesión firmada; Cloudflare Access opcional como fallback interno;
 - analítica: first-party basada en consentimiento.
 
 Consultar:

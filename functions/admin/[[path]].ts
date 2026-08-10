@@ -1,17 +1,11 @@
-import { verifyCloudflareAccess } from '../../server/access';
-import { methodNotAllowedResponse, responseFromError } from '../../server/http';
+import { methodNotAllowedResponse } from '../../server/http';
 import type { PagesFunction } from '../../server/platform';
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method !== 'GET' && context.request.method !== 'HEAD') {
     return methodNotAllowedResponse(['GET', 'HEAD']);
   }
-  try {
-    await verifyCloudflareAccess(context.request, context.env);
-    return noStore(await context.next('/index.html'));
-  } catch (error: unknown) {
-    return responseFromError(error);
-  }
+  return noStore(await context.next('/index.html'));
 };
 
 function noStore(response: Response): Response {

@@ -40,7 +40,9 @@ const EMPTY_FORM: FormState = Object.freeze({
   variants: '[]',
 });
 
-export function ProductManager() {
+export function ProductManager({
+  onUnauthorized,
+}: Readonly<{ onUnauthorized?: (() => void) | undefined }>) {
   const [products, setProducts] = useState<readonly CatalogProductDetail[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,6 +77,8 @@ export function ProductManager() {
       const payload = await adminJson(
         '/api/admin/products',
         signal === undefined ? undefined : { signal },
+        false,
+        onUnauthorized,
       );
       setProducts(parseAdminProducts(payload));
     } catch (loadError: unknown) {
@@ -102,6 +106,8 @@ export function ProductManager() {
           method: editing ? 'PUT' : 'POST',
           body: JSON.stringify(payload),
         },
+        false,
+        onUnauthorized,
       );
       resetForm();
       await Promise.all([reload(), refreshRuntimeCatalog()]);
@@ -124,6 +130,7 @@ export function ProductManager() {
         `/api/admin/products/${encodeURIComponent(product.id)}`,
         { method: 'DELETE' },
         true,
+        onUnauthorized,
       );
       if (editingId === product.id) resetForm();
       await Promise.all([reload(), refreshRuntimeCatalog()]);
@@ -489,6 +496,7 @@ async function adminJson(
   path: string,
   init?: RequestInit,
   allowEmpty = false,
+  onUnauthorized?: () => void,
 ): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined) headers.set('content-type', 'application/json');
@@ -498,6 +506,10 @@ async function adminJson(
     ...(init?.body === undefined ? {} : { headers }),
   };
   const response = await fetch(path, requestInit);
+  if (response.status === 401) {
+    onUnauthorized?.();
+    throw new Error('La sesión administrativa venció.');
+  }
   if (allowEmpty && response.status === 204) return null;
   let payload: unknown = null;
   try {

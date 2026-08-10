@@ -3,17 +3,19 @@
   // wrangler.jsonc permanece ignorado para evitar publicar configuración de cuenta accidentalmente.
   "name": "shekinah",
   "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-07-31",
+  "compatibility_date": "2026-07-21",
   "vars": {
     "COMMERCE_ENABLED": "false",
     "ANALYTICS_ENABLED": "false",
     "PUBLIC_SITE_URL": "https://shekinah-7dl.pages.dev",
     "ALLOWED_SITE_ORIGINS": "https://shekinah-7dl.pages.dev",
     "MERCADO_PAGO_CHECKOUT_MODE": "sandbox",
-    "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "REEMPLAZAR.cloudflareaccess.com",
-    "CLOUDFLARE_ACCESS_AUD": "REEMPLAZAR_AUDIENCIA",
     "ANALYTICS_RETENTION_DAYS": "730"
   },
+  // Cargar ADMIN_USERNAME, ADMIN_PASSWORD_HASH, ADMIN_SESSION_SECRET y
+  // ADMIN_RATE_LIMIT_SECRET sólo como secretos cifrados de Pages, por entorno.
+  // CLOUDFLARE_ACCESS_TEAM_DOMAIN y CLOUDFLARE_ACCESS_AUD son opcionales y
+  // sólo se usan para el fallback interno de Access.
   "d1_databases": [
     {
       "binding": "DB",

@@ -190,6 +190,7 @@ function verifyTrackedFiles() {
     /\b(?:APP_USR|TEST)-[A-Za-z0-9_-]{20,}\b/u,
     /\bsk-[A-Za-z0-9]{20,}\b/u,
     /\bCLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)\s*[:=]\s*['"][^'"]+['"]/u,
+    /\bpbkdf2-sha256\$[1-9][0-9]{5,6}\$[A-Za-z0-9_-]{22,86}\$[A-Za-z0-9_-]{43}\b/u,
   ];
   for (const trackedFile of trackedFiles) {
     const path = join(projectRoot, trackedFile);

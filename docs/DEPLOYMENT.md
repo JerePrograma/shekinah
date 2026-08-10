@@ -22,17 +22,18 @@ Configuración de referencia: `wrangler.example.jsonc`.
 
 Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
 
-## Estado externo verificado el 2026-08-04
+## Estado externo verificado el 2026-08-10
 
 - build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
-- variables y secretos de producción/preview: ausentes;
-- bindings de producción/preview: ausentes;
-- bases D1 en la cuenta: cero;
-- Zero Trust y Access: no configurados;
-- previews: públicos;
-- runtime de producción y preview: `Fail open`.
+- binding `DB`: `shekinah-commerce` en producción y `shekinah-commerce-preview` en preview;
+- migraciones `0001` a `0005`: aplicadas y sin pendientes en ambas D1;
+- variables server-side mínimas y flags cerrados: presentes en ambos entornos;
+- secretos administrativos: cuatro nombres cifrados presentes en ambos entornos, valores no inspeccionables;
+- Zero Trust y Access: no configurados; el código lo admite sólo como fallback opcional;
+- runtime de producción y preview: `Fail closed`;
+- Checkout Pro y analítica: continúan deshabilitados y sin secretos de proveedor.
 
-Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json` y contienen autenticación, privacidad y pagos, configurar ambos entornos como `Fail closed` antes de considerar operativas esas superficies serverless. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
+Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json`, ambos entornos deben conservar `Fail closed`. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
 
 ## Configuración pública autorizada el 2026-08-10
 
@@ -59,7 +60,7 @@ Debe registrarse por separado:
 7. migraciones aplicadas;
 8. secretos configurados;
 9. Mercado Pago Checkout Pro y webhook;
-10. Cloudflare Access;
+10. autenticación administrativa propia y Access opcional;
 11. activación de Checkout Pro;
 12. activación analítica;
 13. pruebas de humo.
@@ -79,12 +80,12 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql` y `migrations/0004_catalog_admin.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler.
+Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql` y `migrations/0005_admin_auth.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler.
 
 Antes de aplicarlas:
 
 - confirmar dos bases separadas y sus entornos;
-- usar `shekinah-commerce` sólo para producción y no inventar el nombre de preview;
+- usar `shekinah-commerce` sólo para producción y `shekinah-commerce-preview` sólo para preview;
 - conservar un plan de reversión;
 - revisar el SQL real;
 - ejecutar primero en un entorno no productivo cuando exista;
@@ -104,18 +105,18 @@ El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizad
 - no aceptar precios ni estados enviados por el cliente;
 - comprobar firma, consulta autoritativa e idempotencia.
 
-## Cloudflare Access
+## Autenticación administrativa
 
-Las rutas `/admin*` y `/api/admin/*` deben quedar protegidas antes de considerarse operativas.
+La protección primaria es server-side: PBKDF2 para la credencial, cookie `__Host-` HMAC de ocho horas y middleware para todo `/api/admin/*` excepto las tres rutas exactas de autenticación. Los cuatro valores `ADMIN_*` son secretos cifrados por entorno. El rate limiting depende de D1 y de `0005_admin_auth.sql`.
 
-La validación JWT interna devuelve 401 sin Access, pero no sustituye la política de borde requerida. El Team Domain y el AUD deben provenir de la aplicación creada, nunca de un valor inferido.
+Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cuando no existe cookie propia. No aplicar una política externa a `/admin*` o a todo `/api/admin/*` que intercepte el login antes de Pages Functions.
 
 ## Activación
 
 - fallback manual de Link de Pago y WhatsApp: autorizado en código desde el 2026-08-10;
 - Checkout Pro automatizado: deshabilitado;
 - analítica: deshabilitada;
-- administración: no considerada productiva hasta configurar Access y `Fail closed`.
+- administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 
 ## Verificación
 
@@ -132,4 +133,4 @@ Después del despliegue:
 - comprobar webhook con eventos controlados antes de activar Checkout Pro;
 - comprobar que ningún secreto aparezca en respuestas o bundles.
 
-El deployment de Pages y su configuración vacía fueron verificados el 2026-08-04. D1, secretos, bindings, Access y activación de Checkout Pro siguen ausentes hasta nueva evidencia.
+La configuración de Pages, D1, migraciones, binding, secretos administrativos y `Fail closed` fue verificada el 2026-08-10. Zero Trust/Access continúa ausente por diseño opcional; Mercado Pago Checkout Pro y analítica permanecen deshabilitados. El deployment y smoke del candidato deben registrarse por SHA exacto.

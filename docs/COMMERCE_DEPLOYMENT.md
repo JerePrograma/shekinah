@@ -11,7 +11,7 @@ VITE_COMMERCE_ENABLED=false
 VITE_ANALYTICS_ENABLED=false
 ```
 
-No cambiar esos flags hasta completar el checklist de sandbox, webhooks, D1, Access, privacidad y aprobación comercial.
+No cambiar esos flags hasta completar el checklist de sandbox, webhooks, D1, privacidad y aprobación comercial. La autenticación administrativa es un control separado y no habilita Checkout Pro.
 
 Existe un fallback manual separado y expresamente autorizado el 2026-08-10: Link de Pago de Mercado Pago sin monto predefinido más envío del carrito por WhatsApp. Ese fallback no equivale a `COMMERCE_ENABLED=true`, no usa D1 y no habilita el webhook.
 
@@ -63,26 +63,21 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 
 No agregar parámetros no documentados al Link de Pago para intentar precargar el monto.
 
-## 3. Crear y vincular D1 para Checkout Pro
+## 3. Crear, migrar y vincular D1
 
-El inventario autenticado del 2026-08-04 encontró cero bases D1. Se requieren dos bases separadas. El nombre de producción está documentado; el de preview debe obtenerse de una decisión explícita y no puede inventarse.
+Estado verificado el 2026-08-10: la cuenta partía de cero bases y se crearon exactamente `shekinah-commerce` para producción y `shekinah-commerce-preview` para preview. Ambas estaban vacías, se obtuvieron bookmarks de Time Travel antes del primer cambio y quedaron vinculadas por separado al binding `DB`. No compartir una base entre entornos.
 
-Crear primero preview, una vez autorizado su nombre exacto:
-
-```powershell
-npx wrangler d1 create NOMBRE_D1_PREVIEW_AUTORIZADO
-```
-
-Crear luego producción:
+Para reconstruir esa configuración sólo si las bases no existen y el inventario de cuenta lo confirma inequívocamente:
 
 ```powershell
+npx wrangler d1 create shekinah-commerce-preview
 npx wrangler d1 create shekinah-commerce
 npx wrangler d1 info shekinah-commerce
 ```
 
-Copiar `wrangler.example.jsonc` a `wrangler.jsonc` únicamente cuando se conozcan los valores reales. Reemplazar `database_id`, dominio primario, Team Domain y AUD; no dejar marcadores en una configuración activa.
+Copiar `wrangler.example.jsonc` a `wrangler.jsonc` únicamente cuando se conozcan los IDs reales. Reemplazar `database_id` y `preview_database_id`; no dejar marcadores en una configuración activa ni rastrear el archivo.
 
-El binding debe llamarse exactamente `DB`. Producción debe referir `shekinah-commerce`; preview debe usar exclusivamente la base no productiva autorizada. No vincular ambos entornos a la misma base.
+El binding debe llamarse exactamente `DB`. Producción refiere `shekinah-commerce`; preview usa exclusivamente `shekinah-commerce-preview`.
 
 Validar la migración local:
 
@@ -91,16 +86,20 @@ npx wrangler d1 migrations apply shekinah-commerce --local
 npx wrangler d1 execute shekinah-commerce --local --command "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
 ```
 
-Antes de una migración remota sobre una base que ya contenga datos, conservar una exportación o backup verificable y documentar el punto de reversión. Aplicar luego:
+Antes de una migración remota sobre una base que ya contenga datos, conservar una exportación o bookmark verificable y documentar el punto de reversión. En una configuración con `database_id` y `preview_database_id`, aplicar primero preview y después producción:
 
 ```powershell
-npx wrangler d1 migrations apply shekinah-commerce --remote
-npx wrangler d1 execute shekinah-commerce --remote --command "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
+npx wrangler d1 time-travel info shekinah-commerce-preview --json
+npx wrangler d1 migrations apply DB --remote --preview
+npx wrangler d1 migrations list DB --remote --preview
+npx wrangler d1 time-travel info shekinah-commerce --json
+npx wrangler d1 migrations apply DB --remote
+npx wrangler d1 migrations list DB --remote
 ```
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
-El flujo debe aplicar también `migrations/0004_catalog_admin.sql`. Antes de esa migración, las lecturas públicas conservan los 510 productos base y cualquier alta, modificación o baja administrativa responde `CATALOG_MIGRATION_REQUIRED`.
+El flujo aplica en orden `0001` a `0005`. `migrations/0004_catalog_admin.sql` crea la persistencia del ABM; antes de ella, las lecturas públicas conservan los 510 productos base y toda escritura administrativa responde `CATALOG_MIGRATION_REQUIRED`. `migrations/0005_admin_auth.sql` crea el rate limiting persistente del login; sin ella, el login falla cerrado. Verificar `d1_migrations`, `sqlite_schema`, índices y conteos sin consultar PII.
 
 ## 4. Configurar variables no secretas del Checkout Pro
 
@@ -108,19 +107,37 @@ En producción y, de forma separada, en preview:
 
 ```text
 PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
-MERCADO_PAGO_CHECKOUT_MODE=sandbox
+ALLOWED_SITE_ORIGINS=https://shekinah-7dl.pages.dev
 COMMERCE_ENABLED=false
 ANALYTICS_ENABLED=false
 ANALYTICS_RETENTION_DAYS=730
-CLOUDFLARE_ACCESS_TEAM_DOMAIN=EQUIPO.cloudflareaccess.com
-CLOUDFLARE_ACCESS_AUD=AUD_REAL_DE_LA_APLICACION
 ```
 
 `PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Si más adelante se autoriza un dominio propio, sustituirlo explícitamente y volver a validar todas las URLs.
 
-El inventario autenticado del 2026-08-04 encontró producción y preview sin variables. El código mantiene los flags server-side cerrados ante su ausencia, pero antes de pruebas externas deben cargarse explícitamente con valor `false`.
+Esos valores quedaron verificados en producción y preview el 2026-08-10. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
 
 ## 5. Configurar secretos
+
+### Autenticación administrativa
+
+Crear por entorno, sin reutilizar valores:
+
+- `ADMIN_USERNAME`: cuenta server-side; no se incorpora al frontend;
+- `ADMIN_PASSWORD_HASH`: `pbkdf2-sha256$iteraciones$salt-base64url$derivado-base64url`, generado con salt criptográfica aleatoria y PBKDF2-HMAC-SHA-256;
+- `ADMIN_SESSION_SECRET`: al menos 32 bytes aleatorios codificados en base64url;
+- `ADMIN_RATE_LIMIT_SECRET`: al menos 32 bytes aleatorios independientes, codificados en base64url.
+
+La contraseña sólo se ingresa mediante prompt protegido en el proceso que genera el derivado. No se escribe en scripts versionados, argumentos, archivos temporales ni salida. Cargar los cuatro valores como `secret_text` en production y preview; `wrangler pages secret ... --env production|preview` selecciona el entorno aunque el flag no aparezca en algunas ayudas de la CLI. Comprobar después únicamente los nombres:
+
+```powershell
+npx wrangler pages secret list --project-name shekinah --env production
+npx wrangler pages secret list --project-name shekinah --env preview
+```
+
+Para rotar contraseña: generar un hash nuevo con salt nueva, actualizar `ADMIN_PASSWORD_HASH` en ambos entornos y desplegar. Si se requiere cierre global de sesiones, rotar además `ADMIN_SESSION_SECRET`; no basta con cambiar el hash porque las cookies ya emitidas siguen firmadas hasta vencer.
+
+### Comercio y analítica
 
 Crear valores aleatorios independientes, de al menos 32 bytes, para `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET`. No pegarlos en archivos, documentación, argumentos de línea de comandos ni logs.
 
@@ -136,7 +153,7 @@ npx wrangler pages secret list --project-name shekinah
 
 La lista debe mostrar nombres, nunca valores.
 
-El inventario autenticado del 2026-08-04 no encontró secretos en producción ni en preview.
+Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. Los secretos de Mercado Pago, pedidos y analítica continúan ausentes mientras esas capacidades permanezcan deshabilitadas.
 
 ## 6. Configurar Mercado Pago Checkout Pro
 
@@ -156,35 +173,36 @@ Antes de pasar a producción, cambiar el access token y `MERCADO_PAGO_CHECKOUT_M
 
 Cuando Checkout Pro productivo quede validado, decidir explícitamente si se retira el fallback manual o si ambos flujos deben coexistir. No habilitarlos silenciosamente como equivalentes porque tienen garantías operativas distintas.
 
-## 7. Configurar Cloudflare Access
+## 7. Configurar autenticación administrativa y Access opcional
 
-Zero Trust no estaba configurado en el inventario autenticado del 2026-08-04. Definir primero un Team Domain autorizado; no inventarlo.
+La autenticación propia es el mecanismo primario y funciona sin Zero Trust:
 
-Crear políticas de Access para los dos recursos:
+1. `/admin` debe poder servir la SPA para mostrar el login.
+2. `POST /api/admin/auth/login` verifica credenciales, origen, tamaño y rate limiting D1.
+3. `GET /api/admin/auth/session` confirma la cookie `__Host-`.
+4. `POST /api/admin/auth/logout` la elimina.
+5. El middleware exige identidad en todo el resto de `/api/admin/*`.
 
-```text
-https://shekinah-7dl.pages.dev/admin*
-https://shekinah-7dl.pages.dev/api/admin/*
-```
+No crear una política externa de Access que intercepte obligatoriamente `/admin*` o `/api/admin/*`: impediría llegar al login y no reconoce la cookie propia. Zero Trust permanecía ausente en el inventario del 2026-08-10 y no es un bloqueo para este flujo.
 
-Ambos deben pertenecer a la misma aplicación o usar el mismo AUD esperado por Functions. Limitar la política a los administradores aprobados, habilitar MFA según la política del negocio y copiar el Team Domain y AUD reales a las variables.
-
-La protección de borde no reemplaza la validación interna: `functions/admin.ts` y `functions/api/admin/_middleware.ts` vuelven a validar firma RS256, issuer, audiencia y expiración del JWT `Cf-Access-Jwt-Assertion`.
+`server/access.ts` se conserva como fallback interno. Si se habilita en el futuro, configurar Team Domain y AUD reales y diseñar la política de borde de modo que no bloquee los tres endpoints propios. Una cookie propia presente pero inválida nunca cae a Access.
 
 Pruebas obligatorias:
 
-- sin sesión de Access: `/admin` y `/api/admin/summary` deben rechazarse;
-- usuario no autorizado: rechazo en el borde;
-- usuario autorizado: carga del resumen y creación de una fila en `admin_audit`;
-- AUD incorrecto o token expirado: rechazo desde la Function.
+- `/admin` sin sesión muestra el formulario;
+- API administrativa sin sesión responde 401;
+- usuario o contraseña incorrectos reciben el mismo 401;
+- cookie alterada o vencida recibe 401;
+- sesión válida permite una operación y logout vuelve a cerrar la API;
+- JWT Access válido funciona sólo como fallback, si se configuró.
 
-En Pages > Settings > Runtime, cambiar producción y preview de `Fail open` a `Fail closed`. `public/_routes.json` incluye `/api/*`, `/admin` y `/admin/*`; no deben caer a activos estáticos si se agota la cuota de Pages Functions.
+Producción y preview deben usar `Fail closed`. Este valor quedó verificado en ambos el 2026-08-10; `public/_routes.json` incluye `/api/*`, `/admin` y `/admin/*` y no debe caer a activos estáticos si se agota la cuota de Pages Functions.
 
 ## 8. Validar preview
 
 Con D1 de preview y sandbox:
 
-- restringir los previews públicos mediante Cloudflare Access antes de introducir datos de prueba;
+- usar únicamente la D1 y los secretos aislados de preview; si se restringe el entorno con Access, no confundir esa barrera adicional con la prueba del login propio en producción;
 - catálogo: exactamente 510 productos y 16 categorías, salvo cambio comercial autorizado en el repositorio;
 - `/enfoque`: 404 de aplicación;
 - `/privacidad`: disponible;
@@ -212,7 +230,7 @@ Validar por separado el fallback manual:
 ## 9. Activar Checkout Pro de forma escalonada
 
 1. Desplegar con ambos flags server-side en `false`.
-2. Confirmar Functions, binding, migración, secretos y Access.
+2. Confirmar Functions, binding, migraciones y autenticación administrativa; Access es opcional.
 3. Habilitar `ANALYTICS_ENABLED=true` sólo con política de retención y texto de privacidad aprobados.
 4. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de la compra controlada y aprobación del titular de Mercado Pago.
 5. Supervisar webhooks, estados e importes durante la ventana inicial.
@@ -230,7 +248,8 @@ Validar por separado el fallback manual:
 | D1 vinculado | binding `DB` visible y consulta correcta |
 | Migración aplicada | tabla de migraciones/consultas remotas |
 | Mercado Pago Checkout Pro configurado | sandbox y webhook verificados |
-| Access configurado | pruebas de acceso permitido y denegado |
+| Login administrativo configurado | cookie segura, API 401/200, logout y rate limit |
+| Access opcional | JWT permitido/denegado sin bloquear el login propio |
 | Checkout Pro productivo | flags, credenciales productivas y compra controlada |
 
 No declarar una fila como cumplida usando evidencia de otra.

@@ -122,7 +122,10 @@ export function assertSameOrigin(request: Request, env: Env): void {
     throw new HttpError(503, 'ORIGIN_CONFIG_MISSING', 'No hay orígenes autorizados configurados.');
   }
 
-  const allowed = new Set(configured.map(parseConfiguredOrigin));
+  const allowed = new Set([
+    new URL(request.url).origin,
+    ...configured.map(parseConfiguredOrigin),
+  ]);
   if (!allowed.has(normalizedOrigin)) {
     throw new HttpError(403, 'ORIGIN_REJECTED', 'El origen de la solicitud no está autorizado.');
   }
@@ -159,23 +162,18 @@ export async function readJsonBody(
   }
   const declared = request.headers.get('content-length');
   if (declared !== null) {
+    if (!/^\d+$/u.test(declared)) {
+      throw new HttpError(400, 'INVALID_CONTENT_LENGTH', 'El tamaño declarado no es válido.');
+    }
     const declaredBytes = Number(declared);
-    if (!Number.isFinite(declaredBytes) || declaredBytes < 0) {
+    if (!Number.isSafeInteger(declaredBytes)) {
       throw new HttpError(400, 'INVALID_CONTENT_LENGTH', 'El tamaño declarado no es válido.');
     }
     if (declaredBytes > maximumBytes) {
       throw new HttpError(413, 'BODY_TOO_LARGE', 'La solicitud excede el tamaño permitido.');
     }
   }
-  let raw: string;
-  try {
-    raw = await request.text();
-  } catch {
-    throw new HttpError(400, 'INVALID_JSON', 'No se pudo leer la solicitud.');
-  }
-  if (new TextEncoder().encode(raw).byteLength > maximumBytes) {
-    throw new HttpError(413, 'BODY_TOO_LARGE', 'La solicitud excede el tamaño permitido.');
-  }
+  const raw = await readBoundedText(request, maximumBytes);
   if (raw.trim() === '') {
     throw new HttpError(400, 'INVALID_JSON', 'La solicitud no contiene JSON.');
   }
@@ -183,5 +181,39 @@ export async function readJsonBody(
     return JSON.parse(raw) as unknown;
   } catch {
     throw new HttpError(400, 'INVALID_JSON', 'La solicitud no contiene JSON válido.');
+  }
+}
+
+async function readBoundedText(
+  request: Request,
+  maximumBytes: number,
+): Promise<string> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) {
+    throw new RangeError('El límite del body no es válido.');
+  }
+  if (request.body === null) return '';
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const chunks: string[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new HttpError(413, 'BODY_TOO_LARGE', 'La solicitud excede el tamaño permitido.');
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join('');
+  } catch (error: unknown) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, 'INVALID_JSON', 'No se pudo leer la solicitud.');
+  } finally {
+    reader.releaseLock();
   }
 }

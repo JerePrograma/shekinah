@@ -20,7 +20,11 @@ const catalogMigration = readFileSync(
   'utf8',
 );
 const adminData: AdminContextData = {
-  adminIdentity: { sub: 'admin-sub', email: 'admin@example.test' },
+  adminIdentity: {
+    sub: 'admin-sub',
+    actor: 'admin@example.test',
+    authMethod: 'cloudflare-access',
+  },
   requestId: 'catalog-admin-test',
 };
 

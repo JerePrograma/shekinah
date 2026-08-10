@@ -215,7 +215,7 @@ export async function recordAdminAudit(
     .bind(
       crypto.randomUUID(),
       identity.sub,
-      identity.email,
+      identity.actor,
       input.action,
       input.targetType ?? null,
       input.targetId ?? null,

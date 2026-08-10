@@ -62,14 +62,16 @@ El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe red
 
 El fallback manual no depende de D1; decidir explícitamente si debe permanecer disponible durante el incidente.
 
-## Access no disponible o mal configurado
+## Autenticación administrativa no disponible o mal configurada
 
-La administración debe permanecer cerrada. No eliminar la validación JWT ni publicar endpoints temporales sin autenticación.
+La administración debe permanecer cerrada. `/admin` puede seguir sirviendo el formulario, pero ninguna API protegida debe aceptar operaciones sin identidad. No eliminar el middleware, la firma de cookie, el control de origen ni el rate limiting para recuperar acceso.
 
-- confirmar Team Domain y AUD;
-- comprobar que `/admin*` y `/api/admin/*` están cubiertos por Access;
-- revisar expiración, issuer y claves públicas;
-- recuperar acceso corrigiendo la configuración, no relajando controles.
+- confirmar sólo los nombres y tipos cifrados de los cuatro secretos `ADMIN_*`, nunca sus valores;
+- verificar binding `DB` y migración `0005_admin_auth.sql`;
+- si la contraseña se perdió o comprometió, generar un hash nuevo fuera del repositorio y actualizarlo en Pages;
+- rotar `ADMIN_SESSION_SECRET` para cierre global de sesiones cuando exista riesgo de cookie comprometida;
+- revisar los resultados HTTP de `admin_audit` y los contadores opacos sin intentar reconstruir IP o usuario;
+- si se usa el fallback de Cloudflare Access, confirmar Team Domain, AUD, expiración, issuer y claves públicas sin convertirlo en un gate externo que bloquee `/api/admin/auth/login`.
 
 ## Analítica enviada sin consentimiento
 

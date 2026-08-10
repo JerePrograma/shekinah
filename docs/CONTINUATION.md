@@ -22,7 +22,7 @@ El repositorio contiene una evolución full-stack basada en:
 - Cloudflare D1;
 - Mercado Pago Checkout Pro preparado para activación;
 - fallback manual temporal de Link de Pago más WhatsApp;
-- Cloudflare Access;
+- autenticación administrativa propia y Cloudflare Access opcional;
 - analítica first-party opcional.
 
 Consultar primero:
@@ -48,7 +48,7 @@ La activación de Checkout Pro requiere evidencia separada de:
 - secretos cargados sin exposición;
 - credenciales de Mercado Pago válidas;
 - webhook con URL definitiva;
-- Cloudflare Access configurado para administración;
+- autenticación administrativa propia configurada y probada;
 - pruebas de humo aprobadas.
 
 ### Autorización manual vigente
@@ -61,7 +61,7 @@ WhatsApp: +549 2236 21-6559
 Link de Pago: https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-El código puede usar el WhatsApp normalizado `5492236216559` y el Link de Pago como fallback manual mientras `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Esta autorización no habilita Checkout Pro, D1, webhooks, analítica ni administración.
+El código puede usar el WhatsApp normalizado `5492236216559` y el Link de Pago como fallback manual mientras `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Esta autorización no habilita Checkout Pro, webhooks ni analítica. D1 y la administración se autorizan y verifican por separado.
 
 El fallback manual no requiere VPS. El backend futuro continúa siendo Pages Functions y D1.
 
@@ -73,22 +73,17 @@ El fallback manual no requiere VPS. El backend futuro continúa siendo Pages Fun
 - Rama de producción: `main`.
 - Existe un Worker independiente también llamado `shekinah`; no usar sus settings para configurar Pages.
 
-El inventario autenticado del 2026-08-04 encontró cero bases D1, cero variables/secretos/bindings en Pages y Zero Trust sin configurar. Producción y preview estaban en `Fail open`; los previews eran públicos.
+El inventario y la configuración autenticados del 2026-08-10 confirmaron dos D1 nuevas y aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones `0001` a `0005`, cuatro secretos administrativos cifrados por entorno y `Fail closed` en production/preview. Zero Trust/Access continúa sin configurar porque es un fallback opcional; existe además un Worker homónimo que permanece intacto.
 
 ## Próximos pasos
 
-1. verificar el deployment y smoke público del fallback manual autorizado;
-2. cambiar producción y preview de Pages a `Fail closed`;
-3. obtener el nombre exacto autorizado para D1 preview; `shekinah-commerce` ya está documentado únicamente para producción;
-4. crear bases D1 separadas, migrar primero preview y comprobar el esquema;
-5. vincular ambos entornos mediante el binding exacto `DB`;
-6. definir Team Domain y crear la organización/aplicación de Cloudflare Access;
-7. proteger `/admin*` y `/api/admin/*` y comprobar permitido/denegado;
-8. configurar variables no secretas con los flags de Checkout Pro y analítica en `false` y cargar secretos mediante prompts protegidos;
-9. validar Mercado Pago sandbox y webhook;
-10. restringir previews con Access;
-11. activar únicamente capacidades autorizadas y ejecutar pruebas de humo;
-12. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece.
+1. resolver siempre el SHA vigente de `main` y `origin/main` antes de continuar;
+2. comprobar CI y deployment de Pages para ese mismo SHA;
+3. confirmar que `DB`, `Fail closed`, migraciones y nombres cifrados `ADMIN_*` siguen presentes en ambos entornos;
+4. ejecutar el smoke administrativo: API 401, login, alta, consulta, modificación, baja, logout y nuevo 401;
+5. no crear una política externa de Access sobre todo `/admin*` o `/api/admin/*`, porque bloquearía el login propio; configurarlo sólo si se diseña como defensa adicional compatible;
+6. mantener Checkout Pro y analítica cerrados hasta validar Mercado Pago sandbox, webhook y autorizaciones correspondientes;
+7. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece.
 
 ## Prohibiciones
 

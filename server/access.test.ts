@@ -46,7 +46,11 @@ describe('Cloudflare Access', () => {
       CLOUDFLARE_ACCESS_AUD: audience,
     };
     await expect(verifyCloudflareAccess(request(token), env))
-      .resolves.toEqual({ sub: 'actor-1', email: 'admin@example.test' });
+      .resolves.toEqual({
+        sub: 'actor-1',
+        actor: 'admin@example.test',
+        authMethod: 'cloudflare-access',
+      });
     await expect(verifyCloudflareAccess(request(token), { ...env, CLOUDFLARE_ACCESS_AUD: 'otro-audience' }))
       .rejects.toMatchObject({ code: 'ACCESS_TOKEN_REJECTED' });
 

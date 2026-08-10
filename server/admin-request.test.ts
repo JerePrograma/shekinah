@@ -5,7 +5,11 @@ const request = new Request('https://example.test/api/admin/summary');
 
 function dataWithIdentity(): AdminContextData {
   return {
-    adminIdentity: { sub: 'admin-sub', email: 'admin@example.test' },
+    adminIdentity: {
+      sub: 'admin-sub',
+      actor: 'admin@example.test',
+      authMethod: 'cloudflare-access',
+    },
     requestId: 'request-test',
   };
 }

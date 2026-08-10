@@ -20,11 +20,8 @@ import { appPaths } from './routing/routes';
 import type { AppRoute, Navigate } from './routing/routes';
 import { useBrowserRoute } from './routing/useBrowserRoute';
 
-const AdminPage = lazy(() =>
-  import('./pages/AdminPage').then(({ AdminPage: component }) => ({ default: component })),
-);
-const ProductManager = lazy(() =>
-  import('./admin/ProductManager').then(({ ProductManager: component }) => ({
+const AdminBackoffice = lazy(() =>
+  import('./admin/AdminBackoffice').then(({ AdminBackoffice: component }) => ({
     default: component,
   })),
 );
@@ -171,8 +168,7 @@ function RouteView({
     case 'admin':
       return (
         <Suspense fallback={<p className="container" role="status">Cargando administración…</p>}>
-          <ProductManager />
-          <AdminPage navigate={navigate} />
+          <AdminBackoffice navigate={navigate} />
         </Suspense>
       );
     case 'resolving-product':

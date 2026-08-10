@@ -13,7 +13,7 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 - Checkout Pro de Mercado Pago por redirección preparado para activación serverless cuando existan D1, credenciales y webhook verificados;
 - envío manual del carrito por WhatsApp al número expresamente autorizado;
 - pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1;
-- catálogo de productos editable y pedidos/analítica de sólo lectura en un panel preparado para Cloudflare Access;
+- catálogo de productos editable y pedidos/analítica de sólo lectura en un backoffice con login propio server-side;
 - política de privacidad, accesibilidad y vista 404.
 
 El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
@@ -28,7 +28,7 @@ VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. El Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar D1, credenciales productivas de Mercado Pago, webhook y verificaciones de producción. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
+El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. D1 ya está separada y migrada para production/preview, pero Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar credenciales productivas de Mercado Pago, webhook y verificaciones propias de ese flujo. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
 
 ## Rutas públicas
 
@@ -41,7 +41,7 @@ El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VP
 - `/tienda/categoria/<slug>/`: categoría;
 - cualquier otra dirección, incluida `/enfoque`: vista 404.
 
-`/admin` y `/api/admin/*` no aparecen en la navegación y deben quedar protegidas por Cloudflare Access en el borde, además de la validación JWT interna.
+`/admin` no aparece en la navegación y sirve únicamente la pantalla de acceso hasta que el servidor confirma una sesión. `/api/admin/auth/login`, `/api/admin/auth/session` y `/api/admin/auth/logout` administran la sesión; todas las demás rutas `/api/admin/*` exigen en cada solicitud una cookie propia válida o, como compatibilidad opcional, un JWT válido de Cloudflare Access.
 
 ## Desarrollo
 
@@ -78,11 +78,11 @@ VITE_COMMERCE_ENABLED=false
 VITE_ANALYTICS_ENABLED=false
 ```
 
-Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET` deben cargarse exclusivamente como secretos de Cloudflare. Nunca deben usar el prefijo `VITE_`.
+Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET`, `ANALYTICS_HMAC_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` deben cargarse exclusivamente como secretos de Cloudflare. Nunca deben usar el prefijo `VITE_`. La contraseña administrativa se transforma fuera del repositorio mediante PBKDF2-HMAC-SHA-256 con salt aleatoria; no se carga ni se conserva en claro.
 
 `VITE_WHATSAPP_NUMBER` y `VITE_MERCADO_PAGO_PAYMENT_LINK` son datos públicos. El código incluye como defaults únicamente los valores expresamente autorizados arriba y permite sobrescribirlos o deshabilitarlos mediante configuración de build.
 
-La configuración externa, D1, Mercado Pago Checkout Pro, el webhook y Cloudflare Access deben completarse siguiendo `docs/COMMERCE_DEPLOYMENT.md`. El diseño de entrega y retención está documentado en `docs/FULFILLMENT_AND_RETENTION.md`. Tener el código en `main` o un CI verde no implica que esas integraciones estén vinculadas o activas.
+La configuración externa, D1, Mercado Pago Checkout Pro, el webhook y la autenticación administrativa deben operarse siguiendo `docs/COMMERCE_DEPLOYMENT.md`. Cloudflare Access es un fallback opcional y no un requisito del login propio. El diseño de entrega y retención está documentado en `docs/FULFILLMENT_AND_RETENTION.md`. Tener el código en `main` o un CI verde no implica que esas integraciones estén vinculadas o activas.
 
 ## Producción
 
@@ -96,4 +96,4 @@ Cloudflare Pages debe conservar:
 - Node.js: `24.18.0`;
 - dominio público: `https://shekinah-7dl.pages.dev` mientras no se autorice otro dominio primario.
 
-La CSP permite conexiones únicamente al mismo origen mediante `connect-src 'self'`. Las conexiones de Checkout Pro y Cloudflare Access ocurren desde Pages Functions; el Link de Pago manual es una navegación HTTPS explícita del comprador hacia Mercado Pago.
+La CSP permite conexiones únicamente al mismo origen mediante `connect-src 'self'`. El login y el ABM usan exclusivamente APIs first-party y una cookie `HttpOnly`; las conexiones de Checkout Pro y del fallback opcional de Access ocurren desde Pages Functions. El Link de Pago manual es una navegación HTTPS explícita del comprador hacia Mercado Pago.

@@ -65,7 +65,13 @@ const EMPTY_SUMMARY: AdminSummary = Object.freeze({
   averageTicketMinor: 0,
 });
 
-export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
+export function AdminPage({
+  navigate,
+  onUnauthorized,
+}: Readonly<{
+  navigate: Navigate;
+  onUnauthorized?: (() => void) | undefined;
+}>) {
   const initialRange = useMemo(defaultDateRange, []);
   const [from, setFrom] = useState(initialRange.from);
   const [to, setTo] = useState(initialRange.to);
@@ -79,7 +85,7 @@ export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    void loadAdminData(submittedRange, controller.signal)
+    void loadAdminData(submittedRange, controller.signal, onUnauthorized)
       .then((result) => setData(result))
       .catch((loadError: unknown) => {
         if (controller.signal.aborted) return;
@@ -93,7 +99,7 @@ export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [submittedRange]);
+  }, [onUnauthorized, submittedRange]);
 
   const analyticsQuery = new URLSearchParams({
     from: submittedRange.from,
@@ -115,7 +121,8 @@ export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           <p className="eyebrow">Administración</p>
           <h2 id="admin-title">Pedidos y analítica: sólo lectura</h2>
           <p>
-            Esta superficie requiere una identidad validada por Cloudflare Access y no permite modificar pedidos ni datos analíticos.
+            Esta superficie requiere una sesión administrativa validada por el servidor y no
+            permite modificar pedidos ni datos analíticos.
           </p>
         </div>
 
@@ -334,19 +341,20 @@ function AdminTable({
 async function loadAdminData(
   range: AdminFilter,
   signal: AbortSignal,
+  onUnauthorized?: () => void,
 ): Promise<AdminData> {
   const baseQuery = new URLSearchParams({ from: range.from, to: range.to, limit: '100' }).toString();
   const orderQueryParams = new URLSearchParams({ from: range.from, to: range.to, limit: '100' });
   if (range.status !== '') orderQueryParams.set('status', range.status);
   const orderQuery = orderQueryParams.toString();
   const [summary, orders, funnel, products, sources, devices, audit] = await Promise.all([
-    getJson(`/api/admin/summary?${baseQuery}`, signal),
-    getJson(`/api/admin/orders?${orderQuery}`, signal),
-    getJson(`/api/admin/analytics/funnel?${baseQuery}`, signal),
-    getJson(`/api/admin/analytics/products?${baseQuery}`, signal),
-    getJson(`/api/admin/analytics/sources?${baseQuery}`, signal),
-    getJson(`/api/admin/analytics/devices?${baseQuery}`, signal),
-    getJson(`/api/admin/audit?${baseQuery}`, signal),
+    getJson(`/api/admin/summary?${baseQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/orders?${orderQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/analytics/funnel?${baseQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/analytics/products?${baseQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/analytics/sources?${baseQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/analytics/devices?${baseQuery}`, signal, onUnauthorized),
+    getJson(`/api/admin/audit?${baseQuery}`, signal, onUnauthorized),
   ]);
   return Object.freeze({
     summary: parseSummary(summary),
@@ -359,8 +367,16 @@ async function loadAdminData(
   });
 }
 
-async function getJson(path: string, signal: AbortSignal): Promise<unknown> {
+async function getJson(
+  path: string,
+  signal: AbortSignal,
+  onUnauthorized?: () => void,
+): Promise<unknown> {
   const response = await fetch(path, { credentials: 'same-origin', signal });
+  if (response.status === 401) {
+    onUnauthorized?.();
+    throw new Error('La sesión administrativa venció.');
+  }
   let payload: unknown = null;
   try {
     payload = await response.json();

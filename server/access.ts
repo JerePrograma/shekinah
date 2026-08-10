@@ -99,7 +99,11 @@ export async function verifyCloudflareAccess(
     throw accessInvalid();
   }
   if (!verified) throw accessInvalid();
-  return Object.freeze({ sub: claims.sub.trim(), email: claims.email.trim() });
+  return Object.freeze({
+    sub: claims.sub.trim(),
+    actor: claims.email.trim(),
+    authMethod: 'cloudflare-access',
+  });
 }
 
 function normalizeTeamDomain(value: string): string {

@@ -39,6 +39,7 @@ const credentialPatterns = [
   /\bTEST-[A-Za-z0-9_-]{20,}\b/u,
   /\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_-]{16,}\b/u,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u,
+  /\bpbkdf2-sha256\$[1-9][0-9]{5,6}\$[A-Za-z0-9_-]{22,86}\$[A-Za-z0-9_-]{43}\b/u,
 ];
 const requiredFunctions = [
   'functions/admin.ts',
@@ -50,6 +51,9 @@ const requiredFunctions = [
   'functions/api/catalog.ts',
   'functions/api/catalog/[id].ts',
   'functions/api/admin/_middleware.ts',
+  'functions/api/admin/auth/login.ts',
+  'functions/api/admin/auth/session.ts',
+  'functions/api/admin/auth/logout.ts',
   'functions/api/admin/products.ts',
   'functions/api/admin/products/[id].ts',
   'functions/api/admin/summary.ts',
@@ -138,6 +142,9 @@ if (!existsSync(join(projectRoot, 'migrations', '0001_commerce.sql'))) {
 }
 if (!existsSync(join(projectRoot, 'migrations', '0004_catalog_admin.sql'))) {
   fail('Falta la migración aditiva del catálogo administrativo.');
+}
+if (!existsSync(join(projectRoot, 'migrations', '0005_admin_auth.sql'))) {
+  fail('Falta la migración de protección del login administrativo.');
 }
 
 const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');

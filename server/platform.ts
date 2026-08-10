@@ -44,6 +44,10 @@ export type Env = Readonly<{
   MERCADO_PAGO_WEBHOOK_SECRET?: string;
   ORDER_TOKEN_SECRET?: string;
   ANALYTICS_HMAC_SECRET?: string;
+  ADMIN_USERNAME?: string;
+  ADMIN_PASSWORD_HASH?: string;
+  ADMIN_SESSION_SECRET?: string;
+  ADMIN_RATE_LIMIT_SECRET?: string;
   CLOUDFLARE_ACCESS_TEAM_DOMAIN?: string;
   CLOUDFLARE_ACCESS_AUD?: string;
   ANALYTICS_RETENTION_DAYS?: string;
@@ -73,7 +77,8 @@ export type PagesFunction<
 
 export type AdminIdentity = Readonly<{
   sub: string;
-  email: string;
+  actor: string;
+  authMethod: 'password' | 'cloudflare-access';
 }>;
 
 export type AdminContextData = Record<string, unknown> &

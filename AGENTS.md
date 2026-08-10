@@ -65,7 +65,7 @@ Reglas:
 - En Checkout Pro integrado, el navegador no decide precios, moneda, totales ni estados de pago; el servidor recalcula y el webhook verifica al proveedor.
 - El fallback manual temporal puede mostrar y copiar el total del carrito únicamente como importe que el comprador ingresa en un Link de Pago sin monto predefinido. Ese total no crea un pedido, no prueba un cobro y debe asociarse/verificarse manualmente antes de fulfillment.
 - Mercado Pago Checkout Pro se integra por redirección; el webhook consulta información autoritativa del proveedor.
-- Las operaciones administrativas se protegen con Cloudflare Access y validación interna del JWT.
+- Las operaciones administrativas se protegen en Functions mediante credencial propia server-side, sesión firmada y rate limiting D1. Cloudflare Access puede coexistir como fallback interno, pero no debe interceptar los endpoints de login ni sustituir la validación de sesión.
 - La analítica first-party requiere consentimiento y una retención expresamente autorizada.
 - Checkout Pro automatizado y analítica permanecen deshabilitados hasta completar configuración y autorizaciones.
 - WhatsApp sólo puede habilitarse con un número autorizado. El número `5492236216559` quedó autorizado explícitamente el 2026-08-10 para el fallback manual actual.

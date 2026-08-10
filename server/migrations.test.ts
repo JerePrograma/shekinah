@@ -6,6 +6,7 @@ const commerceMigration = readFileSync(resolve(process.cwd(), 'migrations', '000
 const fulfillmentMigration = readFileSync(resolve(process.cwd(), 'migrations', '0002_fulfillment_and_retention.sql'), 'utf8');
 const checkoutIntentMigration = readFileSync(resolve(process.cwd(), 'migrations', '0003_checkout_intent_cart_fingerprint.sql'), 'utf8');
 const catalogMigration = readFileSync(resolve(process.cwd(), 'migrations', '0004_catalog_admin.sql'), 'utf8');
+const adminAuthMigration = readFileSync(resolve(process.cwd(), 'migrations', '0005_admin_auth.sql'), 'utf8');
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -19,7 +20,8 @@ describe('migraciones D1', () => {
         .run('2026-08-04T00:00:00.000Z');
       database.exec(checkoutIntentMigration);
       database.exec(catalogMigration);
-      expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}`)).not.toThrow();
+      database.exec(adminAuthMigration);
+      expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}\n${adminAuthMigration}`)).not.toThrow();
 
       const schema = database.prepare('SELECT name, type FROM sqlite_schema ORDER BY type, name').all();
       expect(schema).toEqual(expect.arrayContaining([
@@ -29,6 +31,8 @@ describe('migraciones D1', () => {
         expect.objectContaining({ name: 'analytics_maintenance', type: 'table' }),
         expect.objectContaining({ name: 'catalog_product_mutations', type: 'table' }),
         expect.objectContaining({ name: 'idx_catalog_product_mutations_updated', type: 'index' }),
+        expect.objectContaining({ name: 'admin_login_rate_limits', type: 'table' }),
+        expect.objectContaining({ name: 'idx_admin_login_rate_limits_updated', type: 'index' }),
       ]));
       expect(database.prepare("SELECT cart_fingerprint FROM checkout_intents WHERE checkout_idempotency_key = 'historical-key'").get())
         .toEqual({ cart_fingerprint: 'historical-order-cart-fingerprint' });
@@ -71,6 +75,16 @@ describe('migraciones D1', () => {
         product_id, payload_json, deleted, updated_by, created_at, updated_at
       ) VALUES ('json-invalido', '{', 0, 'admin@example.test', ?, ?)`)
         .run('2026-08-10T00:00:00.000Z', '2026-08-10T00:00:00.000Z')).toThrow();
+
+      database.prepare(`INSERT INTO admin_login_rate_limits (
+        scope_key, window_started_at, attempt_count, blocked_until, updated_at
+      ) VALUES ('opaque-scope', 1, 1, 0, 1)`).run();
+      expect(() => database.prepare(`INSERT INTO admin_login_rate_limits (
+        scope_key, window_started_at, attempt_count, blocked_until, updated_at
+      ) VALUES ('invalid-attempt-count', 1, -1, 0, 1)`).run()).toThrow();
+      expect(() => database.prepare(`INSERT INTO admin_login_rate_limits (
+        scope_key, window_started_at, attempt_count, blocked_until, updated_at
+      ) VALUES ('invalid-block', 1, 1, -1, 1)`).run()).toThrow();
       expect(() => database.prepare(`INSERT INTO catalog_product_mutations (
         product_id, payload_json, deleted, updated_by, created_at, updated_at
       ) VALUES ('tombstone-invalido', '{}', 1, 'admin@example.test', ?, ?)`)

@@ -15,8 +15,8 @@ cloudflare_pages_check: success
 commerce_enabled: false
 analytics_enabled: false
 whatsapp_enabled: false
-d1_preview: ausente
-d1_production: ausente
+d1_preview: shekinah-commerce-preview
+d1_production: shekinah-commerce
 mercado_pago_mode: no_verificado
 ```
 
@@ -60,7 +60,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 - **REVISADO_POR_CÓDIGO:** secretos y credenciales se leen únicamente desde bindings o variables de servidor; no existen variables `VITE_*` para secretos.
 - **REVISADO_POR_CÓDIGO:** los endpoints mutables aplican origen same-origin y límites de payload; el webhook verifica firma antes de procesar el cuerpo.
-- **REVISADO_POR_CÓDIGO:** las rutas administrativas requieren JWT de Cloudflare Access y validación interna RS256.
+- **REVISADO_POR_CÓDIGO:** las rutas administrativas requieren sesión propia HMAC o, sólo como fallback sin cookie, JWT RS256 de Cloudflare Access; una cookie propia inválida se rechaza sin fallback.
 - **VERIFICADO:** `public/_headers` aplica CSP sin `unsafe-inline` ni `unsafe-eval`; el sitio público entregó esas cabeceras el 2026-08-04.
 
 ## 7. Catálogo y activos
@@ -83,7 +83,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** `reserveCheckoutIntent` fija por separado las huellas normalizadas de fulfillment y carrito; `prepareOrder` crea/lee pedido e ítems mediante `D1Database.batch`, y el fulfillment se persiste antes de reclamar la preferencia.
 - **REVISADO_POR_CÓDIGO:** la recuperación exige coincidencia de carrito, subtotal, envío, total, peso y huella de fulfillment.
 - **VERIFICADO:** `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella del carrito y backfillea desde pedidos existentes sin editar `0001` ni `0002`.
-- **VERIFICADO:** `server/migrations.test.ts` aplica `0001`, `0002` y `0003`, preserva pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints y cascade.
+- **VERIFICADO:** `server/migrations.test.ts` aplica `0001` a `0005`, preserva pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints, cascade, catálogo y rate limiting.
 
 ## 10. Mercado Pago y webhooks
 
@@ -94,13 +94,15 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** pruebas sin credenciales reales cubren la línea de envío, ARS, total completo, firma ausente/inválida, evento duplicado, monto/moneda incompatibles y aprobación autoritativa.
 - **BLOQUEADO:** credenciales, modo y aplicación real de Mercado Pago no se verificaron ni se activarán sin autorización expresa.
 
-## 11. Administración y Cloudflare Access
+## 11. Administración, sesión propia y Access opcional
 
-- **REVISADO_POR_CÓDIGO:** `/api/admin/*` pasa por `functions/api/admin/_middleware.ts`; `server/access.ts` valida issuer, audience, expiración, `nbf`, algoritmo RS256 y firma con JWKS.
+- **REVISADO_POR_CÓDIGO:** `/api/admin/*` pasa por `functions/api/admin/_middleware.ts`; sólo login, session y logout quedan excluidos exactamente. `server/admin-auth.ts` valida PBKDF2, cookie HMAC y expiración; `server/access.ts` conserva issuer, audience, expiración, `nbf`, algoritmo RS256 y firma con JWKS como fallback.
+- **REVISADO_POR_CÓDIGO:** `/admin` sirve la SPA para mostrar el login; la autoridad reside en cada API protegida. La identidad por contraseña es sintética y el usuario no entra en cookie ni auditoría.
 - **REVISADO_POR_CÓDIGO:** listados y detalle toleran pedidos históricos sin fulfillment; el CSV neutraliza prefijos de fórmulas.
-- **VERIFICADO:** una petición pública no autenticada a `/admin` respondió 401 el 2026-08-04.
-- **VERIFICADO:** la sesión autenticada de Cloudflare mostró el onboarding inicial de Zero Trust; no existe organización ni aplicación Access configurada.
-- **VERIFICADO:** la respuesta 401 de `/admin` proviene de la validación interna; todavía falta la protección de borde requerida.
+- **HISTÓRICO VERIFICADO (2026-08-04):** una petición pública no autenticada a `/admin` respondió 401 con el diseño anterior exclusivo de Access.
+- **HISTÓRICO VERIFICADO (2026-08-04):** la sesión autenticada de Cloudflare mostró el onboarding inicial de Zero Trust; no existía organización ni aplicación Access configurada.
+- **HISTÓRICO SUPERADO:** aquel diseño exigía protección Access de borde. El requisito actual reemplazó esa autoridad primaria por login propio server-side para que `/admin` pueda mostrar el formulario.
+- **VERIFICADO:** el inventario del 2026-08-10 confirmó que Access continúa ausente; el nuevo requisito usa autenticación propia y no debe añadir una política externa que intercepte el login.
 
 ## 12. Analítica, consentimiento y retención
 
@@ -112,9 +114,9 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 13. Variables, flags, bindings y secretos
 
-- **VERIFICADO:** comercio, analítica y WhatsApp están deshabilitados en preview y producción por el comportamiento seguro ante variables ausentes.
-- **VERIFICADO:** producción y preview no tienen variables, secretos ni bindings configurados en el proyecto Pages.
-- **VERIFICADO:** `wrangler d1 list --json` devolvió cero bases para la cuenta autenticada; el webhook responde `DATABASE_UNAVAILABLE`.
+- **VERIFICADO:** comercio y analítica están deshabilitados explícitamente en preview y producción; el fallback público autorizado permanece independiente.
+- **VERIFICADO:** producción y preview tienen `DB`, variables mínimas, `Fail closed` y los cuatro nombres administrativos como `secret_text`.
+- **VERIFICADO:** existen `shekinah-commerce` y `shekinah-commerce-preview`; ambas registran `0001` a `0005` sin pendientes, incluida `0004_catalog_admin.sql`.
 - **VERIFICADO:** Mercado Pago no tiene secretos cargados en Pages; el modo y la aplicación del proveedor siguen `no_verificado`.
 - **VERIFICADO:** Zero Trust y Cloudflare Access están ausentes.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
@@ -169,23 +171,23 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 | SHK-007 | MEDIA | Analítica | `server/analytics-retention.test.ts` | retención | Faltaban límites, concurrencia y rollback. | Evidencia ejecutada de corte exacto, configuración y recuperación. | Suite focalizada aprobada. | Operación de privacidad frágil no detectada. | Pruebas ampliadas sin cambiar esquema. | 1/729/730/731, mes y fallo. | VERIFICADO |
 | SHK-008 | MEDIA | Documentación | documentos operativos | estado vigente | Algunos textos anteriores negaban fulfillment o retención. | Documentación vigente coherente, preservando registros históricos. | `verify:automation` aprobado. | Operación incorrecta por instrucciones obsoletas. | Documentos vigentes reconciliados. | Automatización y enlaces. | VERIFICADO |
 | SHK-009 | BAJA | Rendimiento | `src/App.tsx` | import de admin | Bundle principal superaba levemente 500 kB minificado. | Reducir el bundle sólo con un split pequeño y medible. | Build: 492,62 kB; Playwright 10/10. | Carga inicial algo mayor. | `AdminPage` diferida con fallback accesible. | Build y Playwright. | VERIFICADO |
-| SHK-010 | ALTA | Producción | Cloudflare | binding D1 | El webhook público no dispone de DB. | D1, migraciones y bindings verificados antes de activar comercio. | Respuesta pública `DATABASE_UNAVAILABLE`. | Pagos no reconciliables si se activara comercio. | Mantener flags cerrados; configurar sólo con acceso y backup. | Smoke externo autenticado. | BLOQUEADO |
+| SHK-010 | ALTA | Producción | Cloudflare | binding D1 | Production y preview tienen D1 aislada, migraciones y binding `DB`. | Mantener esa separación antes de activar comercio. | API/CLI autenticadas, tracking y esquema remoto. | Pagos no reconciliables si el binding se retira al activar comercio. | Mantener flags cerrados y comprobar binding por SHA. | Smoke externo antes de activar Checkout Pro. | VERIFICADO |
 | SHK-011 | MEDIA | Continuidad | `docs/CODEX_AUTORREFERENCIA.md` | archivo requerido | El archivo no existía en la base. | Memoria operativa versionada y reconciliable. | Archivo creado y `verify:automation` aprobado. | Continuación dependiente de contexto externo. | Documento y orden de lectura agregados. | Automatización documental. | VERIFICADO |
 | SHK-012 | ALTA | Idempotencia | `server/fulfillment.ts` | `reserveCheckoutIntent` | Una reserva huérfana fijaba sólo fulfillment y podía aceptar otro carrito. | La misma clave fija carrito y fulfillment aun antes de existir pedido. | Reproducción por flujo y pruebas secuencial/concurrente. | Reutilización semántica de clave y pedido inesperado. | Migración `0003`, backfill y reclamo condicional. | Mismo/diferente carrito, normalización y concurrencia. | VERIFICADO |
-| SHK-013 | ALTA | Pages/security | configuración externa | `Fail open/closed` | Producción y preview están en `Fail open`. | Rutas críticas de Functions deben fallar cerradas al agotar cuota. | Panel autenticado y documentación oficial de routing. | `/api/*` o `/admin*` puede caer a activos estáticos en vez de devolver error. | Cambiar ambos entornos a `Fail closed`. | Agotamiento simulado/no Function y smoke posterior. | VERIFICADO (abierto) |
-| SHK-014 | ALTA | Access | Zero Trust | aplicación administrativa | Zero Trust muestra onboarding y no existe aplicación Access. | `/admin*` y `/api/admin/*` protegidos en el borde y revalidados internamente. | Panel autenticado; `/admin` público llega a la Function y devuelve 401. | Falta la primera barrera administrativa exigida. | Definir Team Domain y crear política para administradores autorizados. | Usuario permitido, denegado y sin sesión. | BLOQUEADO |
+| SHK-013 | ALTA | Pages/security | configuración externa | `Fail open/closed` | Producción y preview usan `Fail closed`. | Rutas críticas de Functions deben seguir fallando cerradas al agotar cuota. | API autenticada de Pages y smoke posterior requerido por SHA. | Una regresión podría servir activos en vez de ejecutar Functions. | Conservar el setting y revalidarlo tras cambios. | API y smoke posterior. | VERIFICADO |
+| SHK-014 | ALTA | Autenticación | backoffice | login y sesión | Existe credencial propia PBKDF2, cookie HMAC, middleware y rate limit D1; Access es opcional. | Login propio utilizable sin secretos en navegador y API fail-closed. | Pruebas unitarias/integración y configuración cifrada; smoke remoto requerido por SHA. | Escrituras no autorizadas o bloqueo accidental del login. | Mantener tres exclusiones exactas y no interponer Access obligatorio. | Login, cookie alterada, CRUD y logout. | CONFIGURADO |
 | SHK-015 | MEDIA | Operación | Cloudflare | identidad de recurso | Pages y un Worker independiente comparten el nombre `shekinah`. | Toda operación distingue `pages/view/shekinah` de `workers/services/view/shekinah`. | Inventario autenticado de Workers & Pages. | Variables o bindings pueden cargarse en el recurso equivocado. | Documentar identificadores no sensibles y validar tipo antes de mutar. | Relectura del panel después de cada cambio. | VERIFICADO |
 | SHK-016 | MEDIA | Preview | Pages | despliegues/Access | Previews públicos; cinco PRs Dependabot abiertos tienen build Pages fallido. | Previews restringidos y logs de fallos accesibles para diagnóstico. | Wrangler y checks GitHub; resumen sólo indica `Build failed`. | Cambios no productivos no tienen entorno demostrable. | Configurar Access y revisar logs sin modificar PRs. | Preview autorizado y build verde. | BLOQUEADO |
 
 ## 18. Riesgos y bloqueos externos
 
-- **VERIFICADO:** el inventario autenticado contiene cero bases D1; no existe información productiva que respaldar todavía.
-- **BLOQUEADO:** el nombre `shekinah-commerce` está documentado para producción, pero no existe un nombre autorizado para D1 preview; no inventarlo ni compartir una base entre entornos.
-- **BLOQUEADO:** Access requiere crear Zero Trust y obtener Team Domain/AUD reales; la aplicación de Mercado Pago y el webhook requieren credenciales autorizadas.
+- **VERIFICADO:** la cuenta partía de cero D1; se crearon bases vacías y separadas, se capturaron bookmarks previos y se aplicaron sólo migraciones versionadas `0001` a `0005`.
+- **VERIFICADO:** `shekinah-commerce` pertenece a producción y `shekinah-commerce-preview` a preview; ambos usan binding `DB` sin compartir datos.
+- **REVISADO:** Access no está habilitado y no es bloqueo para el login propio. Mercado Pago y el webhook sí requieren credenciales y autorización separadas.
 - **BLOQUEADO:** no se realizará ningún pago, devolución ni activación productiva sin confirmación inmediata.
 - **INFERENCIA:** una intención huérfana puede persistir si una operación falla tras reservarla; sólo contiene huellas, fija carrito y fulfillment y la misma solicitud puede reintentarse. No existe una política de limpieza, pero tampoco almacena PII en claro.
-- **VERIFICADO:** Wrangler `4.118.0` está disponible mediante `npx --no-install` y tiene una sesión OAuth; no está instalado globalmente ni en `node_modules`.
-- **VERIFICADO:** producción y preview están en `Fail open`; el hallazgo permanece abierto hasta cambiar ambos a `Fail closed`.
+- **VERIFICADO:** Wrangler no está instalado en el proyecto; la sesión autenticada se operó efímeramente con Wrangler `4.120.1`, sin modificar dependencias.
+- **VERIFICADO:** producción y preview están en `Fail closed`.
 - **VERIFICADO:** los previews son públicos; cinco PRs Dependabot abiertos conservan checks Pages fallidos cuyo resumen sólo indica `Build failed`.
 
 ## 19. Archivos y símbolos críticos
@@ -197,10 +199,11 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `server/mercado-pago.ts`: creación/recuperación de preferencias y consulta autoritativa de pagos.
 - `functions/api/checkout/preferences.ts`: orquestación de checkout e idempotencia.
 - `functions/api/webhooks/mercadopago.ts`: autenticación y conciliación de webhooks.
-- `server/access.ts` y `functions/api/admin/_middleware.ts`: frontera administrativa.
+- `server/admin-auth.ts`, `server/admin-login-rate-limit.ts`, `server/access.ts` y `functions/api/admin/_middleware.ts`: frontera administrativa.
 - `server/analytics-retention.ts`: reclamo mensual y purga.
 - `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`: migraciones publicadas preservadas sin cambios.
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: migración aditiva nueva para cerrar la reserva de carrito.
+- `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`: mutaciones/tombstones y rate limiting administrativo.
 - `scripts/verify-shipping-weights.mjs`: clasificación auditable de pesos.
 - Cloudflare Pages correcto: panel bajo `pages/view/shekinah`, dominio `shekinah-7dl.pages.dev`.
 - Worker distinto: panel bajo `workers/services/view/shekinah`; no configurarlo para comercio.
@@ -213,7 +216,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 21. Próximo paso exacto
 
-Cambiar producción y preview a `Fail closed` y comprobar que la SPA, `/api/*` y `/admin*` conservan sus respuestas esperadas. Después obtener del usuario el nombre exacto de D1 preview y el Team Domain de Zero Trust antes de crear recursos, vincular `DB` o aplicar `0001`–`0003`.
+Resolver el SHA vigente de `origin/main`, comprobar CI y deployment del mismo SHA y ejecutar el smoke administrativo completo. Mantener Checkout Pro y analítica cerrados; Access sólo puede agregarse como defensa compatible que no intercepte el login propio.
 
 ## 22. Historial de sesiones
 

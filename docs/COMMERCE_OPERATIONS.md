@@ -59,6 +59,10 @@ Un pedido en este último estado no debe liberarse ni reintentarse manualmente s
 
 ## Backoffice
 
+`/admin` comprueba primero `/api/admin/auth/session`. Sin sesión muestra el formulario; un login válido emite una cookie `__Host-` de ocho horas y recién entonces monta las consultas administrativas. Cerrar sesión elimina la cookie. Ninguna contraseña se guarda en `localStorage`, `sessionStorage`, IndexedDB, auditoría o logs.
+
+`POST /api/admin/auth/logout` invalida inmediatamente la cookie propia. Si en el futuro se habilita el fallback de Access, su sesión externa conserva el ciclo de vida definido por Cloudflare y debe cerrarse también en ese proveedor; el logout propio no revoca un JWT emitido por Access.
+
 La interfaz `/admin` consume:
 
 - `/api/admin/products` y `/api/admin/products/:id` para el ABM del catálogo;
@@ -72,7 +76,7 @@ El catálogo de productos es editable. Pedidos, analítica, exportaciones y audi
 
 La auditoría registra:
 
-- subject y email validados por Access;
+- subject y actor normalizados por sesión propia o por Access;
 - acción administrativa de lectura o mutación de catálogo;
 - tipo e identificador de destino cuando corresponda;
 - resultado HTTP;
@@ -80,6 +84,8 @@ La auditoría registra:
 - fecha del servidor.
 
 No registrar tokens JWT, cookies, cuerpos de petición, firmas de webhook ni parámetros completos de consulta.
+
+Los intentos de login se limitan en D1 por IP y por usuario mediante scopes HMAC. Ocho intentos por IP o veinte por usuario dentro de quince minutos activan un bloqueo de quince minutos al intento siguiente. `CF-Connecting-IP` es la fuente de IP en Pages; si falta, todas esas solicitudes comparten un scope cerrado. No borrar la tabla ni desactivar el control para recuperar acceso.
 
 ## Reportes
 
@@ -108,5 +114,9 @@ No ejecutar borrados masivos sin backup y plan de reversión.
 - `MERCADO_PAGO_WEBHOOK_SECRET`: coordinar el cambio para no rechazar notificaciones legítimas durante la transición.
 - `ORDER_TOKEN_SECRET`: su rotación invalida los tokens públicos de pedidos existentes; planificar compatibilidad o conservar el valor mientras existan pedidos consultables.
 - `ANALYTICS_HMAC_SECRET`: su rotación cambia el hash de sesión y dificulta eliminar sesiones históricas con el identificador local anterior.
+- `ADMIN_PASSWORD_HASH`: generar fuera del repositorio un nuevo formato PBKDF2-HMAC-SHA-256 con salt aleatoria e iteraciones admitidas, actualizar el secreto cifrado de production y preview y desplegar. Nunca cargar la contraseña en claro ni guardar el hash en documentación.
+- `ADMIN_USERNAME`: actualizarlo como secreto server-side junto con el hash si cambia la cuenta; no requiere modificar frontend ni código.
+- `ADMIN_SESSION_SECRET`: rotarlo con al menos 32 bytes aleatorios para invalidar globalmente todas las sesiones administrativas existentes. Debe ser independiente de la contraseña y de otros secretos.
+- `ADMIN_RATE_LIMIT_SECRET`: mantenerlo independiente. Rotarlo sólo de forma deliberada porque crea scopes HMAC nuevos; las filas anteriores quedan inertes y vencen por retención.
 
-Las dos últimas rotaciones tienen impacto funcional y no deben ejecutarse como mantenimiento rutinario sin plan específico.
+`ORDER_TOKEN_SECRET`, `ANALYTICS_HMAC_SECRET`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` tienen impacto funcional y no deben rotarse como mantenimiento rutinario sin un plan específico. Después de una rotación administrativa, comprobar login, API protegida y logout sin imprimir valores.

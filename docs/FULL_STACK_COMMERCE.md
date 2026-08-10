@@ -16,7 +16,7 @@ Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado
 - `src/pages/CartPage.tsx`: edición de cantidades, eliminación, vaciado, total, Checkout Pro integrado, fallback manual de Link de Pago y WhatsApp.
 - `src/pages/PaymentReturnPage.tsx`: los retornos del proveedor sólo consultan el estado persistido del Checkout Pro integrado; no interpretan `status`, `collection_status` ni otros parámetros del navegador como aprobación.
 - `src/analytics/`: consentimiento explícito, sesión aleatoria revocable y eventos first-party mínimos.
-- `src/pages/AdminPage.tsx`: interfaz no enlazada desde la navegación pública.
+- `src/admin/AdminBackoffice.tsx`: gate de sesión, login y logout; monta `ProductManager` y `AdminPage` únicamente después de autenticación server-side.
 
 Los datos públicos autorizados actuales son:
 
@@ -36,8 +36,11 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 | `/api/orders/:publicToken/status` | GET | token de capacidad no reversible |
 | `/api/analytics/events` | POST | mismo origen y analítica habilitada |
 | `/api/privacy/delete-session` | POST | mismo origen y hash de sesión |
-| `/admin` | GET | JWT de Cloudflare Access validado en Function |
-| `/api/admin/*` | GET | middleware con JWT de Access y auditoría |
+| `/admin` | GET/HEAD | SPA de login; el HTML no concede autorización |
+| `/api/admin/auth/login` | POST | mismo origen, body acotado, PBKDF2 y rate limiting D1 |
+| `/api/admin/auth/session` | GET/HEAD | sesión propia firmada o fallback Access opcional |
+| `/api/admin/auth/logout` | POST | mismo origen y eliminación inmediata de cookie |
+| `/api/admin/*` restante | según contrato | middleware con identidad unificada y auditoría |
 
 El checkout integrado se puede desactivar sin interrumpir webhooks de pagos iniciados previamente: `COMMERCE_ENABLED=false` bloquea únicamente la creación de nuevas preferencias. El webhook continúa operando mientras existan el binding D1 y las credenciales requeridas.
 
@@ -52,11 +55,13 @@ La migración `migrations/0001_commerce.sql` crea:
 - `payments`: estado verificado consultando la API de Mercado Pago;
 - `payment_events`: recepción, reclamos de procesamiento, reintentos e idempotencia de webhooks;
 - `analytics_revocations`, `analytics_sessions` y `analytics_events`: bloqueo de sesiones retiradas, sesión hasheada y eventos consentidos;
-- `admin_audit`: actor de Access, acción, resultado y metadatos limitados.
+- `admin_audit`: actor administrativo normalizado, acción, resultado y metadatos limitados.
 
 La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `checkout_intents`, `order_fulfillment` y `analytics_maintenance`; `migrations/0003_checkout_intent_cart_fingerprint.sql` vincula cada intención con la huella autoritativa del carrito y backfillea pedidos existentes. El fulfillment conserva en D1 los datos de entrega necesarios para operar el pedido; no se guardan en `localStorage`, analítica ni logs. No se almacenan números de tarjeta, documentos, correos de compradores ni el identificador de sesión analítica en claro.
 
 `migrations/0004_catalog_admin.sql` agrega `catalog_product_mutations`. Cada fila contiene un producto validado o un tombstone, el actor administrativo y timestamps; no duplica masivamente los 510 productos canónicos.
+
+`migrations/0005_admin_auth.sql` agrega `admin_login_rate_limits`. Las claves son HMAC de scopes de IP y usuario con un secreto exclusivo; no se persisten IP ni usuario en claro. Las ventanas se actualizan mediante upsert atómico y los registros vencidos se purgan durante nuevos intentos.
 
 ## Fallback manual temporal autorizado
 
@@ -119,7 +124,7 @@ El fallback manual no envía productos ni datos de entrega a Mercado Pago desde 
 - firmas de webhook ausentes o adulteradas e identificadores no incluidos en la firma;
 - aprobación simulada modificando la URL de retorno;
 - exposición accidental de secretos o source maps;
-- acceso directo a APIs administrativas sin JWT válido;
+- acceso directo a APIs administrativas sin sesión propia o JWT Access válido;
 - fórmulas maliciosas al abrir exportaciones CSV;
 - eventos analíticos antes del consentimiento o posteriores a la revocación de esa sesión.
 
@@ -132,5 +137,5 @@ El fallback manual no hereda las garantías de precio autoritativo, idempotencia
 - No hay edición administrativa de pedidos ni reembolsos desde el backoffice.
 - El retiro de consentimiento elimina los eventos de la sesión y conserva únicamente su HMAC en una lista de revocación para impedir que solicitudes en vuelo la vuelvan a crear.
 - La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
-- La protección de borde, rate limiting, alertas y políticas de Access se configuran fuera del repositorio.
+- El rate limiting mínimo del login es persistente en D1. WAF, alertas y políticas de Access pueden sumar defensa de borde cuando exista un dominio/zona compatible, sin interceptar el login propio.
 - El fallback manual debe retirarse o reevaluarse cuando Checkout Pro se active en producción, para no ofrecer dos flujos con garantías distintas sin una decisión comercial explícita.

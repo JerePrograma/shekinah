@@ -36,11 +36,12 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 
 - `functions/api/`: endpoints públicos y administrativos;
 - `functions/admin.ts` y `functions/admin/[[path]].ts`: superficie administrativa;
-- `server/`: dominio, persistencia, Mercado Pago, validación, analítica y acceso;
+- `server/`: dominio, persistencia, Mercado Pago, validación, analítica y autenticación/autorización administrativa;
 - `migrations/0001_commerce.sql`: esquema inicial de D1;
 - `migrations/0002_fulfillment_and_retention.sql`: intención de entrega, fulfillment y mantenimiento de retención;
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: huella autoritativa del carrito en intenciones, con backfill desde pedidos existentes;
 - `migrations/0004_catalog_admin.sql`: altas, overrides y tombstones del catálogo administrativo;
+- `migrations/0005_admin_auth.sql`: contadores opacos y persistentes para limitar intentos de login;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
@@ -59,7 +60,11 @@ El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. La
 
 ## Administración
 
-`/admin` y `/api/admin/*` requieren Cloudflare Access. La identidad administrativa se obtiene de cabeceras verificadas por la plataforma y se valida nuevamente en Functions. Los productos admiten alta, modificación y baja lógica; pedidos, analítica, exportaciones y auditoría continúan de sólo lectura.
+`/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256 y la sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
+
+`functions/api/admin/_middleware.ts` valida en cada operación protegida una sesión propia. Sólo cuando no existe cookie propia intenta el JWT RS256 de Cloudflare Access como fallback compatible; una cookie propia presente pero inválida siempre se rechaza. Los tres endpoints de autenticación son la única exclusión exacta del middleware. El login y logout exigen mismo origen, y las mutaciones conservan ese control. `server/admin-login-rate-limit.ts` aplica límites persistentes por IP y usuario mediante claves HMAC opacas en D1; no almacena ninguno de esos valores en claro.
+
+Los productos admiten alta, modificación y baja lógica; pedidos, analítica, exportaciones y auditoría continúan de sólo lectura. La identidad propia usa un actor sintético para no persistir el nombre de usuario en la cookie ni en auditoría.
 
 ## Analítica y privacidad
 
@@ -72,7 +77,7 @@ La analítica es first-party, opcional y condicionada al consentimiento. La rete
 - recalcular totales en servidor para Checkout Pro;
 - usar consultas parametrizadas;
 - aplicar idempotencia;
-- proteger administración mediante Access;
+- proteger administración mediante sesión propia server-side y middleware fail-closed; Access es sólo un fallback opcional;
 - mantener Checkout Pro y analítica deshabilitados por defecto;
 - permitir el fallback manual sólo con datos públicos expresamente autorizados y una allowlist exacta del Link de Pago;
 - no tratar el fallback manual como confirmación de pago;
