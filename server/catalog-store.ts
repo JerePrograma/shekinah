@@ -202,7 +202,7 @@ function parseStoredProduct(serialized: string): CatalogProductDetail {
     return parseWritableProduct(JSON.parse(serialized) as unknown);
   } catch (error: unknown) {
     if (error instanceof HttpError) {
-      throw new Error(`Producto persistido inválido: ${error.message}`);
+      throw new Error(`Producto persistido inválido: ${error.message}`, { cause: error });
     }
     throw error;
   }
