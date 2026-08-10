@@ -7,8 +7,8 @@
   "vars": {
     "COMMERCE_ENABLED": "false",
     "ANALYTICS_ENABLED": "false",
-    "PUBLIC_SITE_URL": "https://REEMPLAZAR-DOMINIO-AUTORIZADO",
-    "ALLOWED_SITE_ORIGINS": "https://REEMPLAZAR-DOMINIO-AUTORIZADO",
+    "PUBLIC_SITE_URL": "https://shekinah-7dl.pages.dev",
+    "ALLOWED_SITE_ORIGINS": "https://shekinah-7dl.pages.dev",
     "MERCADO_PAGO_CHECKOUT_MODE": "sandbox",
     "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "REEMPLAZAR.cloudflareaccess.com",
     "CLOUDFLARE_ACCESS_AUD": "REEMPLAZAR_AUDIENCIA",

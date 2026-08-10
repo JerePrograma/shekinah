@@ -28,6 +28,7 @@ const expectedHeaders = new Map([
 const textExtensions = new Set(['.css', '.html', '.js', '.json', '.mjs', '.ts', '.tsx']);
 const allowedPublicUrls = [
   /^https:\/\/wa\.me\//u,
+  /^https:\/\/link\.mercadopago\.com\.ar\/shekinahmoreno\/?$/u,
   /^http:\/\/www\.w3\.org\//u,
   /^https:\/\/react\.dev\/errors\//u,
 ];

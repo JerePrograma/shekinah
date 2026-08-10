@@ -20,7 +20,8 @@ El repositorio contiene una evolución full-stack basada en:
 - React, TypeScript estricto y Vite;
 - Cloudflare Pages Functions;
 - Cloudflare D1;
-- Mercado Pago Checkout Pro;
+- Mercado Pago Checkout Pro preparado para activación;
+- fallback manual temporal de Link de Pago más WhatsApp;
 - Cloudflare Access;
 - analítica first-party opcional.
 
@@ -38,19 +39,31 @@ Consultar primero:
 
 ## Regla de activación
 
-No habilitar comercio, analítica ni WhatsApp por el solo hecho de que el código compile.
+No habilitar Checkout Pro, analítica ni nuevas capacidades externas por el solo hecho de que el código compile.
 
-La activación requiere evidencia separada de:
+La activación de Checkout Pro requiere evidencia separada de:
 
 - D1 creado y vinculado;
 - migraciones aplicadas;
 - secretos cargados sin exposición;
 - credenciales de Mercado Pago válidas;
 - webhook con URL definitiva;
-- Cloudflare Access configurado;
-- número de WhatsApp autorizado;
-- retención analítica autorizada;
+- Cloudflare Access configurado para administración;
 - pruebas de humo aprobadas.
+
+### Autorización manual vigente
+
+El 2026-08-10 quedaron expresamente autorizados como datos públicos actuales:
+
+```text
+Sitio: https://shekinah-7dl.pages.dev/
+WhatsApp: +549 2236 21-6559
+Link de Pago: https://link.mercadopago.com.ar/shekinahmoreno
+```
+
+El código puede usar el WhatsApp normalizado `5492236216559` y el Link de Pago como fallback manual mientras `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Esta autorización no habilita Checkout Pro, D1, webhooks, analítica ni administración.
+
+El fallback manual no requiere VPS. El backend futuro continúa siendo Pages Functions y D1.
 
 ## Identidad externa verificada
 
@@ -60,25 +73,29 @@ La activación requiere evidencia separada de:
 - Rama de producción: `main`.
 - Existe un Worker independiente también llamado `shekinah`; no usar sus settings para configurar Pages.
 
-El inventario autenticado del 2026-08-04 encontró cero bases D1, cero variables/secretos/bindings en Pages y Zero Trust sin configurar. Producción y preview están en `Fail open`; los previews son públicos.
+El inventario autenticado del 2026-08-04 encontró cero bases D1, cero variables/secretos/bindings en Pages y Zero Trust sin configurar. Producción y preview estaban en `Fail open`; los previews eran públicos.
 
 ## Próximos pasos
 
-1. cambiar producción y preview de Pages a `Fail closed`;
-2. obtener el nombre exacto autorizado para D1 preview; `shekinah-commerce` ya está documentado únicamente para producción;
-3. crear bases D1 separadas, migrar primero preview y comprobar el esquema;
-4. vincular ambos entornos mediante el binding exacto `DB`;
-5. definir Team Domain y crear la organización/aplicación de Cloudflare Access;
-6. proteger `/admin*` y `/api/admin/*` y comprobar permitido/denegado;
-7. configurar variables no secretas con ambos flags en `false` y cargar secretos mediante prompts protegidos;
-8. validar Mercado Pago sandbox y webhook;
-9. restringir previews con Access;
-10. activar únicamente capacidades autorizadas y ejecutar pruebas de humo.
+1. verificar el deployment y smoke público del fallback manual autorizado;
+2. cambiar producción y preview de Pages a `Fail closed`;
+3. obtener el nombre exacto autorizado para D1 preview; `shekinah-commerce` ya está documentado únicamente para producción;
+4. crear bases D1 separadas, migrar primero preview y comprobar el esquema;
+5. vincular ambos entornos mediante el binding exacto `DB`;
+6. definir Team Domain y crear la organización/aplicación de Cloudflare Access;
+7. proteger `/admin*` y `/api/admin/*` y comprobar permitido/denegado;
+8. configurar variables no secretas con los flags de Checkout Pro y analítica en `false` y cargar secretos mediante prompts protegidos;
+9. validar Mercado Pago sandbox y webhook;
+10. restringir previews con Access;
+11. activar únicamente capacidades autorizadas y ejecutar pruebas de humo;
+12. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece.
 
 ## Prohibiciones
 
 - no inventar secretos, IDs, dominios, números ni políticas de retención;
 - no guardar credenciales en Git;
-- no activar producción sin comprobaciones;
+- no agregar parámetros no documentados al Link de Pago para simular un monto precargado;
+- no tratar el fallback manual como pago verificado automáticamente;
+- no activar Checkout Pro productivo sin comprobaciones;
 - no confundir build aprobado con deployment aprobado;
 - no confundir deployment con configuración productiva completa.

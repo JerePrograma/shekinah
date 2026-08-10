@@ -1,6 +1,6 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-04.
+Fecha de revisión: 2026-08-10.
 
 Base de integración full-stack:
 
@@ -20,9 +20,11 @@ Shekinah conserva:
 El candidato incorpora:
 
 - carrito persistente;
-- Mercado Pago Checkout Pro por redirección;
-- pedidos y consulta pública de estado;
-- webhook de Mercado Pago;
+- fallback manual temporal mediante Link de Pago de Mercado Pago sin monto predefinido;
+- WhatsApp manual con número público expresamente autorizado;
+- Mercado Pago Checkout Pro por redirección preparado pero todavía deshabilitado;
+- pedidos y consulta pública de estado para Checkout Pro;
+- webhook de Mercado Pago para Checkout Pro;
 - Cloudflare Pages Functions;
 - migraciones aditivas de Cloudflare D1 para comercio, fulfillment y retención;
 - administración preparada para Cloudflare Access;
@@ -30,15 +32,30 @@ El candidato incorpora:
 - exportaciones administrativas;
 - eliminación de sesión analítica.
 
+## Configuración pública autorizada
+
+Autorización explícita recibida el 2026-08-10:
+
+```text
+PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
+VITE_WHATSAPP_NUMBER=5492236216559
+VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
+```
+
+El fallback manual usa esos datos públicos sin secretos. Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el carrito puede copiar el total calculado y abrir el Link de Pago; el comprador ingresa el monto en Mercado Pago y debe enviar el carrito por WhatsApp para que el comercio pueda asociar el pago y coordinar la entrega. Este flujo no crea pedidos en D1, no genera una preferencia de Checkout Pro y no confirma automáticamente pagos.
+
+No se requiere VPS para este fallback. La arquitectura automatizada tampoco depende de un VPS: su backend previsto son Cloudflare Pages Functions y D1.
+
 ## Estado operativo
 
-La presencia del código no implica activación productiva.
+La presencia del código no implica activación del Checkout Pro automatizado.
 
-Hasta completar bindings, secretos, D1, Mercado Pago, Access, dominio, retención y autorizaciones:
+Hasta completar bindings, secretos, D1, Mercado Pago, Access y las comprobaciones productivas:
 
-- comercio deshabilitado;
+- Checkout Pro automatizado deshabilitado;
 - analítica deshabilitada;
-- WhatsApp deshabilitado;
+- fallback manual de Link de Pago autorizado en el código;
+- WhatsApp manual autorizado en el código;
 - administración no considerada productiva;
 - webhook no considerado productivo.
 
@@ -48,21 +65,21 @@ Consulta autenticada realizada el 2026-08-04, sin registrar IDs de cuenta, IDs d
 
 - el proyecto de Cloudflare Pages se llama exactamente `shekinah` y publica `shekinah-7dl.pages.dev`;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
-- producción sirve el commit `884c9de407c079fcf0a834b50008286c7633ff02`;
-- producción y preview no tienen variables, secretos ni bindings configurados;
-- la cuenta no contiene bases D1;
-- Zero Trust muestra el onboarding inicial: no existe todavía una organización ni una aplicación Access;
-- preview es público y producción/preview usan `Fail open`;
+- producción y preview no tenían variables, secretos ni bindings configurados;
+- la cuenta no contenía bases D1;
+- Zero Trust mostraba el onboarding inicial: no existía todavía una organización ni una aplicación Access;
+- preview era público y producción/preview usaban `Fail open`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.
 
-Los flags permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes, no porque sus valores `false` estén cargados explícitamente en Pages.
+Los flags server-side permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
 
 ## Arquitectura
 
 - frontend: React, TypeScript estricto y Vite;
 - servidor: Cloudflare Pages Functions;
-- persistencia: Cloudflare D1;
-- pagos: Mercado Pago Checkout Pro;
+- persistencia automatizada: Cloudflare D1;
+- pagos automatizados: Mercado Pago Checkout Pro;
+- fallback temporal: Link de Pago manual más WhatsApp;
 - administración: Cloudflare Access;
 - analítica: first-party basada en consentimiento.
 
@@ -96,7 +113,8 @@ Toda continuidad debe distinguir:
 5. deployment de Pages;
 6. D1 y migraciones;
 7. secretos y bindings;
-8. activación productiva;
-9. pruebas de humo.
+8. activación de Checkout Pro productivo;
+9. fallback manual público;
+10. pruebas de humo.
 
 Ninguna etapa demuestra automáticamente la siguiente.

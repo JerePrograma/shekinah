@@ -7,6 +7,7 @@ interface ViteTypeOptions {
 interface ImportMetaEnv {
   readonly VITE_ANALYTICS_ENABLED?: string;
   readonly VITE_COMMERCE_ENABLED?: string;
+  readonly VITE_MERCADO_PAGO_PAYMENT_LINK?: string;
   readonly VITE_WHATSAPP_NUMBER?: string;
 }
 

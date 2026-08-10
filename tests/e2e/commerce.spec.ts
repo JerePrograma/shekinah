@@ -21,16 +21,23 @@ test('persiste el carrito y lo sincroniza entre pestañas', async ({ context, pa
   await expect(secondPage.getByText('1 unidad en el carrito.')).toBeVisible();
 });
 
-test('mantiene checkout y WhatsApp cerrados sin configuración autorizada', async ({ page }) => {
+test('habilita el Link de Pago y WhatsApp autorizados sin activar Checkout Pro', async ({ page }) => {
   await page.goto('/catalogo');
   await page.locator('[data-product]').first().getByRole('button', {
     name: /Agregar .* al carrito/u,
   }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
-  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toBeDisabled();
-  await expect(page.getByText('El pago estará disponible cuando el comercio esté habilitado.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Enviar carrito por WhatsApp' })).toBeDisabled();
-  await expect(page.getByText(/WhatsApp estará disponible/iu)).toBeVisible();
+
+  const paymentLink = page.getByRole('link', { name: /Copiar .* y abrir Mercado Pago/u });
+  await expect(paymentLink).toBeVisible();
+  await expect(paymentLink).toHaveAttribute(
+    'href',
+    'https://link.mercadopago.com.ar/shekinahmoreno',
+  );
+  await expect(paymentLink).toHaveAttribute('target', '_blank');
+  await expect(page.getByText(/Cobro temporal manual/iu)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviar carrito por WhatsApp' })).toBeEnabled();
+  await expect(page.getByText(/WhatsApp estará disponible/iu)).toHaveCount(0);
 });
 
 test('el retorno del navegador sólo muestra el estado confirmado por el servidor', async ({ page }) => {

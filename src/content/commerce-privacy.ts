@@ -3,7 +3,7 @@ export const commercePrivacySections = [
     id: 'privacy-commerce',
     title: 'Carrito y pagos',
     description:
-      'El carrito se guarda localmente en el navegador sin nombre, celular ni domicilio. Al iniciar un pago, Shekinah envía los productos y los datos necesarios para coordinar la entrega. El servidor normaliza esos datos, recalcula productos, peso, envío y total, y los conserva dentro del pedido para que el personal autorizado pueda prepararlo. El pago se completa por redirección en Mercado Pago y Shekinah no recibe datos de tarjeta.',
+      'El carrito se guarda localmente en el navegador sin nombre, celular ni domicilio. En el cobro manual temporal, el sitio abre un Link de Pago de Mercado Pago sin monto predefinido: el comprador ingresa allí el total mostrado y Mercado Pago procesa el pago sin recibir el detalle del carrito desde Shekinah. Los datos de entrega sólo se incluyen en el mensaje de WhatsApp cuando están completos. Cuando el Checkout Pro integrado esté habilitado, Shekinah enviará productos y datos de entrega a su backend, que normaliza esos datos, recalcula productos, peso, envío y total y los conserva dentro del pedido. Shekinah no recibe datos de tarjeta.',
   },
   {
     id: 'privacy-analytics',

@@ -1,6 +1,22 @@
 # Operación del comercio
 
-## Controles diarios
+## Fallback manual temporal
+
+Mientras `COMMERCE_ENABLED=false`, el flujo público autorizado usa el Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` y WhatsApp `5492236216559`.
+
+Procedimiento operativo mínimo:
+
+1. El comprador arma el carrito y, si el envío tiene total definido, copia el monto y abre el Link de Pago.
+2. El comprador ingresa el monto en Mercado Pago y envía el carrito por WhatsApp.
+3. Antes de preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
+4. Asociar manualmente el pago con el carrito por importe, comprador y contexto de la conversación. Si hay ambigüedad, no liberar el pedido hasta confirmarla.
+5. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; el sitio bloquea el Link de Pago mientras el total sea indeterminado.
+
+Este flujo no escribe `orders`, `payments` ni `payment_events` en D1 y no recibe Webhooks del Link de Pago generado en el panel. No usar las consultas del backoffice para inferir su estado. Mantener registro operativo externo sólo según la política del negocio y sin copiar datos sensibles al repositorio.
+
+## Controles diarios de Checkout Pro
+
+Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 
 - Revisar pedidos `pending` antiguos y contrastarlos con Mercado Pago antes de cualquier acción manual.
 - Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
@@ -30,7 +46,6 @@ FROM payment_events
 WHERE status = 'failed'
 ORDER BY received_at DESC;
 ```
-
 
 ```sql
 SELECT id, status, mp_preference_attempted_at, last_error_code, updated_at

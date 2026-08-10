@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 
 import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
@@ -20,6 +20,7 @@ import type {
   FulfillmentField,
 } from '../commerce/fulfillment';
 import {
+  getAuthorizedMercadoPagoPaymentLink,
   getAuthorizedWhatsappNumber,
   isCommerceClientEnabled,
 } from '../commerce/env';
@@ -55,10 +56,12 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, remove, setQuantity, total } = useCart();
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
+  const [manualPaymentNotice, setManualPaymentNotice] = useState('');
   const [fulfillmentDraft, setFulfillmentDraft] = useState<FulfillmentDraft>(INITIAL_FULFILLMENT);
   const [showErrors, setShowErrors] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
   const whatsappNumber = getAuthorizedWhatsappNumber();
+  const mercadoPagoPaymentLink = getAuthorizedMercadoPagoPaymentLink();
   const commerceEnabled = isCommerceClientEnabled();
   const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
   const quote = useMemo(
@@ -74,6 +77,10 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   );
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
+
+  useEffect(() => {
+    setManualPaymentNotice('');
+  }, [checkoutTotalMinor]);
 
   async function startCheckout() {
     if (items.length === 0 || checkoutPending || !commerceEnabled) return;
@@ -107,6 +114,51 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
         error instanceof Error ? error.message : 'No se pudo iniciar el pago.',
       );
       setCheckoutPending(false);
+    }
+  }
+
+  function prepareManualPayment(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      mercadoPagoPaymentLink === null ||
+      items.length === 0 ||
+      quote.kind === 'manual'
+    ) {
+      event.preventDefault();
+      return;
+    }
+
+    setShowErrors(true);
+    setCheckoutError('');
+    if (validation.value === null) {
+      event.preventDefault();
+      focusFirstError(validation.errors);
+      return;
+    }
+
+    const amount = formatManualPaymentAmount(checkoutTotalMinor);
+    const displayTotal = formatMinor(checkoutTotalMinor);
+    if (navigator.clipboard === undefined) {
+      setManualPaymentNotice(
+        `Ingresá ${displayTotal} en Mercado Pago. El navegador no permitió copiar el monto automáticamente.`,
+      );
+      return;
+    }
+
+    try {
+      void navigator.clipboard.writeText(amount).then(
+        () => {
+          setManualPaymentNotice(`Monto copiado: ${displayTotal}. Pegalo en Mercado Pago.`);
+        },
+        () => {
+          setManualPaymentNotice(
+            `Ingresá ${displayTotal} en Mercado Pago. No se pudo copiar el monto automáticamente.`,
+          );
+        },
+      );
+    } catch {
+      setManualPaymentNotice(
+        `Ingresá ${displayTotal} en Mercado Pago. No se pudo copiar el monto automáticamente.`,
+      );
     }
   }
 
@@ -144,7 +196,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       `Total de referencia: ${totalText}`,
       quote.kind === 'manual'
         ? manualQuoteMessage(quote.tier)
-        : 'Por favor, confirmen disponibilidad y preparación.',
+        : 'Por favor, confirmen disponibilidad, pago y preparación.',
     ].join('\n');
     void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart });
     window.open(
@@ -292,19 +344,47 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 <p className="form-error" role="status">{manualQuoteMessage(quote.tier)}</p>
               ) : null}
               <p className="cart-disclaimer">
-                El servidor recalcula productos, peso, envío y total. La disponibilidad se confirma al preparar el pedido.
+                El servidor recalcula productos, peso, envío y total cuando el Checkout Pro integrado está habilitado. La disponibilidad se confirma al preparar el pedido.
               </p>
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={checkoutPending || !commerceEnabled || quote.kind === 'manual'}
-                onClick={() => void startCheckout()}
-              >
-                {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
-              </button>
-              {!commerceEnabled ? (
-                <p className="cart-configuration-note">El pago estará disponible cuando el comercio esté habilitado.</p>
-              ) : null}
+              {commerceEnabled ? (
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={checkoutPending || quote.kind === 'manual'}
+                  onClick={() => void startCheckout()}
+                >
+                  {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
+                </button>
+              ) : mercadoPagoPaymentLink !== null && quote.kind === 'online' ? (
+                <>
+                  <a
+                    className="button button-primary"
+                    href={mercadoPagoPaymentLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={prepareManualPayment}
+                  >
+                    Copiar {formatMinor(checkoutTotalMinor)} y abrir Mercado Pago
+                  </a>
+                  <p className="cart-configuration-note">
+                    Cobro temporal manual: el enlace autorizado de Mercado Pago está configurado sin monto. El sitio copia el total para que lo pegues al abrir el Link de Pago. Después enviá el carrito por WhatsApp para asociar el pago y coordinar la entrega.
+                  </p>
+                  {manualPaymentNotice === '' ? null : (
+                    <p className="cart-configuration-note" role="status">{manualPaymentNotice}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button className="button button-primary" type="button" disabled>
+                    Pagar con Mercado Pago
+                  </button>
+                  <p className="cart-configuration-note">
+                    {quote.kind === 'manual'
+                      ? 'El pago se habilita cuando el envío tenga un total definido. Solicitá la cotización por WhatsApp.'
+                      : 'El pago estará disponible cuando el comercio esté habilitado.'}
+                  </p>
+                </>
+              )}
               <button
                 className="button button-secondary"
                 type="button"
@@ -339,6 +419,12 @@ function FieldError({ id, message }: Readonly<{ id: string; message: string | un
 
 function formatMinor(value: number): string {
   return formatProductPrice({ amount: value / 100, currency: 'ARS' }) ?? '$ 0';
+}
+
+function formatManualPaymentAmount(valueMinor: number): string {
+  const pesos = Math.trunc(valueMinor / 100);
+  const cents = valueMinor % 100;
+  return cents === 0 ? String(pesos) : `${pesos},${String(cents).padStart(2, '0')}`;
 }
 
 function formatWeight(grams: number): string {

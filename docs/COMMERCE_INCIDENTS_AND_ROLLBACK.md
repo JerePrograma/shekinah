@@ -3,24 +3,45 @@
 ## Prioridades
 
 1. Evitar nuevos cobros incorrectos.
-2. No perder notificaciones de pagos ya iniciados.
+2. No perder notificaciones de pagos de Checkout Pro ya iniciados.
 3. Preservar evidencia en D1, Mercado Pago, Cloudflare y Git.
 4. No exponer secretos ni datos administrativos.
 5. Restaurar servicio mediante cambios reversibles y versionados.
 
 ## Corte seguro de nuevas ventas
 
+### Checkout Pro integrado
+
 Ante importes incorrectos, catálogo inconsistente o comportamiento anómalo:
 
 ```text
 COMMERCE_ENABLED=false
+VITE_COMMERCE_ENABLED=false
 ```
 
 Esto bloquea nuevas preferencias y conserva activo el webhook para pagos ya iniciados. No borrar la base, no deshabilitar D1 y no retirar las credenciales del webhook salvo que estén comprometidas.
 
+### Fallback manual de Link de Pago
+
+`COMMERCE_ENABLED=false` no bloquea el Link de Pago manual autorizado. Si también deben detenerse nuevos cobros manuales, deshabilitar explícitamente el enlace público en el build:
+
+```text
+VITE_MERCADO_PAGO_PAYMENT_LINK=
+```
+
+y desplegar ese cambio. Si también debe cerrarse el canal de carrito por WhatsApp:
+
+```text
+VITE_WHATSAPP_NUMBER=
+```
+
+Los valores vacíos anulan los defaults públicos autorizados. Verificar después del deployment que el carrito muestre el pago deshabilitado y, si corresponde, WhatsApp deshabilitado. Si no es posible cambiar la configuración de build con seguridad, publicar un commit de reversión/corte; no hacer force-push.
+
+Un pago efectuado antes del corte manual debe verificarse directamente en la cuenta de Mercado Pago y resolverse por el procedimiento operativo; no existe pedido D1 ni webhook asociado al Link de Pago del panel.
+
 ## Firma o credencial de Mercado Pago comprometida
 
-- desactivar nuevas ventas;
+- desactivar nuevas ventas integradas;
 - rotar la credencial en el proveedor;
 - actualizar el secreto cifrado de Pages;
 - revisar `payment_events`, pagos y pedidos desde la primera fecha posible de exposición;
@@ -28,14 +49,18 @@ Esto bloquea nuevas preferencias y conserva activo el webhook para pagos ya inic
 - validar cada pago afectado contra la API del proveedor;
 - documentar IDs, SHA, ventanas temporales y acciones.
 
+La rotación de credenciales de la aplicación de Checkout Pro no sustituye el corte del Link de Pago manual: son flujos distintos.
+
 ## D1 no disponible
 
-El checkout debe responder `503 DATABASE_UNAVAILABLE`; no debe redirigir a Mercado Pago. Los webhooks responderán error y el proveedor podrá reintentarlos.
+El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe redirigir a Mercado Pago. Los webhooks responderán error y el proveedor podrá reintentarlos.
 
 - no crear una base vacía con el mismo binding para “resolver” el incidente;
 - verificar binding, entorno preview/production y estado de migraciones;
 - restaurar desde backup sólo con autorización y evidencia;
 - al recuperar servicio, revisar eventos `failed` y estados pendientes.
+
+El fallback manual no depende de D1; decidir explícitamente si debe permanecer disponible durante el incidente.
 
 ## Access no disponible o mal configurado
 
@@ -77,11 +102,12 @@ Verificar GitHub Actions sobre el nuevo SHA de revert y el deployment correspond
 
 ## Rollback de base
 
-La migración inicial es aditiva. Un rollback de aplicación puede dejar las tablas sin uso sin dañarlas; ésa es la opción conservadora.
+Las migraciones son aditivas. Un rollback de aplicación puede dejar las tablas sin uso sin dañarlas; ésa es la opción conservadora.
 
 No hacer `DROP TABLE` como parte de un rollback inmediato. Para revertir esquema o datos:
 
-- detener nuevas ventas;
+- detener nuevas ventas integradas;
+- decidir por separado si se mantiene o corta el fallback manual;
 - exportar/respaldar D1;
 - definir SQL de reversión revisado;
 - probarlo sobre una copia local;
@@ -96,6 +122,7 @@ Registrar:
 - inicio y fin con zona horaria;
 - SHA desplegado antes y después;
 - flags y bindings afectados;
+- estado del fallback manual;
 - alcance de pedidos/pagos/eventos;
 - pruebas ejecutadas;
 - acciones externas en Cloudflare y Mercado Pago;

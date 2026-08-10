@@ -59,16 +59,19 @@ Reglas:
 
 - Aplicación React, TypeScript estricto y Vite desplegada en Cloudflare Pages.
 - La interfaz pública conserva la SPA y la navegación mediante History API.
-- Las capacidades de servidor se implementan con Cloudflare Pages Functions y D1.
+- Las capacidades de servidor se implementan con Cloudflare Pages Functions y D1; no se requiere un VPS para la arquitectura prevista.
 - El catálogo canónico conserva 510 productos y 16 categorías.
 - No inventar productos, precios, stock, contacto, horarios, redes, promociones, testimonios, certificaciones ni afirmaciones sanitarias.
-- El navegador no decide precios, moneda, totales ni estados de pago.
+- En Checkout Pro integrado, el navegador no decide precios, moneda, totales ni estados de pago; el servidor recalcula y el webhook verifica al proveedor.
+- El fallback manual temporal puede mostrar y copiar el total del carrito únicamente como importe que el comprador ingresa en un Link de Pago sin monto predefinido. Ese total no crea un pedido, no prueba un cobro y debe asociarse/verificarse manualmente antes de fulfillment.
 - Mercado Pago Checkout Pro se integra por redirección; el webhook consulta información autoritativa del proveedor.
 - Las operaciones administrativas se protegen con Cloudflare Access y validación interna del JWT.
 - La analítica first-party requiere consentimiento y una retención expresamente autorizada.
-- Comercio, analítica y WhatsApp permanecen deshabilitados hasta completar configuración y autorizaciones.
+- Checkout Pro automatizado y analítica permanecen deshabilitados hasta completar configuración y autorizaciones.
+- WhatsApp sólo puede habilitarse con un número autorizado. El número `5492236216559` quedó autorizado explícitamente el 2026-08-10 para el fallback manual actual.
+- El Link de Pago manual sólo puede usar una URL pública expresamente autorizada y permitida por la verificación de seguridad; el valor actual es `https://link.mercadopago.com.ar/shekinahmoreno`.
 - No exponer secretos mediante Git, logs, respuestas, bundles ni variables `VITE_*`.
-- WhatsApp sólo puede habilitarse con un número autorizado.
+- No agregar parámetros no documentados al Link de Pago para simular un monto precargado.
 - No reincorporar recetas.
 - Los activos visuales autorizados siguen limitados al inventario del repositorio.
 - El historial anterior se conserva; no afirmar que fue eliminado.
@@ -105,7 +108,7 @@ Revisar además:
 
 - lista exacta de archivos modificados;
 - coherencia deliberada de `package-lock.json`;
-- ausencia de secretos y datos personales;
+- ausencia de secretos y datos personales no autorizados;
 - ausencia de binarios no autorizados;
 - ausencia de `dist` y artefactos temporales;
 - enlaces y rutas documentales válidos;
@@ -117,7 +120,7 @@ No declarar una validación aprobada si no fue ejecutada. Clasificar cada contro
 
 `.github/workflows/ci.yml` mantiene permisos `contents: read` y validación de solo lectura.
 
-La publicación de Cloudflare Pages usa integración Git y puede incluir Pages Functions. Un push a `main` no demuestra por sí solo que producción esté actualizada ni que D1, secretos, Mercado Pago, Access o flags estén configurados.
+La publicación de Cloudflare Pages usa integración Git y puede incluir Pages Functions. Un push a `main` no demuestra por sí solo que producción esté actualizada ni que D1, secretos, Mercado Pago Checkout Pro, Access o flags estén configurados.
 
 Registrar por separado:
 
@@ -125,9 +128,10 @@ Registrar por separado:
 - conclusión y jobs de la ejecución;
 - artefacto generado;
 - SHA desplegado por Cloudflare;
+- estado del fallback manual público;
 - bindings y migraciones;
 - configuración externa;
-- activación productiva;
+- activación productiva de Checkout Pro;
 - pruebas de humo.
 
 ## Cierre obligatorio
