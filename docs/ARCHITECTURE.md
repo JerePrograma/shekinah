@@ -30,6 +30,10 @@ El router propio conserva History API y enlaces HTML reales.
 
 La fuente canónica conserva 510 productos y 16 categorías. `server/catalog-store.ts` construye el catálogo efectivo como base canónica más altas y overrides D1, menos tombstones D1. Si D1 o la tabla nueva no están disponibles, las lecturas públicas conservan el catálogo base; las escrituras administrativas fallan de forma explícita.
 
+El candidato agrega `stockQuantity` como atributo opcional dentro del mismo payload de mutación: ausencia significa stock no controlado y conserva el comportamiento de los 510 productos legacy. Si está presente debe ser un entero entre 0 y 1.000.000. `isProductEffectivelyAvailable` centraliza la regla disponibilidad manual activa y, además, stock no controlado o mayor que cero. El carrito limita cada línea a `min(99, stock)` y `server/dynamic-cart.ts` vuelve a comprobar disponibilidad y existencia antes del checkout. No existe reserva ni decremento automático.
+
+La compatibilidad de categorías también es deliberada: los 75 productos legacy sin categoría continúan editables y aparecen bajo el filtro administrativo «Sin categoría». Sólo el alta de un producto nuevo exige al menos una de las categorías canónicas; no se fuerza una clasificación ficticia sobre el catálogo base.
+
 El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor resuelve productos, disponibilidad y precios desde el catálogo efectivo; no acepta nombres, precios ni totales enviados por el cliente como autoridad para Checkout Pro.
 
 ## Backend
@@ -62,9 +66,24 @@ El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. La
 
 `/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256; el helper operativo genera 100.000 iteraciones, costo comprobado dentro del límite CPU efectivo del runtime Bundled (32 ms en un smoke remoto negativo con credencial ficticia). La sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
 
+`src/admin/ProductManager.tsx` coordina la experiencia de catálogo y delega la presentación en `ProductList`, `ProductEditor` y `ProductImageField`: resumen operativo, búsqueda normalizada, filtros y orden local, listado con miniatura y estados, editor agrupado, slug automático con opción avanzada, categorías del catálogo real, cambios rápidos de stock/disponibilidad, feedback accesible y protección ante cambios sin guardar. Los IDs existentes permanecen estables. Las variantes existentes se conservan en el contrato de producto sin exponer JSON como interfaz cotidiana. El upload sólo se ofrece cuando la API informa `imageStorageConfigured`.
+
 `functions/api/admin/_middleware.ts` valida en cada operación protegida una sesión propia. Sólo cuando no existe cookie propia intenta el JWT RS256 de Cloudflare Access como fallback compatible; una cookie propia presente pero inválida siempre se rechaza. Los tres endpoints de autenticación son la única exclusión exacta del middleware. El login y logout exigen mismo origen, y las mutaciones conservan ese control. `server/admin-login-rate-limit.ts` aplica límites persistentes por IP y usuario mediante claves HMAC opacas en D1; no almacena ninguno de esos valores en claro.
 
 Los productos admiten alta, modificación y baja lógica; pedidos, analítica, exportaciones y auditoría continúan de sólo lectura. La identidad propia usa un actor sintético para no persistir el nombre de usuario en la cookie ni en auditoría.
+
+### Imágenes administradas
+
+El candidato mantiene dos orígenes deliberadamente distintos:
+
+- assets legacy versionados bajo `/images/original/catalog/`, inmutables desde administración;
+- objetos administrados en R2, servidos por rutas first-party `/api/catalog-images/*` y escritos únicamente mediante la API autenticada.
+
+El binding configurado es `CATALOG_IMAGES`: production reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`. Ambos conservan clase Standard/default y `publicR2DevEnabled=false`; la única lectura pública prevista es la ruta first-party de Pages. La carga acepta JPEG, PNG y WebP de hasta 4 MiB, valida magic bytes y genera keys UUID controladas por servidor. Un alta común nace sin imagen y el `PUT` común sólo puede conservar los mismos `src`; cualquier alta, reemplazo o eliminación de una referencia de imagen pasa por `/api/admin/products/:id/image`. La ruta pública admite únicamente `GET` y `HEAD`, sin listado de objetos.
+
+En reemplazo se carga el objeto nuevo, se persiste la referencia D1 y recién después se intenta limpiar el objeto anterior si pertenece al almacenamiento administrado y ya no está referenciado. Si falla D1 se intenta retirar sólo el objeto recién creado. La baja lógica exige el binding cuando el producto referencia una imagen administrada, persiste primero el tombstone y luego intenta limpiar sólo objetos propios que hayan quedado sin referencias. Este cleanup es best-effort: un fallo externo de `R2.delete` puede dejar un objeto huérfano que debe auditarse y reintentarse sin tocar referencias activas ni assets legacy.
+
+La infraestructura R2 y los bindings de production/preview quedaron verificados por API. La configuración de R2 no alteró `DB`, variables, nombres de secretos administrativos ni `fail_open=false` en Pages. El código del candidato todavía no tiene commit, CI, deployment ni smoke remoto final; una preview local o la mera presencia del binding no prueban persistencia productiva.
 
 ## Analítica y privacidad
 

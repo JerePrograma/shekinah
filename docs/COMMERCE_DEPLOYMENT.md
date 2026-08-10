@@ -101,6 +101,30 @@ No aplicar SQL manual distinto de las migraciones versionadas.
 
 El flujo aplica en orden `0001` a `0005`. `migrations/0004_catalog_admin.sql` crea la persistencia del ABM; antes de ella, las lecturas públicas conservan los 510 productos base y toda escritura administrativa responde `CATALOG_MIGRATION_REQUIRED`. `migrations/0005_admin_auth.sql` crea el rate limiting persistente del login; sin ella, el login falla cerrado. Verificar `d1_migrations`, `sqlite_schema`, índices y conteos sin consultar PII.
 
+### 3.1. R2 para imágenes administrativas
+
+El candidato usa un binding Pages llamado exactamente `CATALOG_IMAGES`:
+
+| Entorno | Bucket requerido |
+| --- | --- |
+| production | `shekinah` (existente, reutilizado) |
+| preview | `shekinah-preview` (aislado, creado para este entorno) |
+
+No compartir bucket entre entornos y no configurar estos bindings en el Worker homónimo. Antes de cualquier cambio futuro, inventariar la cuenta y confirmar que los nombres siguen siendo inequívocamente de Shekinah. Después de modificar un binding, redeployar y releer el deployment para comprobar que quedó materializado.
+
+Estado externo verificado el 2026-08-10: R2 está activo, production reutiliza `shekinah`, preview usa `shekinah-preview` y Pages tiene `CATALOG_IMAGES` correctamente separado por entorno. Ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`; la lectura pública debe pasar exclusivamente por `/api/catalog-images/*` en Pages, sin dominio `r2.dev`. La relectura de Pages confirmó además que `DB`, variables, los cuatro nombres de secretos administrativos y `fail_open=false` permanecen sin cambios. No se leyeron ni registraron valores secretos.
+
+Clasificación: infraestructura `VERIFICADA`, capacidad del candidato `PENDIENTE_DEPLOYMENT_Y_SMOKE`. No afirmar que el upload está desplegado aunque el código, una preview local o los tests sean correctos. No usar base64 en D1, Git, almacenamiento local del navegador u otro proveedor como sustituto.
+
+Antes de publicar o modificar esta integración:
+
+1. listar buckets y detenerse ante candidatos ambiguos;
+2. comprobar `shekinah` para production y `shekinah-preview` para preview sin recrearlos ni reemplazarlos;
+3. releer `CATALOG_IMAGES`, clase Standard/default y `publicR2DevEnabled=false` en ambos entornos;
+4. desplegar el SHA definitivo;
+5. probar lectura pública first-party y escritura/reemplazo/delete sólo con sesión administrativa;
+6. comprobar que assets legacy y objetos compartidos no se eliminen.
+
 ## 4. Configurar variables no secretas del Checkout Pro
 
 En producción y, de forma separada, en preview:
@@ -217,6 +241,10 @@ Con D1 de preview y sandbox:
 - retiro de consentimiento: borrado de sesión y eventos en D1, con HMAC revocado para bloquear solicitudes en vuelo;
 - exportaciones CSV: sin fórmulas ejecutables;
 - artefacto `dist`: sin secretos ni `.map`.
+- inventario legacy: ausencia de `stockQuantity` conserva compra sin control; stock 0 controlado queda no disponible;
+- cantidades: cliente limita a `min(99, stock)` y servidor rechaza una cantidad superior al stock vigente;
+- imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;
+- R2: `shekinah` y `shekinah-preview` aislados, `CATALOG_IMAGES` visible en el deployment y `publicR2DevEnabled=false`, sin confundir infraestructura con persistencia ya probada.
 
 Validar por separado el fallback manual:
 
@@ -247,6 +275,8 @@ Validar por separado el fallback manual:
 | Fallback manual público | Link de Pago y WhatsApp visibles y probados |
 | D1 vinculado | binding `DB` visible y consulta correcta |
 | Migración aplicada | tabla de migraciones/consultas remotas |
+| R2 habilitado | inventario autenticado de buckets sin error `10042` |
+| Imágenes administrativas vinculadas | `CATALOG_IMAGES` separado en production/preview y deployment exacto |
 | Mercado Pago Checkout Pro configurado | sandbox y webhook verificados |
 | Login administrativo configurado | cookie segura, API 401/200, logout y rate limit |
 | Access opcional | JWT permitido/denegado sin bloquear el login propio |

@@ -116,7 +116,11 @@ export function formatProductPrice(price: ProductPrice | undefined): string | nu
   return price === undefined ? null : arsFormatter.format(price.amount);
 }
 
-export function formatAvailability(value: string | undefined): string | null {
-  if (value === undefined) return null;
-  return value === 'available' ? 'Disponible' : value;
+export function formatAvailability(
+  value: Product['availability'],
+  stockQuantity?: number,
+): string | null {
+  if (value === 'unavailable') return 'No disponible';
+  if (stockQuantity === 0) return 'Sin stock';
+  return value === 'available' ? 'Disponible' : null;
 }

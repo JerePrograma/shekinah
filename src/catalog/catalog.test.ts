@@ -3,6 +3,7 @@ import {
   ALL_CATEGORIES,
   CATALOG_PAGE_SIZE,
   filterProducts,
+  formatAvailability,
   formatProductPrice,
   getProductCategories,
   normalizeSearchText,
@@ -10,6 +11,9 @@ import {
 } from './catalog';
 import {
   InvalidProductError,
+  MAX_STOCK_QUANTITY,
+  isManagedCatalogImagePath,
+  isProductEffectivelyAvailable,
   parseCategories,
   parseProduct,
   parseProductDetail,
@@ -103,6 +107,40 @@ describe('modelo de producto', () => {
         primaryImage: { src: '/images/inexistente.jpg', alt: 'Imagen' },
       }),
     ).toThrow(/ruta local autorizada/u);
+  });
+
+  it('valida stock opcional y deriva la disponibilidad efectiva', () => {
+    const legacy = parseProduct(baseProduct);
+    const tracked = parseProduct({ ...baseProduct, stockQuantity: 3 });
+    const depleted = parseProduct({ ...baseProduct, stockQuantity: 0 });
+
+    expect(legacy.stockQuantity).toBeUndefined();
+    expect(isProductEffectivelyAvailable(legacy)).toBe(true);
+    expect(isProductEffectivelyAvailable(tracked)).toBe(true);
+    expect(isProductEffectivelyAvailable(depleted)).toBe(false);
+    expect(isProductEffectivelyAvailable({ ...tracked, availability: 'unavailable' })).toBe(false);
+
+    for (const stockQuantity of [-1, 1.5, Number.NaN, MAX_STOCK_QUANTITY + 1, null]) {
+      expect(() => parseProduct({ ...baseProduct, stockQuantity })).toThrow(InvalidProductError);
+    }
+  });
+
+  it('explica la causa efectiva de indisponibilidad sin contradicciones', () => {
+    expect(formatAvailability('available', 0)).toBe('Sin stock');
+    expect(formatAvailability('unavailable', 8)).toBe('No disponible');
+    expect(formatAvailability('available', 8)).toBe('Disponible');
+    expect(formatAvailability(undefined)).toBeNull();
+  });
+
+  it('acepta sólo rutas administradas con UUID v4 exacto', () => {
+    const source = '/api/catalog-images/123e4567-e89b-42d3-a456-426614174000.webp';
+    expect(isManagedCatalogImagePath(source)).toBe(true);
+    expect(parseProduct({
+      ...baseProduct,
+      primaryImage: { src: source, alt: 'Orégano' },
+    }).primaryImage?.src).toBe(source);
+    expect(isManagedCatalogImagePath('/api/catalog-images/../secreto.webp')).toBe(false);
+    expect(isManagedCatalogImagePath('/api/catalog-images/123e4567-e89b-12d3-a456-426614174000.webp')).toBe(false);
   });
 });
 

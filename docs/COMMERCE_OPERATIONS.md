@@ -74,6 +74,23 @@ La interfaz `/admin` consume:
 
 El catálogo de productos es editable. Pedidos, analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
 
+### Operación cotidiana del catálogo candidato
+
+- localizar productos por nombre, identificador o categoría y combinar filtros de categoría, disponibilidad y stock;
+- usar la edición rápida sólo para stock y disponibilidad, esperando la confirmación del servidor;
+- dejar `stockQuantity` ausente cuando el stock no se controla; usar un entero de 0 a 1.000.000 cuando sí se controla;
+- interpretar stock controlado en cero como no disponible efectivo, aunque la disponibilidad manual esté activa;
+- usar la disponibilidad manual para retirar un producto de venta aunque tenga stock;
+- recordar que el sistema no reserva ni descuenta unidades al cobrar: las existencias deben actualizarse según el procedimiento real del negocio.
+
+El carrito nunca acepta más de `min(99, stockQuantity)` por línea y Checkout Pro vuelve a validar el stock vigente. Si el stock cambia mientras existe un carrito, el comprador debe corregirlo antes de continuar.
+
+### Imágenes administrativas
+
+La carga admite JPEG, PNG y WebP de hasta 4 MiB. El preview local no confirma persistencia. El servidor valida magic bytes, genera la key y sólo escribe mediante la API administrativa autenticada. En reemplazo debe conservarse la imagen anterior hasta que la nueva referencia quede persistida; sólo se limpian objetos administrados no referenciados. Nunca eliminar archivos de `/images/original/catalog/`.
+
+R2 y `CATALOG_IMAGES` están configurados con `shekinah` para production y `shekinah-preview` para preview. Ambos buckets usan clase Standard/default y mantienen `publicR2DevEnabled=false`; la lectura comercial pasa exclusivamente por Pages. El upload del candidato aún no debe operarse como productivo hasta completar commit, CI, deployment del SHA definitivo y smoke autenticado. Un fallo de infraestructura nunca debe resolverse desactivando validaciones ni guardando imágenes en D1/Git.
+
 La auditoría registra:
 
 - subject y actor normalizados por sesión propia o por Access;

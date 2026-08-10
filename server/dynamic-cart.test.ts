@@ -88,6 +88,43 @@ describe('carrito autoritativo con catálogo dinámico', () => {
       testD1.close();
     }
   });
+
+  it('valida cantidades contra stock controlado y conserva el límite legacy', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const tracked = await createCatalogProduct(
+        testD1.database,
+        { ...productInput('producto-con-stock', 1_000), stockQuantity: 2 },
+        'admin@example.test',
+      );
+      await expect(recalculateDynamicCart({
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment,
+        items: [{ productId: tracked.id, quantity: 2 }],
+      }, testD1.database)).resolves.toMatchObject({ itemCount: 2 });
+      await expect(recalculateDynamicCart({
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment,
+        items: [{ productId: tracked.id, quantity: 3 }],
+      }, testD1.database)).rejects.toMatchObject({
+        code: 'INSUFFICIENT_STOCK',
+        status: 409,
+      });
+
+      const legacy = await createCatalogProduct(
+        testD1.database,
+        productInput('producto-legacy', 1_000),
+        'admin@example.test',
+      );
+      await expect(recalculateDynamicCart({
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment,
+        items: [{ productId: legacy.id, quantity: 99 }],
+      }, testD1.database)).resolves.toMatchObject({ itemCount: 99 });
+    } finally {
+      testD1.close();
+    }
+  });
 });
 
 function productInput(id: string, amount: number): Record<string, unknown> {

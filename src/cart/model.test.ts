@@ -15,7 +15,11 @@ import {
 const product = (
   id: string,
   amount = 100,
-  options: Readonly<{ saleAmount?: number; availability?: Product['availability'] }> = {},
+  options: Readonly<{
+    saleAmount?: number;
+    availability?: Product['availability'];
+    stockQuantity?: number;
+  }> = {},
 ): Product => Object.freeze({
   id,
   slug: id,
@@ -28,6 +32,7 @@ const product = (
     ? {}
     : { salePrice: Object.freeze({ amount: options.saleAmount, currency: 'ARS' as const }) }),
   ...(options.availability === undefined ? {} : { availability: options.availability }),
+  ...(options.stockQuantity === undefined ? {} : { stockQuantity: options.stockQuantity }),
 });
 
 describe('carrito', () => {
@@ -86,5 +91,31 @@ describe('carrito', () => {
     expect(parseStoredCart(stored, [product(dynamic.id, 1_000, {
       availability: 'unavailable',
     })]).items).toHaveLength(0);
+  });
+
+  it('limita y reconcilia cantidades con el stock controlado sin afectar productos legacy', () => {
+    const tracked = product('controlado', 100, { stockQuantity: 3 });
+    const depleted = product('sin-stock', 100, { stockQuantity: 0 });
+    const legacy = product('legacy');
+    const stored = parseStoredCart({
+      version: 1,
+      updatedAt: '2026-08-10T00:00:00.000Z',
+      items: [
+        { productId: tracked.id, quantity: 9 },
+        { productId: depleted.id, quantity: 1 },
+        { productId: legacy.id, quantity: MAX_CART_QUANTITY },
+      ],
+    }, [tracked, depleted, legacy]);
+
+    expect(stored.items).toEqual([
+      { productId: tracked.id, quantity: 3 },
+      { productId: legacy.id, quantity: MAX_CART_QUANTITY },
+    ]);
+    const added = addCartItem(emptyCart(), tracked.id, 3, 3);
+    expect(addCartItem(added, tracked.id, 1, 3)).toBe(added);
+    expect(setCartItemQuantity(added, tracked.id, 4, 3)).toBe(added);
+    const legacyTimestamp = new Date('2026-08-10T12:00:00.000Z');
+    expect(addCartItem(emptyCart(), legacy.id, 1, legacyTimestamp).updatedAt)
+      .toBe(legacyTimestamp.toISOString());
   });
 });

@@ -2,9 +2,9 @@
 
 Fecha de revisión: 2026-08-10.
 
-Base inicial de esta evolución administrativa:
+Base sincronizada y verificada antes del candidato de UX, inventario e imágenes:
 
-`f704424f614b917ffd42eb47ab31e5057a7ba5ec`
+`a543c39c025a952f632f38c6bf97b4ea3501b0d1`
 
 Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
 
@@ -29,6 +29,9 @@ El candidato incorpora:
 - migraciones aditivas de Cloudflare D1 para comercio, fulfillment, catálogo, retención y rate limiting administrativo;
 - autenticación administrativa propia con PBKDF2, cookie firmada, login/logout y fallback opcional de Cloudflare Access;
 - ABM de productos basado en catálogo canónico más mutaciones y tombstones D1;
+- gestión administrativa visual con búsqueda, filtros, miniaturas, estados, editor agrupado y acciones rápidas;
+- inventario opcional compatible con productos legacy y disponibilidad efectiva coherente en catálogo, carrito y servidor;
+- upload administrativo first-party preparado para JPEG/PNG/WebP mediante R2 ya configurado, pendiente de deployment y smoke del candidato;
 - analítica first-party con consentimiento;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
@@ -61,6 +64,10 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre de conf
 - la administración quedó operativa tras verificar por separado CI, deployment, login, logout y smoke ABM sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
+El candidato posterior a `a543c39c025a952f632f38c6bf97b4ea3501b0d1` usa `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o mayor que cero. El carrito aplica `min(99, stockQuantity)` y el servidor revalida antes del Checkout Pro. No existe reserva ni decremento automático por venta.
+
+Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de hasta 4 MiB, con magic bytes validados en servidor. La referencia persistida es first-party y los objetos pertenecen a R2; reemplazo y eliminación sólo limpian objetos administrados no referenciados, nunca assets legacy.
+
 ## Estado externo verificado
 
 Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar IDs de cuenta, correos ni valores secretos:
@@ -74,6 +81,13 @@ Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar I
 - Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
 - producción y preview usan `Fail closed`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.
+- R2 está activo: production reutiliza el bucket existente `shekinah`, preview usa el bucket aislado creado `shekinah-preview` y Pages vincula ambos como `CATALOG_IMAGES` en su entorno correspondiente;
+- ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`; no existe lectura pública directa por `r2.dev`, sólo la ruta first-party de Pages;
+- la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres `ADMIN_*` y `fail_open=false` permanecen sin cambios en production y preview.
+
+La última evidencia externa anterior al candidato corresponde al SHA `a543c39c025a952f632f38c6bf97b4ea3501b0d1`: CI `31429695666` y deployment Pages `62f735c6-0611-43a0-b5d9-eedf7d857234`, ambos `success`. No existe todavía CI, deployment ni smoke remoto del candidato actual.
+
+El candidato sin SHA final sí tiene evidencia local: `npm run verify` aprobó lint, TypeScript, 39 archivos/179 pruebas Vitest, verificadores, build y 14 pruebas Playwright; `npm run build:pages` también aprobó. Esta evidencia local no habilita el upload productivo ni reemplaza CI, deployment y smoke del SHA definitivo.
 
 Los flags server-side permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
 
@@ -82,6 +96,7 @@ Los flags server-side permanecen cerrados por el comportamiento fail-closed del 
 - frontend: React, TypeScript estricto y Vite;
 - servidor: Cloudflare Pages Functions;
 - persistencia automatizada: Cloudflare D1;
+- almacenamiento configurado para imágenes administradas: Cloudflare R2 mediante `CATALOG_IMAGES`, con `shekinah` en production y `shekinah-preview` en preview; deployment y smoke del candidato pendientes;
 - pagos automatizados: Mercado Pago Checkout Pro;
 - fallback temporal: Link de Pago manual más WhatsApp;
 - administración: credencial propia y sesión firmada; Cloudflare Access opcional como fallback interno;

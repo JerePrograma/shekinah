@@ -8,6 +8,13 @@ export type ProductImage = Readonly<{
   alt: string;
 }>;
 
+export const MAX_STOCK_QUANTITY = 1_000_000;
+
+const legacyCatalogImagePattern =
+  /^\/images\/original\/catalog\/[a-f0-9]{64}\.(?:jpg|png|webp)$/u;
+const managedCatalogImagePattern =
+  /^\/api\/catalog-images\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|png|webp)$/u;
+
 export type CatalogVariantOption = Readonly<{
   name: string;
   value: string;
@@ -41,6 +48,7 @@ export type CatalogProductSummary = Readonly<{
   salePrice?: ProductPrice;
   sku?: string;
   availability?: 'available' | 'unavailable';
+  stockQuantity?: number;
   shortDescription?: string;
   primaryImage?: ProductImage;
 }>;
@@ -117,11 +125,24 @@ function parseImage(value: unknown): ProductImage {
   }
 
   const src = readRequiredText(value, 'src');
-  if (!/^\/images\/original\/catalog\/[a-f0-9]{64}\.(?:jpg|png|webp)$/u.test(src)) {
+  if (!legacyCatalogImagePattern.test(src) && !isManagedCatalogImagePath(src)) {
     throw new InvalidProductError(`La imagen debe usar una ruta local autorizada: ${src}.`);
   }
 
   return Object.freeze({ src, alt: readRequiredText(value, 'alt') });
+}
+
+export function isManagedCatalogImagePath(value: string): boolean {
+  return managedCatalogImagePattern.test(value);
+}
+
+export function isProductEffectivelyAvailable(
+  product: Pick<CatalogProductSummary, 'availability' | 'stockQuantity'>,
+): boolean {
+  return (
+    product.availability !== 'unavailable' &&
+    (product.stockQuantity === undefined || product.stockQuantity > 0)
+  );
 }
 
 function parseTextArray(value: unknown, field: string): readonly string[] {
@@ -219,6 +240,9 @@ export function parseProduct(value: unknown): Product {
   ) {
     throw new InvalidProductError('La disponibilidad del producto no es válida.');
   }
+  const stockQuantity = Object.hasOwn(value, 'stockQuantity')
+    ? parseStockQuantity(value.stockQuantity)
+    : undefined;
   const shortDescription = readOptionalText(value, 'shortDescription');
 
   return Object.freeze({
@@ -233,9 +257,24 @@ export function parseProduct(value: unknown): Product {
     ...(salePrice === undefined ? {} : { salePrice }),
     ...(sku === undefined ? {} : { sku }),
     ...(availability === undefined ? {} : { availability }),
+    ...(stockQuantity === undefined ? {} : { stockQuantity }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
   });
+}
+
+function parseStockQuantity(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > MAX_STOCK_QUANTITY
+  ) {
+    throw new InvalidProductError(
+      `El stock debe ser un entero entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`,
+    );
+  }
+  return value;
 }
 
 export function parseProducts(

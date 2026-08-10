@@ -13,10 +13,12 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 - Checkout Pro de Mercado Pago por redirección preparado para activación serverless cuando existan D1, credenciales y webhook verificados;
 - envío manual del carrito por WhatsApp al número expresamente autorizado;
 - pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1;
-- catálogo de productos editable y pedidos/analítica de sólo lectura en un backoffice con login propio server-side;
+- catálogo editable desde un backoffice visual con búsqueda, filtros, miniaturas, editor agrupado, stock opcional y disponibilidad; pedidos/analítica continúan de sólo lectura;
 - política de privacidad, accesibilidad y vista 404.
 
 El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
+
+En el candidato actual, `stockQuantity` es opcional: si está ausente, el producto conserva el comportamiento legacy sin control de stock. Si existe, debe ser un entero entre 0 y 1.000.000; cero lo vuelve no comprable aunque la disponibilidad manual esté activa. El carrito limita cada línea a `min(99, stock)` y el servidor vuelve a validar al iniciar Checkout Pro. Este control no reserva ni descuenta unidades automáticamente.
 
 ## Estado productivo actual
 
@@ -42,6 +44,10 @@ El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VP
 - cualquier otra dirección, incluida `/enfoque`: vista 404.
 
 `/admin` no aparece en la navegación y sirve únicamente la pantalla de acceso hasta que el servidor confirma una sesión. `/api/admin/auth/login`, `/api/admin/auth/session` y `/api/admin/auth/logout` administran la sesión; todas las demás rutas `/api/admin/*` exigen en cada solicitud una cookie propia válida o, como compatibilidad opcional, un JWT válido de Cloudflare Access.
+
+La gestión visual de imágenes del candidato admite JPEG, PNG y WebP de hasta 4 MiB, con preview local y validación server-side de tipo y firma binaria. Los binarios administrados requieren un bucket R2 mediante el binding `CATALOG_IMAGES`; las imágenes públicas se sirven por una ruta first-party. Los 484 assets legacy versionados nunca se borran desde el backoffice.
+
+R2 quedó habilitado y vinculado en Pages: producción reutiliza el bucket existente `shekinah`, preview usa el bucket aislado `shekinah-preview` y ambos se exponen a Functions como `CATALOG_IMAGES`. Los dos buckets conservan la clase Standard/default y `publicR2DevEnabled=false`; la lectura pública se realiza exclusivamente por la ruta first-party de Pages, sin dominio `r2.dev`. La infraestructura está verificada, pero el upload del candidato todavía requiere commit, CI, deployment del SHA definitivo y smoke autenticado antes de considerarse productivo.
 
 ## Desarrollo
 

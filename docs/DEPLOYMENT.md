@@ -32,6 +32,9 @@ Existe un Worker independiente también llamado `shekinah`. Verificar siempre qu
 - Zero Trust y Access: no configurados; el código lo admite sólo como fallback opcional;
 - runtime de producción y preview: `Fail closed`;
 - Checkout Pro y analítica: continúan deshabilitados y sin secretos de proveedor.
+- R2: activo, con bucket existente `shekinah` reutilizado en producción y bucket aislado `shekinah-preview` en preview;
+- binding `CATALOG_IMAGES`: configurado en producción y preview; ambos buckets Standard/default, `publicR2DevEnabled=false` y lectura pública exclusivamente first-party mediante Pages;
+- upload administrativo: infraestructura lista, pero candidato todavía sin deployment ni smoke productivo.
 
 Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json`, ambos entornos deben conservar `Fail closed`. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
 
@@ -64,6 +67,7 @@ Debe registrarse por separado:
 11. activación de Checkout Pro;
 12. activación analítica;
 13. pruebas de humo.
+14. R2, buckets y binding de imágenes administrativas.
 
 ## Variables y secretos
 
@@ -90,6 +94,17 @@ Antes de aplicarlas:
 - revisar el SQL real;
 - ejecutar primero en un entorno no productivo cuando exista;
 - registrar la salida completa.
+
+## R2 e imágenes administrativas
+
+El candidato de código usa el binding `CATALOG_IMAGES` con aislamiento entre entornos:
+
+- producción: bucket existente `shekinah`;
+- preview: bucket aislado `shekinah-preview`.
+
+Las rutas first-party aceptan únicamente JPEG, PNG y WebP de hasta 4 MiB y validan magic bytes en servidor. Las referencias se persisten en la mutación D1 existente; los binarios viven en R2. Un reemplazo no borra la imagen anterior hasta persistir la nueva referencia, y nunca elimina assets legacy.
+
+R2 y ambos bindings quedaron verificados por API. Los buckets conservan clase Standard/default y `publicR2DevEnabled=false`; no habilitar un dominio público `r2.dev`, porque la lectura debe pasar por la ruta first-party de Pages. La relectura de Pages confirmó que `DB`, variables, nombres de secretos administrativos y `fail_open=false` no cambiaron. No considerar productiva la capacidad del candidato hasta verificar deployment del SHA exacto y smoke autenticado de upload/reemplazo/delete.
 
 ## Mercado Pago
 
@@ -132,5 +147,8 @@ Después del despliegue:
 - comprobar creación de pedidos sólo cuando Checkout Pro esté configurado;
 - comprobar webhook con eventos controlados antes de activar Checkout Pro;
 - comprobar que ningún secreto aparezca en respuestas o bundles.
+- comprobar semántica legacy de stock no controlado, stock cero y disponibilidad manual;
+- comprobar que cliente y servidor rechacen cantidades superiores a `min(99, stock)`;
+- comprobar formato/tamaño/firma, rutas first-party y cleanup en R2 sin tocar assets legacy ni habilitar `r2.dev`.
 
-La configuración de Pages, D1, migraciones, binding, secretos administrativos y `Fail closed` fue verificada el 2026-08-10. Zero Trust/Access continúa ausente por diseño opcional; Mercado Pago Checkout Pro y analítica permanecen deshabilitados. El deployment y smoke del candidato deben registrarse por SHA exacto.
+La configuración de Pages, D1, migraciones, bindings `DB`/`CATALOG_IMAGES`, nombres de secretos administrativos, `Fail closed` y aislamiento R2 fue verificada el 2026-08-10. Zero Trust/Access continúa ausente por diseño opcional; Mercado Pago Checkout Pro y analítica permanecen deshabilitados. El deployment y smoke del candidato deben registrarse por SHA exacto.

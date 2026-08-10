@@ -25,6 +25,22 @@ El manifiesto registra para cada archivo su ruta, SHA-256, extensión, tamaño, 
 
 `scripts/verify-assets.mjs` aplica una allowlist exacta compuesta por el logo y el manifiesto. Falla ante cambios de hash o tamaño, firmas y extensiones incoherentes, archivos inesperados, huérfanos, referencias externas o faltantes.
 
+## Imágenes administrativas candidatas
+
+La autorización para imágenes cargadas por un administrador es separada del inventario versionado:
+
+- formatos JPEG, PNG y WebP;
+- máximo 4 MiB por objeto;
+- Content-Type y magic bytes coherentes;
+- key UUID generada por servidor;
+- lectura mediante ruta first-party `/api/catalog-images/*`;
+- escritura y eliminación únicamente con sesión administrativa válida;
+- bucket existente `shekinah` en production y bucket aislado `shekinah-preview` en preview mediante `CATALOG_IMAGES`.
+
+Estos objetos no se agregan al manifiesto Git de 484 binarios porque viven en R2 y se referencian desde la mutación D1. El cleanup sólo puede retirar un objeto administrado que ya no esté referenciado. Ninguna operación administrativa puede borrar los assets históricos versionados.
+
+Estado externo: R2 está activo, ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`, y Pages tiene `CATALOG_IMAGES` separado por entorno. No existe lectura pública directa por `r2.dev`; los objetos comerciales sólo se sirven mediante la ruta first-party controlada por Pages. Esta verificación de infraestructura no acredita todavía una imagen administrativa persistida por el candidato: faltan commit, CI, deployment del SHA definitivo y smoke autenticado.
+
 ## Exclusiones
 
 No están autorizados:

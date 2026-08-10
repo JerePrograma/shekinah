@@ -1,4 +1,5 @@
 import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../src/commerce/contracts';
+import { isProductEffectivelyAvailable } from '../src/catalog/model';
 import { calculateShippingQuote } from '../src/commerce/fulfillment';
 import { getCatalogProductDetail } from './catalog-store';
 import type { RecalculatedCart, RecalculatedLine, ServerCatalogProduct } from './catalog';
@@ -22,8 +23,9 @@ export async function recalculateDynamicCart(value: unknown, database: D1Databas
     seen.add(productId);
     const detail = await getCatalogProductDetail(database, productId);
     if (detail === null) throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
-    const available = detail.availability === undefined || detail.availability === 'available';
-    if (!available) throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
+    if (detail.availability === 'unavailable') throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
+    if (detail.stockQuantity !== undefined && quantity > detail.stockQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
+    const available = isProductEffectivelyAvailable(detail);
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
     const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available });

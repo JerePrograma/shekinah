@@ -31,10 +31,39 @@ export interface D1Database {
   exec(query: string): Promise<Readonly<{ count: number; duration: number }>>;
 }
 
+export type R2HttpMetadata = Readonly<{
+  cacheControl?: string;
+  contentType?: string;
+}>;
+
+export interface R2Object {
+  readonly httpEtag: string;
+  readonly httpMetadata: R2HttpMetadata;
+  readonly key: string;
+  readonly size: number;
+  writeHttpMetadata(headers: Headers): void;
+}
+
+export interface R2ObjectBody extends R2Object {
+  readonly body: ReadableStream<Uint8Array>;
+}
+
+export interface R2Bucket {
+  delete(key: string): Promise<void>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  head(key: string): Promise<R2Object | null>;
+  put(
+    key: string,
+    value: ArrayBuffer | ArrayBufferView,
+    options?: Readonly<{ httpMetadata?: R2HttpMetadata }>,
+  ): Promise<R2Object | null>;
+}
+
 export type CommerceMode = 'sandbox' | 'production';
 
 export type Env = Readonly<{
   DB?: D1Database;
+  CATALOG_IMAGES?: R2Bucket;
   COMMERCE_ENABLED?: string;
   ANALYTICS_ENABLED?: string;
   PUBLIC_SITE_URL?: string;

@@ -3,6 +3,7 @@ import catalogDetailSource from '../src/catalog-data/catalog-details.json';
 import categorySource from '../src/catalog-data/categories.json';
 import {
   InvalidProductError,
+  isManagedCatalogImagePath,
   parseCategories,
   parseProductDetail,
   parseProducts,
@@ -117,10 +118,11 @@ export async function createCatalogProduct(
   actorEmail: string,
 ): Promise<CatalogProductDetail> {
   await ensureCatalogStorageReady(database);
-  const product = parseWritableProduct(value);
+  const product = parseWritableProduct(value, { requireCategory: true });
   if (await getCatalogProductDetail(database, product.id) !== null) {
     throw new HttpError(409, 'PRODUCT_ALREADY_EXISTS', 'Ya existe un producto con ese slug.');
   }
+  assertNoDirectImageMutation(null, product);
   await persistProduct(database, product, actorEmail);
   return product;
 }
@@ -133,7 +135,8 @@ export async function updateCatalogProduct(
 ): Promise<CatalogProductDetail> {
   assertProductId(productId);
   await ensureCatalogStorageReady(database);
-  if (await getCatalogProductDetail(database, productId) === null) {
+  const current = await getCatalogProductDetail(database, productId);
+  if (current === null) {
     throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
   }
   const product = parseWritableProduct(value);
@@ -144,8 +147,92 @@ export async function updateCatalogProduct(
       'El slug no puede cambiarse al editar un producto.',
     );
   }
+  assertNoDirectImageMutation(current, product);
   await persistProduct(database, product, actorEmail);
   return product;
+}
+
+export async function patchCatalogProductInventory(
+  database: D1Database,
+  productId: string,
+  value: unknown,
+  actorEmail: string,
+): Promise<CatalogProductDetail> {
+  assertProductId(productId);
+  await ensureCatalogStorageReady(database);
+  const current = await getCatalogProductDetail(database, productId);
+  if (current === null) {
+    throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
+  }
+  if (!isRecord(value)) {
+    throw invalidProductPatch();
+  }
+  const keys = Object.keys(value);
+  if (
+    keys.length === 0 ||
+    keys.some((key) => key !== 'availability' && key !== 'stockQuantity')
+  ) {
+    throw invalidProductPatch();
+  }
+
+  let patched: Record<string, unknown> = { ...current };
+  if (Object.hasOwn(value, 'availability')) {
+    if (value.availability !== 'available' && value.availability !== 'unavailable') {
+      throw invalidProductPatch();
+    }
+    patched = { ...patched, availability: value.availability };
+  }
+  if (Object.hasOwn(value, 'stockQuantity')) {
+    if (value.stockQuantity === null) {
+      delete patched.stockQuantity;
+    } else {
+      patched = { ...patched, stockQuantity: value.stockQuantity };
+    }
+  }
+
+  const product = parseWritableProduct(patched);
+  await persistProduct(database, product, actorEmail);
+  return product;
+}
+
+export type CatalogImageReplacement = Readonly<{
+  previousImages: readonly CatalogProductDetail['images'][number][];
+  product: CatalogProductDetail;
+}>;
+
+export async function replaceCatalogProductImages(
+  database: D1Database,
+  productId: string,
+  images: readonly CatalogProductDetail['images'][number][],
+  actorEmail: string,
+): Promise<CatalogImageReplacement> {
+  assertProductId(productId);
+  await ensureCatalogStorageReady(database);
+  const current = await getCatalogProductDetail(database, productId);
+  if (current === null) {
+    throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
+  }
+  const nextValue: Record<string, unknown> = {
+    ...current,
+    images: [...images],
+  };
+  if (images[0] === undefined) {
+    delete nextValue.primaryImage;
+  } else {
+    nextValue.primaryImage = images[0];
+  }
+  const product = parseWritableProduct(nextValue);
+  await persistProduct(database, product, actorEmail);
+  return Object.freeze({ previousImages: current.images, product });
+}
+
+export async function isCatalogImageReferenced(
+  database: D1Database,
+  source: string,
+): Promise<boolean> {
+  return (await listCatalogProductDetails(database)).some((product) =>
+    product.images.some((image) => image.src === source),
+  );
 }
 
 export async function deleteCatalogProduct(
@@ -188,6 +275,7 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
     ...(detail.salePrice === undefined ? {} : { salePrice: detail.salePrice }),
     ...(detail.sku === undefined ? {} : { sku: detail.sku }),
     ...(detail.availability === undefined ? {} : { availability: detail.availability }),
+    ...(detail.stockQuantity === undefined ? {} : { stockQuantity: detail.stockQuantity }),
     ...(detail.shortDescription === undefined
       ? {}
       : { shortDescription: detail.shortDescription }),
@@ -195,18 +283,22 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
   });
 }
 
-function parseWritableProduct(value: unknown): CatalogProductDetail {
+function parseWritableProduct(
+  value: unknown,
+  options: Readonly<{ requireCategory?: boolean }> = {},
+): CatalogProductDetail {
   try {
     const summary = parseProducts([value], baseCategories)[0];
     if (summary === undefined) {
       throw new InvalidProductError('El producto no es válido.');
     }
-    if (summary.categorySlugs.length === 0) {
+    if (options.requireCategory === true && summary.categorySlugs.length === 0) {
       throw new InvalidProductError('El producto debe pertenecer al menos a una categoría.');
     }
     const detail = parseProductDetail(summary, value);
     const unauthorizedImage = detail.images.find(
-      (image) => !authorizedImagePaths.has(image.src),
+      (image) =>
+        !authorizedImagePaths.has(image.src) && !isManagedCatalogImagePath(image.src),
     );
     if (unauthorizedImage !== undefined) {
       throw new InvalidProductError(
@@ -219,6 +311,36 @@ function parseWritableProduct(value: unknown): CatalogProductDetail {
       throw new HttpError(400, 'INVALID_PRODUCT', error.message);
     }
     throw error;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function invalidProductPatch(): HttpError {
+  return new HttpError(
+    400,
+    'INVALID_PRODUCT_PATCH',
+    'La actualización rápida sólo admite disponibilidad y stock.',
+  );
+}
+
+function assertNoDirectImageMutation(
+  current: CatalogProductDetail | null,
+  next: CatalogProductDetail,
+): void {
+  const currentSources = current?.images.map((image) => image.src) ?? [];
+  const nextSources = next.images.map((image) => image.src);
+  if (
+    currentSources.length !== nextSources.length ||
+    currentSources.some((source, index) => source !== nextSources[index])
+  ) {
+    throw new HttpError(
+      400,
+      'PRODUCT_IMAGE_MUTATION_REQUIRES_UPLOAD',
+      'Las imágenes deben cambiarse mediante el control de carga administrativo.',
+    );
   }
 }
 

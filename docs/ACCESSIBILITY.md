@@ -22,6 +22,21 @@ La interfaz prioriza lectura clara, navegación predecible y funcionamiento comp
 - soporte de `prefers-reduced-motion`;
 - diseño sin desbordamiento horizontal a 320, 390, 768 y 1440 px.
 
+## Backoffice de catálogo candidato
+
+La evolución administrativa conserva HTML semántico y agrega:
+
+- búsqueda y filtros con labels explícitos;
+- estados de disponibilidad y stock expresados con texto, no sólo color;
+- miniaturas con alternativa útil o estado textual de imagen ausente;
+- mensajes de carga, guardado, upload, éxito y error mediante regiones vivas apropiadas;
+- errores próximos al campo y asociados al control;
+- botones con nombre accesible y diferenciación textual de acciones destructivas;
+- foco visible, navegación completa por teclado y advertencia sólo cuando existen cambios sin guardar;
+- reordenamiento responsive del listado/editor sin overflow global en 390, 768, 1024 y 1440 px.
+
+El selector de archivo mantiene un control nativo utilizable por teclado. La zona visual de selección no sustituye el input ni comunica que una preview local ya fue persistida. La CSP permite `blob:` exclusivamente en `img-src` para esa preview revocable; scripts, estilos, conexiones y persistencia mantienen sus restricciones anteriores.
+
 ## Catálogo y fichas
 
 Al cambiar la búsqueda o la categoría se vuelve a la primera página y se anuncia el total filtrado. Los controles conservan el foco y no requieren puntero. Las fichas omiten los campos ausentes.
@@ -40,4 +55,4 @@ Playwright ejecuta el build compilado y comprueba navegación, búsqueda, filtro
 
 ## Límite
 
-La automatización no sustituye una revisión manual con lector de pantalla y usuarios reales. Los cambios de contenido, color, estructura o interacción requieren repetir esa revisión.
+La automatización no sustituye una revisión manual con lector de pantalla y usuarios reales. Los cambios de contenido, color, estructura o interacción requieren repetir esa revisión. Esta sección describe el contrato del candidato; no registra por sí sola una revisión visual, Playwright, CI o smoke remoto nuevos.

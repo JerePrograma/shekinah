@@ -1,31 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 
+import { normalizeSearchText } from '../catalog/catalog';
 import {
   InvalidProductError,
+  MAX_STOCK_QUANTITY,
+  isProductEffectivelyAvailable,
   parseProductDetail,
   parseProducts,
 } from '../catalog/model';
 import type { CatalogProductDetail } from '../catalog/model';
 import { authorizedCategories } from '../data/authorized-commercial-data';
 import { refreshRuntimeCatalog } from '../data/runtime-catalog';
+import { ProductEditor } from './ProductEditor';
+import { ProductList } from './ProductList';
+import {
+  ALL_FILTERS,
+  UNCATEGORIZED_FILTER,
+} from './product-management-types';
+import type {
+  AvailabilityFilter,
+  PendingNavigation,
+  ProductFieldErrors,
+  ProductFieldName,
+  ProductFormState,
+  ProductOperation,
+  ProductSort,
+  StockFilter,
+} from './product-management-types';
 
-type FormState = Readonly<{
-  slug: string;
-  name: string;
-  categorySlugs: readonly string[];
-  presentation: string;
-  price: string;
-  salePrice: string;
-  sku: string;
-  availability: 'available' | 'unavailable';
-  shortDescription: string;
-  description: string;
-  images: string;
-  variants: string;
-}>;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-const EMPTY_FORM: FormState = Object.freeze({
+const EMPTY_FORM: ProductFormState = Object.freeze({
   slug: '',
   name: '',
   categorySlugs: Object.freeze([]),
@@ -34,9 +46,11 @@ const EMPTY_FORM: FormState = Object.freeze({
   salePrice: '',
   sku: '',
   availability: 'available',
+  trackStock: false,
+  stockQuantity: '',
   shortDescription: '',
   description: '',
-  images: '',
+  images: Object.freeze([]),
   variants: '[]',
 });
 
@@ -44,13 +58,42 @@ export function ProductManager({
   onUnauthorized,
 }: Readonly<{ onUnauthorized?: (() => void) | undefined }>) {
   const [products, setProducts] = useState<readonly CatalogProductDetail[]>([]);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [imageStorageConfigured, setImageStorageConfigured] = useState(false);
+  const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
+  const [baseline, setBaseline] = useState<ProductFormState>(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null | undefined>(undefined);
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTERS);
+  const [availabilityFilter, setAvailabilityFilter] =
+    useState<AvailabilityFilter>(ALL_FILTERS);
+  const [stockFilter, setStockFilter] = useState<StockFilter>(ALL_FILTERS);
+  const [sort, setSort] = useState<ProductSort>('name');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [operation, setOperation] = useState<ProductOperation>({ kind: 'idle' });
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<ProductFieldErrors>({});
+  const [pendingNavigation, setPendingNavigation] =
+    useState<PendingNavigation | null>(null);
+  const [deleteCandidate, setDeleteCandidate] =
+    useState<CatalogProductDetail | null>(null);
+  const [quickStockId, setQuickStockId] = useState<string | null>(null);
+  const [quickStockValue, setQuickStockValue] = useState('');
+  const [quickStockError, setQuickStockError] = useState('');
+  const submitRef = useRef(false);
+  const editorTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const editorFormRef = useRef<HTMLFormElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const editorOpen = editingId !== undefined;
+  const isDirty = editorOpen && (
+    !formsEqual(form, baseline) || pendingImage !== null || removeImage
+  );
+  const remoteBusy = operation.kind !== 'idle';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,17 +101,81 @@ export function ProductManager({
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (message === '') return undefined;
+    const timeout = window.setTimeout(() => setMessage(''), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
+  useEffect(() => {
+    if (pendingImage === null || typeof URL.createObjectURL !== 'function') {
+      setImagePreviewUrl(null);
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(pendingImage);
+    setImagePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [pendingImage]);
+
+  useEffect(() => {
+    if (editorOpen) editorTitleRef.current?.focus();
+  }, [editingId, editorOpen]);
+
+  const summary = useMemo(() => Object.freeze({
+    total: products.length,
+    available: products.filter(isProductEffectivelyAvailable).length,
+    manuallyUnavailable: products.filter(
+      (product) => product.availability === 'unavailable',
+    ).length,
+    outOfStock: products.filter((product) => product.stockQuantity === 0).length,
+  }), [products]);
+
   const visibleProducts = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('es-AR');
-    return normalizedQuery === ''
-      ? products
-      : products.filter((product) =>
-          [product.name, product.id, product.sku ?? '', product.presentation ?? '']
-            .join(' ')
-            .toLocaleLowerCase('es-AR')
-            .includes(normalizedQuery),
-        );
-  }, [products, query]);
+    const normalizedQuery = normalizeSearchText(query);
+    const terms = normalizedQuery === '' ? [] : normalizedQuery.split(' ');
+    return [...products]
+      .filter((product) => {
+        if (categoryFilter === UNCATEGORIZED_FILTER && product.categorySlugs.length !== 0) {
+          return false;
+        }
+        if (
+          categoryFilter !== ALL_FILTERS &&
+          categoryFilter !== UNCATEGORIZED_FILTER &&
+          !product.categorySlugs.includes(categoryFilter)
+        ) return false;
+        const effectivelyAvailable = isProductEffectivelyAvailable(product);
+        if (availabilityFilter === 'available' && !effectivelyAvailable) return false;
+        if (availabilityFilter === 'unavailable' && effectivelyAvailable) return false;
+        if (stockFilter === 'untracked' && product.stockQuantity !== undefined) return false;
+        if (
+          stockFilter === 'in-stock' &&
+          (product.stockQuantity === undefined || product.stockQuantity <= 0)
+        ) {
+          return false;
+        }
+        if (stockFilter === 'out-of-stock' && product.stockQuantity !== 0) return false;
+        if (terms.length === 0) return true;
+        const searchableText = normalizeSearchText([
+          product.name,
+          product.id,
+          product.sku ?? '',
+          product.presentation ?? '',
+          ...product.categoryNames,
+        ].join(' '));
+        return terms.every((term) => searchableText.includes(term));
+      })
+      .sort(productComparator(sort));
+  }, [availabilityFilter, categoryFilter, products, query, sort, stockFilter]);
 
   async function reload(signal?: AbortSignal): Promise<void> {
     setLoading(true);
@@ -80,7 +187,9 @@ export function ProductManager({
         false,
         onUnauthorized,
       );
-      setProducts(parseAdminProducts(payload));
+      const catalog = parseAdminCatalog(payload);
+      setProducts(catalog.products);
+      setImageStorageConfigured(catalog.imageStorageConfigured);
     } catch (loadError: unknown) {
       if (signal?.aborted === true) return;
       setError(errorMessage(loadError));
@@ -91,38 +200,160 @@ export function ProductManager({
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (saving) return;
-    setSaving(true);
+    if (remoteBusy || submitRef.current) return;
+    const validation = validateForm(form, pendingImage, editingId === null);
+    setFieldErrors(validation);
+    if (Object.keys(validation).length > 0) {
+      setError('Revisá los campos indicados antes de guardar.');
+      window.requestAnimationFrame(() => {
+        editorFormRef.current
+          ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+          ?.focus();
+      });
+      return;
+    }
+
+    submitRef.current = true;
+    setOperation({ kind: 'saving', stage: 'product' });
     setError('');
     setMessage('');
+    let persistedProduct: CatalogProductDetail | null = null;
+    const creating = editingId === null;
     try {
-      const payload = buildPayload(form);
-      const editing = editingId !== null;
-      await adminJson(
-        editing
-          ? `/api/admin/products/${encodeURIComponent(editingId)}`
-          : '/api/admin/products',
+      const productPayload = buildPayload(form);
+      const responsePayload = await adminJson(
+        creating
+          ? '/api/admin/products'
+          : `/api/admin/products/${encodeURIComponent(editingId ?? '')}`,
         {
-          method: editing ? 'PUT' : 'POST',
-          body: JSON.stringify(payload),
+          method: creating ? 'POST' : 'PUT',
+          body: JSON.stringify(productPayload),
         },
         false,
         onUnauthorized,
       );
-      resetForm();
-      await Promise.all([reload(), refreshRuntimeCatalog()]);
-      setMessage(editing ? 'Producto actualizado.' : 'Producto creado.');
+      persistedProduct = parseAdminProduct(responsePayload);
+      applyPersistedEditorProduct(persistedProduct);
+
+      if (pendingImage !== null) {
+        setOperation({ kind: 'saving', stage: 'image' });
+        const imagePayload = await adminImageUpload(
+          persistedProduct.id,
+          pendingImage,
+          onUnauthorized,
+        );
+        persistedProduct = parseAdminProduct(imagePayload);
+      } else if (removeImage && persistedProduct.primaryImage !== undefined) {
+        setOperation({ kind: 'saving', stage: 'image' });
+        const imagePayload = await adminJson(
+          `/api/admin/products/${encodeURIComponent(persistedProduct.id)}/image`,
+          { method: 'DELETE' },
+          true,
+          onUnauthorized,
+        );
+        persistedProduct = imagePayload === null
+          ? await loadAdminProduct(persistedProduct.id, onUnauthorized)
+          : parseAdminProduct(imagePayload);
+      }
+
+      applyPersistedEditorProduct(persistedProduct);
+      setPendingImage(null);
+      setRemoveImage(false);
+      clearFileInput();
+      if (creating) {
+        setQuery('');
+        setCategoryFilter(ALL_FILTERS);
+        setAvailabilityFilter(ALL_FILTERS);
+        setStockFilter(ALL_FILTERS);
+      }
+      await refreshRuntimeCatalog();
+      setMessage(creating ? 'Producto creado correctamente.' : 'Cambios guardados correctamente.');
     } catch (saveError: unknown) {
-      setMessage('');
-      setError(errorMessage(saveError));
+      if (persistedProduct !== null) {
+        applyPersistedEditorProduct(persistedProduct);
+        setError(
+          `Los datos del producto se guardaron, pero la imagen no pudo actualizarse. ${errorMessage(saveError)}`,
+        );
+      } else {
+        setError(errorMessage(saveError));
+      }
     } finally {
-      setSaving(false);
+      submitRef.current = false;
+      setOperation({ kind: 'idle' });
+    }
+  }
+
+  async function updateAvailability(product: CatalogProductDetail): Promise<void> {
+    if (remoteBusy) return;
+    const nextAvailability = product.availability === 'unavailable'
+      ? 'available'
+      : 'unavailable';
+    setOperation({ kind: 'quick', productId: product.id, action: 'availability' });
+    setError('');
+    setMessage('');
+    try {
+      const payload = await adminJson(
+        `/api/admin/products/${encodeURIComponent(product.id)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ availability: nextAvailability }),
+        },
+        false,
+        onUnauthorized,
+      );
+      const updated = parseAdminProduct(payload);
+      replaceProduct(updated);
+      await refreshRuntimeCatalog();
+      setMessage(
+        nextAvailability === 'available'
+          ? `${product.name} quedó disponible manualmente.`
+          : `${product.name} quedó pausado manualmente.`,
+      );
+    } catch (updateError: unknown) {
+      setError(errorMessage(updateError));
+    } finally {
+      setOperation({ kind: 'idle' });
+    }
+  }
+
+  async function updateQuickStock(
+    product: CatalogProductDetail,
+    nextStock: number | null,
+  ): Promise<void> {
+    if (remoteBusy) return;
+    setOperation({ kind: 'quick', productId: product.id, action: 'stock' });
+    setQuickStockError('');
+    setError('');
+    setMessage('');
+    try {
+      const payload = await adminJson(
+        `/api/admin/products/${encodeURIComponent(product.id)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ stockQuantity: nextStock }),
+        },
+        false,
+        onUnauthorized,
+      );
+      const updated = parseAdminProduct(payload);
+      replaceProduct(updated);
+      setQuickStockId(null);
+      await refreshRuntimeCatalog();
+      setMessage(
+        nextStock === null
+          ? `${product.name} quedó sin control de stock.`
+          : `Stock de ${product.name} actualizado a ${nextStock}.`,
+      );
+    } catch (updateError: unknown) {
+      setQuickStockError(errorMessage(updateError));
+    } finally {
+      setOperation({ kind: 'idle' });
     }
   }
 
   async function remove(product: CatalogProductDetail): Promise<void> {
-    if (saving || !window.confirm(`Eliminar “${product.name}” del catálogo público?`)) return;
-    setSaving(true);
+    if (remoteBusy) return;
+    setOperation({ kind: 'deleting', productId: product.id });
     setError('');
     setMessage('');
     try {
@@ -132,18 +363,70 @@ export function ProductManager({
         true,
         onUnauthorized,
       );
-      if (editingId === product.id) resetForm();
-      await Promise.all([reload(), refreshRuntimeCatalog()]);
-      setMessage('Producto eliminado del catálogo.');
+      setProducts((current) => current.filter((candidate) => candidate.id !== product.id));
+      if (editingId === product.id) closeEditorImmediately();
+      setDeleteCandidate(null);
+      await refreshRuntimeCatalog();
+      setMessage(`${product.name} fue quitado del catálogo público.`);
     } catch (deleteError: unknown) {
       setError(errorMessage(deleteError));
     } finally {
-      setSaving(false);
+      setOperation({ kind: 'idle' });
     }
   }
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]): void {
+  function applyPersistedEditorProduct(product: CatalogProductDetail): void {
+    replaceProduct(product);
+    const nextForm = formFromProduct(product);
+    setEditingId(product.id);
+    setForm(nextForm);
+    setBaseline(nextForm);
+    setSlugManuallyEdited(true);
+    setFieldErrors({});
+  }
+
+  function replaceProduct(product: CatalogProductDetail): void {
+    setProducts((current) => {
+      const exists = current.some((candidate) => candidate.id === product.id);
+      return exists
+        ? current.map((candidate) => candidate.id === product.id ? product : candidate)
+        : [...current, product];
+    });
+    if (editingId === product.id && !isDirty) {
+      const nextForm = formFromProduct(product);
+      setForm(nextForm);
+      setBaseline(nextForm);
+    }
+  }
+
+  function updateField<K extends keyof ProductFormState>(
+    key: K,
+    value: ProductFormState[K],
+  ): void {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === 'trackStock' && value === false) clearFieldError('stockQuantity');
+    else clearFieldError(key as ProductFieldName);
+  }
+
+  function updateName(value: string): void {
+    setForm((current) => ({
+      ...current,
+      name: value,
+      ...(editingId === null && !slugManuallyEdited
+        ? { slug: createUniqueSlug(value, products) }
+        : {}),
+    }));
+    clearFieldError('name');
+    if (!slugManuallyEdited) clearFieldError('slug');
+  }
+
+  function clearFieldError(field: ProductFieldName): void {
+    setFieldErrors((current) => {
+      if (!Object.hasOwn(current, field)) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   }
 
   function toggleCategory(slug: string, checked: boolean): void {
@@ -153,294 +436,334 @@ export function ProductManager({
         ? [...current.categorySlugs, slug]
         : current.categorySlugs.filter((value) => value !== slug),
     }));
+    clearFieldError('categorySlugs');
   }
 
-  function edit(product: CatalogProductDetail): void {
+  function requestEdit(product: CatalogProductDetail): void {
+    if (editingId === product.id) return;
+    if (isDirty) {
+      setPendingNavigation({ kind: 'edit', product });
+      return;
+    }
+    openEdit(product);
+  }
+
+  function requestNew(): void {
+    if (isDirty) {
+      setPendingNavigation({ kind: 'new' });
+      return;
+    }
+    openNew();
+  }
+
+  function requestClose(): void {
+    if (isDirty) {
+      setPendingNavigation({ kind: 'close' });
+      return;
+    }
+    closeEditorImmediately();
+  }
+
+  function confirmPendingNavigation(): void {
+    const pending = pendingNavigation;
+    setPendingNavigation(null);
+    if (pending === null) return;
+    if (pending.kind === 'edit') openEdit(pending.product);
+    else if (pending.kind === 'new') openNew();
+    else closeEditorImmediately();
+  }
+
+  function openEdit(product: CatalogProductDetail): void {
+    const nextForm = formFromProduct(product);
     setEditingId(product.id);
-    setError('');
-    setMessage('');
-    setForm(Object.freeze({
-      slug: product.id,
-      name: product.name,
-      categorySlugs: product.categorySlugs,
-      presentation: product.presentation ?? '',
-      price: String(product.price.amount),
-      salePrice: product.salePrice === undefined ? '' : String(product.salePrice.amount),
-      sku: product.sku ?? '',
-      availability: product.availability === 'unavailable' ? 'unavailable' : 'available',
-      shortDescription: product.shortDescription ?? '',
-      description: product.description ?? '',
-      images: product.images.map((image) => image.src).join('\n'),
-      variants: JSON.stringify(product.variants, null, 2),
-    }));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setForm(nextForm);
+    setBaseline(nextForm);
+    setSlugManuallyEdited(true);
+    resetEditorTransientState();
   }
 
-  function resetForm(): void {
+  function openNew(): void {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setBaseline(EMPTY_FORM);
+    setSlugManuallyEdited(false);
+    resetEditorTransientState();
+  }
+
+  function closeEditorImmediately(): void {
+    setEditingId(undefined);
+    setForm(EMPTY_FORM);
+    setBaseline(EMPTY_FORM);
+    setSlugManuallyEdited(false);
+    resetEditorTransientState();
+  }
+
+  function resetEditorTransientState(): void {
+    setPendingImage(null);
+    setRemoveImage(false);
+    setFieldErrors({});
+    setError('');
+    setMessage('');
+    setPendingNavigation(null);
+    clearFileInput();
+  }
+
+  function clearFileInput(): void {
+    if (fileInputRef.current !== null) fileInputRef.current.value = '';
+  }
+
+  function selectImage(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.currentTarget.files?.[0] ?? null;
+    if (file === null) return;
+    const imageError = validateImage(file);
+    if (imageError !== null) {
+      setFieldErrors((current) => ({ ...current, image: imageError }));
+      event.currentTarget.value = '';
+      return;
+    }
+    setPendingImage(file);
+    setRemoveImage(false);
+    clearFieldError('image');
+  }
+
+  function beginQuickStock(product: CatalogProductDetail): void {
+    setQuickStockId(product.id);
+    setQuickStockValue(
+      product.stockQuantity === undefined ? '' : String(product.stockQuantity),
+    );
+    setQuickStockError('');
+  }
+
+  function submitQuickStock(
+    event: FormEvent<HTMLFormElement>,
+    product: CatalogProductDetail,
+  ): void {
+    event.preventDefault();
+    const stock = parseStockQuantity(quickStockValue);
+    if (stock === null) {
+      setQuickStockError(
+        `Indicá una cantidad entera entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`,
+      );
+      return;
+    }
+    void updateQuickStock(product, stock);
   }
 
   return (
     <section className="admin-page section" aria-labelledby="backoffice-title">
-      <div className="container admin-shell">
-        <div className="section-heading">
-          <p className="eyebrow">Administración</p>
-          <h1 id="backoffice-title">Administración / Backoffice</h1>
-          <p>
-            El catálogo de productos es editable. Pedidos, analítica, exportaciones y
-            auditoría permanecen en modo de sólo lectura.
-          </p>
-        </div>
-        <h2 id="catalog-admin-title">Catálogo de productos</h2>
-        <p>
-          Las altas, modificaciones y bajas son persistentes. El servidor vuelve a
-          validar precio y disponibilidad al iniciar el checkout.
-        </p>
-        <form
-          className="admin-filters"
-          aria-labelledby="catalog-admin-title"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          <label>
-            <span>Slug / ID</span>
-            <input
-              required
-              maxLength={180}
-              pattern="[a-z0-9][a-z0-9-]*"
-              value={form.slug}
-              disabled={editingId !== null || saving}
-              onChange={(event) => setField('slug', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Nombre</span>
-            <input
-              required
-              maxLength={300}
-              value={form.name}
-              disabled={saving}
-              onChange={(event) => setField('name', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Precio ARS</span>
-            <input
-              required
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.price}
-              disabled={saving}
-              onChange={(event) => setField('price', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Precio promocional ARS</span>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.salePrice}
-              disabled={saving}
-              onChange={(event) => setField('salePrice', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Presentación</span>
-            <input
-              maxLength={160}
-              value={form.presentation}
-              disabled={saving}
-              onChange={(event) => setField('presentation', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>SKU</span>
-            <input
-              maxLength={160}
-              value={form.sku}
-              disabled={saving}
-              onChange={(event) => setField('sku', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Disponibilidad</span>
-            <select
-              value={form.availability}
-              disabled={saving}
-              onChange={(event) =>
-                setField('availability', event.currentTarget.value as FormState['availability'])
-              }
-            >
-              <option value="available">Disponible</option>
-              <option value="unavailable">No disponible</option>
-            </select>
-          </label>
-          <fieldset disabled={saving}>
-            <legend>Categorías</legend>
-            {authorizedCategories.map((category) => (
-              <label key={category.slug}>
-                <input
-                  type="checkbox"
-                  checked={form.categorySlugs.includes(category.slug)}
-                  onChange={(event) =>
-                    toggleCategory(category.slug, event.currentTarget.checked)
-                  }
-                />
-                <span>{category.name}</span>
-              </label>
-            ))}
-          </fieldset>
-          <label>
-            <span>Descripción breve</span>
-            <textarea
-              value={form.shortDescription}
-              disabled={saving}
-              onChange={(event) => setField('shortDescription', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Descripción completa</span>
-            <textarea
-              value={form.description}
-              disabled={saving}
-              onChange={(event) => setField('description', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Imágenes autorizadas (una ruta por línea)</span>
-            <textarea
-              placeholder="/images/original/catalog/<sha256>.webp"
-              value={form.images}
-              disabled={saving}
-              onChange={(event) => setField('images', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>Variantes (JSON)</span>
-            <textarea
-              spellCheck={false}
-              value={form.variants}
-              disabled={saving}
-              onChange={(event) => setField('variants', event.currentTarget.value)}
-            />
-          </label>
-          <div className="admin-export-actions">
-            <button className="button button-primary" type="submit" disabled={saving}>
-              {saving
-                ? 'Guardando…'
-                : editingId === null
-                  ? 'Crear producto'
-                  : 'Guardar cambios'}
-            </button>
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                resetForm();
-                setError('');
-                setMessage('');
-              }}
-            >
-              Cancelar / nuevo
-            </button>
+      <div className="container admin-product-shell">
+        <header className="admin-product-header">
+          <div className="section-heading">
+            <p className="eyebrow">Administración</p>
+            <h2 id="backoffice-title">Catálogo de productos</h2>
+            <p>Encontrá, actualizá y publicá productos sin perder de vista el catálogo.</p>
           </div>
-        </form>
-        {error === '' ? null : <p className="form-error" role="alert">{error}</p>}
-        {message === '' ? null : <p role="status">{message}</p>}
-        <label className="catalog-field">
-          <span>Buscar producto para editar</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setQuery(event.currentTarget.value)
-            }
-          />
-        </label>
-        {loading ? (
-          <p role="status">Cargando productos…</p>
-        ) : (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <caption>{visibleProducts.length} productos</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Producto</th>
-                  <th scope="col">SKU</th>
-                  <th scope="col">Precio</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleProducts.map((product) => (
-                  <tr key={product.id}>
-                    <td>{product.name}<br /><small>{product.id}</small></td>
-                    <td>{product.sku ?? '—'}</td>
-                    <td>${(product.salePrice ?? product.price).amount.toLocaleString('es-AR')}</td>
-                    <td>{product.availability === 'unavailable' ? 'No disponible' : 'Disponible'}</td>
-                    <td>
-                      <button
-                        className="button button-secondary"
-                        type="button"
-                        disabled={saving}
-                        onClick={() => edit(product)}
-                      >
-                        Editar
-                      </button>{' '}
-                      <button
-                        className="button button-secondary"
-                        type="button"
-                        disabled={saving}
-                        onClick={() => {
-                          void remove(product);
-                        }}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={remoteBusy}
+            onClick={requestNew}
+          >
+            Nuevo producto
+          </button>
+        </header>
+
+        <section aria-labelledby="catalog-summary-title">
+          <h3 className="visually-hidden" id="catalog-summary-title">Resumen del catálogo</h3>
+          <dl className="admin-catalog-summary">
+            <SummaryItem label="Productos" value={summary.total} />
+            <SummaryItem label="Disponibles para venta" value={summary.available} tone="available" />
+            <SummaryItem label="Pausados manualmente" value={summary.manuallyUnavailable} tone="paused" />
+            <SummaryItem label="Sin stock" value={summary.outOfStock} tone="out" />
+          </dl>
+        </section>
+
+        {message === '' ? null : (
+          <div className="admin-feedback admin-feedback-success" role="status" aria-live="polite">
+            <span>{message}</span>
+            <button type="button" onClick={() => setMessage('')}>Cerrar mensaje</button>
           </div>
         )}
+        {error === '' ? null : (
+          <div className="admin-feedback form-error" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError('')}>Cerrar error</button>
+          </div>
+        )}
+
+        <div className={`admin-catalog-workspace${editorOpen ? ' has-editor' : ''}`}>
+          <ProductList
+            availabilityFilter={availabilityFilter}
+            categoryFilter={categoryFilter}
+            deleteCandidate={deleteCandidate}
+            editingId={editingId}
+            isDirty={isDirty}
+            loading={loading}
+            operation={operation}
+            query={query}
+            quickStockError={quickStockError}
+            quickStockId={quickStockId}
+            quickStockValue={quickStockValue}
+            remoteBusy={remoteBusy}
+            sort={sort}
+            stockFilter={stockFilter}
+            visibleProducts={visibleProducts}
+            onAvailabilityFilterChange={setAvailabilityFilter}
+            onBeginQuickStock={beginQuickStock}
+            onCancelDelete={() => setDeleteCandidate(null)}
+            onCancelQuickStock={() => setQuickStockId(null)}
+            onCategoryFilterChange={setCategoryFilter}
+            onConfirmDelete={(product) => void remove(product)}
+            onEdit={requestEdit}
+            onOpenDelete={setDeleteCandidate}
+            onQueryChange={setQuery}
+            onQuickStockValueChange={(value) => {
+              setQuickStockValue(value);
+              setQuickStockError('');
+            }}
+            onResetFilters={() => {
+              setQuery('');
+              setCategoryFilter(ALL_FILTERS);
+              setAvailabilityFilter(ALL_FILTERS);
+              setStockFilter(ALL_FILTERS);
+            }}
+            onSetUntrackedStock={(product) => void updateQuickStock(product, null)}
+            onSortChange={setSort}
+            onStockFilterChange={setStockFilter}
+            onSubmitQuickStock={submitQuickStock}
+            onUpdateAvailability={(product) => void updateAvailability(product)}
+          />
+          {editorOpen ? (
+            <ProductEditor
+              baseline={baseline}
+              editingId={editingId ?? null}
+              fieldErrors={fieldErrors}
+              fileInputRef={fileInputRef}
+              form={form}
+              formRef={editorFormRef}
+              imagePreviewUrl={imagePreviewUrl}
+              imageStorageConfigured={imageStorageConfigured}
+              isDirty={isDirty}
+              operation={operation}
+              pendingImage={pendingImage}
+              pendingNavigation={pendingNavigation !== null}
+              removeImage={removeImage}
+              titleRef={editorTitleRef}
+              onCancelPendingNavigation={() => setPendingNavigation(null)}
+              onConfirmPendingNavigation={confirmPendingNavigation}
+              onDiscardImage={() => {
+                setPendingImage(null);
+                clearFileInput();
+              }}
+              onNameChange={updateName}
+              onRequestClose={requestClose}
+              onSelectImage={selectImage}
+              onSlugChange={(value) => {
+                setSlugManuallyEdited(true);
+                updateField('slug', value);
+              }}
+              onSubmit={(event) => void submit(event)}
+              onToggleCategory={toggleCategory}
+              onToggleRemoveImage={() => setRemoveImage((current) => !current)}
+              onUpdateField={updateField}
+            />
+          ) : null}
+        </div>
       </div>
     </section>
   );
 }
 
-function buildPayload(form: FormState): CatalogProductDetail {
-  if (form.categorySlugs.length === 0) {
-    throw new Error('Seleccioná al menos una categoría.');
+function SummaryItem({
+  label,
+  tone,
+  value,
+}: Readonly<{
+  label: string;
+  tone?: 'available' | 'paused' | 'out';
+  value: number;
+}>) {
+  return (
+    <div className={tone === undefined ? undefined : `admin-summary-${tone}`}>
+      <dt>{label}</dt>
+      <dd>{value.toLocaleString('es-AR')}</dd>
+    </div>
+  );
+}
+
+function validateForm(
+  form: ProductFormState,
+  image: File | null,
+  creating: boolean,
+): ProductFieldErrors {
+  const errors: ProductFieldErrors = {};
+  if (form.name.trim() === '') errors.name = 'Ingresá el nombre del producto.';
+  if (!/^[a-z0-9][a-z0-9-]{0,179}$/u.test(form.slug.trim())) {
+    errors.slug = 'Usá letras minúsculas, números y guiones.';
   }
+  if (creating && form.categorySlugs.length === 0) {
+    errors.categorySlugs = 'Seleccioná al menos una categoría.';
+  }
+  const priceError = validatePrice(form.price, false);
+  if (priceError !== null) errors.price = priceError;
+  const salePriceError = validatePrice(form.salePrice, true);
+  if (salePriceError !== null) errors.salePrice = salePriceError;
+  if (form.trackStock && parseStockQuantity(form.stockQuantity) === null) {
+    errors.stockQuantity =
+      `Indicá una cantidad entera entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`;
+  }
+  if (image !== null) {
+    const imageError = validateImage(image);
+    if (imageError !== null) errors.image = imageError;
+  }
+  return errors;
+}
+
+function validatePrice(value: string, optional: boolean): string | null {
+  if (optional && value.trim() === '') return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Ingresá un importe mayor que cero.';
+  const minor = amount * 100;
+  if (
+    !Number.isSafeInteger(Math.round(minor)) ||
+    Math.abs(minor - Math.round(minor)) > 0.000001
+  ) {
+    return 'Usá como máximo dos decimales.';
+  }
+  return null;
+}
+
+function validateImage(file: File): string | null {
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return 'Seleccioná una imagen JPEG, PNG o WebP.';
+  }
+  if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
+    return 'La imagen debe pesar más de 0 bytes y como máximo 4 MiB.';
+  }
+  return null;
+}
+
+function parseStockQuantity(value: string): number | null {
+  const numeric = Number(value);
+  return Number.isSafeInteger(numeric) && numeric >= 0 && numeric <= MAX_STOCK_QUANTITY
+    ? numeric
+    : null;
+}
+
+function buildPayload(form: ProductFormState): CatalogProductDetail {
   let variants: unknown;
   try {
     variants = JSON.parse(form.variants || '[]') as unknown;
   } catch (parseError: unknown) {
-    throw new Error(
-      parseError instanceof Error
-        ? `Variantes: ${parseError.message}`
-        : 'Variantes inválidas.',
-      { cause: parseError },
-    );
+    throw new Error('El contenido de variantes no es válido.', { cause: parseError });
   }
 
   const slug = form.slug.trim();
   const categoryBySlug = new Map(
     authorizedCategories.map((category) => [category.slug, category]),
   );
-  const paths = form.images
-    .split(/\r?\n/u)
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const images = paths.map((src) => ({ src, alt: form.name.trim() }));
   const saleAmount = form.salePrice.trim() === '' ? null : Number(form.salePrice);
+  const images = form.images.map((image) => ({ ...image, alt: form.name.trim() }));
   const value: unknown = {
     id: slug,
     slug,
@@ -455,6 +778,7 @@ function buildPayload(form: FormState): CatalogProductDetail {
     ...(saleAmount === null ? {} : { salePrice: { amount: saleAmount, currency: 'ARS' } }),
     ...(form.sku.trim() === '' ? {} : { sku: form.sku.trim() }),
     availability: form.availability,
+    ...(form.trackStock ? { stockQuantity: Number(form.stockQuantity) } : {}),
     ...(form.shortDescription.trim() === ''
       ? {}
       : { shortDescription: form.shortDescription.trim() }),
@@ -476,20 +800,150 @@ function buildPayload(form: FormState): CatalogProductDetail {
   }
 }
 
-function parseAdminProducts(payload: unknown): readonly CatalogProductDetail[] {
-  if (!isRecord(payload)) {
+function formFromProduct(product: CatalogProductDetail): ProductFormState {
+  return Object.freeze({
+    slug: product.id,
+    name: product.name,
+    categorySlugs: product.categorySlugs,
+    presentation: product.presentation ?? '',
+    price: String(product.price.amount),
+    salePrice: product.salePrice === undefined ? '' : String(product.salePrice.amount),
+    sku: product.sku ?? '',
+    availability: product.availability === 'unavailable' ? 'unavailable' : 'available',
+    trackStock: product.stockQuantity !== undefined,
+    stockQuantity: product.stockQuantity === undefined ? '' : String(product.stockQuantity),
+    shortDescription: product.shortDescription ?? '',
+    description: product.description ?? '',
+    images: product.images,
+    variants: JSON.stringify(product.variants, null, 2),
+  });
+}
+
+function formsEqual(left: ProductFormState, right: ProductFormState): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function createUniqueSlug(name: string, products: readonly CatalogProductDetail[]): string {
+  const normalized = name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('es-AR')
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 180) || 'producto';
+  const existing = new Set(products.map((product) => product.id));
+  if (!existing.has(normalized)) return normalized;
+  let suffix = 2;
+  while (existing.has(withSlugSuffix(normalized, suffix))) suffix += 1;
+  return withSlugSuffix(normalized, suffix);
+}
+
+function withSlugSuffix(slug: string, suffix: number): string {
+  const ending = `-${suffix}`;
+  return `${slug.slice(0, 180 - ending.length).replace(/-+$/u, '')}${ending}`;
+}
+
+function productComparator(sort: ProductSort) {
+  return (left: CatalogProductDetail, right: CatalogProductDetail): number => {
+    if (sort === 'category') {
+      const categoryComparison = left.categoryNames.join(' ').localeCompare(
+        right.categoryNames.join(' '),
+        'es-AR',
+        { sensitivity: 'base' },
+      );
+      return categoryComparison || compareNames(left, right);
+    }
+    if (sort === 'price-asc' || sort === 'price-desc') {
+      const difference = (left.salePrice ?? left.price).amount -
+        (right.salePrice ?? right.price).amount;
+      return (sort === 'price-desc' ? -difference : difference) || compareNames(left, right);
+    }
+    if (sort === 'stock-asc' || sort === 'stock-desc') {
+      const difference = compareStock(left.stockQuantity, right.stockQuantity);
+      return (sort === 'stock-desc' ? -difference : difference) || compareNames(left, right);
+    }
+    return compareNames(left, right);
+  };
+}
+
+function compareNames(left: CatalogProductDetail, right: CatalogProductDetail): number {
+  return left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' });
+}
+
+function compareStock(left: number | undefined, right: number | undefined): number {
+  if (left === undefined && right === undefined) return 0;
+  if (left === undefined) return 1;
+  if (right === undefined) return -1;
+  return left - right;
+}
+
+function parseAdminCatalog(payload: unknown): Readonly<{
+  products: readonly CatalogProductDetail[];
+  imageStorageConfigured: boolean;
+}> {
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.products) ||
+    typeof payload.imageStorageConfigured !== 'boolean'
+  ) {
     throw new Error('Respuesta de catálogo inválida.');
   }
   const rawProducts = payload.products;
-  if (!Array.isArray(rawProducts)) throw new Error('Respuesta de catálogo inválida.');
   try {
     const summaries = parseProducts(rawProducts, authorizedCategories);
-    return Object.freeze(
-      summaries.map((summary, index) => parseProductDetail(summary, rawProducts[index])),
-    );
+    return Object.freeze({
+      products: Object.freeze(
+        summaries.map((summary, index) => parseProductDetail(summary, rawProducts[index])),
+      ),
+      imageStorageConfigured: payload.imageStorageConfigured,
+    });
   } catch (validationError: unknown) {
     throw new Error('Respuesta de catálogo inválida.', { cause: validationError });
   }
+}
+
+function parseAdminProduct(payload: unknown): CatalogProductDetail {
+  if (!isRecord(payload) || !isRecord(payload.product)) {
+    throw new Error('Respuesta de producto inválida.');
+  }
+  try {
+    const summary = parseProducts([payload.product], authorizedCategories)[0];
+    if (summary === undefined) throw new Error('Respuesta de producto inválida.');
+    return parseProductDetail(summary, payload.product);
+  } catch (validationError: unknown) {
+    throw new Error('Respuesta de producto inválida.', { cause: validationError });
+  }
+}
+
+async function loadAdminProduct(
+  productId: string,
+  onUnauthorized?: () => void,
+): Promise<CatalogProductDetail> {
+  const payload = await adminJson(
+    `/api/admin/products/${encodeURIComponent(productId)}`,
+    undefined,
+    false,
+    onUnauthorized,
+  );
+  return parseAdminProduct(payload);
+}
+
+async function adminImageUpload(
+  productId: string,
+  image: File,
+  onUnauthorized?: () => void,
+): Promise<unknown> {
+  return adminRequest(
+    `/api/admin/products/${encodeURIComponent(productId)}/image`,
+    {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'content-type': image.type },
+      body: image,
+    },
+    false,
+    onUnauthorized,
+  );
 }
 
 async function adminJson(
@@ -500,12 +954,25 @@ async function adminJson(
 ): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined) headers.set('content-type', 'application/json');
-  const requestInit: RequestInit = {
-    credentials: 'same-origin',
-    ...init,
-    ...(init?.body === undefined ? {} : { headers }),
-  };
-  const response = await fetch(path, requestInit);
+  return adminRequest(
+    path,
+    {
+      credentials: 'same-origin',
+      ...init,
+      ...(init?.body === undefined ? {} : { headers }),
+    },
+    allowEmpty,
+    onUnauthorized,
+  );
+}
+
+async function adminRequest(
+  path: string,
+  init: RequestInit,
+  allowEmpty: boolean,
+  onUnauthorized?: () => void,
+): Promise<unknown> {
+  const response = await fetch(path, init);
   if (response.status === 401) {
     onUnauthorized?.();
     throw new Error('La sesión administrativa venció.');

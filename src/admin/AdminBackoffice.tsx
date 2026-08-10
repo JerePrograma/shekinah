@@ -190,6 +190,7 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
 
   return (
     <>
+      <h1 className="visually-hidden">Administración / Backoffice</h1>
       <div className="admin-session-bar">
         <div className="container admin-session-bar-inner">
           <p>

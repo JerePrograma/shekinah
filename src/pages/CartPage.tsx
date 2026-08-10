@@ -4,7 +4,7 @@ import type { ChangeEvent, MouseEvent } from 'react';
 import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
-import { MAX_CART_QUANTITY } from '../cart/model';
+import { getProductCartLimit } from '../cart/model';
 import { createCheckoutPreference } from '../commerce/api';
 import {
   getOrCreateCheckoutIdempotencyKey,
@@ -252,7 +252,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                             id={`quantity-${product.id}`}
                             type="number"
                             min="1"
-                            max={MAX_CART_QUANTITY}
+                            max={getProductCartLimit(product)}
                             inputMode="numeric"
                             value={quantity}
                             onChange={(event: ChangeEvent<HTMLInputElement>) => {

@@ -6,6 +6,8 @@ Este documento describe el código preparado en el repositorio. No certifica por
 
 La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
 
+El candidato de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. La disponibilidad efectiva equivale a disponibilidad manual activa y, además, stock no controlado o mayor que cero. El cliente restringe cantidades a `min(99, stock)` y el servidor rechaza cantidades superiores al stock vigente al recalcular el carrito. Esto es control administrativo y restricción de compra, no reserva ni decremento transaccional de unidades.
+
 Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado para operar mientras Checkout Pro permanezca cerrado: el carrito copia el total visible y abre un Link de Pago de Mercado Pago configurado sin monto; el comprador ingresa ese importe y envía el detalle del carrito por WhatsApp. Ese fallback no crea un pedido, no usa D1 y no representa una confirmación autoritativa de pago.
 
 ## Componentes
@@ -17,6 +19,7 @@ Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado
 - `src/pages/PaymentReturnPage.tsx`: los retornos del proveedor sólo consultan el estado persistido del Checkout Pro integrado; no interpretan `status`, `collection_status` ni otros parámetros del navegador como aprobación.
 - `src/analytics/`: consentimiento explícito, sesión aleatoria revocable y eventos first-party mínimos.
 - `src/admin/AdminBackoffice.tsx`: gate de sesión, login y logout; monta `ProductManager` y `AdminPage` únicamente después de autenticación server-side.
+- `src/admin/ProductManager.tsx`: listado visual, búsqueda, filtros, resumen de estados, editor de producto, acciones rápidas de inventario/disponibilidad e imágenes con preview.
 
 Los datos públicos autorizados actuales son:
 
@@ -62,6 +65,16 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 `migrations/0004_catalog_admin.sql` agrega `catalog_product_mutations`. Cada fila contiene un producto validado o un tombstone, el actor administrativo y timestamps; no duplica masivamente los 510 productos canónicos.
 
 `migrations/0005_admin_auth.sql` agrega `admin_login_rate_limits`. Las claves son HMAC de scopes de IP y usuario con un secreto exclusivo; no se persisten IP ni usuario en claro. Las ventanas se actualizan mediante upsert atómico y los registros vencidos se purgan durante nuevos intentos.
+
+Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; el candidato no modifica las migraciones aplicadas `0001` a `0005` ni rellena cantidades ficticias para el catálogo base.
+
+## Imágenes de catálogo administradas
+
+Los 484 binarios legacy permanecen versionados e inmutables. El upload administrativo usa R2 mediante el binding `CATALOG_IMAGES` y publica cada objeto por una ruta first-party `/api/catalog-images/<uuid>.<ext>`; no se persisten base64, data URLs ni nombres recibidos del navegador.
+
+El servidor acepta únicamente JPEG, PNG y WebP de hasta 4 MiB, comprueba MIME y magic bytes y genera la key. En reemplazo persiste primero la nueva referencia del producto; sólo entonces intenta eliminar la anterior cuando es un objeto administrado y no está compartido. Si la persistencia D1 falla después del upload, intenta retirar exclusivamente el objeto nuevo. Quitar una imagen nunca elimina un asset legacy. La baja lógica de un producto persiste primero el tombstone e intenta limpiar después únicamente sus objetos R2 administrados que ya no estén compartidos. Ese cleanup es best-effort: un fallo externo de `R2.delete` puede dejar un objeto huérfano que debe auditarse y reintentarse de forma segura.
+
+Producción reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`, ambos bajo el binding `CATALOG_IMAGES` de Pages. R2 está activo; los buckets conservan clase Standard/default y `publicR2DevEnabled=false`, de modo que la lectura pública sólo se expone por la ruta first-party. La infraestructura está verificada, pero no se debe afirmar upload productivo a partir del selector, el binding o una preview local: faltan commit, CI, deployment del SHA definitivo y smoke autenticado.
 
 ## Fallback manual temporal autorizado
 
@@ -139,3 +152,5 @@ El fallback manual no hereda las garantías de precio autoritativo, idempotencia
 - La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
 - El rate limiting mínimo del login es persistente en D1. WAF, alertas y políticas de Access pueden sumar defensa de borde cuando exista un dominio/zona compatible, sin interceptar el login propio.
 - El fallback manual debe retirarse o reevaluarse cuando Checkout Pro se active en producción, para no ofrecer dos flujos con garantías distintas sin una decisión comercial explícita.
+- El stock no constituye una reserva; si se requiere decremento por pago, debe diseñarse una transición atómica ligada al pedido y al webhook, fuera del alcance del candidato actual.
+- La persistencia de imágenes requiere R2 habilitado y el binding correcto en el deployment exacto; sin él, la API debe fallar cerrada y conservar la imagen anterior.

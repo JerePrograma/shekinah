@@ -62,6 +62,31 @@ El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe red
 
 El fallback manual no depende de D1; decidir explícitamente si debe permanecer disponible durante el incidente.
 
+## Stock inconsistente
+
+Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la existencia:
+
+- mantener el rechazo server-side y no editar D1 manualmente para saltearlo;
+- retirar temporalmente el producto mediante disponibilidad manual si la existencia real es incierta;
+- comprobar el payload efectivo en `catalog_product_mutations` y la auditoría;
+- recordar que el sistema no reserva ni descuenta por venta: reconciliar las unidades con la operación real antes de volver a habilitar el producto;
+- no asignar cantidades ficticias a los productos legacy sin control de stock.
+
+## R2 o imágenes administrativas no disponibles
+
+Si falta `CATALOG_IMAGES`, R2 responde `10042`, falla el upload o falla D1 después de cargar:
+
+- conservar la referencia e imagen anterior; una preview local no acredita guardado;
+- si se creó un objeto nuevo y D1 no persistió, intentar eliminar sólo ese objeto;
+- no eliminar assets legacy ni objetos desconocidos;
+- no reemplazar R2 con base64 en D1, Git o almacenamiento del navegador;
+- verificar proyecto Pages, entorno y binding sin tocar el Worker homónimo;
+- mantener la gestión textual/stock disponible y comunicar que el upload está temporalmente bloqueado.
+
+Si se habilita accidentalmente el dominio público `r2.dev`, deshabilitarlo y verificar nuevamente `publicR2DevEnabled=false` en ambos buckets. La lectura comercial autorizada pasa sólo por `/api/catalog-images/*` en Pages; no exponer el bucket directamente como atajo operativo.
+
+Para rollback de una referencia ya persistida, restaurar mediante una nueva mutación administrativa auditada. Eliminar el objeto nuevo únicamente después de confirmar que ninguna mutación efectiva lo referencia.
+
 ## Autenticación administrativa no disponible o mal configurada
 
 La administración debe permanecer cerrada. `/admin` puede seguir sirviendo el formulario, pero ninguna API protegida debe aceptar operaciones sin identidad. No eliminar el middleware, la firma de cookie, el control de origen ni el rate limiting para recuperar acceso.

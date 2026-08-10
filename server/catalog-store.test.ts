@@ -9,6 +9,9 @@ import {
   getBaseCatalogProductDetail,
   getCatalogProductDetail,
   listCatalogProductDetails,
+  listCatalogProducts,
+  patchCatalogProductInventory,
+  replaceCatalogProductImages,
   updateCatalogProduct,
 } from './catalog-store';
 import type { CatalogProductDetail } from '../src/catalog/model';
@@ -132,6 +135,113 @@ describe('catálogo efectivo persistido en D1', () => {
         },
         actor,
       )).rejects.toMatchObject({ code: 'INVALID_PRODUCT' });
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('valida stock y permite desactivar el control con null en PATCH', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const tracked = await patchCatalogProductInventory(
+        testD1.database,
+        'guayaba',
+        { availability: 'available', stockQuantity: 4 },
+        actor,
+      );
+      expect(tracked.stockQuantity).toBe(4);
+      expect((await getCatalogProductDetail(testD1.database, 'guayaba'))?.stockQuantity).toBe(4);
+      expect((await listCatalogProducts(testD1.database)).find(({ id }) => id === 'guayaba'))
+        .toMatchObject({ stockQuantity: 4 });
+
+      const untracked = await patchCatalogProductInventory(
+        testD1.database,
+        'guayaba',
+        { stockQuantity: null },
+        actor,
+      );
+      expect(untracked.stockQuantity).toBeUndefined();
+      await expect(patchCatalogProductInventory(
+        testD1.database,
+        'guayaba',
+        { stockQuantity: -1 },
+        actor,
+      )).rejects.toMatchObject({ code: 'INVALID_PRODUCT' });
+      await expect(patchCatalogProductInventory(
+        testD1.database,
+        'guayaba',
+        { name: 'No permitido' },
+        actor,
+      )).rejects.toMatchObject({ code: 'INVALID_PRODUCT_PATCH' });
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('preserva productos legacy sin categoría al editar, parchear o cambiar imágenes', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const id = 'miel-organica-cremosa-500gr-ecomaya';
+      const base = requireBaseProduct(id);
+      expect(base.categorySlugs).toEqual([]);
+
+      const updated = await updateCatalogProduct(
+        testD1.database,
+        id,
+        { ...base, name: `${base.name} actualizada` },
+        actor,
+      );
+      expect(updated.categorySlugs).toEqual([]);
+      const patched = await patchCatalogProductInventory(
+        testD1.database,
+        id,
+        { stockQuantity: 2 },
+        actor,
+      );
+      expect(patched.categorySlugs).toEqual([]);
+      const replacement = await replaceCatalogProductImages(testD1.database, id, [], actor);
+      expect(replacement.product.categorySlugs).toEqual([]);
+
+      await expect(createCatalogProduct(
+        testD1.database,
+        { ...writableProduct('nuevo-sin-categoria'), categorySlugs: [], categoryNames: [] },
+        actor,
+      )).rejects.toMatchObject({ code: 'INVALID_PRODUCT' });
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('reserva los cambios de imagen para la operación administrativa específica', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const image = {
+        src: '/api/catalog-images/123e4567-e89b-42d3-a456-426614174000.png',
+        alt: 'Imagen administrada',
+      };
+      await expect(createCatalogProduct(
+        testD1.database,
+        { ...writableProduct('imagen-administrada'), primaryImage: image, images: [image] },
+        actor,
+      )).rejects.toMatchObject({ code: 'PRODUCT_IMAGE_MUTATION_REQUIRES_UPLOAD' });
+
+      await createCatalogProduct(testD1.database, writableProduct('imagen-administrada'), actor);
+      const replaced = await replaceCatalogProductImages(
+        testD1.database,
+        'imagen-administrada',
+        [image],
+        actor,
+      );
+      expect(replaced.product.primaryImage).toEqual(image);
+
+      const withoutImage: Record<string, unknown> = { ...replaced.product, images: [] };
+      delete withoutImage.primaryImage;
+      await expect(updateCatalogProduct(
+        testD1.database,
+        'imagen-administrada',
+        withoutImage,
+        actor,
+      )).rejects.toMatchObject({ code: 'PRODUCT_IMAGE_MUTATION_REQUIRES_UPLOAD' });
     } finally {
       testD1.close();
     }

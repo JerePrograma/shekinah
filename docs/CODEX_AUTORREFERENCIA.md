@@ -7,9 +7,9 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: 7f93e29ad64f081b2dd1efe7f3c4c4b53e081225
-last_verified_at: 2026-08-10T20:30:00Z
-last_ci_run_id: 31428901816
+last_verified_sha: a543c39c025a952f632f38c6bf97b4ea3501b0d1
+last_verified_at: 2026-08-10T20:36:01Z
+last_ci_run_id: 31429695666
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
@@ -37,9 +37,9 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 3. Estado Git verificado
 
-- **VERIFICADO:** `HEAD` y `origin/main` son `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` en el cierre operativo del backoffice.
-- **VERIFICADO:** la rama activa es `main`; el worktree inicial y final estaban limpios y los commits quedaron publicados sin staged, untracked ni unmerged.
-- **VERIFICADO:** la base inicial de esta evolución fue `f704424f614b917ffd42eb47ab31e5057a7ba5ec` (`fix: complete catalog product backoffice`).
+- **VERIFICADO:** la base sincronizada anterior al candidato de UX/inventario/imágenes es `a543c39c025a952f632f38c6bf97b4ea3501b0d1`; `HEAD == origin/main` y el worktree estaban limpios al iniciar la tarea.
+- **VERIFICADO:** la rama activa es `main`; no se creó una rama, PR, worktree o stash para el candidato.
+- **HISTÓRICO VERIFICADO:** la base funcional anterior del ABM fue `f704424f614b917ffd42eb47ab31e5057a7ba5ec` y el cierre operativo de autenticación fue validado sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`.
 - **VERIFICADO:** no se crearon ramas, pull requests, worktrees ni stashes; no se usó force-push ni se reescribió historial.
 
 ## 4. Arquitectura vigente
@@ -48,6 +48,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** `functions/api/` expone checkout, webhook, estado público, analítica, privacidad y administración; la lógica compartida vive en `server/`.
 - **REVISADO_POR_CÓDIGO:** Cloudflare D1 implementa pedidos, intenciones de checkout, fulfillment, eventos de pago, analítica, retención y auditoría.
 - **REVISADO_POR_CÓDIGO:** el catálogo comercial rastreado genera el catálogo de Functions mediante `scripts/generate-commerce-catalog.mjs`.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** el inventario opcional y las referencias de imágenes administradas reutilizan el payload JSON de `catalog_product_mutations`; los binarios se diseñaron para R2 mediante el binding `CATALOG_IMAGES`, sin modificar las migraciones `0001` a `0005`.
 
 ## 5. Invariantes funcionales
 
@@ -55,6 +56,9 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** el servidor vuelve a leer productos y precios canónicos; el navegador no fija moneda, subtotal, envío ni total.
 - **REVISADO_POR_CÓDIGO:** el checkout usa ARS y Mercado Pago Checkout Pro por redirección.
 - **REVISADO_POR_CÓDIGO:** comercio, analítica y WhatsApp deben permanecer cerrados hasta completar autorización y configuración externa.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** `stockQuantity` es opcional; ausente significa stock no controlado. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o cantidad mayor que cero.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** el stock controlado debe ser un entero entre `0` y `1.000.000`; el carrito limita cada línea a `min(99, stockQuantity)` y el servidor vuelve a validar disponibilidad y cantidad antes del Checkout Pro.
+- **LÍMITE DELIBERADO:** el inventario administrativo restringe la compra, pero no reserva ni descuenta stock automáticamente al vender.
 
 ## 6. Invariantes de seguridad
 
@@ -69,6 +73,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** el reporte inicial fue 297 por presentación, 103 por nombre, 110 desconocidos y 1 conflicto; el reporte corregido es 296 por presentación, 103 por nombre, 111 desconocidos, 1 ambiguo explícito y 0 conflictos silenciosos.
 - **VERIFICADO:** el conflicto corresponde a `naranja-en-rodajas-deshidratada-x-250-gr`: nombre `Naranja en rodajas deshidratada x 250 gr`, presentación `50 g`, derivación por nombre 250 g y por presentación 50 g.
 - **REVISADO_POR_CÓDIGO:** no se modifican nombre, presentación, SKU, precio, slug, referencia ni imagen para resolver el conflicto.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** las imágenes legacy continúan siendo los assets versionados y autorizados; una imagen administrativa usa una ruta first-party `/api/catalog-images/<uuid>.<ext>` y nunca habilita el borrado de un asset legacy.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** el upload acepta sólo JPEG, PNG o WebP de hasta 4 MiB y valida tipo declarado, extensión derivada y magic bytes en servidor.
 
 ## 8. Checkout, fulfillment y envío
 
@@ -103,6 +109,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **HISTÓRICO VERIFICADO (2026-08-04):** la sesión autenticada de Cloudflare mostró el onboarding inicial de Zero Trust; no existía organización ni aplicación Access configurada.
 - **HISTÓRICO SUPERADO:** aquel diseño exigía protección Access de borde. El requisito actual reemplazó esa autoridad primaria por login propio server-side para que `/admin` pueda mostrar el formulario.
 - **VERIFICADO:** el inventario del 2026-08-10 confirmó que Access continúa ausente; el nuevo requisito usa autenticación propia y no debe añadir una política externa que intercepte el login.
+- **CANDIDATO REVISADO_POR_CÓDIGO:** `ProductManager` evoluciona hacia listado visual con miniatura, búsqueda, filtros, resumen operativo, editor agrupado, acciones rápidas de stock/disponibilidad, estados asíncronos y advertencia de cambios sin guardar; toda persistencia continúa pasando por las APIs administrativas protegidas.
 
 ## 12. Analítica, consentimiento y retención
 
@@ -120,14 +127,18 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** Mercado Pago no tiene secretos cargados en Pages; el modo y la aplicación del proveedor siguen `no_verificado`.
 - **VERIFICADO:** Zero Trust y Cloudflare Access están ausentes.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
+- **VERIFICADO:** R2 está activo. Production reutiliza el bucket existente `shekinah`; preview usa el bucket aislado creado `shekinah-preview`; Pages expone ambos como `CATALOG_IMAGES` en su entorno correspondiente.
+- **VERIFICADO:** ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`. No existe dominio público `r2.dev`; la lectura comercial se sirve exclusivamente mediante la ruta first-party de Pages.
+- **VERIFICADO:** la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres administrativos como `secret_text` y `fail_open=false` permanecen preservados en production y preview. No se leyeron ni registraron valores secretos.
+- **PENDIENTE DEL CANDIDATO:** la infraestructura está configurada, pero el upload todavía requiere commit, CI, deployment del SHA definitivo y smoke autenticado antes de considerarse productivo.
 
 ## 14. CI, artefactos y deployment
 
-- **VERIFICADO:** run CI `31428901816`, job Verify `93587171602`, conclusión `success`, sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; todos los pasos concluyeron `success`.
-- **VERIFICADO:** artefacto `9078317353`, `shekinah-dist-7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`, disponible y no expirado al cierre.
-- **VERIFICADO:** deployment de producción `cd29bc7c-26f5-4360-ac04-a2734e95fa43`, URL inmutable `https://cd29bc7c.shekinah-7dl.pages.dev`, canónico y con todos los stages `success` para el mismo SHA.
-- **VERIFICADO:** el smoke real sobre `https://shekinah-7dl.pages.dev` demostró login inválido 401 uniforme, login válido, cookie segura, cookie alterada 401, API `401 → 200 → 401`, alta/consulta/modificación/baja del producto técnico `codex-admin-smoke-msnopefj`, auditoría, logout y flujo Chromium sin credenciales en Web Storage.
+- **VERIFICADO (BASE):** run CI `31429695666`, conclusión `success`, sobre `a543c39c025a952f632f38c6bf97b4ea3501b0d1`; el artefacto `shekinah-dist-a543c39c025a952f632f38c6bf97b4ea3501b0d1` estaba disponible al iniciar el candidato.
+- **VERIFICADO (BASE):** deployment de producción `62f735c6-0611-43a0-b5d9-eedf7d857234`, URL inmutable `https://62f735c6.shekinah-7dl.pages.dev`, canónico y con todos los stages `success` para el mismo SHA.
+- **HISTÓRICO VERIFICADO (`7f93e29`):** el smoke real sobre `https://shekinah-7dl.pages.dev` demostró login inválido 401 uniforme, login válido, cookie segura, cookie alterada 401, API `401 → 200 → 401`, alta/consulta/modificación/baja del producto técnico `codex-admin-smoke-msnopefj`, auditoría, logout y flujo Chromium sin credenciales en Web Storage.
 - **VERIFICADO:** Pages usa `npm run build:pages`, salida `dist`, rama `main`, Build System v3 y deployments automáticos; previews aceptan todas las ramas no productivas.
+- **VERIFICADO LOCAL (CANDIDATO SIN SHA):** `npm run verify` aprobó lint, TypeScript, 39 archivos/179 pruebas Vitest, verificadores, build y 14 pruebas Playwright; `npm run build:pages` también aprobó. Esto no sustituye CI, deployment ni smoke remoto, que deben asociarse al futuro SHA definitivo.
 
 ## 15. Validaciones disponibles
 
@@ -145,7 +156,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `npx --no-install wrangler d1 list --json`
 - `npx --no-install wrangler pages secret list --project-name shekinah`
 
-**VERIFICADO:** desde `npm ci` aprobaron instalación de Chromium, lint, TypeScript, 36 archivos/154 pruebas Vitest, el gate integral `npm run verify`, 12 pruebas Playwright y `npm run build:pages`. El catálogo conserva 510 productos, 16 categorías y 484 imágenes; no hay source maps. El bundle principal es de 498,18 kB minificado y el chunk administrativo de 24,79 kB.
+**HISTÓRICO VERIFICADO (`7f93e29`):** desde `npm ci` aprobaron instalación de Chromium, lint, TypeScript, 36 archivos/154 pruebas Vitest, el gate integral `npm run verify`, 12 pruebas Playwright y `npm run build:pages`. El catálogo conservó 510 productos, 16 categorías y 484 imágenes; no hubo source maps. El bundle principal fue de 498,18 kB minificado y el chunk administrativo de 24,79 kB. No reutilizar estos conteos como evidencia del candidato actual.
 
 ## 16. Decisiones tomadas
 
@@ -178,6 +189,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 | SHK-014 | ALTA | Autenticación | backoffice | login y sesión | Existe credencial propia PBKDF2, cookie HMAC, middleware y rate limit D1; Access es opcional. | Login propio utilizable sin secretos en navegador y API fail-closed. | Pruebas unitarias/integración, configuración cifrada y smoke remoto completo sobre el SHA verificado. | Escrituras no autorizadas o bloqueo accidental del login. | Mantener tres exclusiones exactas y no interponer Access obligatorio. | Login, cookie alterada, CRUD y logout. | VERIFICADO |
 | SHK-015 | MEDIA | Operación | Cloudflare | identidad de recurso | Pages y un Worker independiente comparten el nombre `shekinah`. | Toda operación distingue `pages/view/shekinah` de `workers/services/view/shekinah`. | Inventario autenticado de Workers & Pages. | Variables o bindings pueden cargarse en el recurso equivocado. | Documentar identificadores no sensibles y validar tipo antes de mutar. | Relectura del panel después de cada cambio. | VERIFICADO |
 | SHK-016 | MEDIA | Preview | Pages | despliegues/Access | Previews públicos; cinco PRs Dependabot abiertos tienen build Pages fallido. | Previews restringidos y logs de fallos accesibles para diagnóstico. | Wrangler y checks GitHub; resumen sólo indica `Build failed`. | Cambios no productivos no tienen entorno demostrable. | Configurar Access y revisar logs sin modificar PRs. | Preview autorizado y build verde. | BLOQUEADO |
+| SHK-017 | ALTA | Imágenes | Cloudflare R2 | `CATALOG_IMAGES` | El candidato implementa upload sobre R2 y la infraestructura ya está vinculada por entorno. | `shekinah` en production, `shekinah-preview` en preview y lectura sólo first-party. | Inventario y bindings Pages verificados por API; ambos buckets Standard/default con `publicR2DevEnabled=false`. | Un binding correcto no demuestra que el código del candidato esté desplegado ni que el lifecycle funcione en producción. | Mantener aislamiento, `r2.dev` deshabilitado y comprobar el SHA exacto tras publicar. | Upload/reemplazo/delete autenticados sobre el SHA desplegado. | INFRAESTRUCTURA_VERIFICADA / SMOKE_PENDIENTE |
 
 ## 18. Riesgos y bloqueos externos
 
@@ -189,6 +201,9 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** Wrangler no está instalado en el proyecto; la sesión autenticada se operó efímeramente con Wrangler `4.120.1`, sin modificar dependencias.
 - **VERIFICADO:** producción y preview están en `Fail closed`.
 - **VERIFICADO:** los previews son públicos; cinco PRs Dependabot abiertos conservan checks Pages fallidos cuyo resumen sólo indica `Build failed`.
+- **RESUELTO:** R2 quedó habilitado; el bucket existente `shekinah` se reutilizó para production, se creó `shekinah-preview` para preview y ambos quedaron vinculados como `CATALOG_IMAGES` en Pages.
+- **VERIFICADO:** ambos buckets usan clase Standard/default y mantienen `publicR2DevEnabled=false`; `DB`, variables, nombres de secretos administrativos y `fail_open=false` permanecen preservados.
+- **PENDIENTE:** todavía no se creó el commit del candidato, no existe CI o deployment para su SHA definitivo y no se ejecutó el smoke productivo de upload/reemplazo/delete.
 
 ## 19. Archivos y símbolos críticos
 
@@ -200,6 +215,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `functions/api/checkout/preferences.ts`: orquestación de checkout e idempotencia.
 - `functions/api/webhooks/mercadopago.ts`: autenticación y conciliación de webhooks.
 - `server/admin-auth.ts`, `server/admin-login-rate-limit.ts`, `server/access.ts` y `functions/api/admin/_middleware.ts`: frontera administrativa.
+- `src/catalog/model.ts`, `src/cart/model.ts`, `server/catalog-store.ts` y `server/dynamic-cart.ts`: stock opcional, disponibilidad efectiva y límite cliente-servidor.
+- `src/admin/ProductManager.tsx` y las rutas first-party de imágenes: UX de catálogo, upload validado y persistencia de la referencia administrada.
 - `server/analytics-retention.ts`: reclamo mensual y purga.
 - `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`: migraciones publicadas preservadas sin cambios.
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: migración aditiva nueva para cerrar la reserva de carrito.
@@ -212,11 +229,12 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 - **VERIFICADO:** `4e7f655f327d633f1e19ea6a06038f24fbba8b8e` implementó login, sesión, rate limiting, UI y pruebas; `6fe13718b9b3c5bee3328945eb1492f63ceebf85` y `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` ajustaron el costo PBKDF2 al presupuesto efectivo de Pages; `5689d230391119a27593bb32c351218c985f53d3` agregó telemetría de error criptográfico sanitizada.
 - **VERIFICADO:** `verify:automation`, `npm run verify`, `npm run build:pages` y los controles de diff aprobaron; el SHA `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` obtuvo CI, artefacto, Pages y smoke administrativo completo verdes.
+- **CANDIDATO SIN SHA FINAL:** el worktree posterior a `a543c39c025a952f632f38c6bf97b4ea3501b0d1` incorpora la evolución UX, stock e imágenes. No registrar aquí un commit, CI, deployment o smoke hasta que exista evidencia directa del SHA contenedor.
 - **REGLA DE AUTORREFERENCIA:** el commit que contiene una actualización de cierre no puede incluir su propio hash; resolver siempre el SHA contenedor con Git y validar ese commit por separado.
 
 ## 21. Próximo paso exacto
 
-Ante cualquier cambio de código o configuración administrativa, resolver el nuevo SHA de `origin/main`, comprobar CI y deployment del mismo SHA y repetir el smoke administrativo completo. Mantener Checkout Pro y analítica cerrados; Access sólo puede agregarse como defensa compatible que no intercepte el login propio.
+Finalizar y validar el candidato; después resolver el nuevo SHA de `origin/main`, comprobar CI y deployment del mismo SHA y repetir el smoke administrativo completo. Para imágenes, releer que `CATALOG_IMAGES` mantenga `shekinah` en production y `shekinah-preview` en preview, confirmar `publicR2DevEnabled=false` y ejecutar upload/reemplazo/delete autenticados sobre ese deployment. Mantener Checkout Pro y analítica cerrados; Access sólo puede agregarse como defensa compatible que no intercepte el login propio.
 
 ## 22. Historial de sesiones
 

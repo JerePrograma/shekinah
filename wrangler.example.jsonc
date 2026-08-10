@@ -23,5 +23,12 @@
       "database_id": "REEMPLAZAR_ID_D1",
       "preview_database_id": "REEMPLAZAR_ID_D1_PREVIEW"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "CATALOG_IMAGES",
+      "bucket_name": "REEMPLAZAR_BUCKET_R2_PRODUCTION",
+      "preview_bucket_name": "REEMPLAZAR_BUCKET_R2_PREVIEW"
+    }
   ]
 }

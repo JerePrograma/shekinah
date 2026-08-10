@@ -1,13 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { getBaseCatalogCategories } from '../../../server/catalog-store';
+import {
+  getBaseCatalogCategories,
+  replaceCatalogProductImages,
+} from '../../../server/catalog-store';
 import type {
   AdminContextData,
   Env,
   PagesFunctionContext,
+  R2Bucket,
 } from '../../../server/platform';
 import { createTestD1 } from '../../../src/test/d1';
+import { MemoryR2Bucket } from '../../../server/test/memory-r2';
 import { onRequest as productsCollection } from './products';
 import { onRequest as productResource } from './products/[id]';
 
@@ -34,8 +39,24 @@ describe('API administrativa de productos', () => {
     try {
       const listResponse = await productsCollection(collectionContext(testD1.database));
       expect(listResponse.status).toBe(200);
-      const listPayload = await listResponse.json() as { products: unknown[] };
+      const listPayload = await listResponse.json() as {
+        imageStorageConfigured: boolean;
+        products: unknown[];
+      };
       expect(listPayload.products).toHaveLength(510);
+      expect(listPayload.imageStorageConfigured).toBe(false);
+
+      const configuredListResponse = await productsCollection(collectionContext(
+        testD1.database,
+        'GET',
+        undefined,
+        adminData,
+        'https://example.test',
+        emptyBucket,
+      ));
+      await expect(configuredListResponse.json()).resolves.toMatchObject({
+        imageStorageConfigured: true,
+      });
 
       const createdProduct = productInput('producto-api');
       const createResponse = await productsCollection(collectionContext(
@@ -65,6 +86,17 @@ describe('API administrativa de productos', () => {
         product: { id: 'producto-api', price: { amount: 2_345.67 } },
       });
 
+      const patchResponse = await productResource(resourceContext(
+        testD1.database,
+        'producto-api',
+        'PATCH',
+        { availability: 'unavailable', stockQuantity: 7 },
+      ));
+      expect(patchResponse.status).toBe(200);
+      await expect(patchResponse.json()).resolves.toMatchObject({
+        product: { availability: 'unavailable', stockQuantity: 7 },
+      });
+
       const deleteResponse = await productResource(resourceContext(
         testD1.database,
         'producto-api',
@@ -86,6 +118,7 @@ describe('API administrativa de productos', () => {
         'catalog.products.create',
         'catalog.products.read',
         'catalog.products.update',
+        'catalog.products.patch',
         'catalog.products.delete',
       ]));
     } finally {
@@ -159,7 +192,77 @@ describe('API administrativa de productos', () => {
       testD1.close();
     }
   });
+
+  it('rechaza PATCH vacío, con claves desconocidas o stock inválido', async () => {
+    const testD1 = createTestD1(commerceMigration, catalogMigration);
+    try {
+      for (const body of [{}, { name: 'No permitido' }, { stockQuantity: 1.5 }]) {
+        const response = await productResource(resourceContext(
+          testD1.database,
+          'guayaba',
+          'PATCH',
+          body,
+        ));
+        expect(response.status).toBe(400);
+      }
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('limpia la imagen administrada después de persistir la baja lógica', async () => {
+    const testD1 = createTestD1(commerceMigration, catalogMigration);
+    const bucket = new MemoryR2Bucket();
+    const publicKey = '123e4567-e89b-42d3-a456-426614174000.png';
+    const image = {
+      src: `/api/catalog-images/${publicKey}`,
+      alt: 'Producto con imagen administrada',
+    };
+    try {
+      await bucket.put(`products/${publicKey}`, new Uint8Array([1]));
+      const createResponse = await productsCollection(collectionContext(
+        testD1.database,
+        'POST',
+        productInput('producto-baja-con-imagen'),
+      ));
+      expect(createResponse.status).toBe(201);
+      await replaceCatalogProductImages(
+        testD1.database,
+        'producto-baja-con-imagen',
+        [image],
+        'admin@example.test',
+      );
+
+      const withoutBinding = await productResource(resourceContext(
+        testD1.database,
+        'producto-baja-con-imagen',
+        'DELETE',
+      ));
+      expect(withoutBinding.status).toBe(503);
+      expect(bucket.keys).toHaveLength(1);
+
+      const deleted = await productResource(resourceContext(
+        testD1.database,
+        'producto-baja-con-imagen',
+        'DELETE',
+        undefined,
+        bucket,
+      ));
+      expect(deleted.status).toBe(204);
+      expect(bucket.keys).toHaveLength(0);
+      expect(bucket.deletedKeys).toContain(`products/${publicKey}`);
+    } finally {
+      testD1.close();
+    }
+  });
 });
+
+const emptyBucket: R2Bucket = {
+  delete: () => Promise.resolve(),
+  get: () => Promise.resolve(null),
+  head: () => Promise.resolve(null),
+  put: () => Promise.resolve(null),
+};
 
 function productInput(id: string): Record<string, unknown> {
   const category = getBaseCatalogCategories()[0];
@@ -188,6 +291,7 @@ function collectionContext(
   body?: unknown,
   data: AdminContextData = adminData,
   origin = 'https://example.test',
+  bucket?: R2Bucket,
 ): PagesFunctionContext<Env, string, AdminContextData> {
   return {
     request: new Request('https://example.test/api/admin/products', {
@@ -201,6 +305,7 @@ function collectionContext(
     }),
     env: {
       DB: database,
+      ...(bucket === undefined ? {} : { CATALOG_IMAGES: bucket }),
       PUBLIC_SITE_URL: 'https://example.test',
     },
     params: {},
@@ -215,6 +320,7 @@ function resourceContext(
   id: string,
   method = 'GET',
   body?: unknown,
+  bucket?: R2Bucket,
 ): PagesFunctionContext<Env, 'id', AdminContextData> {
   return {
     request: new Request(`https://example.test/api/admin/products/${id}`, {
@@ -230,6 +336,7 @@ function resourceContext(
     env: {
       DB: database,
       PUBLIC_SITE_URL: 'https://example.test',
+      ...(bucket === undefined ? {} : { CATALOG_IMAGES: bucket }),
     },
     params: { id },
     data: adminData,

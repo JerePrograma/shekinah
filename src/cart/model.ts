@@ -1,3 +1,4 @@
+import { isProductEffectivelyAvailable } from '../catalog/model';
 import type { Product } from '../catalog/model';
 import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../commerce/contracts';
 
@@ -35,12 +36,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isProductAvailable(product: Product): boolean {
-  return product.availability === undefined || product.availability === 'available';
+  return isProductEffectivelyAvailable(product);
 }
 
-function normalizeQuantity(value: unknown): number | null {
+export function getProductCartLimit(product: Product): number {
+  if (!isProductAvailable(product)) return 0;
+  return Math.min(MAX_CART_QUANTITY, product.stockQuantity ?? MAX_CART_QUANTITY);
+}
+
+function normalizeQuantity(value: unknown, maximum = MAX_CART_QUANTITY): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
-  if (value < 1 || value > MAX_CART_QUANTITY) return null;
+  if (value < 1 || value > maximum) return null;
   return value;
 }
 
@@ -60,19 +66,21 @@ export function parseStoredCart(
   if (!isRecord(value) || value.version !== CART_VERSION || !Array.isArray(value.items)) {
     return emptyCart(now);
   }
-  const availableProductIds = new Set(
-    products.filter(isProductAvailable).map(({ id }) => id),
+  const availableProducts = new Map(
+    products.filter(isProductAvailable).map((product) => [product.id, product]),
   );
   const quantities = new Map<string, number>();
   for (const candidate of value.items) {
     if (quantities.size >= MAX_CART_LINES) break;
     if (!isRecord(candidate) || typeof candidate.productId !== 'string') continue;
-    if (!availableProductIds.has(candidate.productId)) continue;
-    const quantity = normalizeQuantity(candidate.quantity);
+    const product = availableProducts.get(candidate.productId);
+    if (product === undefined) continue;
+    const maximum = getProductCartLimit(product);
+    const quantity = normalizeQuantity(candidate.quantity, MAX_CART_QUANTITY);
     if (quantity === null) continue;
     quantities.set(
       candidate.productId,
-      Math.min((quantities.get(candidate.productId) ?? 0) + quantity, MAX_CART_QUANTITY),
+      Math.min((quantities.get(candidate.productId) ?? 0) + quantity, maximum),
     );
   }
   return Object.freeze({
@@ -110,15 +118,20 @@ export function addCartItem(
   cart: StoredCart,
   productId: string,
   quantity = 1,
+  maximumQuantityOrNow: number | Date = MAX_CART_QUANTITY,
   now = new Date(),
 ): StoredCart {
-  const normalizedQuantity = normalizeQuantity(quantity);
+  const maximumQuantity = maximumQuantityOrNow instanceof Date
+    ? MAX_CART_QUANTITY
+    : maximumQuantityOrNow;
+  const effectiveNow = maximumQuantityOrNow instanceof Date ? maximumQuantityOrNow : now;
+  const normalizedQuantity = normalizeQuantity(quantity, maximumQuantity);
   if (normalizedQuantity === null) return cart;
   const existing = cart.items.find((item) => item.productId === productId);
   if (existing === undefined && cart.items.length >= MAX_CART_LINES) return cart;
   const nextQuantity = Math.min(
     (existing?.quantity ?? 0) + normalizedQuantity,
-    MAX_CART_QUANTITY,
+    maximumQuantity,
   );
   if (existing?.quantity === nextQuantity) return cart;
   return Object.freeze({
@@ -127,7 +140,7 @@ export function addCartItem(
       ...cart.items.filter((item) => item.productId !== productId),
       Object.freeze({ productId, quantity: nextQuantity }),
     ]),
-    updatedAt: now.toISOString(),
+    updatedAt: effectiveNow.toISOString(),
   });
 }
 
@@ -135,10 +148,15 @@ export function setCartItemQuantity(
   cart: StoredCart,
   productId: string,
   quantity: number,
+  maximumQuantityOrNow: number | Date = MAX_CART_QUANTITY,
   now = new Date(),
 ): StoredCart {
-  if (quantity === 0) return removeCartItem(cart, productId, now);
-  const normalizedQuantity = normalizeQuantity(quantity);
+  const maximumQuantity = maximumQuantityOrNow instanceof Date
+    ? MAX_CART_QUANTITY
+    : maximumQuantityOrNow;
+  const effectiveNow = maximumQuantityOrNow instanceof Date ? maximumQuantityOrNow : now;
+  if (quantity === 0) return removeCartItem(cart, productId, effectiveNow);
+  const normalizedQuantity = normalizeQuantity(quantity, maximumQuantity);
   if (normalizedQuantity === null || !cart.items.some((item) => item.productId === productId)) {
     return cart;
   }
@@ -151,7 +169,7 @@ export function setCartItemQuantity(
           : item,
       ),
     ),
-    updatedAt: now.toISOString(),
+    updatedAt: effectiveNow.toISOString(),
   });
 }
 
