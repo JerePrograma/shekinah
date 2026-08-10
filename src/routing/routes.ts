@@ -101,6 +101,7 @@ const knownRoutes: readonly KnownRoute[] = [
     description: 'Panel comercial protegido de Shekinah.',
   },
 ];
+
 export function normalizePathname(value: string): string {
   const trimmedValue = value.trim();
   const separatorIndex = trimmedValue.search(/[?#]/u);
@@ -144,11 +145,27 @@ for (const product of authorizedProducts) {
     description: `Conocé ${product.name}, su presentación, precio y detalles en Shekinah.`,
   });
 }
+
 export function resolveRoute(pathname: string): AppRoute {
   const normalizedPath = normalizePathname(pathname);
   const route = routeByPath.get(normalizedPath);
+  if (route !== undefined) return route;
 
-  return route ?? {
+  if (normalizedPath !== '/enfoque') {
+    const dynamicProductMatch = /^\/([a-z0-9][a-z0-9-]{0,179})$/u.exec(normalizedPath);
+    const productSlug = dynamicProductMatch?.[1];
+    if (productSlug !== undefined) {
+      return {
+        id: 'product',
+        path: normalizedPath,
+        productSlug,
+        title: 'Producto | Shekinah',
+        description: 'Consultá el producto en el catálogo de Shekinah.',
+      };
+    }
+  }
+
+  return {
     id: 'not-found',
     path: normalizedPath,
     title: 'Página no encontrada | Shekinah',

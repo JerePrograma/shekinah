@@ -71,10 +71,15 @@ describe('rutas de la aplicación', () => {
     expect(new Set(paths)).toHaveProperty('size', paths.length);
   });
 
-  it('resuelve una ruta desconocida como 404', () => {
-    expect(resolveRoute('/ruta-inexistente')).toMatchObject({
+  it('admite slugs creados en backoffice y conserva 404 para rutas incompatibles', () => {
+    expect(resolveRoute('/producto-creado-desde-backoffice')).toMatchObject({
+      id: 'product',
+      productSlug: 'producto-creado-desde-backoffice',
+      title: 'Producto | Shekinah',
+    });
+    expect(resolveRoute('/ruta/inexistente')).toMatchObject({
       id: 'not-found',
-      path: '/ruta-inexistente',
+      path: '/ruta/inexistente',
       title: 'Página no encontrada | Shekinah',
     });
     expect(isAppPath('/guayaba/')).toBe(true);
