@@ -938,12 +938,15 @@
 
 .admin-file-picker {
   display: inline-grid;
+  width: 100%;
+  min-width: 0;
   gap: 0.45rem;
   font-weight: 800;
 }
 
 .admin-file-picker input {
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 
 .admin-advanced-fields {
