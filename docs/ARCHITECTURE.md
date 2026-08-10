@@ -60,7 +60,7 @@ El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. La
 
 ## Administración
 
-`/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256 y la sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
+`/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256; el helper operativo genera 300.000 iteraciones para permanecer dentro del límite CPU del runtime Bundled verificado sin reducirse al mínimo aceptado. La sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
 
 `functions/api/admin/_middleware.ts` valida en cada operación protegida una sesión propia. Sólo cuando no existe cookie propia intenta el JWT RS256 de Cloudflare Access como fallback compatible; una cookie propia presente pero inválida siempre se rechaza. Los tres endpoints de autenticación son la única exclusión exacta del middleware. El login y logout exigen mismo origen, y las mutaciones conservan ese control. `server/admin-login-rate-limit.ts` aplica límites persistentes por IP y usuario mediante claves HMAC opacas en D1; no almacena ninguno de esos valores en claro.
 

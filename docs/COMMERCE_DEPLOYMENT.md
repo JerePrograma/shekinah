@@ -124,7 +124,7 @@ Esos valores quedaron verificados en producción y preview el 2026-08-10. `MERCA
 Crear por entorno, sin reutilizar valores:
 
 - `ADMIN_USERNAME`: cuenta server-side; no se incorpora al frontend;
-- `ADMIN_PASSWORD_HASH`: `pbkdf2-sha256$iteraciones$salt-base64url$derivado-base64url`, generado con salt criptográfica aleatoria y PBKDF2-HMAC-SHA-256;
+- `ADMIN_PASSWORD_HASH`: `pbkdf2-sha256$iteraciones$salt-base64url$derivado-base64url`, generado con salt criptográfica aleatoria y PBKDF2-HMAC-SHA-256. El valor operativo usa 300.000 iteraciones: 600.000 excedió el límite CPU de 50 ms del runtime Bundled y falló cerrado; no reducir el costo sin repetir benchmark y smoke productivo;
 - `ADMIN_SESSION_SECRET`: al menos 32 bytes aleatorios codificados en base64url;
 - `ADMIN_RATE_LIMIT_SECRET`: al menos 32 bytes aleatorios independientes, codificados en base64url.
 
@@ -135,7 +135,7 @@ npx wrangler pages secret list --project-name shekinah --env production
 npx wrangler pages secret list --project-name shekinah --env preview
 ```
 
-Para rotar contraseña: generar un hash nuevo con salt nueva, actualizar `ADMIN_PASSWORD_HASH` en ambos entornos y desplegar. Si se requiere cierre global de sesiones, rotar además `ADMIN_SESSION_SECRET`; no basta con cambiar el hash porque las cookies ya emitidas siguen firmadas hasta vencer.
+Para rotar contraseña: generar un hash nuevo con salt nueva y 300.000 iteraciones, actualizar `ADMIN_PASSWORD_HASH` en ambos entornos y desplegar para materializar el nuevo snapshot. Si se requiere cierre global de sesiones, rotar además `ADMIN_SESSION_SECRET`; no basta con cambiar el hash porque las cookies ya emitidas siguen firmadas hasta vencer.
 
 ### Comercio y analítica
 

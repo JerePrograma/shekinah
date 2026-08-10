@@ -49,9 +49,9 @@ describe('credenciales administrativas PBKDF2', () => {
     });
   });
 
-  it('usa 600000 iteraciones por defecto en el helper operativo', async () => {
+  it('usa 300000 iteraciones por defecto en el helper operativo', async () => {
     await expect(generateAdminPasswordHash(PASSWORD, { salt }))
-      .resolves.toMatch(/^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/u);
+      .resolves.toMatch(/^pbkdf2-sha256\$300000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/u);
   });
 
   it('rechaza usuario y contraseña incorrectos con el mismo error genérico', async () => {
