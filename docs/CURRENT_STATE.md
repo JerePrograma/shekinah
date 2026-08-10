@@ -58,7 +58,7 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre de conf
 - fallback manual de Link de Pago autorizado en el código;
 - WhatsApp manual autorizado en el código;
 - D1, binding, migraciones y secretos administrativos están configurados de forma aislada en production y preview;
-- la administración sólo se considera productiva para un SHA cuyo deployment, login, logout y smoke ABM hayan sido verificados por separado; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
+- la administración quedó operativa tras verificar por separado CI, deployment, login, logout y smoke ABM sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
 ## Estado externo verificado

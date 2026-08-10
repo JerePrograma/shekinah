@@ -7,9 +7,9 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: d552fbef4cd5763ffc81864feaeb716767fdfeb8
-last_verified_at: 2026-08-04T19:17:14Z
-last_ci_run_id: 30942296797
+last_verified_sha: 7f93e29ad64f081b2dd1efe7f3c4c4b53e081225
+last_verified_at: 2026-08-10T20:30:00Z
+last_ci_run_id: 31428901816
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
@@ -37,9 +37,9 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 3. Estado Git verificado
 
-- **VERIFICADO:** `HEAD` y `origin/main` son `884c9de407c079fcf0a834b50008286c7633ff02` al iniciar la continuación de configuración externa.
-- **VERIFICADO:** la rama activa es `main`; el worktree inicial estaba limpio y el commit funcional quedó publicado sin staged, untracked ni unmerged.
-- **VERIFICADO:** el commit de referencia `ce1c22903ad31c6ae87da4f747594b1d5184693b` coincide con la base real.
+- **VERIFICADO:** `HEAD` y `origin/main` son `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` en el cierre operativo del backoffice.
+- **VERIFICADO:** la rama activa es `main`; el worktree inicial y final estaban limpios y los commits quedaron publicados sin staged, untracked ni unmerged.
+- **VERIFICADO:** la base inicial de esta evolución fue `f704424f614b917ffd42eb47ab31e5057a7ba5ec` (`fix: complete catalog product backoffice`).
 - **VERIFICADO:** no se crearon ramas, pull requests, worktrees ni stashes; no se usó force-push ni se reescribió historial.
 
 ## 4. Arquitectura vigente
@@ -123,10 +123,10 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 14. CI, artefactos y deployment
 
-- **VERIFICADO:** run CI `30942296797`, job Verify `92103489580`, conclusión `success`, sobre `d552fbef4cd5763ffc81864feaeb716767fdfeb8`; todos los pasos concluyeron `success`.
-- **VERIFICADO:** artefacto `8905654182`, `shekinah-dist-d552fbef4cd5763ffc81864feaeb716767fdfeb8`, 52.356.962 bytes, digest `sha256:0ea9d9848c19b230af55864e87369e93766a9407fa1d152159eaabbd3c606233`, expira el 2026-08-11.
-- **VERIFICADO:** check Cloudflare Pages `92103913671` `success`, deployment de producción `https://0031660e.shekinah-7dl.pages.dev`; Cloudflare declara el commit `d552fbe`.
-- **VERIFICADO:** deployment y `https://shekinah-7dl.pages.dev/` respondieron HTTP 200 y sirvieron `/assets/index-B1G0eFSM.js`; `/admin` y `/api/admin/orders` respondieron 401, y los `GET` no permitidos de checkout/analítica respondieron 405 con `no-store`.
+- **VERIFICADO:** run CI `31428901816`, job Verify `93587171602`, conclusión `success`, sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; todos los pasos concluyeron `success`.
+- **VERIFICADO:** artefacto `9078317353`, `shekinah-dist-7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`, disponible y no expirado al cierre.
+- **VERIFICADO:** deployment de producción `cd29bc7c-26f5-4360-ac04-a2734e95fa43`, URL inmutable `https://cd29bc7c.shekinah-7dl.pages.dev`, canónico y con todos los stages `success` para el mismo SHA.
+- **VERIFICADO:** el smoke real sobre `https://shekinah-7dl.pages.dev` demostró login inválido 401 uniforme, login válido, cookie segura, cookie alterada 401, API `401 → 200 → 401`, alta/consulta/modificación/baja del producto técnico `codex-admin-smoke-msnopefj`, auditoría, logout y flujo Chromium sin credenciales en Web Storage.
 - **VERIFICADO:** Pages usa `npm run build:pages`, salida `dist`, rama `main`, Build System v3 y deployments automáticos; previews aceptan todas las ramas no productivas.
 
 ## 15. Validaciones disponibles
@@ -145,7 +145,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `npx --no-install wrangler d1 list --json`
 - `npx --no-install wrangler pages secret list --project-name shekinah`
 
-**VERIFICADO:** desde `npm ci` aprobaron instalación de Chromium, lint, TypeScript, 23 archivos/84 pruebas Vitest, el gate integral `npm run verify`, 10 pruebas Playwright y `npm run build:pages`. El catálogo conserva 510 productos, 16 categorías y 484 imágenes; no hay source maps. El bundle principal bajó de 501,73 kB a 492,62 kB minificado y ya no emite la advertencia.
+**VERIFICADO:** desde `npm ci` aprobaron instalación de Chromium, lint, TypeScript, 36 archivos/154 pruebas Vitest, el gate integral `npm run verify`, 12 pruebas Playwright y `npm run build:pages`. El catálogo conserva 510 productos, 16 categorías y 484 imágenes; no hay source maps. El bundle principal es de 498,18 kB minificado y el chunk administrativo de 24,79 kB.
 
 ## 16. Decisiones tomadas
 
@@ -153,7 +153,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 2. **VERIFICADO:** retiro coordinado cuesta ARS 0 y no necesita peso para habilitarse.
 3. **VERIFICADO:** el generador genera y el verificador se ejecuta explícitamente desde ambos gates.
 4. **VERIFICADO:** las migraciones publicadas no se editaron; la corrección de esquema es la migración aditiva `0003`.
-5. **VERIFICADO:** producción permanece cerrada; no se ejecutan cargos, migraciones remotas ni activaciones.
+5. **VERIFICADO:** Checkout Pro y analítica permanecen cerrados; sólo se crearon las D1 autorizadas, se aplicaron las migraciones versionadas `0001` a `0005` y se activó el backoffice solicitado.
 6. **VERIFICADO:** una reserva idempotente debe fijar carrito y fulfillment; una reserva histórica sin huella de carrito admite un único reclamo y luego queda cerrada a cambios.
 7. **VERIFICADO:** `shekinah` identifica tanto un proyecto Pages como un Worker independiente; toda operación debe comprobar el tipo de recurso y la ruta del panel.
 8. **VERIFICADO:** rutas de autenticación, privacidad y pagos incluidas en `public/_routes.json` requieren `Fail closed` antes de la operación productiva.
@@ -175,7 +175,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 | SHK-011 | MEDIA | Continuidad | `docs/CODEX_AUTORREFERENCIA.md` | archivo requerido | El archivo no existía en la base. | Memoria operativa versionada y reconciliable. | Archivo creado y `verify:automation` aprobado. | Continuación dependiente de contexto externo. | Documento y orden de lectura agregados. | Automatización documental. | VERIFICADO |
 | SHK-012 | ALTA | Idempotencia | `server/fulfillment.ts` | `reserveCheckoutIntent` | Una reserva huérfana fijaba sólo fulfillment y podía aceptar otro carrito. | La misma clave fija carrito y fulfillment aun antes de existir pedido. | Reproducción por flujo y pruebas secuencial/concurrente. | Reutilización semántica de clave y pedido inesperado. | Migración `0003`, backfill y reclamo condicional. | Mismo/diferente carrito, normalización y concurrencia. | VERIFICADO |
 | SHK-013 | ALTA | Pages/security | configuración externa | `Fail open/closed` | Producción y preview usan `Fail closed`. | Rutas críticas de Functions deben seguir fallando cerradas al agotar cuota. | API autenticada de Pages y smoke posterior requerido por SHA. | Una regresión podría servir activos en vez de ejecutar Functions. | Conservar el setting y revalidarlo tras cambios. | API y smoke posterior. | VERIFICADO |
-| SHK-014 | ALTA | Autenticación | backoffice | login y sesión | Existe credencial propia PBKDF2, cookie HMAC, middleware y rate limit D1; Access es opcional. | Login propio utilizable sin secretos en navegador y API fail-closed. | Pruebas unitarias/integración y configuración cifrada; smoke remoto requerido por SHA. | Escrituras no autorizadas o bloqueo accidental del login. | Mantener tres exclusiones exactas y no interponer Access obligatorio. | Login, cookie alterada, CRUD y logout. | CONFIGURADO |
+| SHK-014 | ALTA | Autenticación | backoffice | login y sesión | Existe credencial propia PBKDF2, cookie HMAC, middleware y rate limit D1; Access es opcional. | Login propio utilizable sin secretos en navegador y API fail-closed. | Pruebas unitarias/integración, configuración cifrada y smoke remoto completo sobre el SHA verificado. | Escrituras no autorizadas o bloqueo accidental del login. | Mantener tres exclusiones exactas y no interponer Access obligatorio. | Login, cookie alterada, CRUD y logout. | VERIFICADO |
 | SHK-015 | MEDIA | Operación | Cloudflare | identidad de recurso | Pages y un Worker independiente comparten el nombre `shekinah`. | Toda operación distingue `pages/view/shekinah` de `workers/services/view/shekinah`. | Inventario autenticado de Workers & Pages. | Variables o bindings pueden cargarse en el recurso equivocado. | Documentar identificadores no sensibles y validar tipo antes de mutar. | Relectura del panel después de cada cambio. | VERIFICADO |
 | SHK-016 | MEDIA | Preview | Pages | despliegues/Access | Previews públicos; cinco PRs Dependabot abiertos tienen build Pages fallido. | Previews restringidos y logs de fallos accesibles para diagnóstico. | Wrangler y checks GitHub; resumen sólo indica `Build failed`. | Cambios no productivos no tienen entorno demostrable. | Configurar Access y revisar logs sin modificar PRs. | Preview autorizado y build verde. | BLOQUEADO |
 
@@ -210,13 +210,13 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 20. Último diff aplicado
 
-- **VERIFICADO:** `9ae41ccbc288dada19733558f342636957292e37` actualiza cinco documentos con el inventario autenticado de Cloudflare; `d552fbef4cd5763ffc81864feaeb716767fdfeb8` registra en esta autorreferencia el fallo transitorio de Pages del primer commit. Ninguno modifica código, migraciones ni configuración externa.
-- **VERIFICADO:** `verify:automation`, `npm run verify`, `npm run build:pages` y los controles de diff aprobaron; el SHA `d552fbef4cd5763ffc81864feaeb716767fdfeb8` obtuvo CI, artefacto, Pages y smoke HTTP verdes.
+- **VERIFICADO:** `4e7f655f327d633f1e19ea6a06038f24fbba8b8e` implementó login, sesión, rate limiting, UI y pruebas; `6fe13718b9b3c5bee3328945eb1492f63ceebf85` y `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` ajustaron el costo PBKDF2 al presupuesto efectivo de Pages; `5689d230391119a27593bb32c351218c985f53d3` agregó telemetría de error criptográfico sanitizada.
+- **VERIFICADO:** `verify:automation`, `npm run verify`, `npm run build:pages` y los controles de diff aprobaron; el SHA `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225` obtuvo CI, artefacto, Pages y smoke administrativo completo verdes.
 - **REGLA DE AUTORREFERENCIA:** el commit que contiene una actualización de cierre no puede incluir su propio hash; resolver siempre el SHA contenedor con Git y validar ese commit por separado.
 
 ## 21. Próximo paso exacto
 
-Resolver el SHA vigente de `origin/main`, comprobar CI y deployment del mismo SHA y ejecutar el smoke administrativo completo. Mantener Checkout Pro y analítica cerrados; Access sólo puede agregarse como defensa compatible que no intercepte el login propio.
+Ante cualquier cambio de código o configuración administrativa, resolver el nuevo SHA de `origin/main`, comprobar CI y deployment del mismo SHA y repetir el smoke administrativo completo. Mantener Checkout Pro y analítica cerrados; Access sólo puede agregarse como defensa compatible que no intercepte el login propio.
 
 ## 22. Historial de sesiones
 
