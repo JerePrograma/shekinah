@@ -47,7 +47,11 @@ const requiredFunctions = [
   'functions/api/orders/[publicToken]/status.ts',
   'functions/api/analytics/events.ts',
   'functions/api/privacy/delete-session.ts',
+  'functions/api/catalog.ts',
+  'functions/api/catalog/[id].ts',
   'functions/api/admin/_middleware.ts',
+  'functions/api/admin/products.ts',
+  'functions/api/admin/products/[id].ts',
   'functions/api/admin/summary.ts',
   'functions/api/admin/orders.ts',
   'functions/api/admin/orders/[id].ts',
@@ -131,6 +135,9 @@ for (const relativePath of requiredFunctions) {
 }
 if (!existsSync(join(projectRoot, 'migrations', '0001_commerce.sql'))) {
   fail('Falta la migración inicial de comercio.');
+}
+if (!existsSync(join(projectRoot, 'migrations', '0004_catalog_admin.sql'))) {
+  fail('Falta la migración aditiva del catálogo administrativo.');
 }
 
 const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');

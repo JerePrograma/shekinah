@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 const commerceMigration = readFileSync(resolve(process.cwd(), 'migrations', '0001_commerce.sql'), 'utf8');
 const fulfillmentMigration = readFileSync(resolve(process.cwd(), 'migrations', '0002_fulfillment_and_retention.sql'), 'utf8');
 const checkoutIntentMigration = readFileSync(resolve(process.cwd(), 'migrations', '0003_checkout_intent_cart_fingerprint.sql'), 'utf8');
+const catalogMigration = readFileSync(resolve(process.cwd(), 'migrations', '0004_catalog_admin.sql'), 'utf8');
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -17,7 +18,8 @@ describe('migraciones D1', () => {
       database.prepare("INSERT INTO checkout_intents VALUES ('historical-key', 'fulfillment-fingerprint', ?)")
         .run('2026-08-04T00:00:00.000Z');
       database.exec(checkoutIntentMigration);
-      expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}`)).not.toThrow();
+      database.exec(catalogMigration);
+      expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}`)).not.toThrow();
 
       const schema = database.prepare('SELECT name, type FROM sqlite_schema ORDER BY type, name').all();
       expect(schema).toEqual(expect.arrayContaining([
@@ -25,6 +27,8 @@ describe('migraciones D1', () => {
         expect.objectContaining({ name: 'order_fulfillment', type: 'table' }),
         expect.objectContaining({ name: 'checkout_intents', type: 'table' }),
         expect.objectContaining({ name: 'analytics_maintenance', type: 'table' }),
+        expect.objectContaining({ name: 'catalog_product_mutations', type: 'table' }),
+        expect.objectContaining({ name: 'idx_catalog_product_mutations_updated', type: 'index' }),
       ]));
       expect(database.prepare("SELECT cart_fingerprint FROM checkout_intents WHERE checkout_idempotency_key = 'historical-key'").get())
         .toEqual({ cart_fingerprint: 'historical-order-cart-fingerprint' });
@@ -58,6 +62,19 @@ describe('migraciones D1', () => {
         'Calle 123', 'CABA', 'Buenos Aires', 'C1234ABC', NULL,
         'coordinated_pickup', 750000, 1, ?, ?)`)
         .run('2026-08-04T00:00:00.000Z', '2026-08-04T00:00:00.000Z')).toThrow();
+
+      database.prepare(`INSERT INTO catalog_product_mutations (
+        product_id, payload_json, deleted, updated_by, created_at, updated_at
+      ) VALUES ('producto-prueba', '{}', 0, 'admin@example.test', ?, ?)`)
+        .run('2026-08-10T00:00:00.000Z', '2026-08-10T00:00:00.000Z');
+      expect(() => database.prepare(`INSERT INTO catalog_product_mutations (
+        product_id, payload_json, deleted, updated_by, created_at, updated_at
+      ) VALUES ('json-invalido', '{', 0, 'admin@example.test', ?, ?)`)
+        .run('2026-08-10T00:00:00.000Z', '2026-08-10T00:00:00.000Z')).toThrow();
+      expect(() => database.prepare(`INSERT INTO catalog_product_mutations (
+        product_id, payload_json, deleted, updated_by, created_at, updated_at
+      ) VALUES ('tombstone-invalido', '{}', 1, 'admin@example.test', ?, ?)`)
+        .run('2026-08-10T00:00:00.000Z', '2026-08-10T00:00:00.000Z')).toThrow();
     } finally {
       database.close();
     }

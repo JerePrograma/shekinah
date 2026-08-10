@@ -28,9 +28,9 @@ El router propio conserva History API y enlaces HTML reales.
 
 ## Catálogo
 
-La fuente canónica conserva 510 productos y 16 categorías.
+La fuente canónica conserva 510 productos y 16 categorías. `server/catalog-store.ts` construye el catálogo efectivo como base canónica más altas y overrides D1, menos tombstones D1. Si D1 o la tabla nueva no están disponibles, las lecturas públicas conservan el catálogo base; las escrituras administrativas fallan de forma explícita.
 
-El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor resuelve productos y precios desde esa fuente; no acepta nombres, precios ni totales enviados por el cliente como autoridad para Checkout Pro.
+El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor resuelve productos, disponibilidad y precios desde el catálogo efectivo; no acepta nombres, precios ni totales enviados por el cliente como autoridad para Checkout Pro.
 
 ## Backend
 
@@ -40,6 +40,7 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 - `migrations/0001_commerce.sql`: esquema inicial de D1;
 - `migrations/0002_fulfillment_and_retention.sql`: intención de entrega, fulfillment y mantenimiento de retención;
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: huella autoritativa del carrito en intenciones, con backfill desde pedidos existentes;
+- `migrations/0004_catalog_admin.sql`: altas, overrides y tombstones del catálogo administrativo;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
@@ -58,7 +59,7 @@ El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. La
 
 ## Administración
 
-`/admin` y `/api/admin/*` requieren Cloudflare Access. La identidad administrativa se obtiene de cabeceras verificadas por la plataforma y se valida nuevamente en Functions.
+`/admin` y `/api/admin/*` requieren Cloudflare Access. La identidad administrativa se obtiene de cabeceras verificadas por la plataforma y se valida nuevamente en Functions. Los productos admiten alta, modificación y baja lógica; pedidos, analítica, exportaciones y auditoría continúan de sólo lectura.
 
 ## Analítica y privacidad
 

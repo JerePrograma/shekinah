@@ -4,6 +4,8 @@ import {
 } from '../data/authorized-commercial-data';
 import {
   appPaths,
+  createProductRoute,
+  getPotentialProductSlug,
   isAppPath,
   normalizePathname,
   resolveRoute,
@@ -71,11 +73,26 @@ describe('rutas de la aplicación', () => {
     expect(new Set(paths)).toHaveProperty('size', paths.length);
   });
 
-  it('admite slugs creados en backoffice y conserva 404 para rutas incompatibles', () => {
+  it('conserva 404 para slugs no confirmados y permite construir una ruta dinámica validada', () => {
     expect(resolveRoute('/producto-creado-desde-backoffice')).toMatchObject({
+      id: 'not-found',
+      title: 'Página no encontrada | Shekinah',
+    });
+    expect(getPotentialProductSlug('/producto-creado-desde-backoffice/')).toBe(
+      'producto-creado-desde-backoffice',
+    );
+    expect(createProductRoute({
+      id: 'producto-creado-desde-backoffice',
+      slug: 'producto-creado-desde-backoffice',
+      path: '/producto-creado-desde-backoffice/',
+      name: 'Producto dinámico',
+      categorySlugs: [],
+      categoryNames: [],
+      price: { amount: 1_000, currency: 'ARS' },
+    })).toMatchObject({
       id: 'product',
       productSlug: 'producto-creado-desde-backoffice',
-      title: 'Producto | Shekinah',
+      title: 'Producto dinámico | Shekinah',
     });
     expect(resolveRoute('/ruta/inexistente')).toMatchObject({
       id: 'not-found',

@@ -40,7 +40,7 @@ export type CatalogProductSummary = Readonly<{
   price: ProductPrice;
   salePrice?: ProductPrice;
   sku?: string;
-  availability?: string;
+  availability?: 'available' | 'unavailable';
   shortDescription?: string;
   primaryImage?: ProductImage;
 }>;
@@ -98,6 +98,14 @@ function parsePrice(value: unknown, field = 'price'): ProductPrice {
 
   if (value.currency !== 'ARS') {
     throw new InvalidProductError('La moneda admitida para el catálogo es ARS.');
+  }
+
+  const amountInMinorUnits = value.amount * 100;
+  if (
+    !Number.isSafeInteger(Math.round(amountInMinorUnits)) ||
+    Math.abs(amountInMinorUnits - Math.round(amountInMinorUnits)) > 0.000001
+  ) {
+    throw new InvalidProductError('El importe debe usar como máximo dos decimales.');
   }
 
   return Object.freeze({ amount: value.amount, currency: value.currency });
@@ -204,6 +212,13 @@ export function parseProduct(value: unknown): Product {
   const presentation = readOptionalText(value, 'presentation');
   const sku = readOptionalText(value, 'sku');
   const availability = readOptionalText(value, 'availability');
+  if (
+    availability !== undefined &&
+    availability !== 'available' &&
+    availability !== 'unavailable'
+  ) {
+    throw new InvalidProductError('La disponibilidad del producto no es válida.');
+  }
   const shortDescription = readOptionalText(value, 'shortDescription');
 
   return Object.freeze({

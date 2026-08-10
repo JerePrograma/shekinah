@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import catalogIndexSource from '../../catalog/internal/catalog-index.json' with { type: 'json' };
+import catalogDetailSource from '../../src/catalog-data/catalog-details.json' with { type: 'json' };
+
+const publicCatalogProducts: readonly Record<string, unknown>[] = catalogIndexSource.map(
+  (product) => {
+    const publicProduct: Record<string, unknown> = { ...product };
+    delete publicProduct.capturedAt;
+    return publicProduct;
+  },
+);
+
 function observePage(page: Page) {
   const runtimeErrors: string[] = [];
   const requestedUrls: string[] = [];
@@ -28,6 +39,35 @@ test.beforeEach(async ({ page }) => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.localStorage.setItem('shekinah.analytics-consent.v1', 'rejected');
+  });
+  await page.route('**/api/catalog**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/catalog') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ products: publicCatalogProducts }),
+      });
+      return;
+    }
+    const slug = pathname.startsWith('/api/catalog/')
+      ? decodeURIComponent(pathname.slice('/api/catalog/'.length))
+      : '';
+    const summary = publicCatalogProducts.find((product) => product.slug === slug);
+    const detail = catalogDetailSource[slug as keyof typeof catalogDetailSource];
+    if (summary === undefined || detail === undefined) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'PRODUCT_NOT_FOUND' } }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ product: { ...summary, ...detail } }),
+    });
   });
 });
 
@@ -113,6 +153,56 @@ test('resuelve categoría, privacidad, /enfoque y 404', async ({ page }) => {
   await page.getByRole('link', { name: 'Volver al inicio' }).click();
   await expect(page).toHaveURL(/\/$/u);
   expectCleanRuntime(page, observation);
+});
+
+test('resuelve un producto dinámico confirmado en acceso directo, refresh y Back/Forward', async ({ page }) => {
+  const dynamicProduct = {
+    id: 'producto-dinamico-e2e',
+    slug: 'producto-dinamico-e2e',
+    path: '/producto-dinamico-e2e/',
+    name: 'Producto dinámico E2E',
+    categorySlugs: ['agroecologicos'],
+    categoryNames: ['Agroecologicos'],
+    presentation: '100 g',
+    price: { amount: 2_500, currency: 'ARS' },
+    availability: 'available',
+    description: 'Detalle dinámico.',
+    images: [],
+    variants: [],
+  };
+  await page.route('**/api/catalog**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/catalog/producto-dinamico-e2e') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ product: dynamicProduct }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ products: [dynamicProduct] }),
+    });
+  });
+
+  await page.goto('/producto-dinamico-e2e/');
+  await expect(page.getByRole('heading', { level: 1, name: dynamicProduct.name })).toBeVisible();
+  await expect(page).toHaveTitle(`${dynamicProduct.name} | Shekinah`);
+  await page.goto('/catalogo');
+  await page.getByRole('searchbox').fill('dinámico e2e');
+  await expect(page.getByRole('status')).toHaveText('1 producto encontrado');
+  await page.getByRole('link', { name: dynamicProduct.name }).click();
+  await expect(page.getByRole('heading', { level: 1, name: dynamicProduct.name })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: dynamicProduct.name })).toBeVisible();
+  await page.getByRole('link', { name: 'Shekinah, ir al inicio' }).click();
+  await expect(page).toHaveURL(/\/$/u);
+  await page.goBack();
+  await expect(page.getByRole('heading', { level: 1, name: dynamicProduct.name })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/\/$/u);
 });
 
 test('mantiene teclado, foco y ancho usable en 320, 390, 768 y 1440 px', async ({ page }) => {

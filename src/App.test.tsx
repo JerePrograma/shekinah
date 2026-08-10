@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -13,6 +14,22 @@ import {
   authorizedContact,
   authorizedProducts,
 } from './data/authorized-commercial-data';
+import { refreshRuntimeCatalog } from './data/runtime-catalog';
+
+const dynamicProduct = {
+  id: 'producto-creado-desde-backoffice',
+  slug: 'producto-creado-desde-backoffice',
+  path: '/producto-creado-desde-backoffice/',
+  name: 'Producto creado desde backoffice',
+  categorySlugs: [authorizedCategories[0]?.slug ?? 'agroecologicos'],
+  categoryNames: [authorizedCategories[0]?.name ?? 'Agroecologicos'],
+  presentation: '100 g',
+  price: { amount: 2_500, currency: 'ARS' as const },
+  availability: 'available' as const,
+  description: 'Detalle persistido en D1.',
+  images: [],
+  variants: [],
+};
 
 const forbiddenPublicCopy = [
   'Información comercial capturada el 23/07/2026',
@@ -44,6 +61,60 @@ describe('App', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
+  });
+
+  it('confirma por API un slug dinámico antes de renderizar su ficha', async () => {
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const path = requestUrl(input);
+      if (path === '/api/catalog') {
+        return Promise.resolve(new Response(JSON.stringify({
+          products: [...authorizedProducts, dynamicProduct],
+        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (path.endsWith('/api/catalog/producto-creado-desde-backoffice')) {
+        return Promise.resolve(new Response(JSON.stringify({ product: dynamicProduct }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.history.replaceState(null, '', '/producto-creado-desde-backoffice/');
+    const rendered = renderApp();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Cargando producto…' })).toBeVisible();
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Producto creado desde backoffice',
+      }),
+    ).toBeVisible();
+    expect(document.title).toBe('Producto creado desde backoffice | Shekinah');
+    expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      requestUrl(input) === '/api/catalog')).toHaveLength(1);
+
+    rendered.unmount();
+    await restoreRuntimeCatalog();
+  });
+
+  it('convierte en 404 la URL de un producto canónico con tombstone runtime', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+      products: authorizedProducts.filter(({ id }) => id !== 'guayaba'),
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    await act(async () => {
+      await refreshRuntimeCatalog();
+    });
+    window.history.replaceState(null, '', '/guayaba/');
+    const rendered = renderApp();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Página no encontrada.' }),
+    ).toBeVisible();
+    expect(document.title).toBe('Página no encontrada | Shekinah');
+
+    rendered.unmount();
+    await restoreRuntimeCatalog();
   });
 
   it('muestra la portada, el carrito accesible y navega al catálogo completo', () => {
@@ -167,7 +238,7 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: 'Enfoque' })).not.toBeInTheDocument();
   });
 
-  it('no renderiza frases retiradas y mantiene una 404 accesible', () => {
+  it('no renderiza frases retiradas y mantiene una 404 accesible', async () => {
     const { unmount } = renderApp();
     for (const text of forbiddenPublicCopy) {
       expect(screen.queryByText(text, { exact: false })).not.toBeInTheDocument();
@@ -175,11 +246,27 @@ describe('App', () => {
     unmount();
     window.history.replaceState(null, '', '/ruta-inexistente');
     renderApp();
-    expect(document.title).toBe('Página no encontrada | Shekinah');
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Página no encontrada.' }),
+      await screen.findByRole('heading', { level: 1, name: 'Página no encontrada.' }),
     ).toBeVisible();
+    expect(document.title).toBe('Página no encontrada | Shekinah');
     expect(screen.getByText('/ruta-inexistente')).toBeVisible();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 });
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+async function restoreRuntimeCatalog(): Promise<void> {
+  vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+    products: authorizedProducts,
+  }), { status: 200, headers: { 'content-type': 'application/json' } })));
+  await act(async () => {
+    await refreshRuntimeCatalog();
+    await refreshRuntimeCatalog();
+  });
+  vi.unstubAllGlobals();
+}

@@ -69,4 +69,22 @@ describe('carrito', () => {
     }
     expect(addCartItem(cart, 'producto-extra')).toBe(cart);
   });
+
+  it('reconcilia altas, bajas, disponibilidad y cambios de precio del catálogo runtime', () => {
+    const dynamic = product('producto-dinamico', 1_000);
+    const stored = parseStoredCart({
+      version: 1,
+      updatedAt: '2026-08-10T00:00:00.000Z',
+      items: [{ productId: dynamic.id, quantity: 2 }],
+    }, [dynamic]);
+    expect(summarizeCart(stored, [dynamic])).toMatchObject({ itemCount: 2, total: 2_000 });
+    expect(summarizeCart(stored, [product(dynamic.id, 1_250)])).toMatchObject({
+      itemCount: 2,
+      total: 2_500,
+    });
+    expect(parseStoredCart(stored, []).items).toHaveLength(0);
+    expect(parseStoredCart(stored, [product(dynamic.id, 1_000, {
+      availability: 'unavailable',
+    })]).items).toHaveLength(0);
+  });
 });

@@ -28,6 +28,7 @@ El candidato incorpora:
 - Cloudflare Pages Functions;
 - migraciones aditivas de Cloudflare D1 para comercio, fulfillment y retención;
 - administración preparada para Cloudflare Access;
+- ABM de productos basado en catálogo canónico más mutaciones y tombstones D1;
 - analítica first-party con consentimiento;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
@@ -56,7 +57,7 @@ Hasta completar bindings, secretos, D1, Mercado Pago, Access y las comprobacione
 - analítica deshabilitada;
 - fallback manual de Link de Pago autorizado en el código;
 - WhatsApp manual autorizado en el código;
-- administración no considerada productiva;
+- administración no considerada productiva hasta configurar Access; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
 ## Estado externo verificado

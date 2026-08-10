@@ -100,6 +100,8 @@ npx wrangler d1 execute shekinah-commerce --remote --command "SELECT name FROM s
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
+El flujo debe aplicar también `migrations/0004_catalog_admin.sql`. Antes de esa migración, las lecturas públicas conservan los 510 productos base y cualquier alta, modificación o baja administrativa responde `CATALOG_MIGRATION_REQUIRED`.
+
 ## 4. Configurar variables no secretas del Checkout Pro
 
 En producción y, de forma separada, en preview:

@@ -4,7 +4,7 @@
 
 Este documento describe el código preparado en el repositorio. No certifica por sí solo que D1, Mercado Pago Checkout Pro, Cloudflare Access, Pages o el webhook estén configurados en producción.
 
-La solución conserva el catálogo versionado como fuente comercial canónica. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/catalog.ts` vuelve a localizar los productos, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
+La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
 
 Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado para operar mientras Checkout Pro permanezca cerrado: el carrito copia el total visible y abre un Link de Pago de Mercado Pago configurado sin monto; el comprador ingresa ese importe y envía el detalle del carrito por WhatsApp. Ese fallback no crea un pedido, no usa D1 y no representa una confirmación autoritativa de pago.
 
@@ -56,6 +56,8 @@ La migración `migrations/0001_commerce.sql` crea:
 
 La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `checkout_intents`, `order_fulfillment` y `analytics_maintenance`; `migrations/0003_checkout_intent_cart_fingerprint.sql` vincula cada intención con la huella autoritativa del carrito y backfillea pedidos existentes. El fulfillment conserva en D1 los datos de entrega necesarios para operar el pedido; no se guardan en `localStorage`, analítica ni logs. No se almacenan números de tarjeta, documentos, correos de compradores ni el identificador de sesión analítica en claro.
 
+`migrations/0004_catalog_admin.sql` agrega `catalog_product_mutations`. Cada fila contiene un producto validado o un tombstone, el actor administrativo y timestamps; no duplica masivamente los 510 productos canónicos.
+
 ## Fallback manual temporal autorizado
 
 El fallback sólo aparece cuando `VITE_COMMERCE_ENABLED` no vale `true`, existe un Link de Pago autorizado y el total de envío es determinístico.
@@ -73,7 +75,7 @@ Este flujo no debe confundirse con Checkout Pro: no genera `external_reference`,
 
 1. El navegador genera una UUID de idempotencia, la reutiliza durante 30 minutos para el mismo carrito y fulfillment normalizado y la sincroniza mediante `localStorage` sin guardar PII; luego envía productos, cantidades y datos de entrega.
 2. La Function valida origen, flags, bindings y secretos.
-3. El servidor recalcula el carrito desde `catalog/internal/catalog-index.json`.
+3. El servidor recalcula el carrito desde el catálogo efectivo canónico más D1.
 4. D1 registra cabecera e ítems en un único `batch` y reclama atómicamente un solo intento de creación de preferencia.
 5. Se crea la preferencia de Checkout Pro por API con `external_reference` igual al ID interno. Ante un resultado de red incierto, no se repite la creación: se busca y recupera la preferencia por `external_reference`.
 6. El navegador recibe una URL HTTPS autorizada de Mercado Pago y redirige fuera del sitio.

@@ -22,6 +22,11 @@ const baseDetailById = new Map(
     return [product.id, parseProductDetail(product, rawDetails)] as const;
   }),
 );
+const authorizedImagePaths = new Set(
+  [...baseDetailById.values()].flatMap((product) =>
+    product.images.map((image) => image.src),
+  ),
+);
 
 export type CatalogMutationRow = Readonly<{
   product_id: string;
@@ -35,6 +40,11 @@ export function getBaseCatalogProducts(): readonly Product[] {
 
 export function getBaseCatalogCategories() {
   return baseCategories;
+}
+
+export function getBaseCatalogProductDetail(productId: string): CatalogProductDetail | null {
+  assertProductId(productId);
+  return baseDetailById.get(productId) ?? null;
 }
 
 export async function listCatalogProducts(database: D1Database): Promise<readonly Product[]> {
@@ -106,6 +116,7 @@ export async function createCatalogProduct(
   value: unknown,
   actorEmail: string,
 ): Promise<CatalogProductDetail> {
+  await ensureCatalogStorageReady(database);
   const product = parseWritableProduct(value);
   if (await getCatalogProductDetail(database, product.id) !== null) {
     throw new HttpError(409, 'PRODUCT_ALREADY_EXISTS', 'Ya existe un producto con ese slug.');
@@ -121,6 +132,7 @@ export async function updateCatalogProduct(
   actorEmail: string,
 ): Promise<CatalogProductDetail> {
   assertProductId(productId);
+  await ensureCatalogStorageReady(database);
   if (await getCatalogProductDetail(database, productId) === null) {
     throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
   }
@@ -142,6 +154,7 @@ export async function deleteCatalogProduct(
   actorEmail: string,
 ): Promise<void> {
   assertProductId(productId);
+  await ensureCatalogStorageReady(database);
   if (await getCatalogProductDetail(database, productId) === null) {
     throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
   }
@@ -188,12 +201,32 @@ function parseWritableProduct(value: unknown): CatalogProductDetail {
     if (summary === undefined) {
       throw new InvalidProductError('El producto no es válido.');
     }
-    return parseProductDetail(summary, value);
+    if (summary.categorySlugs.length === 0) {
+      throw new InvalidProductError('El producto debe pertenecer al menos a una categoría.');
+    }
+    const detail = parseProductDetail(summary, value);
+    const unauthorizedImage = detail.images.find(
+      (image) => !authorizedImagePaths.has(image.src),
+    );
+    if (unauthorizedImage !== undefined) {
+      throw new InvalidProductError(
+        `La imagen no pertenece al inventario autorizado: ${unauthorizedImage.src}.`,
+      );
+    }
+    return detail;
   } catch (error: unknown) {
     if (error instanceof InvalidProductError) {
       throw new HttpError(400, 'INVALID_PRODUCT', error.message);
     }
     throw error;
+  }
+}
+
+async function ensureCatalogStorageReady(database: D1Database): Promise<void> {
+  try {
+    await database.prepare('SELECT 1 FROM catalog_product_mutations LIMIT 1').first();
+  } catch (error: unknown) {
+    throwCatalogStorageError(error);
   }
 }
 

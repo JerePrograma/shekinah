@@ -113,9 +113,9 @@ export function AdminPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       <div className="container admin-shell">
         <div className="section-heading">
           <p className="eyebrow">Administración</p>
-          <h1 id="admin-title">Backoffice de sólo lectura.</h1>
+          <h2 id="admin-title">Pedidos y analítica: sólo lectura</h2>
           <p>
-            Esta superficie requiere una identidad validada por Cloudflare Access y no permite modificar pedidos.
+            Esta superficie requiere una identidad validada por Cloudflare Access y no permite modificar pedidos ni datos analíticos.
           </p>
         </div>
 
@@ -288,7 +288,7 @@ function SummaryCards({ summary }: Readonly<{ summary: AdminSummary }>) {
   ] as const;
   return (
     <section aria-labelledby="admin-summary-title">
-      <h2 id="admin-summary-title">Resumen comercial</h2>
+      <h3 id="admin-summary-title">Resumen comercial</h3>
       <dl className="admin-summary-grid">
         {cards.map(([label, value]) => (
           <div key={label}>

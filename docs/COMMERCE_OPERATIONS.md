@@ -61,18 +61,19 @@ Un pedido en este último estado no debe liberarse ni reintentarse manualmente s
 
 La interfaz `/admin` consume:
 
+- `/api/admin/products` y `/api/admin/products/:id` para el ABM del catálogo;
 - `/api/admin/summary`;
 - `/api/admin/orders?limit=25`;
 - `/api/admin/exports/orders.csv`;
 - `/api/admin/exports/analytics.csv`;
 - `/api/admin/audit`.
 
-Los demás endpoints permiten detalle y reportes específicos. Todos aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
+El catálogo de productos es editable. Pedidos, analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
 
 La auditoría registra:
 
 - subject y email validados por Access;
-- acción administrativa de sólo lectura;
+- acción administrativa de lectura o mutación de catálogo;
 - tipo e identificador de destino cuando corresponda;
 - resultado HTTP;
 - request ID técnico;

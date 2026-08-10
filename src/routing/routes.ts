@@ -2,6 +2,7 @@ import {
   authorizedCategories,
   authorizedProducts,
 } from '../data/authorized-commercial-data';
+import type { Product } from '../catalog/model';
 
 export const appPaths = {
   home: '/',
@@ -47,7 +48,20 @@ type NotFoundRoute = Readonly<{
   description: string;
 }>;
 
-export type AppRoute = KnownRoute | ProductRoute | CategoryRoute | NotFoundRoute;
+export type ResolvingProductRoute = Readonly<{
+  id: 'resolving-product';
+  path: string;
+  productSlug: string;
+  title: string;
+  description: string;
+}>;
+
+export type AppRoute =
+  | KnownRoute
+  | ProductRoute
+  | CategoryRoute
+  | NotFoundRoute
+  | ResolvingProductRoute;
 const knownRoutes: readonly KnownRoute[] = [
   {
     id: 'home',
@@ -137,13 +151,7 @@ for (const product of authorizedProducts) {
   if (routeByPath.has(productPath)) {
     throw new Error(`Colisión de ruta de producto: ${product.path}.`);
   }
-  routeByPath.set(productPath, {
-    id: 'product',
-    path: productPath,
-    productSlug: product.slug,
-    title: `${product.name} | Shekinah`,
-    description: `Conocé ${product.name}, su presentación, precio y detalles en Shekinah.`,
-  });
+  routeByPath.set(productPath, createProductRoute(product));
 }
 
 export function resolveRoute(pathname: string): AppRoute {
@@ -151,23 +159,42 @@ export function resolveRoute(pathname: string): AppRoute {
   const route = routeByPath.get(normalizedPath);
   if (route !== undefined) return route;
 
-  if (normalizedPath !== '/enfoque') {
-    const dynamicProductMatch = /^\/([a-z0-9][a-z0-9-]{0,179})$/u.exec(normalizedPath);
-    const productSlug = dynamicProductMatch?.[1];
-    if (productSlug !== undefined) {
-      return {
-        id: 'product',
-        path: normalizedPath,
-        productSlug,
-        title: 'Producto | Shekinah',
-        description: 'Consultá el producto en el catálogo de Shekinah.',
-      };
-    }
-  }
+  return createNotFoundRoute(normalizedPath);
+}
 
+export function getPotentialProductSlug(pathname: string): string | null {
+  const normalizedPath = normalizePathname(pathname);
+  const productSlug = /^\/([a-z0-9][a-z0-9-]{0,179})$/u.exec(normalizedPath)?.[1] ?? null;
+  return productSlug === 'enfoque' ? null : productSlug;
+}
+
+export function createProductRoute(product: Product): ProductRoute {
+  return {
+    id: 'product',
+    path: normalizePathname(product.path),
+    productSlug: product.slug,
+    title: `${product.name} | Shekinah`,
+    description: `Conocé ${product.name}, su presentación, precio y detalles en Shekinah.`,
+  };
+}
+
+export function createResolvingProductRoute(
+  pathname: string,
+  productSlug: string,
+): ResolvingProductRoute {
+  return {
+    id: 'resolving-product',
+    path: normalizePathname(pathname),
+    productSlug,
+    title: 'Cargando producto | Shekinah',
+    description: 'Verificando el producto solicitado en el catálogo de Shekinah.',
+  };
+}
+
+export function createNotFoundRoute(pathname: string): AppRoute {
   return {
     id: 'not-found',
-    path: normalizedPath,
+    path: normalizePathname(pathname),
     title: 'Página no encontrada | Shekinah',
     description:
       'La dirección solicitada no corresponde a una página de Shekinah.',

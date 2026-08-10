@@ -13,10 +13,10 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 - Checkout Pro de Mercado Pago por redirección preparado para activación serverless cuando existan D1, credenciales y webhook verificados;
 - envío manual del carrito por WhatsApp al número expresamente autorizado;
 - pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1;
-- panel administrativo de sólo lectura preparado para Cloudflare Access;
+- catálogo de productos editable y pedidos/analítica de sólo lectura en un panel preparado para Cloudflare Access;
 - política de privacidad, accesibilidad y vista 404.
 
-El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde `catalog/internal/catalog-index.json` antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
+El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
 
 ## Estado productivo actual
 
