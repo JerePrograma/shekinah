@@ -109,7 +109,11 @@ export async function verifyAdminCredentials(
       passwordParameters.salt,
       passwordParameters.iterations,
     );
-  } catch {
+  } catch (error: unknown) {
+    console.error('Admin password KDF unavailable', {
+      name: error instanceof Error ? error.name : 'UnknownError',
+      message: error instanceof Error ? error.message : 'Error no tipado',
+    });
     throw authUnavailable();
   }
 

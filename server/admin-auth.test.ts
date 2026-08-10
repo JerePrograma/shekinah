@@ -68,12 +68,17 @@ describe('credenciales administrativas PBKDF2', () => {
   });
 
   it('ejecuta PBKDF2 aunque el usuario sea incorrecto', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const deriveBits = vi.spyOn(crypto.subtle, 'deriveBits').mockRejectedValueOnce(
       new Error('derivación interceptada'),
     );
     await expect(verifyAdminCredentials('usuario-inexistente', PASSWORD, env))
       .rejects.toMatchObject({ code: 'ADMIN_AUTH_UNAVAILABLE', status: 503 });
     expect(deriveBits).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith('Admin password KDF unavailable', {
+      name: 'Error',
+      message: 'derivación interceptada',
+    });
   });
 
   it('usa timingSafeEqual del runtime cuando está disponible', async () => {
