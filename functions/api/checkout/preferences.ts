@@ -12,6 +12,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     requireEnabledFlag(env.COMMERCE_ENABLED, 'COMMERCE_DISABLED', 'El checkout todavía no está habilitado.'); assertSameOrigin(request, env);
     const database = requireDatabase(env); const siteUrl = requirePublicSiteUrl(env);
     const accessToken = requireSecret(env.MERCADO_PAGO_ACCESS_TOKEN, 'PAYMENT_CREDENTIALS_MISSING', 'Mercado Pago no está configurado.', 20);
+    void requireSecret(env.MERCADO_PAGO_WEBHOOK_SECRET, 'WEBHOOK_SECRET_MISSING', 'La firma de webhooks no está configurada.', 32);
     const tokenSecret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de pedidos no está configurada.', 32); const mode = requireCommerceMode(env);
     const body = await readJsonBody(request, 32_768); if (!isRecord(body)) throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
     assertExactKeys(body, ['idempotencyKey', 'items', 'fulfillment'], 'INVALID_CHECKOUT', 'La solicitud contiene campos no permitidos.');

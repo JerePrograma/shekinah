@@ -54,6 +54,32 @@ describe('endpoint de checkout', () => {
     });
   });
 
+  it('falla cerrado si falta el secreto de firma del webhook', async () => {
+    const testD1 = createTestD1(...migrations);
+    try {
+      const response = await onRequest({
+        ...context(new Request('https://example.test/api/checkout/preferences', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            origin: 'https://example.test',
+          },
+          body: JSON.stringify({}),
+        })),
+        env: {
+          ...checkoutEnv(testD1.database),
+          MERCADO_PAGO_WEBHOOK_SECRET: undefined,
+        },
+      });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'WEBHOOK_SECRET_MISSING' },
+      });
+    } finally {
+      testD1.close();
+    }
+  });
+
   it('persiste el precio dinámico vigente y no acepta el precio del navegador', async () => {
     const testD1 = createTestD1(...migrations);
     try {
@@ -145,6 +171,7 @@ function checkoutEnv(database: ReturnType<typeof createTestD1>['database']) {
     ALLOWED_SITE_ORIGINS: 'https://example.test',
     MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
     MERCADO_PAGO_ACCESS_TOKEN: 'test-token-without-real-credentials',
+    MERCADO_PAGO_WEBHOOK_SECRET: 'w'.repeat(40),
     ORDER_TOKEN_SECRET: 's'.repeat(40),
   } as const;
 }
