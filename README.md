@@ -25,10 +25,12 @@ En el candidato actual, `stockQuantity` es opcional: si está ausente, el produc
 Configuración pública autorizada el 2026-08-10:
 
 ```text
-PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
+PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
+
+`https://shekinah.ar` es el dominio público canónico de producción: el custom domain de Pages está activo, usa un CNAME proxied al dominio técnico y responde 200 con TLS confiable emitido por Google. `https://shekinah-7dl.pages.dev` se conserva para Pages y preview. El alias `www` tiene una Bulk Redirect HTTPS `301` al apex que preserva path y query; al seguirla se obtiene el apex 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre `shekinah.ar` y `*.shekinah.ar`, y el handshake negociado usa TLS 1.3.
 
 El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. D1 ya está separada y migrada para production/preview, pero Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar credenciales productivas de Mercado Pago, webhook y verificaciones propias de ese flujo. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
 
@@ -100,6 +102,8 @@ Cloudflare Pages debe conservar:
 - salida: `dist`;
 - directorio raíz: raíz del repositorio;
 - Node.js: `24.18.0`;
-- dominio público: `https://shekinah-7dl.pages.dev` mientras no se autorice otro dominio primario.
+- dominio público canónico de producción: `https://shekinah.ar`;
+- dominio técnico de Pages y origen documentado para preview: `https://shekinah-7dl.pages.dev`;
+- alias `www`: redirección permanente `301` a `https://shekinah.ar`.
 
 La CSP permite conexiones únicamente al mismo origen mediante `connect-src 'self'`. El login y el ABM usan exclusivamente APIs first-party y una cookie `HttpOnly`; las conexiones de Checkout Pro y del fallback opcional de Access ocurren desde Pages Functions. El Link de Pago manual es una navegación HTTPS explícita del comprador hacia Mercado Pago.

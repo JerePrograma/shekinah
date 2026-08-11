@@ -24,11 +24,14 @@ Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado
 Los datos públicos autorizados actuales son:
 
 ```text
+PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
 `src/commerce/env.ts` usa esos valores como defaults rastreados porque fueron autorizados expresamente. Una variable de build presente puede sobrescribirlos o deshabilitarlos con una cadena vacía. El número se normaliza a formato internacional de 8 a 15 dígitos y el Link de Pago sólo se acepta como HTTPS del host `link.mercadopago.com.ar`, sin credenciales, puerto, query ni fragmento. Son datos públicos, no secretos.
+
+El custom domain del apex está activo y responde HTTPS 200; production usa el apex y preview conserva el dominio técnico de Pages. La redirección HTTPS de `www` al apex responde `301`, preserva path/query y termina en 200; el pack Universal cubre el apex y wildcard y negocia TLS 1.3.
 
 ### Cloudflare Pages Functions
 
@@ -145,7 +148,7 @@ El fallback manual no hereda las garantías de precio autoritativo, idempotencia
 
 ## Límites deliberados
 
-- El WhatsApp `5492236216559`, el dominio `shekinah-7dl.pages.dev` y el Link de Pago `shekinahmoreno` son datos actuales autorizados explícitamente el 2026-08-10; no proceden de la recuperación histórica del catálogo.
+- El WhatsApp `5492236216559`, el dominio canónico `shekinah.ar` y el Link de Pago `shekinahmoreno` son datos actuales autorizados explícitamente el 2026-08-10; no proceden de la recuperación histórica del catálogo. `shekinah-7dl.pages.dev` permanece como dominio técnico de Pages y origen de preview.
 - Se recopilan sólo los datos de entrega requeridos para fulfillment; no se solicitan datos de tarjeta ni facturación.
 - No hay edición administrativa de pedidos ni reembolsos desde el backoffice.
 - El retiro de consentimiento elimina los eventos de la sesión y conserva únicamente su HMAC en una lista de revocación para impedir que solicitudes en vuelo la vuelvan a crear.

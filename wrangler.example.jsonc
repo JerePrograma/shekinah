@@ -4,11 +4,13 @@
   "name": "shekinah",
   "pages_build_output_dir": "./dist",
   "compatibility_date": "2026-07-21",
+  // Valores de production verificados por API el 2026-08-10. En Pages, preview
+  // conserva PUBLIC_SITE_URL y ALLOWED_SITE_ORIGINS en https://shekinah-7dl.pages.dev.
   "vars": {
     "COMMERCE_ENABLED": "false",
     "ANALYTICS_ENABLED": "false",
-    "PUBLIC_SITE_URL": "https://shekinah-7dl.pages.dev",
-    "ALLOWED_SITE_ORIGINS": "https://shekinah-7dl.pages.dev",
+    "PUBLIC_SITE_URL": "https://shekinah.ar",
+    "ALLOWED_SITE_ORIGINS": "https://shekinah.ar",
     "MERCADO_PAGO_CHECKOUT_MODE": "sandbox",
     "ANALYTICS_RETENTION_DAYS": "730"
   },

@@ -4,7 +4,11 @@
 
 Nombre exacto del proyecto Pages: `shekinah`
 
-Dominio asignado: `shekinah-7dl.pages.dev`
+Dominio público canónico: `shekinah.ar`
+
+Dominio técnico de Pages y origen de preview: `shekinah-7dl.pages.dev`
+
+Alias `www`: Bulk Redirect HTTPS `301` a `https://shekinah.ar`, preserva path/query y termina en 200
 
 Rama de producción: `main`
 
@@ -35,18 +39,26 @@ Existe un Worker independiente también llamado `shekinah`. Verificar siempre qu
 - R2: activo, con bucket existente `shekinah` reutilizado en producción y bucket aislado `shekinah-preview` en preview;
 - binding `CATALOG_IMAGES`: configurado en producción y preview; ambos buckets Standard/default, `publicR2DevEnabled=false` y lectura pública exclusivamente first-party mediante Pages;
 - upload administrativo: infraestructura lista, pero candidato todavía sin deployment ni smoke productivo.
+- zona DNS `shekinah.ar`: `active`, delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`;
+- DNSSEC: deshabilitado, sin DS publicado en `.ar`; estado inicial válido y sin cadena rota;
+- custom domain del apex, verificación y validación: `active`; CNAME proxied al dominio técnico de Pages;
+- apex HTTPS: 200 con certificado confiable emitido por Google;
+- `www`: Bulk Redirect HTTPS `301` al apex preservando path/query y destino final 200; el A proxied `192.0.2.1` es el placeholder oficial para entregar tráfico a la regla, no un origen;
+- TLS de apex y `www`: pack Universal `active` de Google Trust Services WE1, SAN `shekinah.ar` y `*.shekinah.ar`, TLS 1.3 verificado.
 
 Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json`, ambos entornos deben conservar `Fail closed`. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
 
 ## Configuración pública autorizada el 2026-08-10
 
 ```text
-PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
+PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-Los dos valores `VITE_*` son públicos y están incluidos como defaults autorizados en el código para permitir el fallback manual de carrito, Link de Pago y WhatsApp aunque Pages no tenga variables de build. `PUBLIC_SITE_URL` debe cargarse explícitamente como variable server-side antes de habilitar Checkout Pro.
+Los dos valores `VITE_*` son públicos y están incluidos como defaults autorizados en el código para permitir el fallback manual de carrito, Link de Pago y WhatsApp aunque Pages no tenga variables de build. La API confirmó `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` en `https://shekinah.ar` para production y en `https://shekinah-7dl.pages.dev` para preview. `PUBLIC_SITE_URL` debe permanecer explícito como variable server-side antes de habilitar Checkout Pro.
+
+El apex fue agregado mediante Custom Domains del proyecto Pages, sin usar IPs circunstanciales ni registros A/AAAA inventados. Conservar el CNAME proxied administrado y no reemplazar el placeholder de `www` por una supuesta IP de origen. Apex, `www`, TLS y redirección quedaron verificados por separado.
 
 El fallback manual no necesita VPS ni D1. El Checkout Pro integrado tampoco requiere VPS: el backend previsto son Pages Functions y D1, pero esa capacidad continúa deshabilitada hasta completar su configuración externa.
 

@@ -41,10 +41,12 @@ El candidato incorpora:
 Autorización explícita recibida el 2026-08-10:
 
 ```text
-PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
+PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
+
+El origen canónico de producción es `https://shekinah.ar`. Preview conserva `https://shekinah-7dl.pages.dev`; la Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` al apex, preserva path/query y termina en el apex 200.
 
 El fallback manual usa esos datos públicos sin secretos. Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el carrito puede copiar el total calculado y abrir el Link de Pago; el comprador ingresa el monto en Mercado Pago y debe enviar el carrito por WhatsApp para que el comercio pueda asociar el pago y coordinar la entrega. Este flujo no crea pedidos en D1, no genera una preferencia de Checkout Pro y no confirma automáticamente pagos.
 
@@ -72,12 +74,16 @@ Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de has
 
 Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar IDs de cuenta, correos ni valores secretos:
 
-- el proyecto de Cloudflare Pages se llama exactamente `shekinah` y publica `shekinah-7dl.pages.dev`;
+- el proyecto de Cloudflare Pages se llama exactamente `shekinah`; su dominio técnico es `shekinah-7dl.pages.dev` y el dominio público canónico autorizado es `shekinah.ar`;
+- la zona DNS `shekinah.ar` figura `active` en Cloudflare, delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`; DNSSEC está deshabilitado y no existe DS en el padre, un estado inicial válido que no provoca `SERVFAIL`;
+- el custom domain `shekinah.ar`, su verificación y validación figuran `active`; el apex usa un CNAME proxied a `shekinah-7dl.pages.dev` y responde HTTPS 200 con certificado confiable emitido por Google;
+- la Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` al apex, preserva path y query y termina en 200; su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico y no representa un origen;
+- el pack Universal está `active`, usa Google Trust Services WE1 y cubre `shekinah.ar` y `*.shekinah.ar`; el handshake de `www` negocia TLS 1.3;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
 - producción usa `shekinah-commerce` y preview `shekinah-commerce-preview`, ambas creadas vacías y vinculadas como `DB`;
 - `d1_migrations` registra `0001` a `0005` en ambos entornos; `0004_catalog_admin.sql` y `0005_admin_auth.sql` están aplicadas;
 - los cuatro nombres `ADMIN_*` requeridos existen como secretos cifrados separados en production y preview;
-- `PUBLIC_SITE_URL`, `ALLOWED_SITE_ORIGINS`, flags cerrados y retención están configurados como variables no secretas;
+- `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` están verificados por API con `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview; los flags cerrados y la retención permanecen configurados como variables no secretas;
 - Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
 - producción y preview usan `Fail closed`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.

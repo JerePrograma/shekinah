@@ -25,7 +25,11 @@ mercado_pago_mode: no_verificado
 - **VERIFICADO:** checkout local `C:\laburo\shekinah`, repositorio remoto `JerePrograma/shekinah`, rama `main` y seguimiento `origin/main`.
 - **VERIFICADO:** aplicación React 19, TypeScript estricto y Vite 8 publicada mediante Cloudflare Pages con Pages Functions.
 - **VERIFICADO:** Node.js `24.18.0` y npm `11.16.0` en la sesión iniciada el 2026-08-04.
-- **VERIFICADO:** el proyecto Pages se llama `shekinah`, su dominio es `shekinah-7dl.pages.dev` y está conectado a `JerePrograma/shekinah`.
+- **VERIFICADO:** el proyecto Pages se llama `shekinah`, su dominio técnico es `shekinah-7dl.pages.dev` y está conectado a `JerePrograma/shekinah`.
+- **VERIFICADO (DOMINIO):** el origen público canónico de producción es `https://shekinah.ar`; el custom domain de Pages, su verificación y validación figuran `active`, el apex usa CNAME proxied a `shekinah-7dl.pages.dev` y HTTPS responde 200 con certificado confiable de Google.
+- **VERIFICADO (WWW):** HTTPS negocia TLS 1.3 con un pack Universal activo de Google Trust Services WE1 cuyo SAN cubre `shekinah.ar` y `*.shekinah.ar`; la Bulk Redirect responde `301` al apex, preserva path y query y, al seguirla, termina en 200.
+- **VERIFICADO (WWW DNS):** el A proxied `192.0.2.1` es un placeholder oficial para entregar tráfico a la regla, no un origen de la aplicación.
+- **VERIFICADO (ZONA):** la zona `shekinah.ar` figura `active`, delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`; DNSSEC está deshabilitado y no existe DS publicado en `.ar`, estado válido sin cadena de validación rota.
 - **VERIFICADO:** existe un Worker independiente también llamado `shekinah`; no comparte la configuración del proyecto Pages.
 
 ## 2. Regla de autoridad
@@ -130,6 +134,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** R2 está activo. Production reutiliza el bucket existente `shekinah`; preview usa el bucket aislado creado `shekinah-preview`; Pages expone ambos como `CATALOG_IMAGES` en su entorno correspondiente.
 - **VERIFICADO:** ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`. No existe dominio público `r2.dev`; la lectura comercial se sirve exclusivamente mediante la ruta first-party de Pages.
 - **VERIFICADO:** la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres administrativos como `secret_text` y `fail_open=false` permanecen preservados en production y preview. No se leyeron ni registraron valores secretos.
+- **VERIFICADO POR API:** production usa `PUBLIC_SITE_URL=https://shekinah.ar` y `ALLOWED_SITE_ORIGINS=https://shekinah.ar`; preview conserva ambos valores en `https://shekinah-7dl.pages.dev`.
 - **PENDIENTE DEL CANDIDATO:** la infraestructura está configurada, pero el upload todavía requiere commit, CI, deployment del SHA definitivo y smoke autenticado antes de considerarse productivo.
 
 ## 14. CI, artefactos y deployment
@@ -222,7 +227,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: migración aditiva nueva para cerrar la reserva de carrito.
 - `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`: mutaciones/tombstones y rate limiting administrativo.
 - `scripts/verify-shipping-weights.mjs`: clasificación auditable de pesos.
-- Cloudflare Pages correcto: panel bajo `pages/view/shekinah`, dominio `shekinah-7dl.pages.dev`.
+- Cloudflare Pages correcto: panel bajo `pages/view/shekinah`, dominio técnico `shekinah-7dl.pages.dev` y dominio público canónico `shekinah.ar`.
 - Worker distinto: panel bajo `workers/services/view/shekinah`; no configurarlo para comercio.
 
 ## 20. Último diff aplicado

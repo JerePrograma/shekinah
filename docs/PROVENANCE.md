@@ -61,7 +61,9 @@ El contacto continúa ausente de la fuente histórica recuperada. No se restaur�
 Los siguientes valores no proceden del legado ni de la recuperación histórica. Fueron suministrados y autorizados explícitamente para la configuración actual el 2026-08-10:
 
 ```text
-Sitio público: https://shekinah-7dl.pages.dev/
+Sitio público canónico: https://shekinah.ar/
+Dominio técnico de Pages y preview: https://shekinah-7dl.pages.dev/
+Alias público: https://www.shekinah.ar/ (redirección HTTPS 301 al apex, TLS verificado)
 WhatsApp: +549 2236 21-6559
 WhatsApp normalizado para wa.me: 5492236216559
 Link de Pago de Mercado Pago: https://link.mercadopago.com.ar/shekinahmoreno

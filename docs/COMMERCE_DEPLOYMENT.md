@@ -15,9 +15,11 @@ No cambiar esos flags hasta completar el checklist de sandbox, webhooks, D1, pri
 
 Existe un fallback manual separado y expresamente autorizado el 2026-08-10: Link de Pago de Mercado Pago sin monto predefinido más envío del carrito por WhatsApp. Ese fallback no equivale a `COMMERCE_ENABLED=true`, no usa D1 y no habilita el webhook.
 
-El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
+El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio técnico y de preview, mientras que `https://shekinah.ar` es el origen público canónico de producción. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
 
 No se necesita VPS. El fallback manual es cliente puro y el Checkout Pro integrado usa Cloudflare Pages Functions como backend y D1 como persistencia.
+
+La zona `shekinah.ar` figura `active` en Cloudflare y está delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC permanece deshabilitado y `.ar` no publica un DS, estado válido para esta etapa. El custom domain del apex, su verificación y validación figuran `active`; el CNAME proxied apunta al dominio técnico de Pages y `https://shekinah.ar` responde 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` hacia el apex preservando path y query y termina en 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no una IP de origen ni un destino de Pages. El pack Universal está activo con Google Trust Services WE1, SAN para `shekinah.ar` y `*.shekinah.ar`, y TLS 1.3 verificado.
 
 ## 1. Validar el commit exacto
 
@@ -43,7 +45,7 @@ El último comando no debe devolver archivos. Registrar el SHA con `git rev-pars
 Valores reales autorizados el 2026-08-10:
 
 ```text
-PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
+PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
@@ -127,7 +129,17 @@ Antes de publicar o modificar esta integración:
 
 ## 4. Configurar variables no secretas del Checkout Pro
 
-En producción y, de forma separada, en preview:
+En producción:
+
+```text
+PUBLIC_SITE_URL=https://shekinah.ar
+ALLOWED_SITE_ORIGINS=https://shekinah.ar
+COMMERCE_ENABLED=false
+ANALYTICS_ENABLED=false
+ANALYTICS_RETENTION_DAYS=730
+```
+
+En preview:
 
 ```text
 PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
@@ -137,9 +149,9 @@ ANALYTICS_ENABLED=false
 ANALYTICS_RETENTION_DAYS=730
 ```
 
-`PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Si más adelante se autoriza un dominio propio, sustituirlo explícitamente y volver a validar todas las URLs.
+`PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Production debe usar el apex canónico y preview el dominio técnico de Pages; no intercambiar ambos entornos.
 
-Esos valores quedaron verificados en producción y preview el 2026-08-10. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
+Los valores anteriores quedaron verificados por API en sus respectivos entornos. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
 
 ## 5. Configurar secretos
 
@@ -182,7 +194,7 @@ Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entor
 ## 6. Configurar Mercado Pago Checkout Pro
 
 1. Usar primero credenciales de prueba y `MERCADO_PAGO_CHECKOUT_MODE=sandbox`.
-2. Registrar la URL de notificación exacta: `https://shekinah-7dl.pages.dev/api/webhooks/mercadopago`, salvo que antes se autorice otro dominio primario.
+2. Registrar la URL de notificación exacta: `https://shekinah.ar/api/webhooks/mercadopago`.
 3. Habilitar eventos de pagos.
 4. Copiar el secreto de firma de Webhooks en `MERCADO_PAGO_WEBHOOK_SECRET`.
 5. Confirmar que el proveedor envía `x-signature` y `x-request-id`.

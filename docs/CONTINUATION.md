@@ -57,7 +57,7 @@ La activación de Checkout Pro requiere evidencia separada de:
 El 2026-08-10 quedaron expresamente autorizados como datos públicos actuales:
 
 ```text
-Sitio: https://shekinah-7dl.pages.dev/
+Sitio canónico de producción: https://shekinah.ar/
 WhatsApp: +549 2236 21-6559
 Link de Pago: https://link.mercadopago.com.ar/shekinahmoreno
 ```
@@ -69,10 +69,14 @@ El fallback manual no requiere VPS. El backend futuro continúa siendo Pages Fun
 ## Identidad externa verificada
 
 - Proyecto Pages: `shekinah`.
-- Dominio Pages: `shekinah-7dl.pages.dev`.
+- Dominio canónico de producción: `shekinah.ar`.
+- Dominio técnico de Pages y origen de preview: `shekinah-7dl.pages.dev`.
+- `www.shekinah.ar`: Bulk Redirect HTTPS `301` al apex verificada, con path y query preservados y destino final 200.
 - Repositorio conectado: `JerePrograma/shekinah`.
 - Rama de producción: `main`.
 - Existe un Worker independiente también llamado `shekinah`; no usar sus settings para configurar Pages.
+
+La zona DNS `shekinah.ar` figura `active` en Cloudflare y usa `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC está deshabilitado sin DS publicado en `.ar`, estado coherente y sin riesgo de validación rota. El custom domain del apex, su verificación y validación están `active`; el CNAME proxied apunta al dominio técnico de Pages y el apex responde HTTPS 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www` responde `301`, preserva path/query y termina en el apex 200; el A proxied `192.0.2.1` es sólo el placeholder oficial para que la regla reciba tráfico, nunca un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre el apex y `*.shekinah.ar`, y el handshake negocia TLS 1.3.
 
 El inventario y la configuración autenticados del 2026-08-10 confirmaron dos D1 nuevas y aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones `0001` a `0005`, cuatro secretos administrativos cifrados por entorno y `Fail closed` en production/preview. Zero Trust/Access continúa sin configurar porque es un fallback opcional; existe además un Worker homónimo que permanece intacto.
 
@@ -91,6 +95,7 @@ R2 está activo y verificado por API. Production reutiliza el bucket existente `
 7. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece.
 8. antes del smoke de imágenes, releer que `CATALOG_IMAGES` apunte a `shekinah` en production y a `shekinah-preview` en preview, que `publicR2DevEnabled=false` continúe vigente y que el binding pertenezca a Pages, nunca al Worker homónimo;
 9. validar stock legacy sin control, stock cero, límite `min(99, stock)`, revalidación server-side y ausencia deliberada de reservas/decremento.
+10. preservar los valores verificados por API de `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview.
 
 ## Prohibiciones
 
