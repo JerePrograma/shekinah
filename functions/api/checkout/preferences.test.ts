@@ -67,8 +67,13 @@ describe('endpoint de checkout', () => {
           body: JSON.stringify({}),
         })),
         env: {
-          ...checkoutEnv(testD1.database),
-          MERCADO_PAGO_WEBHOOK_SECRET: undefined,
+          DB: testD1.database,
+          COMMERCE_ENABLED: 'true',
+          PUBLIC_SITE_URL: 'https://example.test',
+          ALLOWED_SITE_ORIGINS: 'https://example.test',
+          MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
+          MERCADO_PAGO_ACCESS_TOKEN: 'test-token-without-real-credentials',
+          ORDER_TOKEN_SECRET: 's'.repeat(40),
         },
       });
       expect(response.status).toBe(503);
