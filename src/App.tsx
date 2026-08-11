@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 
 import { trackAnalyticsEvent } from './analytics/client';
+import { AnalyticsConsent } from './analytics/AnalyticsConsent';
 import { useCart } from './cart/CartContext';
 import { authorizedAssets } from './config/authorized-assets';
 import {
@@ -116,6 +117,7 @@ export function App() {
       <main id="main-content" ref={mainRef} tabIndex={-1}>
         <RouteView navigate={navigate} pathname={pathname} route={route} />
       </main>
+      {route.id === 'admin' ? null : <AnalyticsConsent />}
       <footer className="site-footer">
         <div className="container footer-inner">
           <p className="footer-brand">

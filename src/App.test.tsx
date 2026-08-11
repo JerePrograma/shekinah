@@ -63,6 +63,24 @@ describe('App', () => {
     window.history.replaceState(null, '', '/');
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('mantiene el backoffice fuera del consentimiento analítico público', async () => {
+    vi.stubEnv('VITE_ANALYTICS_ENABLED', 'true');
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+      authenticated: false,
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    window.history.replaceState(null, '', '/admin');
+
+    renderApp();
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Analítica opcional' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Aceptar analítica' })).not.toBeInTheDocument();
+  });
+
   it('confirma por API un slug dinámico antes de renderizar su ficha', async () => {
     const fetchMock = vi.fn<typeof fetch>((input) => {
       const path = requestUrl(input);

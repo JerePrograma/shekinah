@@ -46,6 +46,7 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 - `migrations/0003_checkout_intent_cart_fingerprint.sql`: huella autoritativa del carrito en intenciones, con backfill desde pedidos existentes;
 - `migrations/0004_catalog_admin.sql`: altas, overrides y tombstones del catálogo administrativo;
 - `migrations/0005_admin_auth.sql`: contadores opacos y persistentes para limitar intentos de login;
+- `migrations/0006_analytics_manual_payment_click.sql`: amplía de forma aditiva el CHECK cerrado de eventos para medir el clic manual sin perder eventos ni índices existentes;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
@@ -67,6 +68,10 @@ El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. La
 `/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256; el helper operativo genera 100.000 iteraciones, costo comprobado dentro del límite CPU efectivo del runtime Bundled (32 ms en un smoke remoto negativo con credencial ficticia). La sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
 
 `src/admin/ProductManager.tsx` coordina la experiencia de catálogo y delega la presentación en `ProductList`, `ProductEditor` y `ProductImageField`: resumen operativo, búsqueda normalizada, filtros y orden local, listado con miniatura y estados, editor agrupado, slug automático con opción avanzada, categorías del catálogo real, cambios rápidos de stock/disponibilidad, feedback accesible y protección ante cambios sin guardar. Los IDs existentes permanecen estables. Las variantes existentes se conservan en el contrato de producto sin exponer JSON como interfaz cotidiana. El upload sólo se ofrece cuando la API informa `imageStorageConfigured`.
+
+El Backoffice V2 mantiene una única instancia de `ProductManager` montada y alterna su visibilidad desde una navegación nativa por Resumen, Productos, Pedidos, Analítica y Auditoría. `AdminPage` carga cada sección por separado, admite resultados analíticos parciales y solicita el detalle de un pedido únicamente al elegir «Ver detalle». El endpoint existente devuelve pedido, fulfillment, items y pagos; la UI sólo los representa y no ofrece operaciones financieras.
+
+La analítica pública acepta `manual_payment_click` exclusivamente para un clic válido en `/carrito`, sin producto, importe, fulfillment ni PII. `/admin` queda bloqueado en cliente y servidor. El resumen separa interacciones de métricas financieras confirmadas; la tendencia diaria se agrega en D1 y se presenta con barras nativas y una tabla accesible.
 
 `functions/api/admin/_middleware.ts` valida en cada operación protegida una sesión propia. Sólo cuando no existe cookie propia intenta el JWT RS256 de Cloudflare Access como fallback compatible; una cookie propia presente pero inválida siempre se rechaza. Los tres endpoints de autenticación son la única exclusión exacta del middleware. El login y logout exigen mismo origen, y las mutaciones conservan ese control. `server/admin-login-rate-limit.ts` aplica límites persistentes por IP y usuario mediante claves HMAC opacas en D1; no almacena ninguno de esos valores en claro.
 

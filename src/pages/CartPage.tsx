@@ -121,7 +121,9 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     if (
       mercadoPagoPaymentLink === null ||
       items.length === 0 ||
-      quote.kind === 'manual'
+      quote.kind === 'manual' ||
+      !Number.isSafeInteger(checkoutTotalMinor) ||
+      checkoutTotalMinor <= 0
     ) {
       event.preventDefault();
       return;
@@ -134,6 +136,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       focusFirstError(validation.errors);
       return;
     }
+
+    void trackAnalyticsEvent('manual_payment_click', { path: appPaths.cart });
 
     const amount = formatManualPaymentAmount(checkoutTotalMinor);
     const displayTotal = formatMinor(checkoutTotalMinor);

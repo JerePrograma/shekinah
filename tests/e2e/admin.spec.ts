@@ -82,9 +82,18 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
     'No se pudo iniciar sesión. Revisá las credenciales e intentá nuevamente.',
   );
 
-  await loginWithFixture(page);
+  await loginWithFixture(page, 'summary');
   await expect(page.locator('#main-content')).toBeFocused();
+  await expect(page.getByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: 'Productos' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos integrados' })).toBeVisible();
+  await page.getByRole('button', { name: 'Analítica' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
+  await page.getByRole('button', { name: 'Auditoría' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Auditoría administrativa' })).toBeVisible();
   await expect(page.getByText(/Sesión iniciada como/u)).toContainText('Administración E2E');
 
   const storedValues = await page.evaluate(() => JSON.stringify({
@@ -153,6 +162,10 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await page.getByRole('button', { name: 'Editar Aceite inicial E2E' }).click();
   await expect(page.getByRole('heading', { level: 3, name: 'Editar Aceite inicial E2E' })).toBeVisible();
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('1750.25');
+  await page.getByRole('button', { name: 'Resumen' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
+  await page.getByRole('button', { name: 'Productos' }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
   await page.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
   expect(requiredProduct(api.products(), 'aceite-inicial-e2e').price.amount).toBe(1_750.25);
@@ -213,6 +226,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
 
   // La recarga fuerza una nueva lectura GET del estado simulado y comprueba persistencia.
   await page.reload();
+  await page.getByRole('button', { name: 'Productos' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Buscar' }).fill(TECHNICAL_PRODUCT_ID);
   const persistedRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
@@ -251,6 +265,45 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   expect(api.requests.some(({ method, pathname }) => (
     method === 'DELETE' && pathname === `/api/admin/products/${TECHNICAL_PRODUCT_ID}`
   ))).toBe(true);
+});
+
+test('abre bajo demanda un detalle completo de pedido sin controles financieros', async ({ page }) => {
+  const orderId = 'ord_e2e_123456789012345678901234';
+  await installStatefulAdminApi(page, []);
+  await page.route('**/api/admin/orders/*', async (route) => {
+    await json(route, orderDetailFixture(orderId));
+  });
+  await page.route('**/api/admin/orders?*', async (route) => {
+    await json(route, {
+      rows: [{
+        id: orderId,
+        status: 'approved',
+        currency: 'ARS',
+        total_minor: 12_500,
+        item_count: 2,
+        delivery_method: 'correo_argentino',
+        full_name: 'Cliente E2E',
+        created_at: '2026-08-10T12:00:00.000Z',
+      }],
+    });
+  });
+
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await expect(page.getByRole('table', { name: 'Pedidos integrados del período' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Detalle de/u })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ver detalle' }).click();
+  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toBeFocused();
+  await expect(page.getByRole('table', { name: 'Items del pedido' })).toContainText('Producto E2E');
+  await expect(page.getByRole('table', { name: 'Pagos reportados por el proveedor' })).toContainText('Mercado Pago');
+  await expect(page.getByText(/no ofrece controles para modificar estados/u)).toBeVisible();
+  await expect(page.getByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoGlobalHorizontalOverflow(page);
+  await expect(page.getByRole('button', { name: 'Cerrar detalle' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar detalle' }).click();
+  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toHaveCount(0);
 });
 
 test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet y móvil', async ({ page }, testInfo) => {
@@ -299,13 +352,20 @@ test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet
   }
 });
 
-async function loginWithFixture(page: Page): Promise<void> {
+async function loginWithFixture(
+  page: Page,
+  section: 'summary' | 'products' = 'products',
+): Promise<void> {
   await page.getByRole('textbox', { name: 'Usuario' }).fill(FIXTURE_USERNAME);
   await page.getByLabel('Contraseña').fill(FIXTURE_PASSWORD);
   await page.getByRole('button', { name: 'Ingresar' }).click();
   await expect(
     page.getByRole('heading', { level: 1, name: 'Administración / Backoffice' }),
   ).toBeVisible();
+  if (section === 'products') {
+    await page.getByRole('button', { name: 'Productos' }).click();
+    await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
+  }
 }
 
 async function expectNoGlobalHorizontalOverflow(page: Page): Promise<void> {
@@ -490,7 +550,7 @@ async function installStatefulAdminApi(
 
 async function fulfillProtectedReadOnlyRoute(route: Route, pathname: string): Promise<void> {
   if (pathname === '/api/admin/summary') {
-    await json(route, {});
+    await json(route, adminSummary());
     return;
   }
   if (pathname === '/api/admin/orders' || pathname === '/api/admin/audit') {
@@ -502,6 +562,78 @@ async function fulfillProtectedReadOnlyRoute(route: Route, pathname: string): Pr
     return;
   }
   await json(route, { error: { code: 'NOT_FOUND' } }, 404);
+}
+
+function adminSummary() {
+  return {
+    order_count: 0,
+    approved_revenue_minor: 0,
+    approved_count: 0,
+    approved_payment_count: 0,
+    preference_pending_count: 0,
+    pending_count: 0,
+    rejected_count: 0,
+    cancelled_count: 0,
+    refunded_count: 0,
+    failed_count: 0,
+    average_ticket_minor: 0,
+    consented_session_count: 0,
+    page_view_count: 0,
+    page_view_session_count: 0,
+    product_view_session_count: 0,
+    cart_add_session_count: 0,
+    manual_payment_click_count: 0,
+    manual_payment_click_session_count: 0,
+    whatsapp_open_count: 0,
+    whatsapp_open_session_count: 0,
+  };
+}
+
+function orderDetailFixture(orderId: string) {
+  return {
+    order: {
+      id: orderId,
+      status: 'approved',
+      currency: 'ARS',
+      total_minor: 12_500,
+      products_total_minor: 10_000,
+      shipping_minor: 2_500,
+      item_count: 2,
+      created_at: '2026-08-10T12:00:00.000Z',
+      updated_at: '2026-08-10T12:05:00.000Z',
+      approved_at: '2026-08-10T12:05:00.000Z',
+      last_error_code: null,
+      delivery_method: 'correo_argentino',
+      full_name: 'Cliente E2E',
+      phone: '5491100000000',
+      address: 'Calle E2E 123',
+      locality: 'Mar del Plata',
+      province: 'Buenos Aires',
+      postal_code: 'B7600',
+      total_weight_grams: 500,
+    },
+    items: [{
+      product_id: 'producto-e2e',
+      name: 'Producto E2E',
+      presentation: '100 g',
+      sku: 'SKU-E2E',
+      quantity: 2,
+      unit_price_minor: 5_000,
+      subtotal_minor: 10_000,
+    }],
+    payments: [{
+      provider: 'mercadopago',
+      provider_payment_id: 'payment-e2e',
+      mapped_status: 'approved',
+      provider_status: 'approved',
+      status_detail: 'accredited',
+      amount_minor: 12_500,
+      currency: 'ARS',
+      approved_at: '2026-08-10T12:05:00.000Z',
+      provider_updated_at: '2026-08-10T12:05:00.000Z',
+      updated_at: '2026-08-10T12:05:00.000Z',
+    }],
+  };
 }
 
 function product(

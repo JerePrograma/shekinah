@@ -7,6 +7,7 @@ import {
 import type { FormEvent } from 'react';
 
 import { AdminPage } from '../pages/AdminPage';
+import type { AdminSection } from '../pages/AdminPage';
 import type { Navigate } from '../routing/routes';
 import { ProductManager } from './ProductManager';
 
@@ -33,6 +34,7 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [section, setSection] = useState<AdminSection>('summary');
   const submittingRef = useRef(false);
   const loggingOutRef = useRef(false);
   const usernameRef = useRef<HTMLInputElement | null>(null);
@@ -90,6 +92,7 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
       });
       const session = await readRequiredSession(response);
       setPassword('');
+      setSection('summary');
       setViewState({ status: 'authenticated', identity: session.identity });
     } catch {
       setPassword('');
@@ -115,6 +118,7 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
       }
       setUsername('');
       setPassword('');
+      setSection('summary');
       setViewState({ status: 'anonymous' });
     } catch {
       setError('No se pudo cerrar la sesión. Intentá nuevamente.');
@@ -212,11 +216,43 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
       {error === '' ? null : (
         <p className="container form-error admin-session-error" role="alert">{error}</p>
       )}
-      <ProductManager onUnauthorized={handleUnauthorized} />
-      <AdminPage navigate={navigate} onUnauthorized={handleUnauthorized} />
+      <nav className="admin-section-navigation" aria-label="Secciones administrativas">
+        <div className="container">
+          <ul>
+            {ADMIN_SECTIONS.map((item) => (
+              <li key={item.id}>
+                <button
+                  className="admin-section-navigation-button"
+                  type="button"
+                  aria-current={section === item.id ? 'page' : undefined}
+                  onClick={() => setSection(item.id)}
+                >
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+      <div hidden={section !== 'products'}>
+        <ProductManager onUnauthorized={handleUnauthorized} />
+      </div>
+      <AdminPage
+        navigate={navigate}
+        onUnauthorized={handleUnauthorized}
+        section={section}
+      />
     </>
   );
 }
+
+const ADMIN_SECTIONS: readonly Readonly<{ id: AdminSection; label: string }>[] = [
+  { id: 'summary', label: 'Resumen' },
+  { id: 'products', label: 'Productos' },
+  { id: 'orders', label: 'Pedidos' },
+  { id: 'analytics', label: 'Analítica' },
+  { id: 'audit', label: 'Auditoría' },
+];
 
 async function readOptionalSession(response: Response): Promise<AdminSession> {
   if (response.status === 401) return Object.freeze({ authenticated: false });

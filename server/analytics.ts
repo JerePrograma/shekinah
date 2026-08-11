@@ -64,8 +64,14 @@ export function parseAnalyticsEvent(value: unknown): AnalyticsEventInput {
   if (!/^\/(?:[^\s?#]*)?$/u.test(path)) {
     throw new HttpError(400, 'INVALID_ANALYTICS_EVENT', 'La ruta del evento no es válida.');
   }
+  if (path === '/admin' || path.startsWith('/admin/')) {
+    throw new HttpError(400, 'INVALID_ANALYTICS_EVENT', 'La ruta administrativa no admite analítica.');
+  }
   if (productId !== null && !/^[a-z0-9][a-z0-9-]{0,179}$/u.test(productId)) {
     throw new HttpError(400, 'INVALID_ANALYTICS_EVENT', 'El producto del evento no es válido.');
+  }
+  if (eventName === 'manual_payment_click' && (path !== '/carrito' || productId !== null)) {
+    throw new HttpError(400, 'INVALID_ANALYTICS_EVENT', 'El evento manual no es válido.');
   }
   return Object.freeze({
     eventId,

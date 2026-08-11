@@ -131,22 +131,118 @@ test('vacía el carrito únicamente después de una aprobación confirmada para 
     .toBeNull();
 });
 
-test('no envía analítica antes del consentimiento ni cuando el flag está cerrado', async ({ page }) => {
+test('respeta ausencia, rechazo, aceptación y revocación del consentimiento', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.removeItem('shekinah.analytics-consent.v1');
   });
-  let eventCount = 0;
+  const events: unknown[] = [];
   await page.route('**/api/analytics/events', async (route) => {
-    eventCount += 1;
+    events.push(route.request().postDataJSON());
     await route.fulfill({ status: 202, contentType: 'application/json', body: '{"accepted":true}' });
   });
+  await page.route('**/api/privacy/delete-session', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"deleted":true}' });
+  });
   await page.goto('/');
-  expect(eventCount).toBe(0);
-  await page.getByRole('button', { name: 'Aceptar analítica' }).click();
-  expect(eventCount).toBe(0);
-  await page.goto('/privacidad');
-  await expect(page.getByText(/Estado actual:/u)).toContainText('deshabilitada por configuración');
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Continuar sin analítica' }).click();
+  await page.getByRole('link', { name: 'Catálogo' }).first().click();
+  expect(events).toHaveLength(0);
+
+  await page.getByRole('link', { name: 'Privacidad' }).click();
+  await page.getByRole('button', { name: 'Aceptar analítica opcional' }).click();
+  await expect.poll(() => events.length).toBeGreaterThan(0);
+  await expect(page.getByText(/Estado actual:/u)).toContainText('aceptada');
+  await page.getByRole('link', { name: 'Catálogo' }).first().click();
+  await expect(page).toHaveURL(/\/catalogo$/u);
+  await expect.poll(() => events.filter(isPageView).length).toBeGreaterThan(0);
+
+  const countBeforeWithdrawal = events.length;
+  await page.getByRole('link', { name: 'Privacidad' }).click();
   await page.getByRole('button', { name: 'Retirar consentimiento y eliminar sesión' }).click();
-  await expect(page.getByText(/No había una sesión analítica local/iu)).toBeVisible();
-  expect(eventCount).toBe(0);
+  await expect(page.getByText(/servidor confirmó la eliminación/iu)).toBeVisible();
+  await page.getByRole('link', { name: 'Inicio' }).first().click();
+  expect(events).toHaveLength(countBeforeWithdrawal + 1);
 });
+
+test('mide sólo el clic manual válido y conserva Mercado Pago y WhatsApp separados', async ({ context, page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('shekinah.analytics-consent.v1');
+  });
+  const events: Array<Record<string, unknown>> = [];
+  let checkoutPreferenceCalls = 0;
+  await page.route('**/api/analytics/events', async (route) => {
+    events.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 202, contentType: 'application/json', body: '{"accepted":true}' });
+  });
+  await page.route('**/api/checkout/preferences', async (route) => {
+    checkoutPreferenceCalls += 1;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  });
+  await context.route('https://link.mercadopago.com.ar/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Destino simulado</p>' });
+  });
+  await context.route('https://wa.me/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>WhatsApp simulado</p>' });
+  });
+
+  await page.goto('/catalogo');
+  await page.getByRole('button', { name: 'Aceptar analítica' }).click();
+  await page.locator('[data-product]').first().getByRole('button', {
+    name: /Agregar .* al carrito/u,
+  }).click();
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+
+  const paymentLink = page.getByRole('link', { name: /Copiar .* y abrir Mercado Pago/u });
+  await expect(paymentLink).toHaveAttribute(
+    'href',
+    'https://link.mercadopago.com.ar/shekinahmoreno',
+  );
+  await paymentLink.click();
+  await expect(page.getByRole('textbox', { name: 'Nombre completo' })).toBeFocused();
+  expect(events.filter(isManualPaymentClick)).toHaveLength(0);
+
+  await page.getByRole('textbox', { name: 'Nombre completo' }).fill('Cliente de prueba');
+  await page.getByRole('textbox', { name: 'Celular' }).fill('5491100000000');
+  await page.getByRole('textbox', { name: 'Dirección' }).fill('Calle de prueba 123');
+  await page.getByRole('textbox', { name: 'Localidad' }).fill('Mar del Plata');
+  await page.getByRole('textbox', { name: 'Provincia' }).fill('Buenos Aires');
+  await page.getByRole('textbox', { name: 'Código postal' }).fill('B7600');
+
+  const paymentPopupPromise = page.waitForEvent('popup');
+  await paymentLink.click();
+  const paymentPopup = await paymentPopupPromise;
+  await paymentPopup.close();
+  await expect.poll(() => events.filter(isManualPaymentClick).length).toBe(1);
+
+  const manualEvent = events.find(isManualPaymentClick);
+  expect(manualEvent).toEqual(expect.objectContaining({
+    eventName: 'manual_payment_click',
+    path: '/carrito',
+  }));
+  expect(Object.keys(manualEvent ?? {}).sort()).toEqual([
+    'consentVersion', 'deviceClass', 'eventId', 'eventName', 'path', 'sessionId', 'source',
+  ]);
+  expect(checkoutPreferenceCalls).toBe(0);
+
+  const whatsappPopupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Enviar carrito por WhatsApp' }).click();
+  const whatsappPopup = await whatsappPopupPromise;
+  await whatsappPopup.close();
+  await expect.poll(() => events.filter(isWhatsappOpen).length).toBe(1);
+  expect(events.filter(isManualPaymentClick)).toHaveLength(1);
+  expect(checkoutPreferenceCalls).toBe(0);
+});
+
+function isPageView(value: unknown): boolean {
+  return typeof value === 'object' && value !== null &&
+    (value as Record<string, unknown>).eventName === 'page_view';
+}
+
+function isManualPaymentClick(value: Record<string, unknown>): boolean {
+  return value.eventName === 'manual_payment_click';
+}
+
+function isWhatsappOpen(value: Record<string, unknown>): boolean {
+  return value.eventName === 'whatsapp_open';
+}

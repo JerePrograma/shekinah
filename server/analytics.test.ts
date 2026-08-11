@@ -9,10 +9,9 @@ import {
 import { hmacSha256Hex } from './crypto';
 import { SqliteD1 } from './test/sqlite-d1';
 
-const migration = readFileSync(
-  resolve(process.cwd(), 'migrations', '0001_commerce.sql'),
-  'utf8',
-);
+const migration = ['0001_commerce.sql', '0006_analytics_manual_payment_click.sql']
+  .map((file) => readFileSync(resolve(process.cwd(), 'migrations', file), 'utf8'))
+  .join('\n');
 
 describe('analítica first-party', () => {
   it('acepta sólo eventos permitidos y rutas sin query o fragmento', () => {
@@ -30,6 +29,20 @@ describe('analítica first-party', () => {
       expect.objectContaining({ code: 'INVALID_ANALYTICS_EVENT' }),
     );
     expect(() => parseAnalyticsEvent({ ...base, path: '/catalogo?utm_source=x' })).toThrowError(
+      expect.objectContaining({ code: 'INVALID_ANALYTICS_EVENT' }),
+    );
+    expect(parseAnalyticsEvent({
+      ...base,
+      eventName: 'manual_payment_click',
+      path: '/carrito',
+    })).toMatchObject({ eventName: 'manual_payment_click', path: '/carrito', productId: null });
+    expect(() => parseAnalyticsEvent({
+      ...base,
+      eventName: 'manual_payment_click',
+      path: '/carrito',
+      productId: 'producto-prueba',
+    })).toThrowError(expect.objectContaining({ code: 'INVALID_ANALYTICS_EVENT' }));
+    expect(() => parseAnalyticsEvent({ ...base, path: '/admin' })).toThrowError(
       expect.objectContaining({ code: 'INVALID_ANALYTICS_EVENT' }),
     );
   });

@@ -101,7 +101,7 @@ npx wrangler d1 migrations list DB --remote
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
-El flujo aplica en orden `0001` a `0005`. `migrations/0004_catalog_admin.sql` crea la persistencia del ABM; antes de ella, las lecturas públicas conservan los 510 productos base y toda escritura administrativa responde `CATALOG_MIGRATION_REQUIRED`. `migrations/0005_admin_auth.sql` crea el rate limiting persistente del login; sin ella, el login falla cerrado. Verificar `d1_migrations`, `sqlite_schema`, índices y conteos sin consultar PII.
+El flujo aplica en orden `0001` a `0006`. `migrations/0004_catalog_admin.sql` crea la persistencia del ABM; antes de ella, las lecturas públicas conservan los 510 productos base y toda escritura administrativa responde `CATALOG_MIGRATION_REQUIRED`. `migrations/0005_admin_auth.sql` crea el rate limiting persistente del login; sin ella, el login falla cerrado. `migrations/0006_analytics_manual_payment_click.sql` amplía el CHECK analítico mediante reconstrucción controlada y recrea los índices existentes. Verificar `d1_migrations`, `sqlite_schema`, índices y conteos antes/después sin consultar PII.
 
 ### 3.1. R2 para imágenes administrativas
 

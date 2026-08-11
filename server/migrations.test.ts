@@ -7,6 +7,10 @@ const fulfillmentMigration = readFileSync(resolve(process.cwd(), 'migrations', '
 const checkoutIntentMigration = readFileSync(resolve(process.cwd(), 'migrations', '0003_checkout_intent_cart_fingerprint.sql'), 'utf8');
 const catalogMigration = readFileSync(resolve(process.cwd(), 'migrations', '0004_catalog_admin.sql'), 'utf8');
 const adminAuthMigration = readFileSync(resolve(process.cwd(), 'migrations', '0005_admin_auth.sql'), 'utf8');
+const analyticsManualPaymentMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0006_analytics_manual_payment_click.sql'),
+  'utf8',
+);
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -21,6 +25,8 @@ describe('migraciones D1', () => {
       database.exec(checkoutIntentMigration);
       database.exec(catalogMigration);
       database.exec(adminAuthMigration);
+      const legacyAnalytics = insertLegacyAnalytics(database);
+      database.exec(analyticsManualPaymentMigration);
       expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}\n${adminAuthMigration}`)).not.toThrow();
 
       const schema = database.prepare('SELECT name, type FROM sqlite_schema ORDER BY type, name').all();
@@ -33,7 +39,22 @@ describe('migraciones D1', () => {
         expect.objectContaining({ name: 'idx_catalog_product_mutations_updated', type: 'index' }),
         expect.objectContaining({ name: 'admin_login_rate_limits', type: 'table' }),
         expect.objectContaining({ name: 'idx_admin_login_rate_limits_updated', type: 'index' }),
+        expect.objectContaining({ name: 'idx_analytics_events_created', type: 'index' }),
+        expect.objectContaining({ name: 'idx_analytics_events_name_created', type: 'index' }),
+        expect.objectContaining({ name: 'idx_analytics_events_product', type: 'index' }),
       ]));
+      expect(schema).not.toContainEqual(expect.objectContaining({ name: 'analytics_events_v2' }));
+      expect(database.prepare(
+        'SELECT id, event_name, path, product_id FROM analytics_events ORDER BY id',
+      ).all()).toEqual(legacyAnalytics);
+      expect(() => database.prepare(`INSERT INTO analytics_events (
+        id, session_hash, event_name, path, product_id, source, device_class, created_at
+      ) VALUES ('manual-click', 'legacy-session-hash', 'manual_payment_click', '/carrito',
+        NULL, 'direct', 'desktop', '2026-08-10T00:00:00.000Z')`).run()).not.toThrow();
+      expect(() => database.prepare(`INSERT INTO analytics_events (
+        id, session_hash, event_name, path, product_id, source, device_class, created_at
+      ) VALUES ('unknown-event', 'legacy-session-hash', 'payment_approved', '/carrito',
+        NULL, 'direct', 'desktop', '2026-08-10T00:00:00.000Z')`).run()).toThrow();
       expect(database.prepare("SELECT cart_fingerprint FROM checkout_intents WHERE checkout_idempotency_key = 'historical-key'").get())
         .toEqual({ cart_fingerprint: 'historical-order-cart-fingerprint' });
       expect(database.prepare(`SELECT order_fulfillment.order_id
@@ -94,6 +115,42 @@ describe('migraciones D1', () => {
     }
   });
 });
+
+function insertLegacyAnalytics(database: DatabaseSync) {
+  const eventNames = [
+    'page_view',
+    'product_view',
+    'cart_add',
+    'cart_remove',
+    'checkout_start',
+    'checkout_redirect',
+    'whatsapp_open',
+    'consent_granted',
+  ] as const;
+  database.prepare(`INSERT INTO analytics_sessions (
+    session_hash, consent_version, created_at, updated_at
+  ) VALUES ('legacy-session-hash', '1', ?, ?)`).run(
+    '2026-08-10T00:00:00.000Z',
+    '2026-08-10T00:00:00.000Z',
+  );
+  for (const [index, eventName] of eventNames.entries()) {
+    database.prepare(`INSERT INTO analytics_events (
+      id, session_hash, event_name, path, product_id, source, device_class, created_at
+    ) VALUES (?, 'legacy-session-hash', ?, ?, ?, 'direct', 'desktop', ?)`)
+      .run(
+        `legacy-${String(index).padStart(2, '0')}`,
+        eventName,
+        eventName === 'page_view' ? '/' : '/carrito',
+        eventName === 'product_view' || eventName === 'cart_add' || eventName === 'cart_remove'
+          ? 'producto-prueba'
+          : null,
+        `2026-08-10T00:00:${String(index).padStart(2, '0')}.000Z`,
+      );
+  }
+  return database.prepare(
+    'SELECT id, event_name, path, product_id FROM analytics_events ORDER BY id',
+  ).all();
+}
 
 function insertOrder(database: DatabaseSync, id: string, idempotencyKey: string): void {
   database.prepare(`INSERT INTO orders (

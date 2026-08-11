@@ -18,7 +18,7 @@ Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado
 - `src/pages/CartPage.tsx`: edición de cantidades, eliminación, vaciado, total, Checkout Pro integrado, fallback manual de Link de Pago y WhatsApp.
 - `src/pages/PaymentReturnPage.tsx`: los retornos del proveedor sólo consultan el estado persistido del Checkout Pro integrado; no interpretan `status`, `collection_status` ni otros parámetros del navegador como aprobación.
 - `src/analytics/`: consentimiento explícito, sesión aleatoria revocable y eventos first-party mínimos.
-- `src/admin/AdminBackoffice.tsx`: gate de sesión, login y logout; monta `ProductManager` y `AdminPage` únicamente después de autenticación server-side.
+- `src/admin/AdminBackoffice.tsx`: gate de sesión, login, logout y navegación V2; monta `ProductManager` y `AdminPage` únicamente después de autenticación server-side y conserva el editor de productos al cambiar de sección.
 - `src/admin/ProductManager.tsx`: listado visual, búsqueda, filtros, resumen de estados, editor de producto, acciones rápidas de inventario/disponibilidad e imágenes con preview.
 
 Los datos públicos autorizados actuales son:
@@ -69,7 +69,9 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 
 `migrations/0005_admin_auth.sql` agrega `admin_login_rate_limits`. Las claves son HMAC de scopes de IP y usuario con un secreto exclusivo; no se persisten IP ni usuario en claro. Las ventanas se actualizan mediante upsert atómico y los registros vencidos se purgan durante nuevos intentos.
 
-Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; el candidato no modifica las migraciones aplicadas `0001` a `0005` ni rellena cantidades ficticias para el catálogo base.
+`migrations/0006_analytics_manual_payment_click.sql` reconstruye únicamente `analytics_events` para sumar `manual_payment_click` al CHECK cerrado, copia todas las filas existentes y recrea sus tres índices. El evento significa «clic válido en el Link de Pago manual» y no representa preferencia, pago enviado, aprobación ni venta.
+
+Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; el candidato no modifica las migraciones aplicadas `0001` a `0005`, agrega `0006` de forma versionada y no rellena cantidades ficticias para el catálogo base.
 
 ## Imágenes de catálogo administradas
 

@@ -12,8 +12,8 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 - cobro manual temporal mediante un Link de Pago autorizado de Mercado Pago sin monto predefinido: el carrito copia el total y abre el enlace para que el comprador lo ingrese;
 - Checkout Pro de Mercado Pago por redirección preparado para activación serverless cuando existan D1, credenciales y webhook verificados;
 - envío manual del carrito por WhatsApp al número expresamente autorizado;
-- pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1;
-- catálogo editable desde un backoffice visual con búsqueda, filtros, miniaturas, editor agrupado, stock opcional y disponibilidad; pedidos/analítica continúan de sólo lectura;
+- pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1; el flujo manual registra `manual_payment_click` como interacción, nunca como pago;
+- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría; conserva el ABM de catálogo y agrega detalle completo de pedidos estrictamente de sólo lectura;
 - política de privacidad, accesibilidad y vista 404.
 
 El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
@@ -34,6 +34,8 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 
 El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. D1 ya está separada y migrada para production/preview, pero Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar credenciales productivas de Mercado Pago, webhook y verificaciones propias de ese flujo. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
 
+El código de analítica first-party está listo para activación independiente de Checkout Pro: requiere consentimiento explícito, excluye `/admin`, usa HMAC server-side y mide el Link de Pago manual sin monto, carrito ni PII. Al cierre del inventario previo al despliegue de este candidato, la configuración externa continúa en `ANALYTICS_ENABLED=false`, no tiene `VITE_ANALYTICS_ENABLED` y todavía no posee `ANALYTICS_HMAC_SECRET`; la activación sólo se documentará como efectiva después de migración, deployment y smoke del SHA correcto.
+
 ## Rutas públicas
 
 - `/`: inicio;
@@ -46,6 +48,8 @@ El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VP
 - cualquier otra dirección, incluida `/enfoque`: vista 404.
 
 `/admin` no aparece en la navegación y sirve únicamente la pantalla de acceso hasta que el servidor confirma una sesión. `/api/admin/auth/login`, `/api/admin/auth/session` y `/api/admin/auth/logout` administran la sesión; todas las demás rutas `/api/admin/*` exigen en cada solicitud una cookie propia válida o, como compatibilidad opcional, un JWT válido de Cloudflare Access.
+
+Tras autenticarse, la navegación administrativa separa Resumen, Productos, Pedidos, Analítica y Auditoría. `ProductManager` permanece montado al cambiar de sección para conservar ediciones sin guardar. El detalle de pedido se consulta bajo demanda mediante `GET /api/admin/orders/[id]` y no expone mutaciones de estados, importes ni timestamps financieros.
 
 La gestión visual de imágenes del candidato admite JPEG, PNG y WebP de hasta 4 MiB, con preview local y validación server-side de tipo y firma binaria. Los binarios administrados requieren un bucket R2 mediante el binding `CATALOG_IMAGES`; las imágenes públicas se sirven por una ruta first-party. Los 484 assets legacy versionados nunca se borran desde el backoffice.
 

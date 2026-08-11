@@ -21,6 +21,11 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run build && npm run preview',
+    env: {
+      ...process.env,
+      VITE_ANALYTICS_ENABLED: 'true',
+      VITE_COMMERCE_ENABLED: 'false',
+    },
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
     timeout: 120_000,

@@ -63,6 +63,7 @@ const requiredFunctions = [
   'functions/api/admin/analytics/products.ts',
   'functions/api/admin/analytics/sources.ts',
   'functions/api/admin/analytics/devices.ts',
+  'functions/api/admin/analytics/trend.ts',
   'functions/api/admin/audit.ts',
   'functions/api/admin/exports/orders.csv.ts',
   'functions/api/admin/exports/analytics.csv.ts',

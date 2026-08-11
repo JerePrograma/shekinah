@@ -2,9 +2,9 @@
 
 Fecha de revisión: 2026-08-10.
 
-Base sincronizada y verificada antes del candidato de UX, inventario e imágenes:
+Base sincronizada y verificada antes del candidato Backoffice V2 y analítica manual:
 
-`a543c39c025a952f632f38c6bf97b4ea3501b0d1`
+`198138390162368e38d40f58e53756b932510b9b`
 
 Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
 
@@ -33,6 +33,8 @@ El candidato incorpora:
 - inventario opcional compatible con productos legacy y disponibilidad efectiva coherente en catálogo, carrito y servidor;
 - upload administrativo first-party preparado para JPEG/PNG/WebP mediante R2 ya configurado, pendiente de deployment y smoke del candidato;
 - analítica first-party con consentimiento;
+- evento `manual_payment_click` sin PII, importe ni carrito, separado de `whatsapp_open` y de los estados financieros;
+- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria y detalle de pedidos de sólo lectura bajo demanda;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
 
@@ -66,6 +68,8 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre de conf
 - la administración quedó operativa tras verificar por separado CI, deployment, login, logout y smoke ABM sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
+El código candidato agrega `migrations/0006_analytics_manual_payment_click.sql`, pero al cierre de este inventario esa migración todavía no está aplicada remotamente. También mantiene el backoffice fuera de la captura analítica mediante defensas en cliente y servidor. Este estado es «código listo / activación pendiente» hasta completar CI, migración, variables, secretos, deployment y smoke por entorno.
+
 El candidato posterior a `a543c39c025a952f632f38c6bf97b4ea3501b0d1` usa `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o mayor que cero. El carrito aplica `min(99, stockQuantity)` y el servidor revalida antes del Checkout Pro. No existe reserva ni decremento automático por venta.
 
 Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de hasta 4 MiB, con magic bytes validados en servidor. La referencia persistida es first-party y los objetos pertenecen a R2; reemplazo y eliminación sólo limpian objetos administrados no referenciados, nunca assets legacy.
@@ -81,7 +85,7 @@ Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar I
 - el pack Universal está `active`, usa Google Trust Services WE1 y cubre `shekinah.ar` y `*.shekinah.ar`; el handshake de `www` negocia TLS 1.3;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
 - producción usa `shekinah-commerce` y preview `shekinah-commerce-preview`, ambas creadas vacías y vinculadas como `DB`;
-- `d1_migrations` registra `0001` a `0005` en ambos entornos; `0004_catalog_admin.sql` y `0005_admin_auth.sql` están aplicadas;
+- `d1_migrations` registra `0001` a `0005` en ambos entornos; la nueva `0006_analytics_manual_payment_click.sql` permanece pendiente antes de la activación;
 - los cuatro nombres `ADMIN_*` requeridos existen como secretos cifrados separados en production y preview;
 - `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` están verificados por API con `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview; los flags cerrados y la retención permanecen configurados como variables no secretas;
 - Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
@@ -91,9 +95,9 @@ Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar I
 - ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`; no existe lectura pública directa por `r2.dev`, sólo la ruta first-party de Pages;
 - la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres `ADMIN_*` y `fail_open=false` permanecen sin cambios en production y preview.
 
-La última evidencia externa anterior al candidato corresponde al SHA `a543c39c025a952f632f38c6bf97b4ea3501b0d1`: CI `31429695666` y deployment Pages `62f735c6-0611-43a0-b5d9-eedf7d857234`, ambos `success`. No existe todavía CI, deployment ni smoke remoto del candidato actual.
+La última evidencia externa anterior al candidato corresponde al SHA `198138390162368e38d40f58e53756b932510b9b`: workflow `CI`, run `31449104996`, job `Verify` y check `Cloudflare Pages`, todos `success`; el deployment inmutable es `https://e8a4b3e3.shekinah-7dl.pages.dev`. No existe todavía CI, deployment ni smoke remoto del candidato Backoffice V2.
 
-El candidato sin SHA final sí tiene evidencia local: `npm run verify` aprobó lint, TypeScript, 39 archivos/179 pruebas Vitest, verificadores, build y 14 pruebas Playwright; `npm run build:pages` también aprobó. Esta evidencia local no habilita el upload productivo ni reemplaza CI, deployment y smoke del SHA definitivo.
+La evidencia local del candidato quedó verificada: `npm run verify` aprobó lint, TypeScript, 41 archivos/193 pruebas Vitest, verificadores, build y 16 pruebas Playwright; `npm run build:pages` también aprobó. Esta evidencia no sustituye CI, migraciones remotas, configuración, deployment ni smoke del SHA definitivo.
 
 Los flags server-side permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
 

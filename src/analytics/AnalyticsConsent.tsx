@@ -6,6 +6,7 @@ import {
   rejectAnalyticsConsent,
   subscribeAnalyticsConsent,
 } from './client';
+import { isAnalyticsClientEnabled } from '../commerce/env';
 
 export function AnalyticsConsent() {
   const [consent, setConsent] = useState(getAnalyticsConsent);
@@ -16,7 +17,7 @@ export function AnalyticsConsent() {
     [],
   );
 
-  if (consent !== 'undecided') return null;
+  if (!isAnalyticsClientEnabled() || consent !== 'undecided') return null;
 
   return (
     <aside className="consent-banner" aria-labelledby="analytics-consent-title">

@@ -45,6 +45,7 @@ export const ANALYTICS_EVENT_NAMES = [
   'cart_remove',
   'checkout_start',
   'checkout_redirect',
+  'manual_payment_click',
   'whatsapp_open',
   'consent_granted',
 ] as const;

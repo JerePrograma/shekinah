@@ -9,7 +9,7 @@ export const commercePrivacySections = [
     id: 'privacy-analytics',
     title: 'Analítica first-party opcional',
     description:
-      'Antes del consentimiento no se envían eventos analíticos. Al aceptar se crea una sesión aleatoria local y se registran únicamente eventos permitidos, ruta sin parámetros, producto opcional y categorías generales de fuente y dispositivo. Nombre, celular, domicilio y datos del pedido no se copian a la analítica.',
+      'Antes del consentimiento no se envían eventos analíticos. Al aceptar se crea una sesión aleatoria local y se registran únicamente eventos permitidos, ruta sin parámetros, producto opcional y categorías generales de fuente y dispositivo. El clic en el Link de Pago manual y la apertura de WhatsApp se miden como interacciones, no como pagos, sin monto ni contenido del carrito. Nombre, celular, domicilio y datos del pedido no se copian a la analítica.',
   },
   {
     id: 'privacy-retention',

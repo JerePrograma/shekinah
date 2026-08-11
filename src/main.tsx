@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { AnalyticsConsent } from './analytics/AnalyticsConsent';
 import { App } from './App';
 import { CartProvider } from './cart/CartContext';
 import './styles.css';
@@ -20,7 +19,6 @@ createRoot(rootElement).render(
   <StrictMode>
     <CartProvider>
       <App />
-      <AnalyticsConsent />
     </CartProvider>
   </StrictMode>,
 );

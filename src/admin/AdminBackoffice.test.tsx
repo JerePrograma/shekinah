@@ -97,7 +97,7 @@ describe('autenticación del backoffice', () => {
     expect(storageSnapshot()).not.toContain(FIXTURE_PASSWORD);
   });
 
-  it('entra al ProductManager y vuelve al login al cerrar sesión', async () => {
+  it('navega por secciones, preserva una edición de producto y vuelve al login', async () => {
     let authenticated = false;
     const fetchMock = vi.fn<typeof fetch>((input, init) => {
       const path = requestPath(input);
@@ -135,13 +135,25 @@ describe('autenticación del backoffice', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Administración / Backoffice' }),
     ).toBeVisible();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
+      target: { value: 'Edición todavía no guardada' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Analítica' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Analítica' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
+    expect(screen.getByRole('textbox', { name: 'Nombre' })).toHaveValue('Edición todavía no guardada');
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
 
     const username = await screen.findByRole('textbox', { name: 'Usuario' });
-    expect(username).toHaveFocus();
+    await waitFor(() => expect(username).toHaveFocus());
     expect(screen.queryByText('Catálogo de productos')).not.toBeInTheDocument();
     expect(authenticated).toBe(false);
     expect(
@@ -183,14 +195,39 @@ function authenticatedSession(): Response {
 }
 
 function protectedAdminResponse(path: string): Response {
-  if (path === '/api/admin/products') return json({ products: [] });
+  if (path === '/api/admin/products') return json({ products: [], imageStorageConfigured: false });
   if (path === '/api/admin/orders' || path === '/api/admin/audit') return json({ rows: [] });
   if (path.startsWith('/api/admin/orders?') || path.startsWith('/api/admin/audit?')) {
     return json({ rows: [] });
   }
   if (path.startsWith('/api/admin/analytics/')) return json([]);
-  if (path.startsWith('/api/admin/summary?')) return json({});
+  if (path.startsWith('/api/admin/summary?')) return json(adminSummary());
   return json({ error: { message: 'No encontrado.' } }, 404);
+}
+
+function adminSummary() {
+  return {
+    order_count: 0,
+    approved_revenue_minor: 0,
+    approved_count: 0,
+    approved_payment_count: 0,
+    preference_pending_count: 0,
+    pending_count: 0,
+    rejected_count: 0,
+    cancelled_count: 0,
+    refunded_count: 0,
+    failed_count: 0,
+    average_ticket_minor: 0,
+    consented_session_count: 0,
+    page_view_count: 0,
+    page_view_session_count: 0,
+    product_view_session_count: 0,
+    cart_add_session_count: 0,
+    manual_payment_click_count: 0,
+    manual_payment_click_session_count: 0,
+    whatsapp_open_count: 0,
+    whatsapp_open_session_count: 0,
+  };
 }
 
 function loginRequests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {

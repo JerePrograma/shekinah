@@ -56,17 +56,64 @@ export function parseAdminRange(request: Request): AdminRange {
 export async function getAdminSummary(database: D1Database, range: AdminRange): Promise<unknown> {
   const row = await database
     .prepare(
-      `SELECT
+      `WITH requested_range(from_at, to_at) AS (VALUES (?, ?)),
+       ranged_orders AS (
+         SELECT o.*,
+           CASE WHEN o.status = 'approved' AND EXISTS (
+             SELECT 1 FROM payments p
+             WHERE p.order_id = o.id
+               AND p.mapped_status = 'approved'
+               AND p.amount_minor = o.total_minor
+               AND p.currency = o.currency
+               AND p.external_reference = o.id
+           ) THEN 1 ELSE 0 END AS confirmed_approved
+         FROM orders o, requested_range r
+         WHERE o.created_at BETWEEN r.from_at AND r.to_at
+       ),
+       payment_metrics AS (
+         SELECT COUNT(*) AS approved_payment_count
+         FROM payments p
+         JOIN orders o ON o.id = p.order_id
+         JOIN requested_range r
+         WHERE o.created_at BETWEEN r.from_at AND r.to_at
+           AND p.mapped_status = 'approved'
+       ),
+       analytics_metrics AS (
+         SELECT
+           COUNT(DISTINCT session_hash) AS consented_session_count,
+           SUM(CASE WHEN event_name = 'page_view' THEN 1 ELSE 0 END) AS page_view_count,
+           COUNT(DISTINCT CASE WHEN event_name = 'page_view' THEN session_hash END) AS page_view_session_count,
+           COUNT(DISTINCT CASE WHEN event_name = 'product_view' THEN session_hash END) AS product_view_session_count,
+           COUNT(DISTINCT CASE WHEN event_name = 'cart_add' THEN session_hash END) AS cart_add_session_count,
+           SUM(CASE WHEN event_name = 'manual_payment_click' THEN 1 ELSE 0 END) AS manual_payment_click_count,
+           COUNT(DISTINCT CASE WHEN event_name = 'manual_payment_click' THEN session_hash END) AS manual_payment_click_session_count,
+           SUM(CASE WHEN event_name = 'whatsapp_open' THEN 1 ELSE 0 END) AS whatsapp_open_count,
+           COUNT(DISTINCT CASE WHEN event_name = 'whatsapp_open' THEN session_hash END) AS whatsapp_open_session_count
+         FROM analytics_events e, requested_range r
+         WHERE e.created_at BETWEEN r.from_at AND r.to_at
+       )
+       SELECT
         COUNT(*) AS order_count,
-        COALESCE(SUM(CASE WHEN status = 'approved' THEN total_minor ELSE 0 END), 0) AS approved_revenue_minor,
-        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
-        SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) AS refunded_count,
-        COALESCE(AVG(CASE WHEN status = 'approved' THEN total_minor END), 0) AS average_ticket_minor
-       FROM orders
-       WHERE created_at BETWEEN ? AND ?`,
+        COALESCE(SUM(CASE WHEN confirmed_approved = 1 THEN total_minor ELSE 0 END), 0) AS approved_revenue_minor,
+        COALESCE(SUM(confirmed_approved), 0) AS approved_count,
+        COALESCE(SUM(CASE WHEN status = 'preference_pending' THEN 1 ELSE 0 END), 0) AS preference_pending_count,
+        COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_count,
+        COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejected_count,
+        COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_count,
+        COALESCE(SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END), 0) AS refunded_count,
+        COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count,
+        COALESCE(AVG(CASE WHEN confirmed_approved = 1 THEN total_minor END), 0) AS average_ticket_minor,
+        payment_metrics.approved_payment_count,
+        analytics_metrics.consented_session_count,
+        COALESCE(analytics_metrics.page_view_count, 0) AS page_view_count,
+        analytics_metrics.page_view_session_count,
+        analytics_metrics.product_view_session_count,
+        analytics_metrics.cart_add_session_count,
+        COALESCE(analytics_metrics.manual_payment_click_count, 0) AS manual_payment_click_count,
+        analytics_metrics.manual_payment_click_session_count,
+        COALESCE(analytics_metrics.whatsapp_open_count, 0) AS whatsapp_open_count,
+        analytics_metrics.whatsapp_open_session_count
+       FROM ranged_orders, payment_metrics, analytics_metrics`,
     )
     .bind(range.from, range.to)
     .first<Record<string, unknown>>();
@@ -110,7 +157,7 @@ export async function getAdminOrder(database: D1Database, id: string): Promise<u
     .all<Record<string, unknown>>();
   const payments = await database
     .prepare(
-      `SELECT provider_payment_id, mapped_status, provider_status, status_detail,
+      `SELECT 'mercadopago' AS provider, provider_payment_id, mapped_status, provider_status, status_detail,
               amount_minor, currency, approved_at, provider_updated_at, updated_at
        FROM payments WHERE order_id = ? ORDER BY updated_at DESC`,
     )
@@ -125,14 +172,19 @@ export async function getAnalyticsFunnel(database: D1Database, range: AdminRange
       `SELECT event_name, COUNT(*) AS event_count, COUNT(DISTINCT session_hash) AS session_count
        FROM analytics_events
        WHERE created_at BETWEEN ? AND ?
-         AND event_name IN ('page_view', 'product_view', 'cart_add', 'checkout_start', 'checkout_redirect')
+         AND event_name IN (
+           'page_view', 'product_view', 'cart_add', 'manual_payment_click',
+           'whatsapp_open', 'checkout_start', 'checkout_redirect'
+         )
        GROUP BY event_name
        ORDER BY CASE event_name
          WHEN 'page_view' THEN 1
          WHEN 'product_view' THEN 2
          WHEN 'cart_add' THEN 3
-         WHEN 'checkout_start' THEN 4
-         ELSE 5 END`,
+         WHEN 'manual_payment_click' THEN 4
+         WHEN 'whatsapp_open' THEN 5
+         WHEN 'checkout_start' THEN 6
+         ELSE 7 END`,
     )
     .bind(range.from, range.to)
     .all<Record<string, unknown>>();
@@ -142,16 +194,65 @@ export async function getAnalyticsFunnel(database: D1Database, range: AdminRange
 export async function getAnalyticsProducts(database: D1Database, range: AdminRange): Promise<unknown> {
   const result = await database
     .prepare(
-      `SELECT product_id,
-              SUM(CASE WHEN event_name = 'product_view' THEN 1 ELSE 0 END) AS views,
-              SUM(CASE WHEN event_name = 'cart_add' THEN 1 ELSE 0 END) AS cart_adds
-       FROM analytics_events
-       WHERE created_at BETWEEN ? AND ? AND product_id IS NOT NULL
+      `WITH product_sessions AS (
+         SELECT product_id, session_hash,
+           SUM(CASE WHEN event_name = 'product_view' THEN 1 ELSE 0 END) AS view_events,
+           SUM(CASE WHEN event_name = 'cart_add' THEN 1 ELSE 0 END) AS cart_add_events
+         FROM analytics_events
+         WHERE created_at BETWEEN ? AND ?
+           AND product_id IS NOT NULL
+           AND event_name IN ('product_view', 'cart_add')
+         GROUP BY product_id, session_hash
+       )
+       SELECT product_id,
+              SUM(view_events) AS views,
+              SUM(cart_add_events) AS cart_adds,
+              SUM(CASE WHEN view_events > 0 THEN 1 ELSE 0 END) AS view_sessions,
+              SUM(CASE WHEN cart_add_events > 0 THEN 1 ELSE 0 END) AS cart_add_sessions,
+              SUM(CASE WHEN view_events > 0 AND cart_add_events > 0 THEN 1 ELSE 0 END) AS converted_sessions
+       FROM product_sessions
        GROUP BY product_id
        ORDER BY cart_adds DESC, views DESC
        LIMIT ?`,
     )
     .bind(range.from, range.to, range.limit)
+    .all<Record<string, unknown>>();
+  return result.results ?? [];
+}
+
+export async function getAnalyticsTrend(database: D1Database, range: AdminRange): Promise<unknown> {
+  const result = await database
+    .prepare(
+      `WITH RECURSIVE dates(day) AS (
+         SELECT substr(?, 1, 10)
+         UNION ALL
+         SELECT date(day, '+1 day') FROM dates WHERE day < substr(?, 1, 10)
+       ),
+       daily AS (
+         SELECT substr(created_at, 1, 10) AS day,
+           COUNT(DISTINCT session_hash) AS session_count,
+           SUM(CASE WHEN event_name = 'page_view' THEN 1 ELSE 0 END) AS page_view_count,
+           SUM(CASE WHEN event_name = 'product_view' THEN 1 ELSE 0 END) AS product_view_count,
+           SUM(CASE WHEN event_name = 'cart_add' THEN 1 ELSE 0 END) AS cart_add_count,
+           SUM(CASE WHEN event_name = 'manual_payment_click' THEN 1 ELSE 0 END) AS manual_payment_click_count,
+           SUM(CASE WHEN event_name = 'whatsapp_open' THEN 1 ELSE 0 END) AS whatsapp_open_count,
+           SUM(CASE WHEN event_name = 'checkout_redirect' THEN 1 ELSE 0 END) AS checkout_redirect_count
+         FROM analytics_events
+         WHERE created_at BETWEEN ? AND ?
+         GROUP BY substr(created_at, 1, 10)
+       )
+       SELECT dates.day,
+         COALESCE(daily.session_count, 0) AS session_count,
+         COALESCE(daily.page_view_count, 0) AS page_view_count,
+         COALESCE(daily.product_view_count, 0) AS product_view_count,
+         COALESCE(daily.cart_add_count, 0) AS cart_add_count,
+         COALESCE(daily.manual_payment_click_count, 0) AS manual_payment_click_count,
+         COALESCE(daily.whatsapp_open_count, 0) AS whatsapp_open_count,
+         COALESCE(daily.checkout_redirect_count, 0) AS checkout_redirect_count
+       FROM dates LEFT JOIN daily ON daily.day = dates.day
+       ORDER BY dates.day`,
+    )
+    .bind(range.from, range.to, range.from, range.to)
     .all<Record<string, unknown>>();
   return result.results ?? [];
 }

@@ -28,8 +28,10 @@ export function getAnalyticsConsent(): AnalyticsConsent {
 export async function grantAnalyticsConsent(): Promise<void> {
   setConsent('accepted');
   if (!isAnalyticsClientEnabled()) return;
+  const path = sanitizePath(window.location.pathname);
+  if (isAdminPath(path)) return;
   getOrCreateSessionId();
-  await trackAnalyticsEvent('consent_granted', { path: sanitizePath(window.location.pathname) });
+  await trackAnalyticsEvent('consent_granted', { path });
 }
 
 export function rejectAnalyticsConsent(): void {
@@ -65,6 +67,8 @@ export async function trackAnalyticsEvent(
   options: Readonly<{ path?: string; productId?: string }> = {},
 ): Promise<void> {
   if (!isAnalyticsClientEnabled() || getAnalyticsConsent() !== 'accepted') return;
+  const path = sanitizePath(options.path ?? window.location.pathname);
+  if (isAdminPath(path)) return;
   const sessionId = getOrCreateSessionId();
   if (sessionId === null) return;
   const payload = {
@@ -72,7 +76,7 @@ export async function trackAnalyticsEvent(
     eventName,
     sessionId,
     consentVersion: ANALYTICS_CONSENT_VERSION,
-    path: sanitizePath(options.path ?? window.location.pathname),
+    path,
     ...(options.productId === undefined ? {} : { productId: options.productId }),
     source: classifySource(),
     deviceClass: classifyDevice(),
@@ -161,4 +165,8 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
     value,
   );
+}
+
+function isAdminPath(path: string): boolean {
+  return path === '/admin' || path.startsWith('/admin/');
 }

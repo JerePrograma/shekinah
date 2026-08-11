@@ -96,7 +96,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql` y `migrations/0005_admin_auth.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler.
+Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql` y `migrations/0006_analytics_manual_payment_click.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler.
 
 Antes de aplicarlas:
 

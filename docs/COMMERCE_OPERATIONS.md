@@ -14,6 +14,8 @@ Procedimiento operativo mínimo:
 
 Este flujo no escribe `orders`, `payments` ni `payment_events` en D1 y no recibe Webhooks del Link de Pago generado en el panel. No usar las consultas del backoffice para inferir su estado. Mantener registro operativo externo sólo según la política del negocio y sin copiar datos sensibles al repositorio.
 
+Con consentimiento y analítica habilitada, un clic válido en el enlace registra `manual_payment_click`; la apertura del canal asistido registra `whatsapp_open`. Ambos son interacciones first-party sin monto, carrito ni PII. No sumarlos a pedidos, pagos aprobados, revenue ni «ventas».
+
 ## Controles diarios de Checkout Pro
 
 Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:

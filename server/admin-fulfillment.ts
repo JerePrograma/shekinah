@@ -57,7 +57,7 @@ export async function getAdminOrderWithFulfillment(
     .all<Record<string, unknown>>();
   const payments = await database
     .prepare(
-      `SELECT provider_payment_id, mapped_status, provider_status, status_detail,
+      `SELECT 'mercadopago' AS provider, provider_payment_id, mapped_status, provider_status, status_detail,
               amount_minor, currency, approved_at, provider_updated_at, updated_at
        FROM payments WHERE order_id = ? ORDER BY updated_at DESC`,
     )
