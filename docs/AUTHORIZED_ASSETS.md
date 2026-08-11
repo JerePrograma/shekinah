@@ -9,6 +9,16 @@
 - modo original verificado: RGBA;
 - SHA-256: `cee7db1812dc39fb9e2a816e8c29bd4922b97752fc4aceae68eabf3985a37747`.
 
+## Favicon de Shekinah
+
+- archivo: `public/assets/favicon-shekinah.svg`;
+- MIME: `image/svg+xml`;
+- área vectorial: 64 × 64 mediante `viewBox="0 0 64 64"`;
+- tamaño: 526 bytes;
+- SHA-256: `d9851118d9a6c9d3f39324273a86800875561da4822c81e5692f2c5ddbe1ea97`.
+
+Es una adaptación mínima autorizada del único logo institucional: conserva el círculo salvia, la hoja triple con nervaduras y la paleta oficial `#b6cab1`/`#5b873d`, y omite únicamente el texto que no resulta legible a 16 × 16 px. No contiene scripts, recursos externos, fuentes ni contenido activo. El navegador la carga desde una ruta first-party declarada en `index.html`; storefront y administración comparten el mismo documento.
+
 ## Imágenes del catálogo
 
 Están autorizados los 484 binarios históricos exactos ubicados en `public/images/original/catalog/` y declarados individualmente en `catalog/catalog-assets.json`:
@@ -23,7 +33,7 @@ Están autorizados los 484 binarios históricos exactos ubicados en `public/imag
 
 El manifiesto registra para cada archivo su ruta, SHA-256, extensión, tamaño, productos asociados y cantidad de referencias. Los binarios se copiaron sin recomprimir, redimensionar ni alterar.
 
-`scripts/verify-assets.mjs` aplica una allowlist exacta compuesta por el logo y el manifiesto. Falla ante cambios de hash o tamaño, firmas y extensiones incoherentes, archivos inesperados, huérfanos, referencias externas o faltantes.
+`scripts/verify-assets.mjs` aplica una allowlist exacta compuesta por el logo, el favicon y el manifiesto. Falla ante cambios de hash o tamaño, firmas y extensiones incoherentes, contenido activo o externo en el favicon, archivos inesperados, huérfanos, referencias externas o faltantes.
 
 ## Imágenes administrativas candidatas
 
@@ -48,7 +58,7 @@ No están autorizados:
 - imágenes remotas;
 - el logo como reemplazo de productos sin imagen;
 - fotografías, iconos, fuentes o videos no declarados;
-- recursos generados, redibujados o descargados nuevamente;
+- recursos generados, redibujados o descargados nuevamente fuera de una adaptación institucional expresamente autorizada y documentada;
 - recursos institucionales legacy.
 
 La incorporación de otro activo requiere autorización explícita, procedencia documentada y actualización deliberada del manifiesto y los verificadores.

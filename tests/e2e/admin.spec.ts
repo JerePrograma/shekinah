@@ -52,6 +52,17 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   const api = await installStatefulAdminApi(page, []);
 
   await page.goto('/admin');
+  await expect(page).toHaveTitle('Administración | Shekinah');
+
+  const favicon = page.locator('head link[rel~="icon"]');
+  await expect(favicon).toHaveAttribute('href', '/assets/favicon-shekinah.svg');
+  await expect(favicon).toHaveAttribute('type', 'image/svg+xml');
+  await expect(favicon).toHaveAttribute('sizes', 'any');
+  const faviconResponse = await page.request.get('/assets/favicon-shekinah.svg');
+  expect(faviconResponse.status()).toBe(200);
+  expect(faviconResponse.headers()['content-type']).toContain('image/svg+xml');
+  expect((await faviconResponse.body()).byteLength).toBeGreaterThan(0);
+
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Usuario' })).toHaveAttribute(
     'autocomplete',

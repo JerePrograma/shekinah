@@ -12,6 +12,12 @@ const logo = Object.freeze({
   bitDepth: 8,
   colorType: 6,
 });
+const favicon = Object.freeze({
+  path: 'public/assets/favicon-shekinah.svg',
+  bytes: 526,
+  sha256: 'd9851118d9a6c9d3f39324273a86800875561da4822c81e5692f2c5ddbe1ea97',
+  viewBox: '0 0 64 64',
+});
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -47,6 +53,22 @@ const logoFailures = [
 
 if (logoFailures.length > 0) {
   throw new Error(`El logo autorizado no coincide: ${logoFailures.join(', ')}.`);
+}
+
+const faviconBytes = await readFile(resolve(projectRoot, favicon.path));
+const faviconSource = faviconBytes.toString('utf8');
+const faviconFailures = [
+  faviconBytes.length === favicon.bytes ? null : `tamaño=${faviconBytes.length}`,
+  sha256(faviconBytes) === favicon.sha256 ? null : `sha256=${sha256(faviconBytes)}`,
+  faviconSource.startsWith('<svg xmlns="http://www.w3.org/2000/svg"') ? null : 'firma SVG',
+  faviconSource.includes(`viewBox="${favicon.viewBox}"`) ? null : 'viewBox',
+  /<(?:foreignObject|script)\b|\b(?:href|src)=|url\(/iu.test(faviconSource)
+    ? 'contenido externo o activo'
+    : null,
+].filter(Boolean);
+
+if (faviconFailures.length > 0) {
+  throw new Error(`El favicon autorizado no coincide: ${faviconFailures.join(', ')}.`);
 }
 
 const assetManifest = JSON.parse(
@@ -88,5 +110,5 @@ for (const asset of assetManifest.images) {
 }
 
 console.log(
-  `Activos verificados: logo exacto y ${assetManifest.images.length} imágenes de catálogo declaradas, referenciadas y sin huérfanos.`,
+  `Activos verificados: logo y favicon exactos, más ${assetManifest.images.length} imágenes de catálogo declaradas, referenciadas y sin huérfanos.`,
 );

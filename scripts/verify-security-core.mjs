@@ -170,6 +170,7 @@ function verifyTrackedFiles() {
 
   const assetManifest = JSON.parse(readText(catalogAssetManifestPath));
   const expectedImages = [
+    'public/assets/favicon-shekinah.svg',
     'public/assets/logo-shekinah.png',
     ...assetManifest.images.map(({ path }) => `public${path}`),
   ].sort();
