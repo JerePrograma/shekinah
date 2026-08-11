@@ -91,7 +91,7 @@ El carrito nunca acepta más de `min(99, stockQuantity)` por línea y Checkout P
 
 La carga admite JPEG, PNG y WebP de hasta 4 MiB. El preview local no confirma persistencia. El servidor valida magic bytes, genera la key y sólo escribe mediante la API administrativa autenticada. En reemplazo debe conservarse la imagen anterior hasta que la nueva referencia quede persistida; sólo se limpian objetos administrados no referenciados. Nunca eliminar archivos de `/images/original/catalog/`.
 
-R2 y `CATALOG_IMAGES` están configurados con `shekinah` para production y `shekinah-preview` para preview. Ambos buckets usan clase Standard/default y mantienen `publicR2DevEnabled=false`; la lectura comercial pasa exclusivamente por Pages. El upload del candidato aún no debe operarse como productivo hasta completar commit, CI, deployment del SHA definitivo y smoke autenticado. Un fallo de infraestructura nunca debe resolverse desactivando validaciones ni guardando imágenes en D1/Git.
+R2 y `CATALOG_IMAGES` están configurados y desplegados con `shekinah` para production y `shekinah-preview` para preview. Ambos buckets usan clase Standard/default y mantienen `publicR2DevEnabled=false`; la lectura comercial pasa exclusivamente por Pages. El smoke autenticado de upload/reemplazo/delete sigue no disponible por ausencia de credencial administrativa en claro. Un fallo de infraestructura nunca debe resolverse desactivando validaciones ni guardando imágenes en D1/Git.
 
 La auditoría registra:
 
@@ -108,11 +108,12 @@ Los intentos de login se limitan en D1 por IP y por usuario mediante scopes HMAC
 
 ## Reportes
 
-- `summary`: pedidos, aprobados, pendientes, rechazados, facturación aprobada y ticket promedio.
-- `analytics/funnel`: page view, product view, agregado, inicio y redirección de checkout.
-- `analytics/products`: vistas y agregados por producto.
+- `summary`: separa sesiones e interacciones consentidas de pedidos, pagos aprobados, facturación confirmada y ticket promedio; un click manual nunca alimenta revenue.
+- `analytics/funnel`: sesiones únicas con page view, product view, agregado, clic manual, WhatsApp e hitos del checkout integrado.
+- `analytics/products`: eventos y sesiones de vistas/agregados por producto, con conversión segura y sin divisiones inválidas.
 - `analytics/sources`: fuente agrupada.
 - `analytics/devices`: clase de dispositivo agrupada.
+- `analytics/trend`: serie diaria agregada en D1 para sesiones y eventos relevantes.
 - CSV de pedidos: hasta 1.000 filas por rango.
 - CSV de analítica: hasta 1.000 filas por rango.
 
@@ -122,7 +123,7 @@ Las celdas CSV que comienzan con caracteres interpretables como fórmula se pref
 
 El código no elimina pedidos, pagos, webhooks ni auditorías automáticamente. Para analítica, `purgeAnalyticsIfDue` reclama como máximo una ejecución por mes y elimina eventos, sesiones huérfanas y revocaciones con fecha estrictamente anterior al corte. Si la purga falla, libera el reclamo para permitir un reintento.
 
-La política autorizada es de 730 días. Antes de habilitar `ANALYTICS_ENABLED=true`, configurar `ANALYTICS_RETENTION_DAYS=730`, comprobar el binding D1 y registrar evidencia de la primera ejecución controlada. Las revocaciones conservan sólo el HMAC de la sesión hasta alcanzar ese mismo corte.
+La política autorizada y configurada es de 730 días. `ANALYTICS_ENABLED=true`, `ANALYTICS_RETENTION_DAYS=730`, las D1 aisladas y los HMAC independientes quedaron verificados el 2026-08-11. Las revocaciones conservan sólo el HMAC de la sesión hasta alcanzar ese mismo corte.
 
 No ejecutar borrados masivos sin backup y plan de reversión.
 

@@ -71,7 +71,7 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 
 `migrations/0006_analytics_manual_payment_click.sql` reconstruye únicamente `analytics_events` para sumar `manual_payment_click` al CHECK cerrado, copia todas las filas existentes y recrea sus tres índices. El evento significa «clic válido en el Link de Pago manual» y no representa preferencia, pago enviado, aprobación ni venta.
 
-Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; el candidato no modifica las migraciones aplicadas `0001` a `0005`, agrega `0006` de forma versionada y no rellena cantidades ficticias para el catálogo base.
+Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0005` permanecen inmutables, `0006` está aplicada de forma versionada en ambas D1 y no se rellenan cantidades ficticias para el catálogo base.
 
 ## Imágenes de catálogo administradas
 
@@ -79,7 +79,7 @@ Los 484 binarios legacy permanecen versionados e inmutables. El upload administr
 
 El servidor acepta únicamente JPEG, PNG y WebP de hasta 4 MiB, comprueba MIME y magic bytes y genera la key. En reemplazo persiste primero la nueva referencia del producto; sólo entonces intenta eliminar la anterior cuando es un objeto administrado y no está compartido. Si la persistencia D1 falla después del upload, intenta retirar exclusivamente el objeto nuevo. Quitar una imagen nunca elimina un asset legacy. La baja lógica de un producto persiste primero el tombstone e intenta limpiar después únicamente sus objetos R2 administrados que ya no estén compartidos. Ese cleanup es best-effort: un fallo externo de `R2.delete` puede dejar un objeto huérfano que debe auditarse y reintentarse de forma segura.
 
-Producción reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`, ambos bajo el binding `CATALOG_IMAGES` de Pages. R2 está activo; los buckets conservan clase Standard/default y `publicR2DevEnabled=false`, de modo que la lectura pública sólo se expone por la ruta first-party. La infraestructura está verificada, pero no se debe afirmar upload productivo a partir del selector, el binding o una preview local: faltan commit, CI, deployment del SHA definitivo y smoke autenticado.
+Producción reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`, ambos bajo el binding `CATALOG_IMAGES` de Pages. R2 está activo; los buckets conservan clase Standard/default y `publicR2DevEnabled=false`, de modo que la lectura pública sólo se expone por la ruta first-party. El deployment del SHA funcional preserva ambos bindings. El smoke autenticado de upload/reemplazo/delete no se repitió en la activación analítica por no disponer de la credencial administrativa en claro.
 
 ## Fallback manual temporal autorizado
 
@@ -119,6 +119,8 @@ Los siguientes estados corresponden exclusivamente al Checkout Pro integrado:
 Una notificación tardía no degrada un pedido ya aprobado a pendiente, rechazado o cancelado. Un reintegro puede llevarlo a `refunded`, estado que tampoco se degrada por notificaciones posteriores.
 
 ## Analítica y privacidad
+
+La analítica first-party está habilitada en preview y producción desde el 2026-08-11 con `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true`, HMAC independientes y retención 730. Checkout Pro continúa deshabilitado y sus métricas financieras no se completan con eventos manuales.
 
 No se dispara ninguna solicitud analítica antes de aceptar el consentimiento. Los eventos permitidos son una lista cerrada y contienen sólo:
 

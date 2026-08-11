@@ -26,19 +26,20 @@ Configuración de referencia: `wrangler.example.jsonc`.
 
 Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
 
-## Estado externo verificado el 2026-08-10
+## Estado externo verificado el 2026-08-11
 
 - build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
 - binding `DB`: `shekinah-commerce` en producción y `shekinah-commerce-preview` en preview;
-- migraciones `0001` a `0005`: aplicadas y sin pendientes en ambas D1;
-- variables server-side mínimas y flags cerrados: presentes en ambos entornos;
+- migraciones `0001` a `0006`: aplicadas y sin pendientes en ambas D1;
+- variables server-side: analítica activa, retención 730 y comercio cerrado en ambos entornos;
 - secretos administrativos: cuatro nombres cifrados presentes en ambos entornos, valores no inspeccionables;
+- secreto analítico: `ANALYTICS_HMAC_SECRET` presente como `secret_text` con valor independiente por entorno;
 - Zero Trust y Access: no configurados; el código lo admite sólo como fallback opcional;
 - runtime de producción y preview: `Fail closed`;
-- Checkout Pro y analítica: continúan deshabilitados y sin secretos de proveedor.
+- Checkout Pro: continúa deshabilitado y sin secretos de proveedor; analítica first-party activa bajo consentimiento.
 - R2: activo, con bucket existente `shekinah` reutilizado en producción y bucket aislado `shekinah-preview` en preview;
 - binding `CATALOG_IMAGES`: configurado en producción y preview; ambos buckets Standard/default, `publicR2DevEnabled=false` y lectura pública exclusivamente first-party mediante Pages;
-- upload administrativo: infraestructura lista, pero candidato todavía sin deployment ni smoke productivo.
+- upload administrativo: infraestructura y deployment listos; smoke autenticado de imágenes no repetido en esta activación por ausencia de credencial en claro.
 - zona DNS `shekinah.ar`: `active`, delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`;
 - DNSSEC: deshabilitado, sin DS publicado en `.ar`; estado inicial válido y sin cadena rota;
 - custom domain del apex, verificación y validación: `active`; CNAME proxied al dominio técnico de Pages;
@@ -142,7 +143,7 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 
 - fallback manual de Link de Pago y WhatsApp: autorizado en código desde el 2026-08-10;
 - Checkout Pro automatizado: deshabilitado;
-- analítica: deshabilitada;
+- analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 
 ## Verificación
@@ -163,4 +164,4 @@ Después del despliegue:
 - comprobar que cliente y servidor rechacen cantidades superiores a `min(99, stock)`;
 - comprobar formato/tamaño/firma, rutas first-party y cleanup en R2 sin tocar assets legacy ni habilitar `r2.dev`.
 
-La configuración de Pages, D1, migraciones, bindings `DB`/`CATALOG_IMAGES`, nombres de secretos administrativos, `Fail closed` y aislamiento R2 fue verificada el 2026-08-10. Zero Trust/Access continúa ausente por diseño opcional; Mercado Pago Checkout Pro y analítica permanecen deshabilitados. El deployment y smoke del candidato deben registrarse por SHA exacto.
+La configuración de Pages, D1, migraciones `0001` a `0006`, bindings `DB`/`CATALOG_IMAGES`, nombres de secretos administrativos y analíticos, `Fail closed` y aislamiento R2 quedó verificada el 2026-08-11. Zero Trust/Access continúa ausente por diseño opcional y Mercado Pago Checkout Pro permanece deshabilitado. El SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8`, CI `31452548845`, deployments y smokes analíticos quedaron comprobados; el smoke autenticado de administración no se repitió por ausencia de credencial en claro.

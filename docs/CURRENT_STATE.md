@@ -1,12 +1,12 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-10.
+Fecha de revisión: 2026-08-11.
 
-Base sincronizada y verificada antes del candidato Backoffice V2 y analítica manual:
+SHA funcional publicado, validado y usado para la activación de Backoffice V2 y analítica manual:
 
-`198138390162368e38d40f58e53756b932510b9b`
+`bcb6ec0956fa46bba95b2bb5aa8b645657202da8`
 
-Este documento describe el candidato de código integrado en el checkout. Su publicación, despliegue, configuración externa y activación productiva requieren evidencias separadas.
+Este documento separa código, validación, publicación y configuración externa. La analítica está activa y verificada; Checkout Pro continúa expresamente deshabilitado.
 
 ## Producto
 
@@ -31,7 +31,7 @@ El candidato incorpora:
 - ABM de productos basado en catálogo canónico más mutaciones y tombstones D1;
 - gestión administrativa visual con búsqueda, filtros, miniaturas, estados, editor agrupado y acciones rápidas;
 - inventario opcional compatible con productos legacy y disponibilidad efectiva coherente en catálogo, carrito y servidor;
-- upload administrativo first-party preparado para JPEG/PNG/WebP mediante R2 ya configurado, pendiente de deployment y smoke del candidato;
+- upload administrativo first-party para JPEG/PNG/WebP mediante R2 configurado y presente en el deployment; el smoke autenticado de imágenes no se repitió en esta activación por no disponer de la credencial en claro;
 - analítica first-party con consentimiento;
 - evento `manual_payment_click` sin PII, importe ni carrito, separado de `whatsapp_open` y de los estados financieros;
 - Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria y detalle de pedidos de sólo lectura bajo demanda;
@@ -58,17 +58,17 @@ No se requiere VPS para este fallback. La arquitectura automatizada tampoco depe
 
 La presencia del código no implica activación del Checkout Pro automatizado.
 
-Checkout Pro y analítica continúan separados del backoffice. Al cierre de configuración del 2026-08-10:
+Checkout Pro y analítica continúan separados del backoffice. Al cierre de configuración del 2026-08-11:
 
 - Checkout Pro automatizado deshabilitado;
-- analítica deshabilitada;
+- analítica first-party habilitada en production y preview, siempre opt-in;
 - fallback manual de Link de Pago autorizado en el código;
 - WhatsApp manual autorizado en el código;
 - D1, binding, migraciones y secretos administrativos están configurados de forma aislada en production y preview;
 - la administración quedó operativa tras verificar por separado CI, deployment, login, logout y smoke ABM sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
 - webhook no considerado productivo.
 
-El código candidato agrega `migrations/0006_analytics_manual_payment_click.sql`, pero al cierre de este inventario esa migración todavía no está aplicada remotamente. También mantiene el backoffice fuera de la captura analítica mediante defensas en cliente y servidor. Este estado es «código listo / activación pendiente» hasta completar CI, migración, variables, secretos, deployment y smoke por entorno.
+`migrations/0006_analytics_manual_payment_click.sql` está aplicada remotamente en ambas D1. El backoffice queda fuera de la captura mediante defensas en cliente y servidor. Los smokes reales demostraron cero eventos sin consentimiento y tras rechazo, captura consentida de producto/carrito/clic manual/WhatsApp, ausencia de llamadas a preferencias, exclusión de `/admin` y borrado tras revocación. Los datos sintéticos se retiraron después de verificar el contrato y ambas bases terminaron con cero sesiones, eventos y revocaciones de smoke.
 
 El candidato posterior a `a543c39c025a952f632f38c6bf97b4ea3501b0d1` usa `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o mayor que cero. El carrito aplica `min(99, stockQuantity)` y el servidor revalida antes del Checkout Pro. No existe reserva ni decremento automático por venta.
 
@@ -76,7 +76,7 @@ Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de has
 
 ## Estado externo verificado
 
-Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar IDs de cuenta, correos ni valores secretos:
+Consulta y configuración autenticadas actualizadas el 2026-08-11, sin registrar IDs de cuenta, correos ni valores secretos:
 
 - el proyecto de Cloudflare Pages se llama exactamente `shekinah`; su dominio técnico es `shekinah-7dl.pages.dev` y el dominio público canónico autorizado es `shekinah.ar`;
 - la zona DNS `shekinah.ar` figura `active` en Cloudflare, delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`; DNSSEC está deshabilitado y no existe DS en el padre, un estado inicial válido que no provoca `SERVFAIL`;
@@ -85,9 +85,11 @@ Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar I
 - el pack Universal está `active`, usa Google Trust Services WE1 y cubre `shekinah.ar` y `*.shekinah.ar`; el handshake de `www` negocia TLS 1.3;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
 - producción usa `shekinah-commerce` y preview `shekinah-commerce-preview`, ambas creadas vacías y vinculadas como `DB`;
-- `d1_migrations` registra `0001` a `0005` en ambos entornos; la nueva `0006_analytics_manual_payment_click.sql` permanece pendiente antes de la activación;
+- `d1_migrations` registra `0001` a `0006` en ambos entornos; el CHECK de `analytics_events`, sus tres índices y `foreign_key_check` quedaron verificados después de migrar;
 - los cuatro nombres `ADMIN_*` requeridos existen como secretos cifrados separados en production y preview;
-- `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` están verificados por API con `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview; los flags cerrados y la retención permanecen configurados como variables no secretas;
+- `ANALYTICS_HMAC_SECRET` existe como `secret_text` con valores criptográficamente aleatorios independientes en production y preview; sus valores no se imprimieron ni persistieron;
+- `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y `ANALYTICS_RETENTION_DAYS=730` están verificados en ambos entornos; `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` permanecen cerrados;
+- `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` están verificados por API con `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview; flags y retención permanecen configurados como variables no secretas;
 - Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
 - producción y preview usan `Fail closed`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.
@@ -95,18 +97,18 @@ Consulta y configuración autenticadas realizadas el 2026-08-10, sin registrar I
 - ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`; no existe lectura pública directa por `r2.dev`, sólo la ruta first-party de Pages;
 - la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres `ADMIN_*` y `fail_open=false` permanecen sin cambios en production y preview.
 
-La última evidencia externa anterior al candidato corresponde al SHA `198138390162368e38d40f58e53756b932510b9b`: workflow `CI`, run `31449104996`, job `Verify` y check `Cloudflare Pages`, todos `success`; el deployment inmutable es `https://e8a4b3e3.shekinah-7dl.pages.dev`. No existe todavía CI, deployment ni smoke remoto del candidato Backoffice V2.
+La evidencia del SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8` corresponde al workflow `CI`, run `31452548845`, job `Verify`, conclusión `success`. Preview quedó desplegado en `https://ad63cf05.shekinah-7dl.pages.dev` y producción en `https://786bc7fe.shekinah-7dl.pages.dev`, ambos con environment, SHA completo y stage `success` verificados por API; `https://shekinah.ar` respondió 200 sobre el deployment canónico.
 
-La evidencia local del candidato quedó verificada: `npm run verify` aprobó lint, TypeScript, 41 archivos/193 pruebas Vitest, verificadores, build y 16 pruebas Playwright; `npm run build:pages` también aprobó. Esta evidencia no sustituye CI, migraciones remotas, configuración, deployment ni smoke del SHA definitivo.
+La evidencia local quedó verificada: `npm run verify` aprobó lint, TypeScript, 41 archivos/193 pruebas Vitest, verificadores, build y 16 pruebas Playwright; `npm run build:pages` también aprobó. CI, migraciones, configuración, deployments y smokes remotos se comprobaron después de esa validación.
 
-Los flags server-side permanecen cerrados por el comportamiento fail-closed del código ante variables ausentes. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
+El código conserva comportamiento fail-closed ante variables ausentes. Pages habilita analítica explícitamente y mantiene comercio cerrado. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
 
 ## Arquitectura
 
 - frontend: React, TypeScript estricto y Vite;
 - servidor: Cloudflare Pages Functions;
 - persistencia automatizada: Cloudflare D1;
-- almacenamiento configurado para imágenes administradas: Cloudflare R2 mediante `CATALOG_IMAGES`, con `shekinah` en production y `shekinah-preview` en preview; deployment y smoke del candidato pendientes;
+- almacenamiento configurado y desplegado para imágenes administradas: Cloudflare R2 mediante `CATALOG_IMAGES`, con `shekinah` en production y `shekinah-preview` en preview; smoke autenticado de imágenes no repetido en esta activación;
 - pagos automatizados: Mercado Pago Checkout Pro;
 - fallback temporal: Link de Pago manual más WhatsApp;
 - administración: credencial propia y sesión firmada; Cloudflare Access opcional como fallback interno;

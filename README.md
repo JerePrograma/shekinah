@@ -34,7 +34,7 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 
 El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. D1 ya está separada y migrada para production/preview, pero Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar credenciales productivas de Mercado Pago, webhook y verificaciones propias de ese flujo. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
 
-El código de analítica first-party está listo para activación independiente de Checkout Pro: requiere consentimiento explícito, excluye `/admin`, usa HMAC server-side y mide el Link de Pago manual sin monto, carrito ni PII. Al cierre del inventario previo al despliegue de este candidato, la configuración externa continúa en `ANALYTICS_ENABLED=false`, no tiene `VITE_ANALYTICS_ENABLED` y todavía no posee `ANALYTICS_HMAC_SECRET`; la activación sólo se documentará como efectiva después de migración, deployment y smoke del SHA correcto.
+La analítica first-party quedó activada de forma independiente de Checkout Pro el 2026-08-11 en preview y producción. Requiere consentimiento explícito, excluye `/admin`, usa secretos HMAC server-side distintos por entorno y retención verificada de 730 días. El flujo manual mide `manual_payment_click` y `whatsapp_open` sin monto, carrito ni PII; ambos son interacciones y nunca pagos confirmados. Las migraciones `0001` a `0006`, el deployment del SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8` y los smokes de consentimiento, rechazo, captura y revocación quedaron verificados en D1 aisladas.
 
 ## Rutas públicas
 
@@ -53,7 +53,7 @@ Tras autenticarse, la navegación administrativa separa Resumen, Productos, Pedi
 
 La gestión visual de imágenes del candidato admite JPEG, PNG y WebP de hasta 4 MiB, con preview local y validación server-side de tipo y firma binaria. Los binarios administrados requieren un bucket R2 mediante el binding `CATALOG_IMAGES`; las imágenes públicas se sirven por una ruta first-party. Los 484 assets legacy versionados nunca se borran desde el backoffice.
 
-R2 quedó habilitado y vinculado en Pages: producción reutiliza el bucket existente `shekinah`, preview usa el bucket aislado `shekinah-preview` y ambos se exponen a Functions como `CATALOG_IMAGES`. Los dos buckets conservan la clase Standard/default y `publicR2DevEnabled=false`; la lectura pública se realiza exclusivamente por la ruta first-party de Pages, sin dominio `r2.dev`. La infraestructura está verificada, pero el upload del candidato todavía requiere commit, CI, deployment del SHA definitivo y smoke autenticado antes de considerarse productivo.
+R2 quedó habilitado y vinculado en Pages: producción reutiliza el bucket existente `shekinah`, preview usa el bucket aislado `shekinah-preview` y ambos se exponen a Functions como `CATALOG_IMAGES`. Los dos buckets conservan la clase Standard/default y `publicR2DevEnabled=false`; la lectura pública se realiza exclusivamente por la ruta first-party de Pages, sin dominio `r2.dev`. El deployment actual preserva ambos bindings. En esta activación no se repitió un smoke autenticado de upload/reemplazo/delete porque no se dispuso de la credencial administrativa en claro.
 
 ## Desarrollo
 
@@ -81,7 +81,7 @@ git diff --cached --check
 
 ## Configuración segura
 
-Los flags de las capacidades server-side quedan desactivados por defecto:
+Los defaults de código permanecen cerrados. La configuración externa verificada habilita únicamente analítica en preview y producción; no copiar estos defaults sobre Pages sin revisar el estado operativo:
 
 ```text
 COMMERCE_ENABLED=false

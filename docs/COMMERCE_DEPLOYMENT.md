@@ -2,16 +2,16 @@
 
 ## Regla de activación
 
-La presencia del código no habilita Checkout Pro ni analítica. Mantener inicialmente:
+La presencia del código no habilita capacidades por sí sola. Los defaults de código permanecen cerrados, pero el estado externo verificado desde el 2026-08-11 es:
 
 ```text
 COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=false
 VITE_COMMERCE_ENABLED=false
-VITE_ANALYTICS_ENABLED=false
+ANALYTICS_ENABLED=true
+VITE_ANALYTICS_ENABLED=true
 ```
 
-No cambiar esos flags hasta completar el checklist de sandbox, webhooks, D1, privacidad y aprobación comercial. La autenticación administrativa es un control separado y no habilita Checkout Pro.
+No cambiar los flags de comercio hasta completar el checklist de sandbox, webhooks, D1 y aprobación comercial. La analítica es una capacidad separada, opt-in y ya activada después de migración, secretos independientes, preview y smoke productivo. La autenticación administrativa tampoco habilita Checkout Pro.
 
 Existe un fallback manual separado y expresamente autorizado el 2026-08-10: Link de Pago de Mercado Pago sin monto predefinido más envío del carrito por WhatsApp. Ese fallback no equivale a `COMMERCE_ENABLED=true`, no usa D1 y no habilita el webhook.
 
@@ -135,7 +135,9 @@ En producción:
 PUBLIC_SITE_URL=https://shekinah.ar
 ALLOWED_SITE_ORIGINS=https://shekinah.ar
 COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+ANALYTICS_ENABLED=true
+VITE_ANALYTICS_ENABLED=true
 ANALYTICS_RETENTION_DAYS=730
 ```
 
@@ -145,13 +147,15 @@ En preview:
 PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
 ALLOWED_SITE_ORIGINS=https://shekinah-7dl.pages.dev
 COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+ANALYTICS_ENABLED=true
+VITE_ANALYTICS_ENABLED=true
 ANALYTICS_RETENTION_DAYS=730
 ```
 
 `PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Production debe usar el apex canónico y preview el dominio técnico de Pages; no intercambiar ambos entornos.
 
-Los valores anteriores quedaron verificados por API en sus respectivos entornos. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
+Los valores anteriores quedaron verificados por API en sus respectivos entornos. `VITE_ANALYTICS_ENABLED` exige un build nuevo porque se incorpora al bundle. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
 
 ## 5. Configurar secretos
 
@@ -164,12 +168,7 @@ Crear por entorno, sin reutilizar valores:
 - `ADMIN_SESSION_SECRET`: al menos 32 bytes aleatorios codificados en base64url;
 - `ADMIN_RATE_LIMIT_SECRET`: al menos 32 bytes aleatorios independientes, codificados en base64url.
 
-La contraseña sólo se ingresa mediante prompt protegido en el proceso que genera el derivado. No se escribe en scripts versionados, argumentos, archivos temporales ni salida. Cargar los cuatro valores como `secret_text` en production y preview; `wrangler pages secret ... --env production|preview` selecciona el entorno aunque el flag no aparezca en algunas ayudas de la CLI. Comprobar después únicamente los nombres:
-
-```powershell
-npx wrangler pages secret list --project-name shekinah --env production
-npx wrangler pages secret list --project-name shekinah --env preview
-```
+La contraseña sólo se ingresa mediante prompt protegido en el proceso que genera el derivado. No se escribe en scripts versionados, argumentos, archivos temporales ni salida. Cargar los cuatro valores como `secret_text` independientes en production y preview mediante el selector de entorno de Pages o la API autenticada. La versión de Wrangler verificada no expone un selector de entorno en `pages secret put`; no asumir que un comando sin selector escribe ambos. Comprobar después únicamente presencia, nombre y tipo, nunca valores.
 
 Para rotar contraseña: generar un hash nuevo con salt nueva y 100.000 iteraciones, actualizar `ADMIN_PASSWORD_HASH` en ambos entornos y desplegar para materializar el nuevo snapshot. Si se requiere cierre global de sesiones, rotar además `ADMIN_SESSION_SECRET`; no basta con cambiar el hash porque las cookies ya emitidas siguen firmadas hasta vencer.
 
@@ -177,19 +176,13 @@ Para rotar contraseña: generar un hash nuevo con salt nueva y 100.000 iteracion
 
 Crear valores aleatorios independientes, de al menos 32 bytes, para `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET`. No pegarlos en archivos, documentación, argumentos de línea de comandos ni logs.
 
-Cargar cada valor mediante prompt cifrado de Wrangler o desde el panel de Pages:
+Cargar cada valor como `secret_text` en el entorno exacto desde Pages o mediante la API autenticada. Confirmar después únicamente nombres y tipos; nunca leer, copiar ni registrar valores.
 
-```powershell
-npx wrangler pages secret put MERCADO_PAGO_ACCESS_TOKEN --project-name shekinah
-npx wrangler pages secret put MERCADO_PAGO_WEBHOOK_SECRET --project-name shekinah
-npx wrangler pages secret put ORDER_TOKEN_SECRET --project-name shekinah
-npx wrangler pages secret put ANALYTICS_HMAC_SECRET --project-name shekinah
-npx wrangler pages secret list --project-name shekinah
-```
+Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. `ANALYTICS_HMAC_SECRET` quedó presente con valores independientes en ambos entornos el 2026-08-11. Los secretos de Mercado Pago y pedidos continúan ausentes mientras Checkout Pro permanezca deshabilitado.
 
-La lista debe mostrar nombres, nunca valores.
+### Precaución con deployments directos
 
-Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. Los secretos de Mercado Pago, pedidos y analítica continúan ausentes mientras esas capacidades permanezcan deshabilitadas.
+Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo trata como fuente de verdad del deployment y puede reemplazar variables o bindings configurados en el dashboard. El archivo operativo real está ignorado por Git y contiene IDs; no publicarlo. Para un upload manual, mantenerlo completamente sincronizado o excluirlo temporalmente de forma reversible, y releer después por API los destinos reales de `DB` y `CATALOG_IMAGES`, los flags, secretos por nombre y `fail_open=false` antes de ejecutar smoke.
 
 ## 6. Configurar Mercado Pago Checkout Pro
 
@@ -269,9 +262,9 @@ Validar por separado el fallback manual:
 
 ## 9. Activar Checkout Pro de forma escalonada
 
-1. Desplegar con ambos flags server-side en `false`.
+1. Mantener `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`; la analítica opt-in puede permanecer activa de forma independiente.
 2. Confirmar Functions, binding, migraciones y autenticación administrativa; Access es opcional.
-3. Habilitar `ANALYTICS_ENABLED=true` sólo con política de retención y texto de privacidad aprobados.
+3. Conservar `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true`, retención 730 y secretos independientes; no mezclar eventos manuales con métricas financieras.
 4. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de la compra controlada y aprobación del titular de Mercado Pago.
 5. Supervisar webhooks, estados e importes durante la ventana inicial.
 6. Resolver explícitamente la coexistencia o retiro del fallback manual.
