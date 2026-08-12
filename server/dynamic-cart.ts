@@ -24,7 +24,8 @@ export async function recalculateDynamicCart(value: unknown, database: D1Databas
     const detail = await getCatalogProductDetail(database, productId);
     if (detail === null) throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
     if (detail.availability === 'unavailable') throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
-    if (detail.stockQuantity !== undefined && quantity > detail.stockQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
+    const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
+    if (availableQuantity !== undefined && quantity > availableQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
     const available = isProductEffectivelyAvailable(detail);
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);

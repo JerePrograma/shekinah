@@ -67,7 +67,7 @@ describe('gestión visual de productos', () => {
 
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: 'all' } });
     fireEvent.change(screen.getByLabelText('Stock'), { target: { value: 'out-of-stock' } });
-    expect(screen.getByText('Sin stock', { selector: '.admin-status-badge' })).toBeVisible();
+    expect(screen.getByText(/Sin stock disponible/u, { selector: '.admin-status-badge' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('1 producto encontrado');
 
     fireEvent.change(screen.getByLabelText('Stock'), { target: { value: 'all' } });
@@ -112,7 +112,7 @@ describe('gestión visual de productos', () => {
     });
     fireEvent.click(screen.getByRole('checkbox', { name: category().name }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock actual' }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock físico' }), {
       target: { value: '12' },
     });
     fireEvent.click(screen.getByText('Opciones avanzadas'));
@@ -231,7 +231,7 @@ describe('gestión visual de productos', () => {
     });
     fireEvent.click(screen.getByRole('checkbox', { name: category().name }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    const stock = screen.getByRole('spinbutton', { name: 'Stock actual' });
+    const stock = screen.getByRole('spinbutton', { name: 'Stock físico' });
     expect(stock).toHaveValue(null);
     expect(screen.getByText('Falta indicar el stock actual')).toBeVisible();
 
@@ -270,7 +270,7 @@ describe('gestión visual de productos', () => {
       target: { value: '-1' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock actual' }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock físico' }), {
       target: { value: '1.5' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
@@ -321,7 +321,7 @@ describe('gestión visual de productos', () => {
       target: { value: '6' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar stock' }));
-    expect(screen.getByText('Sin stock', { selector: '.admin-status-badge' })).toBeVisible();
+    expect(screen.getByText(/Sin stock disponible/u, { selector: '.admin-status-badge' })).toBeVisible();
     expect(api.requests.filter(({ method }) => method === 'PATCH')).toHaveLength(1);
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
@@ -330,8 +330,8 @@ describe('gestión visual de productos', () => {
     api.releasePatch();
     expect(await screen.findByText('Stock de Stock cero actualizado a 6.')).toBeVisible();
     expect(screen.getByText('Disponible manualmente')).toBeVisible();
-    expect(screen.getByText('Stock: 6 unidades')).toBeVisible();
-    expect(screen.getByRole('spinbutton', { name: 'Stock actual' })).toHaveValue(6);
+    expect(screen.getByText(/Físico: 6 · reservado: 0 · disponible: 6/u)).toBeVisible();
+    expect(screen.getByRole('spinbutton', { name: 'Stock físico' })).toHaveValue(6);
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toBeEnabled();
   });
 

@@ -4,12 +4,18 @@ import { HttpError } from './http';
 import type { D1Database } from './platform';
 
 const orderColumns = `
-  o.id, o.status, o.currency, o.total_minor, o.item_count,
-  o.created_at, o.updated_at, o.approved_at,
+  o.id, o.status, o.channel, o.currency, o.total_minor, o.item_count,
+  o.created_at, o.updated_at, o.approved_at, o.resolved_at, o.resolved_by,
   f.delivery_method, f.full_name, f.phone, f.address, f.locality,
   f.province, f.postal_code, f.total_weight_grams, f.shipping_tier,
   COALESCE(f.products_total_minor, o.total_minor) AS products_total_minor,
   COALESCE(f.shipping_minor, 0) AS shipping_minor`;
+
+export type AdminOrderDetail = Readonly<{
+  order: Readonly<Record<string, unknown>>;
+  items: readonly Readonly<Record<string, unknown>>[];
+  payments: readonly Readonly<Record<string, unknown>>[];
+}>;
 
 export async function listAdminOrdersWithFulfillment(
   database: D1Database,
@@ -20,9 +26,15 @@ export async function listAdminOrdersWithFulfillment(
       `SELECT ${orderColumns}
        FROM orders o
        LEFT JOIN order_fulfillment f ON f.order_id = o.id
-       WHERE o.created_at BETWEEN ? AND ?
+       WHERE (
+           (o.channel = 'whatsapp' AND o.status = 'pending')
+           OR o.created_at BETWEEN ? AND ?
+         )
          AND (? IS NULL OR o.status = ?)
-       ORDER BY o.created_at DESC
+       ORDER BY CASE
+         WHEN o.channel = 'whatsapp' AND o.status = 'pending' THEN 0
+         ELSE 1
+       END, o.created_at DESC
        LIMIT ? OFFSET ?`,
     )
     .bind(range.from, range.to, range.status, range.status, range.limit, range.offset)
@@ -33,7 +45,7 @@ export async function listAdminOrdersWithFulfillment(
 export async function getAdminOrderWithFulfillment(
   database: D1Database,
   id: string,
-): Promise<unknown> {
+): Promise<AdminOrderDetail | null> {
   if (!/^ord_[A-Za-z0-9_-]{20,128}$/u.test(id)) {
     throw new HttpError(400, 'INVALID_ORDER_ID', 'El identificador de pedido no es válido.');
   }
@@ -63,7 +75,11 @@ export async function getAdminOrderWithFulfillment(
     )
     .bind(id)
     .all<Record<string, unknown>>();
-  return Object.freeze({ order, items: items.results ?? [], payments: payments.results ?? [] });
+  return Object.freeze({
+    order,
+    items: items.results ?? [],
+    payments: payments.results ?? [],
+  });
 }
 
 export async function exportOrdersWithFulfillmentCsv(

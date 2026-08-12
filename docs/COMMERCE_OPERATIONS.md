@@ -6,13 +6,14 @@ Mientras `COMMERCE_ENABLED=false`, el flujo público autorizado usa el Link de P
 
 Procedimiento operativo mínimo:
 
-1. El comprador arma el carrito y, si el envío tiene total definido, copia el monto y abre el Link de Pago.
-2. El comprador ingresa el monto en Mercado Pago y envía el carrito por WhatsApp.
-3. Antes de preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
-4. Asociar manualmente el pago con el carrito por importe, comprador y contexto de la conversación. Si hay ambigüedad, no liberar el pedido hasta confirmarla.
-5. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; el sitio bloquea el Link de Pago mientras el total sea indeterminado.
+1. El comprador arma el carrito y, si el envío tiene total definido, puede copiar el monto y abrir el Link de Pago.
+2. Al solicitar WhatsApp, el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
+3. El comprador ingresa el monto en Mercado Pago y envía el mensaje que incluye el identificador del pedido.
+4. Antes de aprobar, preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
+5. Aprobar desde el backoffice confirma la venta, descuenta el stock físico una vez y consume la reserva. Rechazar conserva el físico y libera la reserva.
+6. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; el Link de Pago continúa bloqueado mientras el total sea indeterminado.
 
-Este flujo no escribe `orders`, `payments` ni `payment_events` en D1 y no recibe Webhooks del Link de Pago generado en el panel. No usar las consultas del backoffice para inferir su estado. Mantener registro operativo externo sólo según la política del negocio y sin copiar datos sensibles al repositorio.
+Este flujo siempre escribe `orders` y `order_items`; escribe `order_fulfillment` sólo para datos completos con tarifa determinística. No escribe `payments` ni `payment_events` y no recibe webhooks del Link de Pago generado en el panel. `pending` significa reserva vigente, no pago. Sólo la verificación manual seguida de aprobación administrativa confirma la venta.
 
 Con consentimiento y analítica habilitada, un clic válido en el enlace registra `manual_payment_click`; la apertura del canal asistido registra `whatsapp_open`. Ambos son interacciones first-party sin monto, carrito ni PII. No sumarlos a pedidos, pagos aprobados, revenue ni «ventas».
 
@@ -76,6 +77,12 @@ La interfaz `/admin` consume:
 
 El catálogo de productos es editable. Pedidos, analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
 
+La excepción son los pedidos `channel='whatsapp'` en estado `pending`: pueden aprobarse o rechazarse. Los botones quedan inactivos durante la request y desaparecen al alcanzar un estado terminal. Los pedidos Checkout Pro y los pedidos WhatsApp aprobados/rechazados permanecen de sólo lectura.
+
+## Reservas pendientes de WhatsApp
+
+El stock reservado es `SUM(order_items.quantity)` de pedidos WhatsApp pendientes. No existe contador que deba «devolverse». Revisar diariamente los pendientes antiguos: no tienen TTL y seguirán reduciendo disponibilidad hasta una resolución administrativa. Nunca corregirlos editando SQL, sumando stock o cambiando items; aprobar o rechazar mediante la API autenticada.
+
 ### Operación cotidiana del catálogo candidato
 
 - localizar productos por nombre, identificador o categoría y combinar filtros de categoría, disponibilidad y stock;
@@ -83,7 +90,7 @@ El catálogo de productos es editable. Pedidos, analítica, exportaciones y audi
 - dejar `stockQuantity` ausente cuando el stock no se controla; usar un entero de 0 a 1.000.000 cuando sí se controla;
 - interpretar stock controlado en cero como no disponible efectivo, aunque la disponibilidad manual esté activa;
 - usar la disponibilidad manual para retirar un producto de venta aunque tenga stock;
-- recordar que el sistema no reserva ni descuenta unidades al cobrar: las existencias deben actualizarse según el procedimiento real del negocio.
+- recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada.
 
 El carrito nunca acepta más de `min(99, stockQuantity)` por línea y Checkout Pro vuelve a validar el stock vigente. Si el stock cambia mientras existe un carrito, el comprador debe corregirlo antes de continuar.
 

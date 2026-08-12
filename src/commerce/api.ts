@@ -2,7 +2,11 @@ import type { CartItem } from '../cart/model';
 import type {
   CheckoutResponse,
   PublicOrderStatusResponse,
+  WhatsappOrderItem,
+  WhatsappOrderRequest,
+  WhatsappOrderResponse,
 } from './contracts';
+import { MAX_CART_LINES, MAX_CART_QUANTITY } from './contracts';
 import type { CheckoutFulfillment } from './fulfillment';
 
 export async function createCheckoutPreference(
@@ -47,6 +51,36 @@ export async function createCheckoutPreference(
     checkoutUrl: checkoutUrl.toString(),
     publicToken: payload.publicToken.toLocaleLowerCase('en'),
   });
+}
+
+export async function createWhatsappOrder(
+  items: readonly CartItem[],
+  idempotencyKey: string,
+  fulfillment: CheckoutFulfillment | null,
+): Promise<WhatsappOrderResponse> {
+  const request: WhatsappOrderRequest = Object.freeze({
+    idempotencyKey,
+    items: Object.freeze(items.map(({ product, quantity }) => Object.freeze({
+      productId: product.id,
+      quantity,
+    }))),
+    fulfillment,
+  });
+  const response = await fetch('/api/orders/whatsapp', {
+    method: 'POST',
+    credentials: 'same-origin',
+    redirect: 'error',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  const payload = await readJson(response);
+  if (response.status !== 200 && response.status !== 201) {
+    throw apiError(
+      payload,
+      'No pudimos registrar el pedido. Revisá el carrito e intentá nuevamente.',
+    );
+  }
+  return parseWhatsappOrderResponse(payload);
 }
 
 export async function getPublicOrderStatus(
@@ -125,6 +159,79 @@ function apiError(payload: unknown, fallback: string): Error {
     return new Error(payload.error.message);
   }
   return new Error(fallback);
+}
+
+function parseWhatsappOrderResponse(value: unknown): WhatsappOrderResponse {
+  if (
+    !isRecord(value) ||
+    typeof value.orderId !== 'string' ||
+    !/^ord_[A-Za-z0-9_-]{20,128}$/u.test(value.orderId) ||
+    value.status !== 'pending' ||
+    value.currency !== 'ARS' ||
+    !isPositiveSafeInteger(value.totalMinor) ||
+    !isPositiveSafeInteger(value.itemCount) ||
+    typeof value.createdAt !== 'string' ||
+    Number.isNaN(Date.parse(value.createdAt)) ||
+    !Array.isArray(value.items) ||
+    value.items.length === 0 ||
+    value.items.length > MAX_CART_LINES
+  ) {
+    throw new Error('El servidor devolvió un pedido de WhatsApp inválido.');
+  }
+
+  const productIds = new Set<string>();
+  const items = value.items.map((candidate): WhatsappOrderItem => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.productId !== 'string' ||
+      !/^[a-z0-9][a-z0-9-]{0,179}$/u.test(candidate.productId) ||
+      productIds.has(candidate.productId) ||
+      typeof candidate.name !== 'string' ||
+      candidate.name.trim() === '' ||
+      (
+        candidate.presentation !== undefined &&
+        (typeof candidate.presentation !== 'string' || candidate.presentation.trim() === '')
+      ) ||
+      !isPositiveSafeInteger(candidate.quantity) ||
+      candidate.quantity > MAX_CART_QUANTITY ||
+      !isPositiveSafeInteger(candidate.unitPriceMinor) ||
+      !isPositiveSafeInteger(candidate.subtotalMinor) ||
+      candidate.subtotalMinor !== candidate.unitPriceMinor * candidate.quantity
+    ) {
+      throw new Error('El servidor devolvió un pedido de WhatsApp inválido.');
+    }
+    productIds.add(candidate.productId);
+    return Object.freeze({
+      productId: candidate.productId,
+      name: candidate.name.trim(),
+      ...(candidate.presentation === undefined
+        ? {}
+        : { presentation: candidate.presentation.trim() }),
+      quantity: candidate.quantity,
+      unitPriceMinor: candidate.unitPriceMinor,
+      subtotalMinor: candidate.subtotalMinor,
+    });
+  });
+  if (
+    items.reduce((total, item) => total + item.quantity, 0) !== value.itemCount ||
+    items.reduce((total, item) => total + item.subtotalMinor, 0) > value.totalMinor
+  ) {
+    throw new Error('El servidor devolvió un pedido de WhatsApp inválido.');
+  }
+
+  return Object.freeze({
+    orderId: value.orderId,
+    status: value.status,
+    currency: value.currency,
+    totalMinor: value.totalMinor,
+    itemCount: value.itemCount,
+    createdAt: value.createdAt,
+    items: Object.freeze(items),
+  });
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

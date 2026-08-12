@@ -21,7 +21,7 @@ El candidato incorpora:
 
 - carrito persistente;
 - fallback manual temporal mediante Link de Pago de Mercado Pago sin monto predefinido;
-- WhatsApp manual con número público expresamente autorizado;
+- pedido pendiente de WhatsApp persistido antes de abrir el canal, con reserva derivada e idempotencia server-side;
 - Mercado Pago Checkout Pro por redirección preparado pero todavía deshabilitado;
 - pedidos y consulta pública de estado para Checkout Pro;
 - webhook de Mercado Pago para Checkout Pro;
@@ -34,7 +34,7 @@ El candidato incorpora:
 - upload administrativo first-party para JPEG/PNG/WebP mediante R2 configurado y presente en el deployment; el smoke autenticado de imágenes no se repitió en esta activación por no disponer de la credencial en claro;
 - analítica first-party con consentimiento;
 - evento `manual_payment_click` sin PII, importe ni carrito, separado de `whatsapp_open` y de los estados financieros;
-- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria y detalle de pedidos de sólo lectura bajo demanda;
+- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria, detalle bajo demanda y aprobación/rechazo de pedidos WhatsApp pendientes;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
 - feedback contextual y accesible al agregar, ajustar y eliminar productos del carrito, con límites de stock visibles y prevención de borrados ambiguos;
@@ -55,7 +55,7 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 
 El origen canónico de producción es `https://shekinah.ar`. Preview conserva `https://shekinah-7dl.pages.dev`; la Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` al apex, preserva path/query y termina en el apex 200.
 
-El fallback manual usa esos datos públicos sin secretos. Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el carrito puede copiar el total calculado y abrir el Link de Pago; el comprador ingresa el monto en Mercado Pago y debe enviar el carrito por WhatsApp para que el comercio pueda asociar el pago y coordinar la entrega. Este flujo no crea pedidos en D1, no genera una preferencia de Checkout Pro y no confirma automáticamente pagos.
+El canal manual usa esos datos públicos sin secretos. El Link de Pago continúa sin monto predefinido y separado de Checkout Pro. Antes de abrir WhatsApp, el candidato llama a una Pages Function que recalcula carrito y total, persiste un pedido `channel='whatsapp'` en estado `pending`, sus items y, cuando corresponde, fulfillment determinístico, y reserva el stock disponible. Esto no genera una preferencia ni confirma automáticamente un pago.
 
 No se requiere VPS para este fallback. La arquitectura automatizada tampoco depende de un VPS: su backend previsto son Cloudflare Pages Functions y D1.
 
@@ -69,13 +69,13 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre de conf
 - analítica first-party habilitada en production y preview, siempre opt-in;
 - fallback manual de Link de Pago autorizado en el código;
 - WhatsApp manual autorizado en el código;
-- D1, binding, migraciones y secretos administrativos están configurados de forma aislada en production y preview;
-- la administración quedó operativa tras verificar por separado CI, deployment, login, logout y smoke ABM sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`; el catálogo es editable y pedidos/analítica permanecen de sólo lectura;
+- D1, binding y migraciones `0001` a `0006` están configurados de forma aislada en production y preview; `0007` todavía requiere aplicación y verificación separadas;
+- la administración publicada quedó operativa sobre evidencia anterior; las nuevas acciones de aprobar/rechazar WhatsApp pertenecen al candidato y todavía no tienen CI, deployment ni smoke remoto verificados;
 - webhook no considerado productivo.
 
 `migrations/0006_analytics_manual_payment_click.sql` está aplicada remotamente en ambas D1. El backoffice queda fuera de la captura mediante defensas en cliente y servidor. Los smokes reales demostraron cero eventos sin consentimiento y tras rechazo, captura consentida de producto/carrito/clic manual/WhatsApp, ausencia de llamadas a preferencias, exclusión de `/admin` y borrado tras revocación. Los datos sintéticos se retiraron después de verificar el contrato y ambas bases terminaron con cero sesiones, eventos y revocaciones de smoke.
 
-El candidato posterior a `a543c39c025a952f632f38c6bf97b4ea3501b0d1` usa `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o mayor que cero. El carrito aplica `min(99, stockQuantity)` y el servidor revalida antes del Checkout Pro. No existe reserva ni decremento automático por venta.
+El candidato actual mantiene `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. `0007` implementa Strategy A para WhatsApp: reservado es la suma de items de pedidos pendientes y disponible es físico menos reservado. La aprobación protegida por D1 resta físicamente una sola vez; el rechazo libera por derivación. No existe expiración automática: un pedido abandonado conserva su reserva hasta que el administrador lo apruebe o rechace.
 
 Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de hasta 4 MiB, con magic bytes validados en servidor. La referencia persistida es first-party y los objetos pertenecen a R2; reemplazo y eliminación sólo limpian objetos administrados no referenciados, nunca assets legacy.
 
@@ -90,7 +90,7 @@ Consulta y configuración autenticadas actualizadas el 2026-08-11, sin registrar
 - el pack Universal está `active`, usa Google Trust Services WE1 y cubre `shekinah.ar` y `*.shekinah.ar`; el handshake de `www` negocia TLS 1.3;
 - la rama de producción es `main`, el build es `npm run build:pages`, la salida es `dist` y los deployments automáticos están habilitados;
 - producción usa `shekinah-commerce` y preview `shekinah-commerce-preview`, ambas creadas vacías y vinculadas como `DB`;
-- `d1_migrations` registra `0001` a `0006` en ambos entornos; el CHECK de `analytics_events`, sus tres índices y `foreign_key_check` quedaron verificados después de migrar;
+- `d1_migrations` registra `0001` a `0006` en ambos entornos; `0007` no se declara aplicada remotamente. El CHECK de `analytics_events`, sus tres índices y `foreign_key_check` corresponden a la verificación anterior;
 - los cuatro nombres `ADMIN_*` requeridos existen como secretos cifrados separados en production y preview;
 - `ANALYTICS_HMAC_SECRET` existe como `secret_text` con valores criptográficamente aleatorios independientes en production y preview; sus valores no se imprimieron ni persistieron;
 - `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y `ANALYTICS_RETENTION_DAYS=730` están verificados en ambos entornos; `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` permanecen cerrados;

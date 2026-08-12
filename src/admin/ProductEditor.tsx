@@ -318,7 +318,7 @@ export function ProductEditor({
           </label>
           {form.trackStock ? (
             <label className="admin-form-field">
-              <span id="product-stock-label">Stock actual</span>
+              <span id="product-stock-label">Stock físico</span>
               <input
                 required
                 type="number"

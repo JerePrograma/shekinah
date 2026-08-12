@@ -35,6 +35,11 @@ export type CatalogMutationRow = Readonly<{
   deleted: number;
 }>;
 
+type ReservedQuantityRow = Readonly<{
+  product_id: string;
+  reserved_quantity: number;
+}>;
+
 export function getBaseCatalogProducts(): readonly Product[] {
   return baseProducts;
 }
@@ -80,8 +85,11 @@ export async function listCatalogProductDetails(
     }
   }
 
+  const reservedByProduct = await listReservedQuantities(database);
   return Object.freeze(
-    [...merged.values()].sort((left, right) =>
+    [...merged.values()].map((product) =>
+      withInventoryProjection(product, reservedByProduct.get(product.id) ?? 0),
+    ).sort((left, right) =>
       left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' }),
     ),
   );
@@ -107,9 +115,12 @@ export async function getCatalogProductDetail(
     throw error;
   }
 
-  if (row === null) return baseDetailById.get(productId) ?? null;
+  if (row === null) {
+    const product = baseDetailById.get(productId) ?? null;
+    return product === null ? null : projectProductInventory(database, product);
+  }
   if (row.deleted === 1 || row.payload_json === null) return null;
-  return parseStoredProduct(row.payload_json);
+  return projectProductInventory(database, parseStoredProduct(row.payload_json));
 }
 
 export async function createCatalogProduct(
@@ -124,7 +135,7 @@ export async function createCatalogProduct(
   }
   assertNoDirectImageMutation(null, product);
   await persistProduct(database, product, actorEmail);
-  return product;
+  return projectProductInventory(database, product);
 }
 
 export async function updateCatalogProduct(
@@ -149,7 +160,7 @@ export async function updateCatalogProduct(
   }
   assertNoDirectImageMutation(current, product);
   await persistProduct(database, product, actorEmail);
-  return product;
+  return projectProductInventory(database, product);
 }
 
 export async function patchCatalogProductInventory(
@@ -192,7 +203,7 @@ export async function patchCatalogProductInventory(
 
   const product = parseWritableProduct(patched);
   await persistProduct(database, product, actorEmail);
-  return product;
+  return projectProductInventory(database, product);
 }
 
 export type CatalogImageReplacement = Readonly<{
@@ -223,7 +234,10 @@ export async function replaceCatalogProductImages(
   }
   const product = parseWritableProduct(nextValue);
   await persistProduct(database, product, actorEmail);
-  return Object.freeze({ previousImages: current.images, product });
+  return Object.freeze({
+    previousImages: current.images,
+    product: await projectProductInventory(database, product),
+  });
 }
 
 export async function isCatalogImageReferenced(
@@ -276,6 +290,12 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
     ...(detail.sku === undefined ? {} : { sku: detail.sku }),
     ...(detail.availability === undefined ? {} : { availability: detail.availability }),
     ...(detail.stockQuantity === undefined ? {} : { stockQuantity: detail.stockQuantity }),
+    ...(detail.reservedQuantity === undefined
+      ? {}
+      : { reservedQuantity: detail.reservedQuantity }),
+    ...(detail.availableQuantity === undefined
+      ? {}
+      : { availableQuantity: detail.availableQuantity }),
     ...(detail.shortDescription === undefined
       ? {}
       : { shortDescription: detail.shortDescription }),
@@ -288,14 +308,15 @@ function parseWritableProduct(
   options: Readonly<{ requireCategory?: boolean }> = {},
 ): CatalogProductDetail {
   try {
-    const summary = parseProducts([value], baseCategories)[0];
+    const writableValue = stripInventoryProjection(value);
+    const summary = parseProducts([writableValue], baseCategories)[0];
     if (summary === undefined) {
       throw new InvalidProductError('El producto no es válido.');
     }
     if (options.requireCategory === true && summary.categorySlugs.length === 0) {
       throw new InvalidProductError('El producto debe pertenecer al menos a una categoría.');
     }
-    const detail = parseProductDetail(summary, value);
+    const detail = parseProductDetail(summary, writableValue);
     const unauthorizedImage = detail.images.find(
       (image) =>
         !authorizedImagePaths.has(image.src) && !isManagedCatalogImagePath(image.src),
@@ -316,6 +337,14 @@ function parseWritableProduct(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stripInventoryProjection(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const writable = { ...value };
+  delete writable.reservedQuantity;
+  delete writable.availableQuantity;
+  return writable;
 }
 
 function invalidProductPatch(): HttpError {
@@ -395,12 +424,106 @@ function isMissingCatalogTable(error: unknown): boolean {
   return error instanceof Error && /no such table:\s*catalog_product_mutations/iu.test(error.message);
 }
 
+function isMissingWhatsappReservationSchema(error: unknown): boolean {
+  return error instanceof Error && (
+    /no such (?:table|column):\s*(?:orders|order_items|(?:\w+\.)?channel)/iu.test(error.message) ||
+    /no such column:\s*(?:\w+\.)?channel/iu.test(error.message)
+  );
+}
+
+async function listReservedQuantities(
+  database: D1Database,
+): Promise<ReadonlyMap<string, number>> {
+  try {
+    const result = await database
+      .prepare(
+        `SELECT items.product_id, SUM(items.quantity) AS reserved_quantity
+         FROM order_items AS items
+         INNER JOIN orders AS pending_orders ON pending_orders.id = items.order_id
+         WHERE pending_orders.channel = 'whatsapp'
+           AND pending_orders.status = 'pending'
+         GROUP BY items.product_id`,
+      )
+      .all<ReservedQuantityRow>();
+    return new Map(
+      (result.results ?? []).map((row) => [
+        row.product_id,
+        assertReservedQuantity(row.reserved_quantity),
+      ]),
+    );
+  } catch (error: unknown) {
+    if (isMissingWhatsappReservationSchema(error)) return new Map();
+    throw error;
+  }
+}
+
+async function projectProductInventory(
+  database: D1Database,
+  product: CatalogProductDetail,
+): Promise<CatalogProductDetail> {
+  if (product.stockQuantity === undefined) return product;
+  let reservedQuantity = 0;
+  try {
+    const row = await database
+      .prepare(
+        `SELECT COALESCE(SUM(items.quantity), 0) AS reserved_quantity
+         FROM order_items AS items
+         INNER JOIN orders AS pending_orders ON pending_orders.id = items.order_id
+         WHERE items.product_id = ?1
+           AND pending_orders.channel = 'whatsapp'
+           AND pending_orders.status = 'pending'`,
+      )
+      .bind(product.id)
+      .first<Readonly<{ reserved_quantity: number }>>();
+    reservedQuantity = assertReservedQuantity(row?.reserved_quantity ?? 0);
+  } catch (error: unknown) {
+    if (!isMissingWhatsappReservationSchema(error)) throw error;
+  }
+  return withInventoryProjection(product, reservedQuantity);
+}
+
+function withInventoryProjection(
+  product: CatalogProductDetail,
+  reservedQuantity: number,
+): CatalogProductDetail {
+  if (product.stockQuantity === undefined) return product;
+  if (reservedQuantity > product.stockQuantity) {
+    throw new Error('El stock reservado supera el stock físico persistido.');
+  }
+  return Object.freeze({
+    ...product,
+    reservedQuantity,
+    availableQuantity: product.stockQuantity - reservedQuantity,
+  });
+}
+
+function assertReservedQuantity(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error('La reserva de stock persistida no es válida.');
+  }
+  return value;
+}
+
 function throwCatalogStorageError(error: unknown): never {
   if (isMissingCatalogTable(error)) {
     throw new HttpError(
       503,
       'CATALOG_MIGRATION_REQUIRED',
       'La migración del catálogo administrativo todavía no fue aplicada.',
+    );
+  }
+  if (error instanceof Error && error.message.includes('WHATSAPP_STOCK_BELOW_RESERVATIONS')) {
+    throw new HttpError(
+      409,
+      'STOCK_BELOW_RESERVATIONS',
+      'El stock físico no puede quedar por debajo de las unidades reservadas.',
+    );
+  }
+  if (error instanceof Error && error.message.includes('WHATSAPP_STOCK_CONTROL_REQUIRED')) {
+    throw new HttpError(
+      409,
+      'PRODUCT_HAS_RESERVATIONS',
+      'No se puede quitar el control de stock ni eliminar el producto mientras tenga reservas pendientes.',
     );
   }
   throw error;

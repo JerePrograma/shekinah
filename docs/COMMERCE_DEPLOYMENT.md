@@ -13,11 +13,11 @@ VITE_ANALYTICS_ENABLED=true
 
 No cambiar los flags de comercio hasta completar el checklist de sandbox, webhooks, D1 y aprobación comercial. La analítica es una capacidad separada, opt-in y ya activada después de migración, secretos independientes, preview y smoke productivo. La autenticación administrativa tampoco habilita Checkout Pro.
 
-Existe un fallback manual separado y expresamente autorizado el 2026-08-10: Link de Pago de Mercado Pago sin monto predefinido más envío del carrito por WhatsApp. Ese fallback no equivale a `COMMERCE_ENABLED=true`, no usa D1 y no habilita el webhook.
+Existe un canal manual separado y expresamente autorizado: Link de Pago de Mercado Pago sin monto predefinido más pedido por WhatsApp. No equivale a `COMMERCE_ENABLED=true` ni habilita el webhook, pero el candidato nuevo sí requiere Pages Functions, D1 y `0007` para persistir el pedido pendiente y reservar stock antes de abrir WhatsApp.
 
 El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio técnico y de preview, mientras que `https://shekinah.ar` es el origen público canónico de producción. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
 
-No se necesita VPS. El fallback manual es cliente puro y el Checkout Pro integrado usa Cloudflare Pages Functions como backend y D1 como persistencia.
+No se necesita VPS. Tanto el pedido WhatsApp candidato como Checkout Pro usan Pages Functions y D1; el Link de Pago continúa siendo una navegación externa separada.
 
 La zona `shekinah.ar` figura `active` en Cloudflare y está delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC permanece deshabilitado y `.ar` no publica un DS, estado válido para esta etapa. El custom domain del apex, su verificación y validación figuran `active`; el CNAME proxied apunta al dominio técnico de Pages y `https://shekinah.ar` responde 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` hacia el apex preservando path y query y termina en 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no una IP de origen ni un destino de Pages. El pack Universal está activo con Google Trust Services WE1, SAN para `shekinah.ar` y `*.shekinah.ar`, y TLS 1.3 verificado.
 
@@ -59,9 +59,10 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 - el Link de Pago autorizado está configurado sin monto predefinido;
 - para un envío con total determinístico, el carrito intenta copiar el total y abre el enlace en otra pestaña;
 - el comprador ingresa el monto en Mercado Pago;
-- después envía el carrito por WhatsApp para que el comercio pueda asociar el pago y coordinar la entrega;
+- antes de abrir WhatsApp, la Function recalcula el carrito, crea un pedido pendiente idempotente y reserva stock;
+- después envía el mensaje con el identificador para que el comercio pueda asociar el pago y coordinar la entrega;
 - si Correo Argentino requiere cotización manual, el Link de Pago queda bloqueado y se deriva a WhatsApp;
-- este flujo no crea `orders`, no genera `external_reference`, no recibe webhook y no puede marcar el pedido como aprobado automáticamente.
+- este flujo crea `orders` con `channel='whatsapp'` e items; agrega fulfillment sólo cuando fue completado y tiene una tarifa determinística. No genera preferencia ni `external_reference`, no recibe webhook y no marca el pedido como aprobado automáticamente.
 
 No agregar parámetros no documentados al Link de Pago para intentar precargar el monto.
 
@@ -101,7 +102,9 @@ npx wrangler d1 migrations list DB --remote
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
-El flujo aplica en orden `0001` a `0006`. `migrations/0004_catalog_admin.sql` crea la persistencia del ABM; antes de ella, las lecturas públicas conservan los 510 productos base y toda escritura administrativa responde `CATALOG_MIGRATION_REQUIRED`. `migrations/0005_admin_auth.sql` crea el rate limiting persistente del login; sin ella, el login falla cerrado. `migrations/0006_analytics_manual_payment_click.sql` amplía el CHECK analítico mediante reconstrucción controlada y recrea los índices existentes. Verificar `d1_migrations`, `sqlite_schema`, índices y conteos antes/después sin consultar PII.
+El flujo versionado aplica en orden `0001` a `0007`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico y `0007` agrega canal/resolución de pedidos más triggers e índices de reservas WhatsApp. Las D1 remotas sólo están verificadas hasta `0006`: aplicar `0007` primero en preview, verificar `d1_migrations`, `sqlite_schema`, triggers, índices, conteos y `PRAGMA foreign_key_check`, y recién después repetir en producción. No desplegar las Functions dependientes antes de confirmar la migración en el entorno correspondiente.
+
+`0007` no debe revertirse editando ni borrando la migración después de aplicada. Ante rollback de código, primero aprobar o rechazar de forma controlada todos los pedidos WhatsApp `pending`; sólo entonces volver a una versión que no conozca reservas, dejando el esquema aditivo sin uso. Mantener código anterior con reservas pendientes haría que el catálogo ignore unidades comprometidas.
 
 ### 3.1. R2 para imágenes administrativas
 
@@ -248,6 +251,8 @@ Con D1 de preview y sandbox:
 - artefacto `dist`: sin secretos ni `.map`.
 - inventario legacy: ausencia de `stockQuantity` conserva compra sin control; stock 0 controlado queda no disponible;
 - cantidades: cliente limita a `min(99, stock)` y servidor rechaza una cantidad superior al stock vigente;
+- WhatsApp: creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
+- administración: aprobar descuenta físico exactamente una vez; rechazar libera por derivación; estados cruzados y clicks repetidos no duplican efectos;
 - imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;
 - R2: `shekinah` y `shekinah-preview` aislados, `CATALOG_IMAGES` visible en el deployment y `publicR2DevEnabled=false`, sin confundir infraestructura con persistencia ya probada.
 
@@ -257,7 +262,7 @@ Validar por separado el fallback manual:
 - `href` exacto `https://link.mercadopago.com.ar/shekinahmoreno`;
 - WhatsApp habilitado al número `5492236216559`;
 - mensaje incluye carrito y total de referencia;
-- no se crea ninguna solicitud `/api/checkout/preferences` al usar el fallback;
+- se crea exactamente una solicitud al endpoint de pedido WhatsApp y ninguna a `/api/checkout/preferences` al usar ese canal;
 - la interfaz informa que la asociación y confirmación de pago son manuales.
 
 ## 9. Activar Checkout Pro de forma escalonada

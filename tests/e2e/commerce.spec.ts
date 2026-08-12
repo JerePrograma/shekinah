@@ -89,9 +89,93 @@ test('habilita el Link de Pago y WhatsApp autorizados sin activar Checkout Pro',
   );
   await expect(paymentLink).toHaveAttribute('target', '_blank');
   await expect(page.getByText(/Cobro temporal manual/iu)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Enviar carrito por WhatsApp' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
   await expect(page.getByText(/WhatsApp estará disponible/iu)).toHaveCount(0);
 });
+
+test('registra y reserva una sola vez antes de ofrecer el segundo gesto de WhatsApp', async ({ page }) => {
+  let orderRequests = 0;
+  let releaseOrder: (() => void) | undefined;
+  const orderGate = new Promise<void>((resolve) => {
+    releaseOrder = resolve;
+  });
+  await page.route('**/api/orders/whatsapp', async (route) => {
+    orderRequests += 1;
+    await orderGate;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify(whatsappOrderFixture()),
+    });
+  });
+
+  await page.goto('/catalogo');
+  await page.locator('[data-product]').first().getByRole('button', {
+    name: /Agregar .* al carrito/u,
+  }).click();
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+
+  const createOrder = page.getByRole('button', { name: 'Pedir por WhatsApp' });
+  await createOrder.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+
+  await expect(page.getByRole('button', { name: 'Creando pedido…' })).toBeDisabled();
+  await expect(page.getByText(/registrando el pedido y reservando las unidades/u)).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: /Cantidad de /u })).toBeDisabled();
+  await expect(page.getByRole('link', { name: 'Abrir WhatsApp' })).toHaveCount(0);
+  await expect.poll(() => orderRequests).toBe(1);
+  expect(page.context().pages()).toHaveLength(1);
+
+  releaseOrder?.();
+  await expect(page.getByRole('heading', { name: 'Pedido registrado' })).toBeFocused();
+  await expect(page.getByText(/quedó pendiente de aprobación/u)).toContainText(
+    whatsappOrderFixture().orderId,
+  );
+  const whatsappLink = page.getByRole('link', { name: 'Abrir WhatsApp' });
+  await expect(whatsappLink).toHaveAttribute('target', '_blank');
+  const href = await whatsappLink.getAttribute('href');
+  expect(href).not.toBeNull();
+  const url = new URL(href ?? '');
+  expect(url.origin).toBe('https://wa.me');
+  expect(url.searchParams.get('text')).toContain(whatsappOrderFixture().orderId);
+  expect(url.searchParams.get('text')).toContain('Snapshot E2E autoritativo');
+  expect(orderRequests).toBe(1);
+  expect(page.context().pages()).toHaveLength(1);
+  await expect(page.getByText('1 unidad en el carrito.')).toBeVisible();
+});
+
+for (const [status, message] of [
+  [409, 'Algunos productos ya no tienen la cantidad solicitada.'],
+  [500, 'No pudimos registrar el pedido. Revisá el carrito e intentá nuevamente.'],
+] as const) {
+  test(`conserva el carrito y no ofrece WhatsApp ante error ${status}`, async ({ page }) => {
+    let orderRequests = 0;
+    await page.route('**/api/orders/whatsapp', async (route) => {
+      orderRequests += 1;
+      await route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: status === 409 ? 'INSUFFICIENT_STOCK' : 'INTERNAL_ERROR', message } }),
+      });
+    });
+
+    await page.goto('/catalogo');
+    await page.locator('[data-product]').first().getByRole('button', {
+      name: /Agregar .* al carrito/u,
+    }).click();
+    await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+    await page.getByRole('button', { name: 'Pedir por WhatsApp' }).click();
+
+    await expect(page.getByRole('alert')).toHaveText(message);
+    await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+    await expect(page.getByRole('link', { name: 'Abrir WhatsApp' })).toHaveCount(0);
+    await expect(page.getByText('1 unidad en el carrito.')).toBeVisible();
+    expect(orderRequests).toBe(1);
+    expect(page.context().pages()).toHaveLength(1);
+  });
+}
 
 test('el retorno del navegador sólo muestra el estado confirmado por el servidor', async ({ page }) => {
   const publicToken = 'a'.repeat(64);
@@ -218,7 +302,7 @@ test('respeta ausencia, rechazo, aceptación y revocación del consentimiento', 
   expect(events).toHaveLength(countBeforeWithdrawal + 1);
 });
 
-test('mide sólo el clic manual válido y conserva Mercado Pago y WhatsApp separados', async ({ context, page }) => {
+test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp separados', async ({ context, page }) => {
   await page.addInitScript(() => {
     window.localStorage.removeItem('shekinah.analytics-consent.v1');
   });
@@ -235,8 +319,14 @@ test('mide sólo el clic manual válido y conserva Mercado Pago y WhatsApp separ
   await context.route('https://link.mercadopago.com.ar/**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Destino simulado</p>' });
   });
-  await context.route('https://wa.me/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>WhatsApp simulado</p>' });
+  let orderRequests = 0;
+  await page.route('**/api/orders/whatsapp', async (route) => {
+    orderRequests += 1;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify(whatsappOrderFixture()),
+    });
   });
 
   await page.goto('/catalogo');
@@ -278,10 +368,17 @@ test('mide sólo el clic manual válido y conserva Mercado Pago y WhatsApp separ
   ]);
   expect(checkoutPreferenceCalls).toBe(0);
 
-  const whatsappPopupPromise = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Enviar carrito por WhatsApp' }).click();
-  const whatsappPopup = await whatsappPopupPromise;
-  await whatsappPopup.close();
+  await page.getByRole('button', { name: 'Pedir por WhatsApp' }).click();
+  await expect(page.getByRole('heading', { name: 'Pedido registrado' })).toBeFocused();
+  expect(orderRequests).toBe(1);
+  expect(events.filter(isWhatsappOpen)).toHaveLength(0);
+  const whatsappLink = page.getByRole('link', { name: 'Abrir WhatsApp' });
+  const href = await whatsappLink.getAttribute('href');
+  expect(new URL(href ?? '').searchParams.get('text')).toContain(whatsappOrderFixture().orderId);
+  await whatsappLink.evaluate((link: HTMLAnchorElement) => {
+    link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+    link.click();
+  });
   await expect.poll(() => events.filter(isWhatsappOpen).length).toBe(1);
   expect(events.filter(isManualPaymentClick)).toHaveLength(1);
   expect(checkoutPreferenceCalls).toBe(0);
@@ -298,4 +395,23 @@ function isManualPaymentClick(value: Record<string, unknown>): boolean {
 
 function isWhatsappOpen(value: Record<string, unknown>): boolean {
   return value.eventName === 'whatsapp_open';
+}
+
+function whatsappOrderFixture() {
+  return {
+    orderId: `ord_${'w'.repeat(24)}`,
+    status: 'pending',
+    currency: 'ARS',
+    totalMinor: 123_400,
+    itemCount: 1,
+    createdAt: '2026-08-12T12:00:00.000Z',
+    items: [{
+      productId: 'producto-e2e-snapshot',
+      name: 'Snapshot E2E autoritativo',
+      presentation: '100 g',
+      quantity: 1,
+      unitPriceMinor: 123_400,
+      subtotalMinor: 123_400,
+    }],
+  };
 }

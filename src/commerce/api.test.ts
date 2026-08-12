@@ -1,6 +1,6 @@
 import type { CartItem } from '../cart/model';
 import type { Product } from '../catalog/model';
-import { createCheckoutPreference, getPublicOrderStatus } from './api';
+import { createCheckoutPreference, createWhatsappOrder, getPublicOrderStatus } from './api';
 import type { CheckoutFulfillment } from './fulfillment';
 
 const product: Product = {
@@ -73,5 +73,69 @@ describe('cliente de comercio', () => {
       totalMinor: 246_800,
       itemCount: 2,
     });
+  });
+
+  it('crea un pedido de WhatsApp sólo con IDs y cantidades y valida su snapshot', async () => {
+    const orderId = `ord_${'w'.repeat(24)}`;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      orderId,
+      status: 'pending',
+      currency: 'ARS',
+      totalMinor: 246_800,
+      itemCount: 2,
+      createdAt: '2026-08-12T12:00:00.000Z',
+      items: [{
+        productId: product.id,
+        name: product.name,
+        presentation: '100 g',
+        quantity: 2,
+        unitPriceMinor: 123_400,
+        subtotalMinor: 246_800,
+      }],
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+
+    await expect(
+      createWhatsappOrder([item], '00000000-0000-4000-8000-000000000001', null),
+    ).resolves.toMatchObject({ orderId, status: 'pending', totalMinor: 246_800 });
+
+    const request = fetchMock.mock.calls[0]?.[1];
+    if (request === undefined || typeof request.body !== 'string') {
+      throw new Error('No se capturó el cuerpo del pedido de WhatsApp.');
+    }
+    expect(JSON.parse(request.body)).toEqual({
+      idempotencyKey: '00000000-0000-4000-8000-000000000001',
+      items: [{ productId: product.id, quantity: 2 }],
+      fulfillment: null,
+    });
+    expect(request.credentials).toBe('same-origin');
+    expect(request.redirect).toBe('error');
+  });
+
+  it('rechaza respuestas no autoritativas o snapshots inconsistentes de WhatsApp', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      error: { message: 'Algunos productos ya no tienen la cantidad solicitada.' },
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+    await expect(
+      createWhatsappOrder([item], crypto.randomUUID(), fulfillment),
+    ).rejects.toThrow('Algunos productos ya no tienen la cantidad solicitada.');
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+      orderId: `ord_${'x'.repeat(24)}`,
+      status: 'pending',
+      currency: 'ARS',
+      totalMinor: 246_800,
+      itemCount: 2,
+      createdAt: '2026-08-12T12:00:00.000Z',
+      items: [{
+        productId: product.id,
+        name: product.name,
+        quantity: 2,
+        unitPriceMinor: 123_400,
+        subtotalMinor: 1,
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await expect(
+      createWhatsappOrder([item], crypto.randomUUID(), fulfillment),
+    ).rejects.toThrow('pedido de WhatsApp inválido');
   });
 });

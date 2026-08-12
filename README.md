@@ -11,14 +11,14 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 - retiro o entrega personal coordinada y Correo Argentino con cálculo autoritativo;
 - cobro manual temporal mediante un Link de Pago autorizado de Mercado Pago sin monto predefinido: el carrito copia el total y abre el enlace para que el comprador lo ingrese;
 - Checkout Pro de Mercado Pago por redirección preparado para activación serverless cuando existan D1, credenciales y webhook verificados;
-- envío manual del carrito por WhatsApp al número expresamente autorizado;
+- registro server-side del pedido pendiente y reserva de stock antes de abrir WhatsApp al número expresamente autorizado;
 - pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1; el flujo manual registra `manual_payment_click` como interacción, nunca como pago;
-- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría; conserva el ABM de catálogo y agrega detalle completo de pedidos estrictamente de sólo lectura;
+- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría; conserva el ABM de catálogo y permite aprobar o rechazar únicamente los pedidos pendientes de WhatsApp;
 - política de privacidad, accesibilidad y vista 404.
 
-El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales del Checkout Pro integrado. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear un pedido. El fallback manual no crea un pedido en D1 ni confirma automáticamente el pago: el comprador ingresa el total en Mercado Pago y envía el carrito por WhatsApp para que el comercio pueda asociarlo y coordinar la entrega.
+El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales. El backend vuelve a calcular el carrito desde el catálogo efectivo, compuesto por la base canónica y las mutaciones persistidas en D1, antes de crear tanto un pedido de Checkout Pro como un pedido pendiente de WhatsApp. El canal manual no confirma automáticamente el pago: persiste primero el pedido y reserva stock; después el comprador abre WhatsApp y el comercio aprueba o rechaza manualmente desde el backoffice.
 
-En el candidato actual, `stockQuantity` es opcional: si está ausente, el producto conserva el comportamiento legacy sin control de stock. Si existe, debe ser un entero entre 0 y 1.000.000; cero lo vuelve no comprable aunque la disponibilidad manual esté activa. El carrito limita cada línea a `min(99, stock)` y el servidor vuelve a validar al iniciar Checkout Pro. Este control no reserva ni descuenta unidades automáticamente.
+En el candidato actual, `stockQuantity` es opcional: si está ausente, el producto conserva el comportamiento legacy sin control de stock. Si existe, debe ser un entero entre 0 y 1.000.000; cero disponible lo vuelve no comprable aunque la disponibilidad manual esté activa. Para WhatsApp, `migrations/0007_whatsapp_order_reservations.sql` usa reservas derivadas de los items de pedidos `channel='whatsapp'` y `status='pending'`: `disponible = físico - reservado`. Aprobar descuenta el stock físico exactamente una vez; rechazar sólo retira la reserva al salir de `pending`.
 
 ## Estado productivo actual
 
@@ -32,7 +32,7 @@ VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 
 `https://shekinah.ar` es el dominio público canónico de producción: el custom domain de Pages está activo, usa un CNAME proxied al dominio técnico y responde 200 con TLS confiable emitido por Google. `https://shekinah-7dl.pages.dev` se conserva para Pages y preview. El alias `www` tiene una Bulk Redirect HTTPS `301` al apex que preserva path y query; al seguirla se obtiene el apex 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre `shekinah.ar` y `*.shekinah.ar`, y el handshake negociado usa TLS 1.3.
 
-El sitio puede operar el flujo manual de carrito, Link de Pago y WhatsApp sin VPS. D1 ya está separada y migrada para production/preview, pero Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar credenciales productivas de Mercado Pago, webhook y verificaciones propias de ese flujo. Cloudflare Pages Functions cubre el backend serverless previsto; no es necesario incorporar un VPS para esa arquitectura.
+El flujo candidato de WhatsApp usa Pages Functions y D1 sin requerir VPS. Las D1 de production/preview estaban verificadas hasta `0006`; `0007`, las Functions nuevas, CI, deployment y smoke remoto deben comprobarse por separado antes de activar este comportamiento público. Checkout Pro automatizado continúa cerrado con `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar sus credenciales, webhook y verificaciones propias.
 
 La analítica first-party quedó activada de forma independiente de Checkout Pro el 2026-08-11 en preview y producción. Requiere consentimiento explícito, excluye `/admin`, usa secretos HMAC server-side distintos por entorno y retención verificada de 730 días. El flujo manual mide `manual_payment_click` y `whatsapp_open` sin monto, carrito ni PII; ambos son interacciones y nunca pagos confirmados. Las migraciones `0001` a `0006`, el deployment del SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8` y los smokes de consentimiento, rechazo, captura y revocación quedaron verificados en D1 aisladas.
 

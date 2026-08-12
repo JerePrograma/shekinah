@@ -62,7 +62,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** comercio, analítica y WhatsApp deben permanecer cerrados hasta completar autorización y configuración externa.
 - **CANDIDATO REVISADO_POR_CÓDIGO:** `stockQuantity` es opcional; ausente significa stock no controlado. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o cantidad mayor que cero.
 - **CANDIDATO REVISADO_POR_CÓDIGO:** el stock controlado debe ser un entero entre `0` y `1.000.000`; el carrito limita cada línea a `min(99, stockQuantity)` y el servidor vuelve a validar disponibilidad y cantidad antes del Checkout Pro.
-- **LÍMITE DELIBERADO:** el inventario administrativo restringe la compra, pero no reserva ni descuenta stock automáticamente al vender.
+- **REVISADO_POR_CÓDIGO:** `0007` deriva la reserva de los items de pedidos WhatsApp pendientes; aprobar descuenta stock físico una sola vez y rechazar libera la reserva sin sumar stock. Los productos sin `stockQuantity` conservan el modelo legacy sin control numérico.
 
 ## 6. Invariantes de seguridad
 
@@ -93,7 +93,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** `reserveCheckoutIntent` fija por separado las huellas normalizadas de fulfillment y carrito; `prepareOrder` crea/lee pedido e ítems mediante `D1Database.batch`, y el fulfillment se persiste antes de reclamar la preferencia.
 - **REVISADO_POR_CÓDIGO:** la recuperación exige coincidencia de carrito, subtotal, envío, total, peso y huella de fulfillment.
 - **VERIFICADO:** `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella del carrito y backfillea desde pedidos existentes sin editar `0001` ni `0002`.
-- **VERIFICADO:** `server/migrations.test.ts` aplica `0001` a `0006`, preserva eventos legacy y pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints, cascade, catálogo, rate limiting, CHECK analítico e índices.
+- **VERIFICADO LOCALMENTE:** `server/migrations.test.ts` aplica `0001` a `0007`, preserva eventos legacy y pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints, cascade, catálogo, rate limiting, CHECK analítico, reservas WhatsApp, transiciones e índices. Esta evidencia no declara `0007` aplicada en una D1 remota.
 
 ## 10. Mercado Pago y webhooks
 
@@ -113,7 +113,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **HISTÓRICO VERIFICADO (2026-08-04):** la sesión autenticada de Cloudflare mostró el onboarding inicial de Zero Trust; no existía organización ni aplicación Access configurada.
 - **HISTÓRICO SUPERADO:** aquel diseño exigía protección Access de borde. El requisito actual reemplazó esa autoridad primaria por login propio server-side para que `/admin` pueda mostrar el formulario.
 - **VERIFICADO:** el inventario del 2026-08-10 confirmó que Access continúa ausente; el nuevo requisito usa autenticación propia y no debe añadir una política externa que intercepte el login.
-- **VERIFICADO:** Backoffice V2 separa Resumen, Productos, Pedidos, Analítica y Auditoría; conserva una sola instancia de `ProductManager`, consulta detalle de pedido bajo demanda y no ofrece mutaciones financieras. E2E cubre navegación, edición sin guardar y detalle completo de sólo lectura.
+- **REVISADO_POR_CÓDIGO:** Backoffice V2 separa Resumen, Productos, Pedidos, Analítica y Auditoría; conserva una sola instancia de `ProductManager`, consulta detalle bajo demanda y ofrece únicamente aprobar/rechazar para pedidos WhatsApp pendientes. Los demás pedidos y datos financieros permanecen sin edición.
 
 ## 12. Analítica, consentimiento y retención
 

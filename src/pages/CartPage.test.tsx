@@ -4,9 +4,19 @@ import { CartProvider } from '../cart/CartContext';
 import { CART_STORAGE_KEY } from '../cart/model';
 import { CartPage } from './CartPage';
 
-const { commerceState, createCheckoutPreference, product, trackAnalyticsEvent } = vi.hoisted(() => ({
+const {
+  commerceState,
+  createCheckoutPreference,
+  createWhatsappOrder,
+  getOrCreateWhatsappOrderIdempotencyKey,
+  product,
+  refreshRuntimeCatalog,
+  trackAnalyticsEvent,
+} = vi.hoisted(() => ({
   commerceState: { enabled: false },
   createCheckoutPreference: vi.fn(),
+  createWhatsappOrder: vi.fn(),
+  getOrCreateWhatsappOrderIdempotencyKey: vi.fn(() => Promise.resolve('whatsapp-test-key')),
   product: Object.freeze({
     id: 'producto-carrito',
     slug: 'producto-carrito',
@@ -19,11 +29,13 @@ const { commerceState, createCheckoutPreference, product, trackAnalyticsEvent } 
     availability: 'available' as const,
     stockQuantity: 3,
   }),
+  refreshRuntimeCatalog: vi.fn(),
   trackAnalyticsEvent: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent }));
 vi.mock('../data/runtime-catalog', () => ({
+  refreshRuntimeCatalog,
   useRuntimeCatalogProducts: () => [product],
 }));
 vi.mock('../commerce/env', () => ({
@@ -31,13 +43,12 @@ vi.mock('../commerce/env', () => ({
   getAuthorizedWhatsappNumber: () => '5492236216559',
   isCommerceClientEnabled: () => commerceState.enabled,
 }));
-vi.mock('../commerce/api', () => ({ createCheckoutPreference }));
+vi.mock('../commerce/api', () => ({ createCheckoutPreference, createWhatsappOrder }));
 vi.mock('../commerce/checkout-session', () => ({
   getOrCreateCheckoutIdempotencyKey: () => Promise.resolve('checkout-test-key'),
+  getOrCreateWhatsappOrderIdempotencyKey,
   rememberCheckoutOrder: vi.fn(),
 }));
-
-const openMock = vi.fn();
 
 describe('CartPage', () => {
   beforeEach(() => {
@@ -49,9 +60,10 @@ describe('CartPage', () => {
     }));
     trackAnalyticsEvent.mockClear();
     createCheckoutPreference.mockReset();
+    createWhatsappOrder.mockReset();
+    getOrCreateWhatsappOrderIdempotencyKey.mockClear();
+    refreshRuntimeCatalog.mockReset().mockResolvedValue([product]);
     commerceState.enabled = false;
-    openMock.mockClear();
-    vi.stubGlobal('open', openMock);
   });
 
   afterEach(() => {
@@ -100,13 +112,13 @@ describe('CartPage', () => {
       target: { value: 'Ana' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar carrito por WhatsApp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.',
     );
     expect(screen.getByRole('textbox', { name: /^Celular/u })).toHaveFocus();
-    expect(openMock).not.toHaveBeenCalled();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
   it('conserva una modalidad de entrega cambiada hasta completar sus datos', () => {
@@ -115,13 +127,13 @@ describe('CartPage', () => {
       target: { value: 'correo_argentino' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar carrito por WhatsApp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.',
     );
     expect(screen.getByRole('textbox', { name: /^Nombre completo/u })).toHaveFocus();
-    expect(openMock).not.toHaveBeenCalled();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
   it('bloquea duplicados y cambios del carrito mientras prepara el checkout', async () => {
@@ -144,7 +156,7 @@ describe('CartPage', () => {
     expect(screen.getByRole('button', { name: 'Preparando pago…' })).toBeDisabled();
     expect(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` })).toBeDisabled();
     expect(screen.getByRole('button', { name: `Eliminar ${product.name} del carrito` })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Enviar carrito por WhatsApp' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent(
       'Cuando esté listo, te redirigiremos a Mercado Pago.',
     );
@@ -160,6 +172,86 @@ describe('CartPage', () => {
     );
     expect(screen.getByRole('button', { name: 'Pagar con Mercado Pago' })).toBeEnabled();
     expect(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` })).toBeEnabled();
+  });
+
+  it('registra una sola vez antes de ofrecer WhatsApp y usa el snapshot autoritativo', async () => {
+    let resolveOrder: ((value: ReturnType<typeof whatsappOrderFixture>) => void) | undefined;
+    createWhatsappOrder.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOrder = resolve;
+    }));
+    renderCart();
+
+    const createOrder = screen.getByRole('button', { name: 'Pedir por WhatsApp' });
+    fireEvent.click(createOrder);
+    fireEvent.click(createOrder);
+
+    expect(screen.getByRole('button', { name: 'Creando pedido…' })).toBeDisabled();
+    expect(screen.getByText(/registrando el pedido y reservando las unidades/u)).toBeVisible();
+    expect(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Abrir WhatsApp' })).not.toBeInTheDocument();
+    expect(trackAnalyticsEvent).not.toHaveBeenCalledWith('whatsapp_open', expect.anything());
+    await waitFor(() => expect(createWhatsappOrder).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolveOrder?.(whatsappOrderFixture());
+      await Promise.resolve();
+    });
+
+    const resultTitle = screen.getByRole('heading', { name: 'Pedido registrado' });
+    expect(resultTitle).toBeVisible();
+    await waitFor(() => expect(resultTitle).toHaveFocus());
+    expect(screen.getByText(/quedó pendiente de aprobación/u)).toHaveTextContent(
+      whatsappOrderFixture().orderId,
+    );
+    expect(screen.getByRole('heading', { name: product.name })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
+    expect(getOrCreateWhatsappOrderIdempotencyKey).toHaveBeenCalledWith(
+      expect.any(Array),
+      null,
+    );
+    expect(createWhatsappOrder).toHaveBeenCalledWith(
+      expect.any(Array),
+      'whatsapp-test-key',
+      null,
+    );
+    expect(refreshRuntimeCatalog).toHaveBeenCalledTimes(1);
+    expect(trackAnalyticsEvent).not.toHaveBeenCalledWith('whatsapp_open', expect.anything());
+
+    const whatsappLink = screen.getByRole('link', { name: 'Abrir WhatsApp' });
+    const href = whatsappLink.getAttribute('href');
+    expect(href).not.toBeNull();
+    const message = new URL(href ?? '').searchParams.get('text');
+    expect(message).toContain(whatsappOrderFixture().orderId);
+    expect(message).toContain('Nombre autoritativo');
+    expect(message).toContain('Total registrado');
+    whatsappLink.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(whatsappLink);
+    expect(trackAnalyticsEvent).toHaveBeenCalledWith('whatsapp_open', { path: '/carrito' });
+
+    fireEvent.click(screen.getByRole('button', {
+      name: `Aumentar cantidad de ${product.name}`,
+    }));
+    expect(screen.queryByRole('heading', { name: 'Pedido registrado' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+    expect(screen.getByText('2 unidades en el carrito.')).toBeVisible();
+  });
+
+  it('conserva carrito y no ofrece WhatsApp cuando el servidor rechaza la reserva', async () => {
+    createWhatsappOrder.mockRejectedValueOnce(
+      new Error('Algunos productos ya no tienen la cantidad solicitada.'),
+    );
+    renderCart();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Algunos productos ya no tienen la cantidad solicitada.',
+    );
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+    expect(screen.getByRole('heading', { name: product.name })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Abrir WhatsApp' })).not.toBeInTheDocument();
+    expect(trackAnalyticsEvent).not.toHaveBeenCalledWith('whatsapp_open', expect.anything());
+    expect(refreshRuntimeCatalog).not.toHaveBeenCalled();
   });
 });
 
@@ -183,4 +275,23 @@ function fillFulfillment() {
   for (const [name, value] of values) {
     fireEvent.change(screen.getByRole('textbox', { name }), { target: { value } });
   }
+}
+
+function whatsappOrderFixture() {
+  return {
+    orderId: `ord_${'w'.repeat(24)}`,
+    status: 'pending' as const,
+    currency: 'ARS' as const,
+    totalMinor: 100_000,
+    itemCount: 1,
+    createdAt: '2026-08-12T12:00:00.000Z',
+    items: [{
+      productId: product.id,
+      name: 'Nombre autoritativo',
+      presentation: '100 g',
+      quantity: 1,
+      unitPriceMinor: 100_000,
+      subtotalMinor: 100_000,
+    }],
+  };
 }

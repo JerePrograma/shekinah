@@ -5,9 +5,12 @@ import { fulfillmentCanonicalValue } from './fulfillment';
 import type { CheckoutFulfillment } from './fulfillment';
 
 const IDEMPOTENCY_STORAGE_KEY = 'shekinah.checkout-idempotency.v2';
+const WHATSAPP_IDEMPOTENCY_STORAGE_KEY = 'shekinah.whatsapp-order-idempotency.v1';
 const ORDER_STORAGE_KEY = 'shekinah.checkout-order.v1';
 const CHECKOUT_LOCK_NAME = 'shekinah.checkout-idempotency';
+const WHATSAPP_LOCK_NAME = 'shekinah.whatsapp-order-idempotency';
 const ORDER_MEMORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const volatileAttempts = new Map<string, StoredCheckoutAttempt>();
 
 type StoredCheckoutAttempt = Readonly<{
   fingerprintHash: string;
@@ -54,6 +57,21 @@ export async function getOrCreateCheckoutIdempotencyKey(
   return lockManager.request(CHECKOUT_LOCK_NAME, { mode: 'exclusive' }, operation);
 }
 
+export async function getOrCreateWhatsappOrderIdempotencyKey(
+  items: readonly CartItem[],
+  fulfillment: CheckoutFulfillment | null,
+  now = Date.now(),
+): Promise<string> {
+  const operation = async () => getOrCreateIdempotencyKey(
+    WHATSAPP_IDEMPOTENCY_STORAGE_KEY,
+    await whatsappOrderFingerprint(items, fulfillment),
+    now,
+  );
+  const lockManager = readLockManager();
+  if (lockManager === null) return operation();
+  return lockManager.request(WHATSAPP_LOCK_NAME, { mode: 'exclusive' }, operation);
+}
+
 export function rememberCheckoutOrder(
   publicToken: string,
   items: readonly CartItem[],
@@ -96,6 +114,7 @@ export function shouldClearCartAfterApproval(
 }
 
 export function clearCheckoutAttempt(): void {
+  volatileAttempts.delete(IDEMPOTENCY_STORAGE_KEY);
   try {
     window.localStorage.removeItem(IDEMPOTENCY_STORAGE_KEY);
   } catch {
@@ -118,19 +137,47 @@ async function getOrCreateCheckoutIdempotencyKeyUnlocked(
   now: number,
 ): Promise<string> {
   const fingerprintHash = await checkoutFingerprint(items, fulfillment);
-  const stored = readLocalJson<StoredCheckoutAttempt>(IDEMPOTENCY_STORAGE_KEY);
-  if (isReusableAttempt(stored, fingerprintHash, now)) return stored.idempotencyKey;
+  return getOrCreateIdempotencyKey(IDEMPOTENCY_STORAGE_KEY, fingerprintHash, now);
+}
+
+async function whatsappOrderFingerprint(
+  items: readonly CartItem[],
+  fulfillment: CheckoutFulfillment | null,
+): Promise<string> {
+  const canonical = JSON.stringify([
+    cartFingerprint(items),
+    fulfillment === null ? null : fulfillmentCanonicalValue(fulfillment),
+  ]);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function getOrCreateIdempotencyKey(
+  storageKey: string,
+  fingerprintHash: string,
+  now: number,
+): string {
+  const stored = readLocalJson<StoredCheckoutAttempt>(storageKey);
+  if (isReusableAttempt(stored, fingerprintHash, now)) {
+    volatileAttempts.set(storageKey, stored);
+    return stored.idempotencyKey;
+  }
+  const volatile = volatileAttempts.get(storageKey) ?? null;
+  if (isReusableAttempt(volatile, fingerprintHash, now)) return volatile.idempotencyKey;
 
   const candidate: StoredCheckoutAttempt = Object.freeze({
     fingerprintHash,
     idempotencyKey: crypto.randomUUID(),
     createdAt: now,
   });
-  writeLocalJson(IDEMPOTENCY_STORAGE_KEY, candidate);
-  const persisted = readLocalJson<StoredCheckoutAttempt>(IDEMPOTENCY_STORAGE_KEY);
-  return isReusableAttempt(persisted, fingerprintHash, now)
-    ? persisted.idempotencyKey
-    : candidate.idempotencyKey;
+  volatileAttempts.set(storageKey, candidate);
+  writeLocalJson(storageKey, candidate);
+  const persisted = readLocalJson<StoredCheckoutAttempt>(storageKey);
+  if (!isReusableAttempt(persisted, fingerprintHash, now)) return candidate.idempotencyKey;
+  volatileAttempts.set(storageKey, persisted);
+  return persisted.idempotencyKey;
 }
 
 function isReusableAttempt(

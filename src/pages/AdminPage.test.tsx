@@ -7,7 +7,7 @@ import {
 
 import { AdminPage } from './AdminPage';
 
-describe('Backoffice V2 de sólo lectura', () => {
+describe('Backoffice V2', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -38,7 +38,7 @@ describe('Backoffice V2 de sólo lectura', () => {
 
     render(<AdminPage navigate={vi.fn()} section="orders" />);
 
-    expect(await screen.findByRole('table', { name: 'Pedidos integrados del período' })).toBeVisible();
+    expect(await screen.findByRole('table', { name: 'Pedidos del período y pedidos de WhatsApp pendientes' })).toBeVisible();
     expect(detailCalls(fetchMock)).toHaveLength(0);
     const openDetail = screen.getByRole('button', { name: 'Ver detalle' });
     fireEvent.click(openDetail);
@@ -48,7 +48,7 @@ describe('Backoffice V2 de sólo lectura', () => {
     expect(screen.getByRole('heading', { name: 'Fulfillment' })).toBeVisible();
     expect(screen.getByRole('table', { name: 'Items del pedido' })).toHaveTextContent('Producto de prueba');
     expect(screen.getByRole('table', { name: 'Pagos reportados por el proveedor' })).toHaveTextContent('Mercado Pago');
-    expect(screen.getByText(/no ofrece controles para modificar estados/i)).toBeVisible();
+    expect(screen.getByText(/sólo los pedidos de WhatsApp pendientes admiten aprobación o rechazo/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).not.toBeInTheDocument();
 
     fireEvent.keyDown(screen.getByRole('heading', { name: `Detalle de ${ORDER_ID}` }), {
@@ -61,7 +61,7 @@ describe('Backoffice V2 de sólo lectura', () => {
     const reopenedTitle = await screen.findByRole('heading', { name: `Detalle de ${ORDER_ID}` });
     openDetail.remove();
     fireEvent.keyDown(reopenedTitle, { key: 'Escape' });
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Pedidos integrados' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Pedidos' }))
       .toHaveFocus());
   });
 
@@ -125,7 +125,7 @@ describe('Backoffice V2 de sólo lectura', () => {
     render(<AdminPage navigate={vi.fn()} section="orders" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
-    expect(screen.getByRole('table', { name: 'Pedidos integrados del período' })).toBeVisible();
+    expect(screen.getByRole('table', { name: 'Pedidos del período y pedidos de WhatsApp pendientes' })).toBeVisible();
   });
 
   it('notifica y desmonta mediante onUnauthorized cuando vence la sesión del detalle', async () => {
@@ -146,6 +146,74 @@ describe('Backoffice V2 de sólo lectura', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('alert')).toHaveTextContent('La sesión administrativa venció.');
+  });
+
+  it('aprueba un pedido WhatsApp una sola vez y actualiza el detalle', async () => {
+    const onOperationStateChange = vi.fn();
+    let detail = orderDetailFixture({ channel: 'whatsapp', status: 'pending' });
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      const path = requestPath(input);
+      if (path.startsWith('/api/admin/orders?')) {
+        return Promise.resolve(json(orderListFixture({ channel: 'whatsapp', status: detail.order.status })));
+      }
+      if (path === `/api/admin/orders/${ORDER_ID}/approve` && init?.method === 'POST') {
+        detail = orderDetailFixture({
+          channel: 'whatsapp',
+          status: 'approved',
+          approved_at: '2026-08-10T12:05:00.000Z',
+          resolved_at: '2026-08-10T12:05:00.000Z',
+          resolved_by: 'admin@example.test',
+        });
+        return Promise.resolve(json(detail));
+      }
+      if (path === `/api/admin/orders/${ORDER_ID}`) return Promise.resolve(json(detail));
+      if (path === '/api/catalog') return Promise.resolve(json({ products: [] }));
+      return Promise.resolve(json({ error: { message: 'No encontrado.' } }, 404));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <AdminPage
+        navigate={vi.fn()}
+        onOperationStateChange={onOperationStateChange}
+        section="orders"
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprobar' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Pedido aprobado');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([input]) => requestPath(input).endsWith('/approve')))
+      .toHaveLength(1);
+    expect(onOperationStateChange).toHaveBeenCalledWith(true, 'Aprobando pedido');
+  });
+
+  it('confirma el rechazo explicando que libera la reserva', async () => {
+    let detail = orderDetailFixture({ channel: 'whatsapp', status: 'pending' });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>((input) => {
+      const path = requestPath(input);
+      if (path.startsWith('/api/admin/orders?')) {
+        return Promise.resolve(json(orderListFixture({ channel: 'whatsapp', status: detail.order.status })));
+      }
+      if (path === `/api/admin/orders/${ORDER_ID}/reject`) {
+        detail = orderDetailFixture({
+          channel: 'whatsapp', status: 'rejected', resolved_at: '2026-08-10T12:05:00.000Z', resolved_by: 'admin@example.test',
+        });
+        return Promise.resolve(json(detail));
+      }
+      if (path === `/api/admin/orders/${ORDER_ID}`) return Promise.resolve(json(detail));
+      if (path === '/api/catalog') return Promise.resolve(json({ products: [] }));
+      return Promise.resolve(json({ error: { message: 'No encontrado.' } }, 404));
+    }));
+
+    render(<AdminPage navigate={vi.fn()} section="orders" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rechazar' }));
+    const dialog = screen.getByRole('alertdialog', { name: `Rechazar ${ORDER_ID}` });
+    expect(dialog).toHaveTextContent('unidades reservadas volverán a estar disponibles');
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar pedido' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Pedido rechazado');
   });
 });
 
@@ -177,10 +245,11 @@ function summaryFixture(overrides: Readonly<Record<string, unknown>> = {}) {
   };
 }
 
-function orderListFixture() {
+function orderListFixture(overrides: Readonly<Record<string, unknown>> = {}) {
   return {
     rows: [{
       id: ORDER_ID,
+      channel: 'checkout_pro',
       status: 'approved',
       currency: 'ARS',
       total_minor: 12_500,
@@ -188,14 +257,16 @@ function orderListFixture() {
       delivery_method: 'correo_argentino',
       full_name: 'Cliente de prueba',
       created_at: '2026-08-10T12:00:00.000Z',
+      ...overrides,
     }],
   };
 }
 
-function orderDetailFixture() {
+function orderDetailFixture(overrides: Readonly<Record<string, unknown>> = {}) {
   return {
     order: {
       id: ORDER_ID,
+      channel: 'checkout_pro',
       status: 'approved',
       currency: 'ARS',
       total_minor: 12_500,
@@ -205,6 +276,8 @@ function orderDetailFixture() {
       created_at: '2026-08-10T12:00:00.000Z',
       updated_at: '2026-08-10T12:05:00.000Z',
       approved_at: '2026-08-10T12:05:00.000Z',
+      resolved_at: null,
+      resolved_by: null,
       last_error_code: null,
       delivery_method: 'correo_argentino',
       full_name: 'Cliente de prueba',
@@ -214,6 +287,7 @@ function orderDetailFixture() {
       province: 'Buenos Aires',
       postal_code: 'B7600',
       total_weight_grams: 500,
+      ...overrides,
     },
     items: [{
       product_id: 'producto-prueba',

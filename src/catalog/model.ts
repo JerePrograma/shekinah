@@ -49,6 +49,8 @@ export type CatalogProductSummary = Readonly<{
   sku?: string;
   availability?: 'available' | 'unavailable';
   stockQuantity?: number;
+  reservedQuantity?: number;
+  availableQuantity?: number;
   shortDescription?: string;
   primaryImage?: ProductImage;
 }>;
@@ -137,11 +139,15 @@ export function isManagedCatalogImagePath(value: string): boolean {
 }
 
 export function isProductEffectivelyAvailable(
-  product: Pick<CatalogProductSummary, 'availability' | 'stockQuantity'>,
+  product: Pick<
+    CatalogProductSummary,
+    'availability' | 'stockQuantity' | 'availableQuantity'
+  >,
 ): boolean {
+  const availableQuantity = product.availableQuantity ?? product.stockQuantity;
   return (
     product.availability !== 'unavailable' &&
-    (product.stockQuantity === undefined || product.stockQuantity > 0)
+    (availableQuantity === undefined || availableQuantity > 0)
   );
 }
 
@@ -243,6 +249,22 @@ export function parseProduct(value: unknown): Product {
   const stockQuantity = Object.hasOwn(value, 'stockQuantity')
     ? parseStockQuantity(value.stockQuantity)
     : undefined;
+  const reservedQuantity = Object.hasOwn(value, 'reservedQuantity')
+    ? parseStockQuantity(value.reservedQuantity)
+    : undefined;
+  const availableQuantity = Object.hasOwn(value, 'availableQuantity')
+    ? parseStockQuantity(value.availableQuantity)
+    : undefined;
+  if (
+    (reservedQuantity === undefined) !== (availableQuantity === undefined) ||
+    (stockQuantity === undefined && reservedQuantity !== undefined) ||
+    (stockQuantity !== undefined &&
+      reservedQuantity !== undefined &&
+      (reservedQuantity > stockQuantity ||
+        availableQuantity !== stockQuantity - reservedQuantity))
+  ) {
+    throw new InvalidProductError('La proyección de stock disponible no es válida.');
+  }
   const shortDescription = readOptionalText(value, 'shortDescription');
 
   return Object.freeze({
@@ -258,6 +280,8 @@ export function parseProduct(value: unknown): Product {
     ...(sku === undefined ? {} : { sku }),
     ...(availability === undefined ? {} : { availability }),
     ...(stockQuantity === undefined ? {} : { stockQuantity }),
+    ...(reservedQuantity === undefined ? {} : { reservedQuantity }),
+    ...(availableQuantity === undefined ? {} : { availableQuantity }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
   });

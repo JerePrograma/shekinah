@@ -403,7 +403,9 @@ export async function derivePublicToken(secret: string, key: string): Promise<st
   return hmacSha256Hex(secret, `order-public:${key}`);
 }
 
-export async function cartFingerprint(cart: RecalculatedCart): Promise<string> {
+export async function cartFingerprint(
+  cart: Pick<RecalculatedCart, 'lines' | 'currency' | 'totalMinor' | 'itemCount'>,
+): Promise<string> {
   const canonical = cart.lines
     .map(({ product, quantity }) => `${product.id}:${quantity}:${product.unitPriceMinor}`)
     .sort()

@@ -41,7 +41,10 @@ export function isProductAvailable(product: Product): boolean {
 
 export function getProductCartLimit(product: Product): number {
   if (!isProductAvailable(product)) return 0;
-  return Math.min(MAX_CART_QUANTITY, product.stockQuantity ?? MAX_CART_QUANTITY);
+  return Math.min(
+    MAX_CART_QUANTITY,
+    product.availableQuantity ?? product.stockQuantity ?? MAX_CART_QUANTITY,
+  );
 }
 
 function normalizeQuantity(value: unknown, maximum = MAX_CART_QUANTITY): number | null {

@@ -37,7 +37,7 @@ VITE_WHATSAPP_NUMBER=
 
 Los valores vacíos anulan los defaults públicos autorizados. Verificar después del deployment que el carrito muestre el pago deshabilitado y, si corresponde, WhatsApp deshabilitado. Si no es posible cambiar la configuración de build con seguridad, publicar un commit de reversión/corte; no hacer force-push.
 
-Un pago efectuado antes del corte manual debe verificarse directamente en la cuenta de Mercado Pago y resolverse por el procedimiento operativo; no existe pedido D1 ni webhook asociado al Link de Pago del panel.
+Un pago efectuado antes del corte manual debe verificarse directamente en la cuenta de Mercado Pago. El pedido WhatsApp puede existir en D1, pero no hay webhook asociado al Link de Pago del panel: aprobar o rechazar sólo después de la verificación operativa.
 
 ## Firma o credencial de Mercado Pago comprometida
 
@@ -60,16 +60,18 @@ El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe red
 - restaurar desde backup sólo con autorización y evidencia;
 - al recuperar servicio, revisar eventos `failed` y estados pendientes.
 
-El fallback manual no depende de D1; decidir explícitamente si debe permanecer disponible durante el incidente.
+El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir WhatsApp como si el pedido se hubiera registrado. El Link de Pago es una capacidad separada: decidir explícitamente si también debe cortarse durante el incidente.
 
 ## Stock inconsistente
+
+Para WhatsApp, comparar stock físico con la suma derivada de `order_items` de pedidos `pending`; no reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Si existe una reserva atascada legítima, resolver el pedido mediante aprobar o rechazar. Si físico es menor que reservado, detener nuevos pedidos WhatsApp, conservar evidencia y diagnosticar antes de editar datos.
 
 Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la existencia:
 
 - mantener el rechazo server-side y no editar D1 manualmente para saltearlo;
 - retirar temporalmente el producto mediante disponibilidad manual si la existencia real es incierta;
 - comprobar el payload efectivo en `catalog_product_mutations` y la auditoría;
-- recordar que el sistema no reserva ni descuenta por venta: reconciliar las unidades con la operación real antes de volver a habilitar el producto;
+- recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada;
 - no asignar cantidades ficticias a los productos legacy sin control de stock.
 
 ## R2 o imágenes administrativas no disponibles
@@ -111,6 +113,8 @@ La administración debe permanecer cerrada. `/admin` puede seguir sirviendo el f
 
 No usar `git reset --hard`, reescritura de historial, force-push ni borrado manual del commit publicado.
 
+Si `0007` ya fue aplicada, no desplegar código anterior mientras existan pedidos WhatsApp `pending`: esa versión ignoraría las reservas derivadas. Cortar nuevas creaciones, inventariar los pendientes y aprobarlos o rechazarlos de manera controlada. Recién con cero pendientes se puede revertir el código, dejando la migración aditiva aplicada y sin modificar.
+
 Sobre `main` sincronizado:
 
 ```powershell
@@ -129,12 +133,13 @@ Verificar GitHub Actions sobre el nuevo SHA de revert y el deployment correspond
 
 ## Rollback de base
 
-Las migraciones son aditivas. Un rollback de aplicación puede dejar las tablas sin uso sin dañarlas; ésa es la opción conservadora.
+Las migraciones son aditivas. Un rollback de aplicación puede dejar columnas, índices y triggers sin uso; ésa es la opción conservadora. Para `0007`, este rollback sólo es seguro después de resolver todos los pedidos WhatsApp pendientes.
 
 No hacer `DROP TABLE` como parte de un rollback inmediato. Para revertir esquema o datos:
 
 - detener nuevas ventas integradas;
-- decidir por separado si se mantiene o corta el fallback manual;
+- detener nuevas creaciones WhatsApp y resolver sus pedidos pendientes;
+- decidir por separado si se mantiene o corta el Link de Pago manual;
 - exportar/respaldar D1;
 - definir SQL de reversión revisado;
 - probarlo sobre una copia local;

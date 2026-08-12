@@ -326,7 +326,7 @@ export function ProductList({
                         <span>Nueva cantidad</span>
                         <input
                           type="number"
-                          min="0"
+                          min={product.reservedQuantity ?? 0}
                           max="1000000"
                           step="1"
                           inputMode="numeric"
@@ -337,6 +337,12 @@ export function ProductList({
                           onChange={(event) => onQuickStockValueChange(event.currentTarget.value)}
                         />
                       </label>
+                      {product.reservedQuantity === undefined || product.reservedQuantity === 0 ? null : (
+                        <p className="admin-context-note">
+                          Hay {product.reservedQuantity.toLocaleString('es-AR')} unidades reservadas;
+                          el stock físico no puede quedar por debajo de ese valor.
+                        </p>
+                      )}
                       <div className="admin-inline-actions">
                         <button className="button button-primary admin-compact-button" type="submit" disabled={rowBusy}>
                           {rowBusy ? 'Guardando…' : 'Guardar stock'}
@@ -427,9 +433,16 @@ function productStockLabel(product: CatalogProductDetail) {
   if (product.stockQuantity === undefined) {
     return { label: 'Stock no controlado', tone: 'untracked' } as const;
   }
-  if (product.stockQuantity === 0) return { label: 'Sin stock', tone: 'out' } as const;
+  const reserved = product.reservedQuantity ?? 0;
+  const available = product.availableQuantity ?? product.stockQuantity;
+  if (available === 0) {
+    return {
+      label: `Sin stock disponible · físico: ${product.stockQuantity.toLocaleString('es-AR')} · reservado: ${reserved.toLocaleString('es-AR')} · disponible: 0`,
+      tone: 'out',
+    } as const;
+  }
   return {
-    label: `Stock: ${product.stockQuantity.toLocaleString('es-AR')} ${product.stockQuantity === 1 ? 'unidad' : 'unidades'}`,
+    label: `Físico: ${product.stockQuantity.toLocaleString('es-AR')} · reservado: ${reserved.toLocaleString('es-AR')} · disponible: ${available.toLocaleString('es-AR')}`,
     tone: 'available',
   } as const;
 }

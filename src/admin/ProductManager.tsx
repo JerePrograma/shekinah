@@ -101,6 +101,7 @@ export function ProductManager({
   const [quickStockValue, setQuickStockValue] = useState('');
   const [quickStockError, setQuickStockError] = useState('');
   const submitRef = useRef(false);
+  const deferredInventoryRefreshRef = useRef(false);
   const editorTitleRef = useRef<HTMLHeadingElement | null>(null);
   const editorFormRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -123,6 +124,24 @@ export function ProductManager({
     void reload(controller.signal);
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const handleInventoryRefresh = () => {
+      if (isDirty || remoteBusy) {
+        deferredInventoryRefreshRef.current = true;
+        return;
+      }
+      void reload();
+    };
+    window.addEventListener('shekinah:admin-products-refresh', handleInventoryRefresh);
+    return () => window.removeEventListener('shekinah:admin-products-refresh', handleInventoryRefresh);
+  }, [isDirty, remoteBusy]);
+
+  useEffect(() => {
+    if (isDirty || remoteBusy || !deferredInventoryRefreshRef.current) return;
+    deferredInventoryRefreshRef.current = false;
+    void reload();
+  }, [isDirty, remoteBusy]);
 
   useEffect(() => {
     if (!isDirty) return undefined;
@@ -168,7 +187,9 @@ export function ProductManager({
     manuallyUnavailable: products.filter(
       (product) => product.availability === 'unavailable',
     ).length,
-    outOfStock: products.filter((product) => product.stockQuantity === 0).length,
+    outOfStock: products.filter(
+      (product) => (product.availableQuantity ?? product.stockQuantity) === 0,
+    ).length,
   }), [products]);
 
   const visibleProducts = useMemo(() => {
@@ -190,11 +211,15 @@ export function ProductManager({
         if (stockFilter === 'untracked' && product.stockQuantity !== undefined) return false;
         if (
           stockFilter === 'in-stock' &&
-          (product.stockQuantity === undefined || product.stockQuantity <= 0)
+          ((product.availableQuantity ?? product.stockQuantity) === undefined ||
+            (product.availableQuantity ?? product.stockQuantity ?? 0) <= 0)
         ) {
           return false;
         }
-        if (stockFilter === 'out-of-stock' && product.stockQuantity !== 0) return false;
+        if (
+          stockFilter === 'out-of-stock' &&
+          (product.availableQuantity ?? product.stockQuantity) !== 0
+        ) return false;
         if (terms.length === 0) return true;
         const searchableText = normalizeSearchText([
           product.name,
@@ -950,7 +975,10 @@ function productComparator(sort: ProductSort) {
       return (sort === 'price-desc' ? -difference : difference) || compareNames(left, right);
     }
     if (sort === 'stock-asc' || sort === 'stock-desc') {
-      const difference = compareStock(left.stockQuantity, right.stockQuantity);
+      const difference = compareStock(
+        left.availableQuantity ?? left.stockQuantity,
+        right.availableQuantity ?? right.stockQuantity,
+      );
       return (sort === 'stock-desc' ? -difference : difference) || compareNames(left, right);
     }
     return compareNames(left, right);

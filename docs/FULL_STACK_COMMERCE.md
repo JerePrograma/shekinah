@@ -6,9 +6,9 @@ Este documento describe el código preparado en el repositorio. No certifica por
 
 La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
 
-El candidato de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. La disponibilidad efectiva equivale a disponibilidad manual activa y, además, stock no controlado o mayor que cero. El cliente restringe cantidades a `min(99, stock)` y el servidor rechaza cantidades superiores al stock vigente al recalcular el carrito. Esto es control administrativo y restricción de compra, no reserva ni decremento transaccional de unidades.
+El candidato de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. Para WhatsApp usa Strategy A: el stock reservado se deriva de los items de pedidos pendientes y no se duplica en un contador. El servidor calcula `disponible = físico - SUM(items pending WhatsApp)`, impide sobre-reservar y protege las ediciones administrativas que reducirían el físico por debajo de lo comprometido.
 
-Desde el 2026-08-10 existe además un fallback manual explícitamente autorizado para operar mientras Checkout Pro permanezca cerrado: el carrito copia el total visible y abre un Link de Pago de Mercado Pago configurado sin monto; el comprador ingresa ese importe y envía el detalle del carrito por WhatsApp. Ese fallback no crea un pedido, no usa D1 y no representa una confirmación autoritativa de pago.
+Desde el 2026-08-10 existe además un canal manual autorizado mientras Checkout Pro permanezca cerrado. El Link de Pago sigue sin monto y sin confirmación autoritativa, pero el envío por WhatsApp ahora exige crear antes en D1 un pedido idempotente `pending`, su snapshot de items y la reserva de stock. El fulfillment se persiste sólo si está completo y tiene una tarifa determinística; para una cotización manual queda fuera de D1. Sólo después se abre el mensaje con el identificador correlacionable.
 
 ## Componentes
 
@@ -38,6 +38,7 @@ El custom domain del apex está activo y responde HTTPS 200; production usa el a
 | Ruta | Método | Protección |
 | --- | --- | --- |
 | `/api/checkout/preferences` | POST | mismo origen, flag de comercio, D1 y secretos |
+| `/api/orders/whatsapp` | POST | mismo origen, D1, carrito autoritativo e idempotencia |
 | `/api/webhooks/mercadopago` | POST | firma HMAC de Mercado Pago, D1 e idempotencia |
 | `/api/orders/:publicToken/status` | GET | token de capacidad no reversible |
 | `/api/analytics/events` | POST | mismo origen y analítica habilitada |
@@ -71,7 +72,9 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 
 `migrations/0006_analytics_manual_payment_click.sql` reconstruye únicamente `analytics_events` para sumar `manual_payment_click` al CHECK cerrado, copia todas las filas existentes y recrea sus tres índices. El evento significa «clic válido en el Link de Pago manual» y no representa preferencia, pago enviado, aprobación ni venta.
 
-Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0005` permanecen inmutables, `0006` está aplicada de forma versionada en ambas D1 y no se rellenan cantidades ficticias para el catálogo base.
+`migrations/0007_whatsapp_order_reservations.sql` agrega `orders.channel`, `resolved_at` y `resolved_by`, además de índices y triggers. Las filas anteriores reciben `channel='checkout_pro'`. Para WhatsApp, D1 exige estado inicial `pending`, items inmutables y transiciones exclusivas `pending → approved|rejected`. Aprobar valida la reserva y descuenta el stock físico exactamente una vez; rechazar sólo elimina la reserva al dejar de participar en la suma derivada.
+
+Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0006` permanecen inmutables y no se rellenan cantidades ficticias para el catálogo base. `0007` todavía debe aplicarse y verificarse por separado en preview y producción antes de desplegar o activar las Functions que dependen de ella.
 
 ## Imágenes de catálogo administradas
 
@@ -89,10 +92,18 @@ El fallback sólo aparece cuando `VITE_COMMERCE_ENABLED` no vale `true`, existe 
 2. Antes de abrir el Link de Pago se validan los campos de entrega para evitar un cobro sin datos suficientes para coordinar el pedido.
 3. El sitio intenta copiar el total, sin separadores de miles, al portapapeles y abre `https://link.mercadopago.com.ar/shekinahmoreno` en otra pestaña.
 4. El comprador ingresa ese monto en Mercado Pago. El sitio no añade parámetros no documentados al enlace ni afirma que el importe haya sido precargado.
-5. El comprador envía el carrito mediante WhatsApp al número autorizado para que el comercio pueda asociar manualmente carrito, pago y entrega.
+5. Al solicitar WhatsApp, el backend recalcula precios, total y disponibilidad, crea primero el pedido pendiente y reserva sus unidades; sólo después el navegador abre el mensaje con su identificador.
 6. Si el peso de Correo es desconocido o supera 5 kg, el Link de Pago queda bloqueado hasta obtener una cotización por WhatsApp.
 
-Este flujo no debe confundirse con Checkout Pro: no genera `external_reference`, no crea una preferencia, no registra pedido o fulfillment en D1 y no puede considerar un pago aprobado por sí mismo. La verificación y asociación del cobro son operativas/manuales hasta activar la integración completa.
+Este flujo no debe confundirse con Checkout Pro: no genera una preferencia ni puede considerar un pago aprobado por sí mismo. Sí registra pedido e items en D1 para reservar inventario y trazabilidad, y guarda fulfillment únicamente cuando el request aporta un envío determinístico. La verificación del cobro y la resolución administrativa continúan siendo manuales.
+
+## Estados de pedido WhatsApp
+
+- `pending`: pedido persistido y unidades reservadas;
+- `approved`: el administrador confirmó la venta; D1 descontó stock físico y la reserva dejó de computar;
+- `rejected`: el administrador rechazó; el stock físico no cambió y la reserva dejó de computar.
+
+No existe transición entre estados terminales ni expiración automática. Un pedido abandonado permanece `pending` y retiene stock hasta su aprobación o rechazo; esa política debe revisarse operativamente, no resolverse con un TTL inventado.
 
 ## Flujo de pago de Checkout Pro integrado
 
@@ -148,16 +159,16 @@ El fallback manual no envía productos ni datos de entrega a Mercado Pago desde 
 - fórmulas maliciosas al abrir exportaciones CSV;
 - eventos analíticos antes del consentimiento o posteriores a la revocación de esa sesión.
 
-El fallback manual no hereda las garantías de precio autoritativo, idempotencia ni conciliación automática del Checkout Pro. Esa limitación es deliberada y visible en la interfaz.
+El canal WhatsApp ahora hereda precio y total autoritativos, reserva transaccional e idempotencia D1; todavía no hereda conciliación automática de pago del Checkout Pro. Esa diferencia permanece explícita en la interfaz y operación.
 
 ## Límites deliberados
 
 - El WhatsApp `5492236216559`, el dominio canónico `shekinah.ar` y el Link de Pago `shekinahmoreno` son datos actuales autorizados explícitamente el 2026-08-10; no proceden de la recuperación histórica del catálogo. `shekinah-7dl.pages.dev` permanece como dominio técnico de Pages y origen de preview.
 - Se recopilan sólo los datos de entrega requeridos para fulfillment; no se solicitan datos de tarjeta ni facturación.
-- No hay edición administrativa de pedidos ni reembolsos desde el backoffice.
+- La única edición administrativa de pedidos es aprobar o rechazar pendientes de WhatsApp; no hay reembolsos ni mutaciones de estados de Checkout Pro desde el backoffice.
 - El retiro de consentimiento elimina los eventos de la sesión y conserva únicamente su HMAC en una lista de revocación para impedir que solicitudes en vuelo la vuelvan a crear.
 - La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
 - El rate limiting mínimo del login es persistente en D1. WAF, alertas y políticas de Access pueden sumar defensa de borde cuando exista un dominio/zona compatible, sin interceptar el login propio.
 - El fallback manual debe retirarse o reevaluarse cuando Checkout Pro se active en producción, para no ofrecer dos flujos con garantías distintas sin una decisión comercial explícita.
-- El stock no constituye una reserva; si se requiere decremento por pago, debe diseñarse una transición atómica ligada al pedido y al webhook, fuera del alcance del candidato actual.
+- Las reservas existen sólo para pedidos WhatsApp pendientes y se derivan de sus items. No existe contador reservado, cancelación del cliente ni expiración automática.
 - La persistencia de imágenes requiere R2 habilitado y el binding correcto en el deployment exacto; sin él, la API debe fallar cerrada y conservar la imagen anterior.

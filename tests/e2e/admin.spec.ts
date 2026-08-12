@@ -25,6 +25,8 @@ type AdminProduct = {
   sku?: string;
   availability?: 'available' | 'unavailable';
   stockQuantity?: number;
+  reservedQuantity?: number;
+  availableQuantity?: number;
   shortDescription?: string;
   description?: string;
   primaryImage?: { src: string; alt: string };
@@ -36,6 +38,36 @@ type RecordedRequest = Readonly<{
   body?: unknown;
   method: string;
   pathname: string;
+}>;
+
+type MockAdminOrder = {
+  order: {
+    id: string;
+    channel: 'checkout_pro' | 'whatsapp';
+    status: string;
+    currency: 'ARS';
+    total_minor: number;
+    item_count: number;
+    created_at: string;
+    delivery_method: string;
+    full_name: string;
+    [key: string]: unknown;
+  };
+  items: Array<{
+    product_id: string;
+    quantity: number;
+    [key: string]: unknown;
+  }>;
+  payments: unknown[];
+};
+
+type StatefulAdminApiOptions = Readonly<{
+  orders?: readonly MockAdminOrder[];
+  deferOrderAction?: boolean;
+  conflictOnOrderAction?: Readonly<{
+    orderId: string;
+    authoritativeStatus: 'approved' | 'rejected';
+  }>;
 }>;
 
 test.beforeEach(async ({ page }) => {
@@ -89,7 +121,7 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await page.getByRole('button', { name: 'Productos' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
   await page.getByRole('button', { name: 'Pedidos' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos integrados' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos' })).toBeVisible();
   await page.getByRole('button', { name: 'Analítica' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
   await page.getByRole('button', { name: 'Auditoría' }).click();
@@ -205,7 +237,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9876.54');
   await page.getByRole('checkbox', { name: 'Aceites', exact: true }).check();
   await page.getByRole('checkbox', { name: /Controlar stock/u }).check();
-  await page.getByRole('spinbutton', { name: 'Stock actual' }).fill('7');
+  await page.getByRole('spinbutton', { name: 'Stock físico' }).fill('7');
   await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).uncheck();
   await expect(page.getByText(/Estado efectivo: No disponible manualmente/u)).toBeVisible();
 
@@ -247,7 +279,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await page.getByRole('button', { name: 'Cerrar editor' }).click();
   await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
   await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).check();
-  await page.getByRole('spinbutton', { name: 'Stock actual' }).fill('3');
+  await page.getByRole('spinbutton', { name: 'Stock físico' }).fill('3');
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9999');
   await page.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
@@ -260,14 +292,16 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   const persistedRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
   await expect(persistedRow).toBeVisible();
   await expect(persistedRow.getByText('Disponible manualmente')).toBeVisible();
-  await expect(persistedRow.getByText('Stock: 3 unidades')).toBeVisible();
+  await expect(persistedRow).toContainText('Físico: 3');
+  await expect(persistedRow).toContainText('reservado: 0');
+  await expect(persistedRow).toContainText('disponible: 3');
   await expect(persistedRow.getByRole('img', { name: TECHNICAL_PRODUCT_NAME })).toHaveAttribute(
     'src',
     MANAGED_IMAGE_PATH,
   );
   await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
   await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('9999');
-  await expect(page.getByRole('spinbutton', { name: 'Stock actual' })).toHaveValue('3');
+  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveValue('3');
   await expect(page.getByRole('checkbox', {
     name: /Disponible manualmente para venta/u,
   })).toBeChecked();
@@ -307,6 +341,7 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
     await json(route, {
       rows: [{
         id: orderId,
+        channel: 'checkout_pro',
         status: 'approved',
         currency: 'ARS',
         total_minor: 12_500,
@@ -321,13 +356,15 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
   await page.getByRole('button', { name: 'Pedidos' }).click();
-  await expect(page.getByRole('table', { name: 'Pedidos integrados del período' })).toBeVisible();
+  await expect(page.getByRole('table', {
+    name: 'Pedidos del período y pedidos de WhatsApp pendientes',
+  })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Detalle de/u })).toHaveCount(0);
   await page.getByRole('button', { name: 'Ver detalle' }).click();
   await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toBeFocused();
   await expect(page.getByRole('table', { name: 'Items del pedido' })).toContainText('Producto E2E');
   await expect(page.getByRole('table', { name: 'Pagos reportados por el proveedor' })).toContainText('Mercado Pago');
-  await expect(page.getByText(/no ofrece controles para modificar estados/u)).toBeVisible();
+  await expect(page.getByText(/Sólo los pedidos de WhatsApp pendientes admiten aprobación o rechazo/u)).toBeVisible();
   await expect(page.getByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expectNoGlobalHorizontalOverflow(page);
@@ -335,6 +372,141 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   await page.getByRole('button', { name: 'Cerrar detalle' }).click();
   await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeFocused();
+});
+
+test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async ({ page }) => {
+  const orderId = 'ord_whatsapp_pending_approve_e2e';
+  const api = await installStatefulAdminApi(page, [
+    product('producto-reservado-e2e', 'Producto reservado E2E', {
+      categoryName: 'Aceites',
+      categorySlug: 'aceites',
+      price: 5_000,
+      stockQuantity: 5,
+      reservedQuantity: 2,
+      availableQuantity: 3,
+    }),
+  ], {
+    // El orden de entrada es deliberado: el mock debe priorizar el pendiente WhatsApp.
+    orders: [
+      orderDetailFixture('ord_checkout_approved_older_e2e'),
+      whatsappOrderDetailFixture(orderId),
+    ],
+    deferOrderAction: true,
+  });
+
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+
+  const table = page.getByRole('table', {
+    name: 'Pedidos del período y pedidos de WhatsApp pendientes',
+  });
+  const firstOrderRow = table.locator('tbody tr').first();
+  await expect(firstOrderRow).toContainText(orderId);
+  await expect(firstOrderRow).toContainText('WhatsApp');
+  await expect(firstOrderRow).toContainText('Pendiente');
+  await firstOrderRow.getByRole('button', { name: 'Ver detalle' }).click();
+
+  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toBeFocused();
+  const reservedItems = page.getByRole('table', { name: 'Productos y unidades reservadas' });
+  await expect(reservedItems).toContainText('Producto reservado E2E');
+  await expect(reservedItems).toContainText('2');
+  await expect(page.getByText(/Aprobar consume la reserva y descuenta el stock físico/u)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Aprobar' }).click();
+  const approvingButton = page.getByRole('button', { name: 'Aprobando…' });
+  await expect(approvingButton).toBeVisible();
+  await expect(approvingButton).toBeDisabled();
+  expect(actionRequests(api.requests, orderId, 'approve')).toHaveLength(1);
+
+  api.releaseOrderAction();
+  await expect(page.locator('.admin-feedback-success')).toContainText('Pedido aprobado');
+  await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
+  expect(actionRequests(api.requests, orderId, 'approve')).toHaveLength(1);
+  expect(requiredProduct(api.products(), 'producto-reservado-e2e')).toMatchObject({
+    stockQuantity: 3,
+    reservedQuantity: 0,
+    availableQuantity: 3,
+  });
+});
+
+test('confirma el rechazo y restaura el stock disponible', async ({ page }) => {
+  const orderId = 'ord_whatsapp_pending_reject_e2e';
+  const api = await installStatefulAdminApi(page, [
+    product('producto-liberado-e2e', 'Producto liberado E2E', {
+      categoryName: 'Aceites',
+      categorySlug: 'aceites',
+      price: 5_000,
+      stockQuantity: 5,
+      reservedQuantity: 2,
+      availableQuantity: 3,
+    }),
+  ], {
+    orders: [whatsappOrderDetailFixture(orderId, 'producto-liberado-e2e', 'Producto liberado E2E')],
+    deferOrderAction: true,
+  });
+
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Ver detalle' }).click();
+  await page.getByRole('button', { name: 'Rechazar' }).click();
+
+  const confirmation = page.getByRole('alertdialog', { name: `Rechazar ${orderId}` });
+  await expect(confirmation).toContainText(
+    'todas sus unidades reservadas volverán a estar disponibles',
+  );
+  await expect(confirmation.getByRole('button', { name: 'Cancelar' })).toBeFocused();
+  await confirmation.getByRole('button', { name: 'Rechazar pedido' }).click();
+  const rejectingButton = confirmation.getByRole('button', { name: 'Rechazando…' });
+  await expect(rejectingButton).toBeVisible();
+  await expect(rejectingButton).toBeDisabled();
+  expect(actionRequests(api.requests, orderId, 'reject')).toHaveLength(1);
+
+  api.releaseOrderAction();
+  await expect(page.locator('.admin-feedback-success')).toContainText('Pedido rechazado');
+  await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
+  expect(actionRequests(api.requests, orderId, 'reject')).toHaveLength(1);
+  expect(requiredProduct(api.products(), 'producto-liberado-e2e')).toMatchObject({
+    stockQuantity: 5,
+    reservedQuantity: 0,
+    availableQuantity: 5,
+  });
+
+  await page.getByRole('button', { name: 'Productos' }).click();
+  const productRow = page.getByRole('article', { name: 'Producto liberado E2E' });
+  await expect(productRow).toContainText('Físico: 5');
+  await expect(productRow).toContainText('reservado: 0');
+  await expect(productRow).toContainText('disponible: 5');
+});
+
+test('ante un conflicto 409 refresca el estado autoritativo del pedido', async ({ page }) => {
+  const orderId = 'ord_whatsapp_conflict_e2e';
+  const api = await installStatefulAdminApi(page, [
+    product('producto-conflicto-e2e', 'Producto conflicto E2E', {
+      categoryName: 'Aceites',
+      categorySlug: 'aceites',
+      price: 5_000,
+      stockQuantity: 5,
+      reservedQuantity: 2,
+      availableQuantity: 3,
+    }),
+  ], {
+    orders: [whatsappOrderDetailFixture(orderId, 'producto-conflicto-e2e', 'Producto conflicto E2E')],
+    conflictOnOrderAction: { orderId, authoritativeStatus: 'rejected' },
+  });
+
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Ver detalle' }).click();
+  await page.getByRole('button', { name: 'Aprobar' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('El pedido ya fue resuelto por otra persona.');
+  await expect(page.locator('.admin-order-detail')).toContainText('Rechazado');
+  await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
+  expect(actionRequests(api.requests, orderId, 'approve')).toHaveLength(1);
+  expect(detailRequests(api.requests, orderId)).toHaveLength(2);
 });
 
 test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet y móvil', async ({ page }, testInfo) => {
@@ -428,13 +600,24 @@ async function expectHorizontallyInsideViewport(
 async function installStatefulAdminApi(
   page: Page,
   initialProducts: readonly AdminProduct[],
+  options: StatefulAdminApiOptions = {},
 ): Promise<Readonly<{
   authenticated: () => boolean;
+  orders: () => readonly MockAdminOrder[];
   products: () => readonly AdminProduct[];
+  releaseOrderAction: () => void;
   requests: readonly RecordedRequest[];
 }>> {
   let authenticated = false;
+  let orders = structuredClone(options.orders ?? []) as MockAdminOrder[];
   let products = structuredClone(initialProducts) as AdminProduct[];
+  let conflictOnOrderAction = options.conflictOnOrderAction;
+  let releaseDeferredOrderAction: (() => void) | undefined;
+  const deferredOrderAction = options.deferOrderAction === true
+    ? new Promise<void>((resolve) => {
+        releaseDeferredOrderAction = resolve;
+      })
+    : null;
   const requests: RecordedRequest[] = [];
 
   await page.route('**/api/**', async (route) => {
@@ -494,6 +677,74 @@ async function installStatefulAdminApi(
     }
     if (!authenticated) {
       await json(route, { error: { code: 'ADMIN_UNAUTHORIZED' } }, 401);
+      return;
+    }
+
+    if (pathname === '/api/admin/orders' && method === 'GET') {
+      const status = new URL(request.url()).searchParams.get('status');
+      const rows = orders
+        .filter(({ order }) => status === null || order.status === status)
+        .slice()
+        .sort((left, right) => {
+          const pendingPriority = orderPriority(left) - orderPriority(right);
+          return pendingPriority === 0
+            ? right.order.created_at.localeCompare(left.order.created_at)
+            : pendingPriority;
+        })
+        .map(({ order }) => order);
+      await json(route, { rows });
+      return;
+    }
+
+    const orderActionMatch = /^\/api\/admin\/orders\/([^/]+)\/(approve|reject)$/u.exec(pathname);
+    if (orderActionMatch !== null && method === 'POST') {
+      const orderId = decodeURIComponent(orderActionMatch[1] ?? '');
+      const requestedStatus = orderActionMatch[2] === 'approve' ? 'approved' : 'rejected';
+      if (deferredOrderAction !== null) await deferredOrderAction;
+      if (conflictOnOrderAction?.orderId === orderId) {
+        const resolved = resolveMockOrder(
+          orders,
+          products,
+          orderId,
+          conflictOnOrderAction.authoritativeStatus,
+        );
+        orders = resolved.orders;
+        products = resolved.products;
+        conflictOnOrderAction = undefined;
+        await json(route, {
+          error: {
+            code: 'ORDER_STATE_CONFLICT',
+            message: 'El pedido ya fue resuelto por otra persona.',
+          },
+        }, 409);
+        return;
+      }
+      const current = orders.find(({ order }) => order.id === orderId);
+      if (current?.order.channel !== 'whatsapp' || current.order.status !== 'pending') {
+        await json(route, {
+          error: {
+            code: 'ORDER_STATE_CONFLICT',
+            message: 'El pedido ya no está pendiente.',
+          },
+        }, 409);
+        return;
+      }
+      const resolved = resolveMockOrder(orders, products, orderId, requestedStatus);
+      orders = resolved.orders;
+      products = resolved.products;
+      await json(route, { ...requiredMockOrder(orders, orderId), changed: true });
+      return;
+    }
+
+    const orderDetailMatch = /^\/api\/admin\/orders\/([^/]+)$/u.exec(pathname);
+    if (orderDetailMatch !== null && method === 'GET') {
+      const orderId = decodeURIComponent(orderDetailMatch[1] ?? '');
+      const detail = orders.find(({ order }) => order.id === orderId);
+      if (detail === undefined) {
+        await json(route, { error: { code: 'ORDER_NOT_FOUND' } }, 404);
+        return;
+      }
+      await json(route, detail);
       return;
     }
 
@@ -579,7 +830,16 @@ async function installStatefulAdminApi(
 
   return Object.freeze({
     authenticated: () => authenticated,
+    orders: () => orders,
     products: () => products,
+    releaseOrderAction: () => {
+      if (releaseDeferredOrderAction === undefined) {
+        throw new Error('No hay una acción de pedido diferida para liberar.');
+      }
+      const release = releaseDeferredOrderAction;
+      releaseDeferredOrderAction = undefined;
+      release();
+    },
     requests,
   });
 }
@@ -625,10 +885,11 @@ function adminSummary() {
   };
 }
 
-function orderDetailFixture(orderId: string) {
+function orderDetailFixture(orderId: string): MockAdminOrder {
   return {
     order: {
       id: orderId,
+      channel: 'checkout_pro',
       status: 'approved',
       currency: 'ARS',
       total_minor: 12_500,
@@ -638,6 +899,8 @@ function orderDetailFixture(orderId: string) {
       created_at: '2026-08-10T12:00:00.000Z',
       updated_at: '2026-08-10T12:05:00.000Z',
       approved_at: '2026-08-10T12:05:00.000Z',
+      resolved_at: null,
+      resolved_by: null,
       last_error_code: null,
       delivery_method: 'correo_argentino',
       full_name: 'Cliente E2E',
@@ -672,6 +935,49 @@ function orderDetailFixture(orderId: string) {
   };
 }
 
+function whatsappOrderDetailFixture(
+  orderId: string,
+  productId = 'producto-reservado-e2e',
+  productName = 'Producto reservado E2E',
+): MockAdminOrder {
+  return {
+    order: {
+      id: orderId,
+      channel: 'whatsapp',
+      status: 'pending',
+      currency: 'ARS',
+      total_minor: 10_000,
+      products_total_minor: 10_000,
+      shipping_minor: 0,
+      item_count: 2,
+      created_at: '2026-08-12T12:00:00.000Z',
+      updated_at: '2026-08-12T12:00:00.000Z',
+      approved_at: null,
+      resolved_at: null,
+      resolved_by: null,
+      last_error_code: null,
+      delivery_method: 'coordinated_pickup',
+      full_name: 'Cliente WhatsApp E2E',
+      phone: '5491100000001',
+      address: 'Calle WhatsApp 123',
+      locality: 'Mar del Plata',
+      province: 'Buenos Aires',
+      postal_code: 'B7600',
+      total_weight_grams: 200,
+    },
+    items: [{
+      product_id: productId,
+      name: productName,
+      presentation: '100 g',
+      sku: 'WA-E2E',
+      quantity: 2,
+      unit_price_minor: 5_000,
+      subtotal_minor: 10_000,
+    }],
+    payments: [],
+  };
+}
+
 function product(
   id: string,
   name: string,
@@ -682,6 +988,8 @@ function product(
     price: number;
     sku?: string;
     stockQuantity?: number;
+    reservedQuantity?: number;
+    availableQuantity?: number;
   }>,
 ): AdminProduct {
   return {
@@ -696,6 +1004,8 @@ function product(
     ...(options.sku === undefined ? {} : { sku: options.sku }),
     availability: options.availability ?? 'available',
     ...(options.stockQuantity === undefined ? {} : { stockQuantity: options.stockQuantity }),
+    ...(options.reservedQuantity === undefined ? {} : { reservedQuantity: options.reservedQuantity }),
+    ...(options.availableQuantity === undefined ? {} : { availableQuantity: options.availableQuantity }),
     images: [],
     variants: [],
   };
@@ -712,6 +1022,75 @@ function replaceProduct(
   updated: AdminProduct,
 ): AdminProduct[] {
   return products.map((candidate) => candidate.id === updated.id ? updated : candidate);
+}
+
+function orderPriority({ order }: MockAdminOrder): number {
+  return order.channel === 'whatsapp' && order.status === 'pending' ? 0 : 1;
+}
+
+function requiredMockOrder(orders: readonly MockAdminOrder[], id: string): MockAdminOrder {
+  const value = orders.find(({ order }) => order.id === id);
+  if (value === undefined) throw new Error(`No existe el pedido E2E ${id}.`);
+  return value;
+}
+
+function resolveMockOrder(
+  orders: readonly MockAdminOrder[],
+  products: readonly AdminProduct[],
+  id: string,
+  status: 'approved' | 'rejected',
+): Readonly<{ orders: MockAdminOrder[]; products: AdminProduct[] }> {
+  const current = requiredMockOrder(orders, id);
+  const resolvedAt = '2026-08-12T12:05:00.000Z';
+  const nextOrder: MockAdminOrder = {
+    ...current,
+    order: {
+      ...current.order,
+      status,
+      updated_at: resolvedAt,
+      resolved_at: resolvedAt,
+      resolved_by: 'Administración E2E',
+      approved_at: status === 'approved' ? resolvedAt : current.order.approved_at,
+    },
+  };
+  const quantities = new Map(current.items.map((item) => [item.product_id, item.quantity]));
+  const nextProducts = products.map((productValue) => {
+    const quantity = quantities.get(productValue.id);
+    if (quantity === undefined || productValue.stockQuantity === undefined) return productValue;
+    const physical = status === 'approved'
+      ? productValue.stockQuantity - quantity
+      : productValue.stockQuantity;
+    const reserved = Math.max(0, (productValue.reservedQuantity ?? quantity) - quantity);
+    return {
+      ...productValue,
+      stockQuantity: physical,
+      reservedQuantity: reserved,
+      availableQuantity: physical - reserved,
+    };
+  });
+  return Object.freeze({
+    orders: orders.map((candidate) => candidate.order.id === id ? nextOrder : candidate),
+    products: nextProducts,
+  });
+}
+
+function actionRequests(
+  requests: readonly RecordedRequest[],
+  orderId: string,
+  action: 'approve' | 'reject',
+): readonly RecordedRequest[] {
+  return requests.filter(({ method, pathname }) => (
+    method === 'POST' && pathname === `/api/admin/orders/${orderId}/${action}`
+  ));
+}
+
+function detailRequests(
+  requests: readonly RecordedRequest[],
+  orderId: string,
+): readonly RecordedRequest[] {
+  return requests.filter(({ method, pathname }) => (
+    method === 'GET' && pathname === `/api/admin/orders/${orderId}`
+  ));
 }
 
 async function json(route: Route, value: unknown, status = 200): Promise<void> {

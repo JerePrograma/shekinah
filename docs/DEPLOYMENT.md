@@ -97,7 +97,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql` y `migrations/0006_analytics_manual_payment_click.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler.
+Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql` y `migrations/0007_whatsapp_order_reservations.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler. La evidencia remota existente sólo cubre hasta `0006`.
 
 Antes de aplicarlas:
 
@@ -123,7 +123,7 @@ R2 y ambos bindings quedaron verificados por API. Los buckets conservan clase St
 
 ### Fallback manual actual
 
-El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto y envía el carrito por WhatsApp. Este flujo no crea pedido ni preferencia y no verifica pagos mediante webhook.
+El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto. Al solicitar WhatsApp, el candidato crea primero un pedido pendiente y reserva stock mediante Pages Functions/D1; no crea una preferencia ni verifica pagos mediante webhook. Antes de desplegar este flujo deben aplicarse y verificarse `0007` y sus Functions en cada entorno.
 
 ### Checkout Pro integrado pendiente
 

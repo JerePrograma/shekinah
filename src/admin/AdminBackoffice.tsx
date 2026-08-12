@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -49,14 +50,36 @@ export function AdminBackoffice({
   const [productInteraction, setProductInteraction] = useState<ProductInteractionState>(
     IDLE_PRODUCT_INTERACTION,
   );
+  const [orderInteraction, setOrderInteraction] = useState<ProductInteractionState>(
+    IDLE_PRODUCT_INTERACTION,
+  );
   const submittingRef = useRef(false);
   const loggingOutRef = useRef(false);
   const usernameRef = useRef<HTMLInputElement | null>(null);
 
   const handleProductInteractionChange = useCallback((state: ProductInteractionState) => {
     setProductInteraction(state);
-    onInteractionStateChange?.(state);
-  }, [onInteractionStateChange]);
+  }, []);
+
+  const handleOrderInteractionChange = useCallback((busy: boolean, operationLabel?: string) => {
+    setOrderInteraction(Object.freeze({
+      dirty: false,
+      busy,
+      ...(operationLabel === undefined ? {} : { operationLabel }),
+    }));
+  }, []);
+
+  const activeInteraction = useMemo<ProductInteractionState>(() => (
+    productInteraction.busy
+      ? productInteraction
+      : orderInteraction.busy
+        ? Object.freeze({ ...orderInteraction, dirty: productInteraction.dirty })
+        : Object.freeze({ ...productInteraction, busy: false })
+  ), [orderInteraction, productInteraction]);
+
+  useEffect(() => {
+    onInteractionStateChange?.(activeInteraction);
+  }, [activeInteraction, onInteractionStateChange]);
 
   useEffect(() => () => {
     onInteractionStateChange?.(IDLE_PRODUCT_INTERACTION);
@@ -128,12 +151,12 @@ export function AdminBackoffice({
 
   async function logout(): Promise<void> {
     if (loggingOutRef.current) return;
-    if (productInteraction.busy) {
-      setError(activeOperationMessage(productInteraction));
+    if (activeInteraction.busy) {
+      setError(activeOperationMessage(activeInteraction));
       return;
     }
     if (
-      productInteraction.dirty &&
+      activeInteraction.dirty &&
       !window.confirm(
         'Cerrar sesión administrativa\n\nHay cambios de producto sin guardar. Si cerrás sesión ahora, se perderán.',
       )
@@ -240,7 +263,7 @@ export function AdminBackoffice({
           <button
             className="button button-secondary"
             type="button"
-            disabled={loggingOut || productInteraction.busy}
+            disabled={loggingOut || activeInteraction.busy}
             onClick={() => {
               void logout();
             }}
@@ -261,10 +284,10 @@ export function AdminBackoffice({
                   className="admin-section-navigation-button"
                   type="button"
                   aria-current={section === item.id ? 'page' : undefined}
-                  disabled={productInteraction.busy && section !== item.id}
+                  disabled={activeInteraction.busy && section !== item.id}
                   onClick={() => {
-                    if (productInteraction.busy && section !== item.id) {
-                      setError(activeOperationMessage(productInteraction));
+                    if (activeInteraction.busy && section !== item.id) {
+                      setError(activeOperationMessage(activeInteraction));
                       return;
                     }
                     setError('');
@@ -289,6 +312,7 @@ export function AdminBackoffice({
       </div>
       <AdminPage
         navigate={navigate}
+        onOperationStateChange={handleOrderInteractionChange}
         onUnauthorized={handleUnauthorized}
         section={section}
       />

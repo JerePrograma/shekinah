@@ -121,6 +121,49 @@ describe('App', () => {
     await restoreRuntimeCatalog();
   });
 
+  it('muestra como agotado un producto cuyo stock físico está totalmente reservado', async () => {
+    const reservedProduct = {
+      ...dynamicProduct,
+      id: 'producto-totalmente-reservado',
+      slug: 'producto-totalmente-reservado',
+      path: '/producto-totalmente-reservado/',
+      name: 'Producto totalmente reservado',
+      stockQuantity: 5,
+      reservedQuantity: 5,
+      availableQuantity: 0,
+    };
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const path = requestUrl(input);
+      if (path === '/api/catalog') {
+        return Promise.resolve(new Response(JSON.stringify({
+          products: [...authorizedProducts, reservedProduct],
+        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (path.endsWith('/api/catalog/producto-totalmente-reservado')) {
+        return Promise.resolve(new Response(JSON.stringify({ product: reservedProduct }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    await act(async () => {
+      await refreshRuntimeCatalog();
+    });
+    window.history.replaceState(null, '', reservedProduct.path);
+    const rendered = renderApp();
+
+    expect(await screen.findByRole('heading', {
+      level: 1,
+      name: reservedProduct.name,
+    })).toBeVisible();
+    expect(screen.getByText('Sin stock')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
+
+    rendered.unmount();
+    await restoreRuntimeCatalog();
+  });
+
   it('convierte en 404 la URL de un producto canónico con tombstone runtime', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
       products: authorizedProducts.filter(({ id }) => id !== 'guayaba'),

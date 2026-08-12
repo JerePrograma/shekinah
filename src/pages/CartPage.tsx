@@ -5,9 +5,10 @@ import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
 import { getProductCartLimit } from '../cart/model';
-import { createCheckoutPreference } from '../commerce/api';
+import { createCheckoutPreference, createWhatsappOrder } from '../commerce/api';
 import {
   getOrCreateCheckoutIdempotencyKey,
+  getOrCreateWhatsappOrderIdempotencyKey,
   rememberCheckoutOrder,
 } from '../commerce/checkout-session';
 import {
@@ -15,7 +16,9 @@ import {
   deliveryMethodLabel,
   validateFulfillment,
 } from '../commerce/fulfillment';
+import type { WhatsappOrderResponse } from '../commerce/contracts';
 import type {
+  CheckoutFulfillment,
   FulfillmentDraft,
   FulfillmentField,
 } from '../commerce/fulfillment';
@@ -24,6 +27,7 @@ import {
   getAuthorizedWhatsappNumber,
   isCommerceClientEnabled,
 } from '../commerce/env';
+import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
@@ -52,9 +56,18 @@ const fields: readonly Readonly<{
   { key: 'postalCode', label: 'Código postal', autoComplete: 'postal-code' },
 ];
 
+type WhatsappOrderResult = Readonly<{
+  order: WhatsappOrderResponse;
+  fulfillment: CheckoutFulfillment | null;
+  manualQuoteTier: string | null;
+}>;
+
 export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, liveMessage, remove, setQuantity, total } = useCart();
   const [checkoutPending, setCheckoutPending] = useState(false);
+  const [whatsappOrderPending, setWhatsappOrderPending] = useState(false);
+  const [whatsappOrderResult, setWhatsappOrderResult] =
+    useState<WhatsappOrderResult | null>(null);
   const [checkoutError, setCheckoutError] = useState('');
   const [manualPaymentNotice, setManualPaymentNotice] = useState('');
   const [fulfillmentDraft, setFulfillmentDraft] = useState<FulfillmentDraft>(INITIAL_FULFILLMENT);
@@ -67,6 +80,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const emptyStateRef = useRef<HTMLHeadingElement>(null);
   const clearButtonRef = useRef<HTMLButtonElement>(null);
   const cancelClearRef = useRef<HTMLButtonElement>(null);
+  const whatsappResultTitleRef = useRef<HTMLHeadingElement>(null);
+  const whatsappOrderPendingRef = useRef(false);
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const mercadoPagoPaymentLink = getAuthorizedMercadoPagoPaymentLink();
   const commerceEnabled = isCommerceClientEnabled();
@@ -84,6 +99,10 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   );
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
+  const cartOperationPending = checkoutPending || whatsappOrderPending;
+  const whatsappUrl = whatsappOrderResult === null || whatsappNumber === null
+    ? null
+    : buildWhatsappUrl(whatsappNumber, whatsappOrderResult);
 
   useEffect(() => {
     setManualPaymentNotice('');
@@ -118,8 +137,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     window.requestAnimationFrame(() => emptyStateRef.current?.focus());
   }, [confirmingClear, items.length]);
 
+  useEffect(() => {
+    if (whatsappOrderResult === null) return;
+    window.requestAnimationFrame(() => whatsappResultTitleRef.current?.focus());
+  }, [whatsappOrderResult]);
+
   async function startCheckout() {
-    if (items.length === 0 || checkoutPending || !commerceEnabled) return;
+    if (items.length === 0 || cartOperationPending || !commerceEnabled) return;
     setShowErrors(true);
     setCheckoutError('');
     if (validation.value === null) {
@@ -156,6 +180,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   function prepareManualPayment(event: MouseEvent<HTMLAnchorElement>) {
     if (
+      whatsappOrderPending ||
       mercadoPagoPaymentLink === null ||
       items.length === 0 ||
       quote.kind === 'manual' ||
@@ -207,54 +232,59 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     field: keyof FulfillmentDraft,
     value: string,
   ) {
+    setWhatsappOrderResult(null);
     setFulfillmentDraft((current) => Object.freeze({ ...current, [field]: value }));
   }
 
-  function openWhatsapp() {
-    if (whatsappNumber === null || items.length === 0) return;
-    if (hasPartialFulfillment(fulfillmentDraft) && validation.value === null) {
+  async function registerWhatsappOrder(): Promise<void> {
+    if (
+      whatsappNumber === null ||
+      items.length === 0 ||
+      whatsappOrderResult !== null ||
+      whatsappOrderPendingRef.current ||
+      checkoutPending
+    ) return;
+
+    const includesFulfillment = hasPartialFulfillment(fulfillmentDraft);
+    if (includesFulfillment && validation.value === null) {
       setShowErrors(true);
       setCheckoutError('Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.');
       focusFirstError(validation.errors);
       return;
     }
+
+    const messageFulfillment = includesFulfillment ? validation.value : null;
+    const persistedFulfillment = quote.kind === 'manual' ? null : messageFulfillment;
+    whatsappOrderPendingRef.current = true;
+    setWhatsappOrderPending(true);
+    setConfirmingClear(false);
     setCheckoutError('');
-    const lines = items.map(({ product, quantity, subtotal }) => {
-      const presentation = product.presentation === undefined ? '' : ` (${product.presentation})`;
-      const subtotalText =
-        formatProductPrice({ amount: subtotal, currency: 'ARS' }) ?? 'Sin precio';
-      return `• ${quantity} × ${product.name}${presentation}: ${subtotalText}`;
-    });
-    const customerLines = validation.value === null
-      ? []
-      : [
-          '',
-          `Modalidad: ${deliveryMethodLabel(validation.value.method)}`,
-          `Nombre: ${validation.value.fullName}`,
-          `Celular: ${validation.value.phone}`,
-          `Dirección: ${validation.value.address}, ${validation.value.locality}, ${validation.value.province} (${validation.value.postalCode})`,
-        ];
-    const totalText = formatMinor(checkoutTotalMinor);
-    const message = [
-      'Hola, quiero consultar por este carrito de Shekinah:',
-      '',
-      ...lines,
-      ...customerLines,
-      '',
-      `Total de referencia: ${totalText}`,
-      quote.kind === 'manual'
-        ? manualQuoteMessage(quote.tier)
-        : 'Por favor, confirmen disponibilidad, pago y preparación.',
-    ].join('\n');
-    void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart });
-    window.open(
-      `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
+    try {
+      const idempotencyKey = await getOrCreateWhatsappOrderIdempotencyKey(
+        items,
+        persistedFulfillment,
+      );
+      const order = await createWhatsappOrder(items, idempotencyKey, persistedFulfillment);
+      setWhatsappOrderResult(Object.freeze({
+        order,
+        fulfillment: messageFulfillment,
+        manualQuoteTier: quote.kind === 'manual' ? quote.tier : null,
+      }));
+      void refreshRuntimeCatalog().catch(() => undefined);
+    } catch (error: unknown) {
+      setCheckoutError(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos registrar el pedido. Revisá el carrito e intentá nuevamente.',
+      );
+    } finally {
+      whatsappOrderPendingRef.current = false;
+      setWhatsappOrderPending(false);
+    }
   }
 
   function updateQuantity(productId: string, rawValue: string, maximum: number) {
+    setWhatsappOrderResult(null);
     setQuantityDrafts((current) => Object.freeze({ ...current, [productId]: rawValue }));
     const nextQuantity = Number(rawValue);
     if (!Number.isInteger(nextQuantity) || nextQuantity < 1 || nextQuantity > maximum) {
@@ -273,6 +303,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   function changeQuantity(productId: string, nextQuantity: number, maximum: number) {
     if (nextQuantity < 1 || nextQuantity > maximum) return;
+    setWhatsappOrderResult(null);
     setQuantityErrors((current) => withoutKey(current, productId));
     setQuantityDrafts((current) => Object.freeze({ ...current, [productId]: String(nextQuantity) }));
     setQuantity(productId, nextQuantity);
@@ -282,6 +313,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   function removeProduct(productId: string) {
     const currentIndex = items.findIndex(({ product }) => product.id === productId);
     const focusTargetId = items[currentIndex + 1]?.product.id ?? items[currentIndex - 1]?.product.id;
+    setWhatsappOrderResult(null);
     remove(productId);
     setQuantityDrafts((current) => withoutKey(current, productId));
     setQuantityErrors((current) => withoutKey(current, productId));
@@ -299,10 +331,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }
 
   function clearCart() {
-    if (checkoutPending) return;
+    if (cartOperationPending) return;
     clear();
     setConfirmingClear(false);
     setCheckoutError('');
+    setWhatsappOrderResult(null);
     setManualPaymentNotice('');
     setQuantityDrafts({});
     setQuantityErrors({});
@@ -326,6 +359,28 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             <p className="cart-context-feedback">{liveMessage}</p>
           )}
         </div>
+
+        {whatsappOrderResult === null || whatsappUrl === null ? null : (
+          <div className="cart-whatsapp-result">
+            <div>
+              <h2 ref={whatsappResultTitleRef} tabIndex={-1}>Pedido registrado</h2>
+              <p role="status" aria-live="polite">
+                El pedido {whatsappOrderResult.order.orderId} quedó pendiente de aprobación y sus unidades fueron reservadas.
+              </p>
+            </div>
+            <a
+              className="button button-primary"
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart });
+              }}
+            >
+              Abrir WhatsApp
+            </a>
+          </div>
+        )}
 
         {items.length === 0 ? (
           <div className="empty-state">
@@ -369,7 +424,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                           className="quantity-button"
                           type="button"
                           aria-label={`Reducir cantidad de ${product.name}`}
-                          disabled={checkoutPending || quantity <= 1}
+                          disabled={cartOperationPending || quantity <= 1}
                           onClick={() => changeQuantity(product.id, quantity - 1, maximum)}
                         >
                           −
@@ -382,7 +437,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                             min="1"
                             max={maximum}
                             inputMode="numeric"
-                            disabled={checkoutPending}
+                            disabled={cartOperationPending}
                             aria-label={`Cantidad de ${product.name}`}
                             value={quantityDrafts[product.id] ?? String(quantity)}
                             aria-invalid={quantityError === undefined ? undefined : true}
@@ -399,7 +454,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                           className="quantity-button"
                           type="button"
                           aria-label={`Aumentar cantidad de ${product.name}`}
-                          disabled={checkoutPending || quantity >= maximum}
+                          disabled={cartOperationPending || quantity >= maximum}
                           onClick={() => changeQuantity(product.id, quantity + 1, maximum)}
                         >
                           +
@@ -407,7 +462,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                         <button
                           className="text-button"
                           type="button"
-                          disabled={checkoutPending}
+                          disabled={cartOperationPending}
                           aria-label={`Eliminar ${product.name} del carrito`}
                           onClick={() => {
                             removeProduct(product.id);
@@ -428,13 +483,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
                 <div>
                   <h2 id="fulfillment-title">Datos de entrega</h2>
-                  <p>Todos los campos son obligatorios para pagar. No se guardan en el carrito del navegador; se registran sólo al iniciar el pedido.</p>
+                  <p>Todos los campos son obligatorios para pagar. No se guardan en el carrito del navegador; se usan sólo para preparar el pedido y el mensaje.</p>
                 </div>
                 <label htmlFor="fulfillment-method">
                   Modalidad
                   <select
                     id="fulfillment-method"
-                    disabled={checkoutPending}
+                    disabled={cartOperationPending}
                     value={fulfillmentDraft.method}
                     aria-invalid={showErrors && validation.errors.method !== undefined}
                     aria-describedby={showErrors && validation.errors.method !== undefined ? 'error-method' : undefined}
@@ -458,7 +513,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                           value={fulfillmentDraft[field.key]}
                           autoComplete={field.autoComplete}
                           inputMode={field.inputMode}
-                          disabled={checkoutPending}
+                          disabled={cartOperationPending}
                           required
                           aria-invalid={error !== undefined}
                           aria-describedby={error === undefined ? undefined : `error-${field.key}`}
@@ -475,7 +530,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               </div>
             </div>
 
-            <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={checkoutPending}>
+            <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
               <h2 id="cart-summary-title">Resumen</h2>
               <dl className="cart-totals">
                 <div><dt>Productos</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
@@ -489,13 +544,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 <p className="form-error" role="status">{manualQuoteMessage(quote.tier)}</p>
               ) : null}
               <p className="cart-disclaimer">
-                El servidor recalcula productos, peso, envío y total cuando el Checkout Pro integrado está habilitado. La disponibilidad se confirma al preparar el pedido.
+                El servidor vuelve a validar productos, precios, disponibilidad, envío y total antes de registrar el pedido o iniciar el pago integrado.
               </p>
               {commerceEnabled ? (
                 <button
                   className="button button-primary"
                   type="button"
-                  disabled={checkoutPending || quote.kind === 'manual'}
+                  disabled={cartOperationPending || quote.kind === 'manual'}
                   onClick={() => void startCheckout()}
                 >
                   {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
@@ -507,12 +562,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     href={mercadoPagoPaymentLink}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-disabled={whatsappOrderPending || undefined}
                     onClick={prepareManualPayment}
                   >
                     Copiar {formatMinor(checkoutTotalMinor)} y abrir Mercado Pago
                   </a>
                   <p className="cart-configuration-note">
-                    Cobro temporal manual: el enlace autorizado de Mercado Pago está configurado sin monto. El sitio copia el total para que lo pegues al abrir el Link de Pago. Después enviá el carrito por WhatsApp para asociar el pago y coordinar la entrega.
+                    Cobro temporal manual: el enlace autorizado de Mercado Pago está configurado sin monto. El sitio copia el total para que lo pegues al abrir el Link de Pago. Después registrá el pedido y abrí WhatsApp para asociar el pago y coordinar la entrega.
                   </p>
                   {manualPaymentNotice === '' ? null : (
                     <p className="cart-configuration-note" role="status">{manualPaymentNotice}</p>
@@ -530,14 +586,16 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   </p>
                 </>
               )}
-              <button
-                className="button button-secondary"
-                type="button"
-                disabled={checkoutPending || whatsappNumber === null}
-                onClick={openWhatsapp}
-              >
-                Enviar carrito por WhatsApp
-              </button>
+              {whatsappOrderResult === null ? (
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={cartOperationPending || whatsappNumber === null}
+                  onClick={() => void registerWhatsappOrder()}
+                >
+                  {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
+                </button>
+              ) : null}
               {whatsappNumber === null ? (
                 <p className="cart-configuration-note">WhatsApp estará disponible cuando se configure un número autorizado.</p>
               ) : null}
@@ -546,11 +604,16 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   Estamos preparando el pago. Cuando esté listo, te redirigiremos a Mercado Pago.
                 </p>
               ) : null}
+              {whatsappOrderPending ? (
+                <p className="cart-configuration-note" role="status">
+                  Estamos registrando el pedido y reservando las unidades antes de abrir WhatsApp.
+                </p>
+              ) : null}
               <button
                 className="text-button"
                 type="button"
                 ref={clearButtonRef}
-                disabled={checkoutPending}
+                disabled={cartOperationPending}
                 onClick={() => setConfirmingClear(true)}
               >
                 Vaciar carrito
@@ -571,7 +634,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                       className="button button-secondary"
                       type="button"
                       ref={cancelClearRef}
-                      disabled={checkoutPending}
+                      disabled={cartOperationPending}
                       onClick={() => {
                         setConfirmingClear(false);
                         clearButtonRef.current?.focus();
@@ -582,7 +645,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     <button
                       className="button button-danger"
                       type="button"
-                      disabled={checkoutPending}
+                      disabled={cartOperationPending}
                       onClick={clearCart}
                     >
                       Sí, vaciar carrito
@@ -633,6 +696,37 @@ function manualQuoteMessage(tier: string): string {
 function hasPartialFulfillment(value: FulfillmentDraft): boolean {
   return value.method !== INITIAL_FULFILLMENT.method ||
     fields.some(({ key }) => value[key].trim() !== '');
+}
+
+function buildWhatsappUrl(
+  whatsappNumber: string,
+  result: WhatsappOrderResult,
+): string {
+  const lines = result.order.items.map((item) => {
+    const presentation = item.presentation === undefined ? '' : ` (${item.presentation})`;
+    return `• ${item.quantity} × ${item.name}${presentation}: ${formatMinor(item.subtotalMinor)}`;
+  });
+  const customerLines = result.fulfillment === null
+    ? []
+    : [
+        '',
+        `Modalidad: ${deliveryMethodLabel(result.fulfillment.method)}`,
+        `Nombre: ${result.fulfillment.fullName}`,
+        `Celular: ${result.fulfillment.phone}`,
+        `Dirección: ${result.fulfillment.address}, ${result.fulfillment.locality}, ${result.fulfillment.province} (${result.fulfillment.postalCode})`,
+      ];
+  const message = [
+    `Hola, quiero consultar por el pedido ${result.order.orderId} de Shekinah:`,
+    '',
+    ...lines,
+    ...customerLines,
+    '',
+    `Total registrado: ${formatMinor(result.order.totalMinor)}`,
+    result.manualQuoteTier === null
+      ? 'Quedo a la espera de la confirmación y coordinación del pedido.'
+      : manualQuoteMessage(result.manualQuoteTier),
+  ].join('\n');
+  return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
 }
 
 function withoutKey<T>(

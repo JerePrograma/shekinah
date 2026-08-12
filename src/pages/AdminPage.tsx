@@ -11,7 +11,10 @@ import type {
   ReactNode,
 } from 'react';
 
-import { useRuntimeCatalogProducts } from '../data/runtime-catalog';
+import {
+  refreshRuntimeCatalog,
+  useRuntimeCatalogProducts,
+} from '../data/runtime-catalog';
 import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
@@ -53,6 +56,7 @@ type AdminSummary = Readonly<{
 }>;
 type AdminOrder = Readonly<{
   id: string;
+  channel: string;
   status: string;
   currency: string;
   totalMinor: number;
@@ -74,6 +78,7 @@ type AnalyticsTrendRow = Readonly<{
 type AdminOrderDetail = Readonly<{
   order: Readonly<{
     id: string;
+    channel: string;
     status: string;
     currency: string;
     totalMinor: number;
@@ -83,6 +88,8 @@ type AdminOrderDetail = Readonly<{
     createdAt: string;
     updatedAt: string;
     approvedAt: string;
+    resolvedAt: string;
+    resolvedBy: string;
     lastErrorCode: string;
     deliveryMethod: string;
     fullName: string;
@@ -144,10 +151,12 @@ const EMPTY_DATA: AdminData = Object.freeze({
 
 export function AdminPage({
   navigate,
+  onOperationStateChange,
   onUnauthorized,
   section,
 }: Readonly<{
   navigate: Navigate;
+  onOperationStateChange?: ((busy: boolean, label?: string) => void) | undefined;
   onUnauthorized?: (() => void) | undefined;
   section: AdminSection;
 }>) {
@@ -162,6 +171,12 @@ export function AdminPage({
   const [orderDetail, setOrderDetail] = useState<AdminOrderDetail | null>(null);
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
+  const [orderAction, setOrderAction] = useState<'approve' | 'reject' | null>(null);
+  const [orderActionError, setOrderActionError] = useState('');
+  const [orderActionMessage, setOrderActionMessage] = useState('');
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [reportRefresh, setReportRefresh] = useState(0);
+  const [detailRefresh, setDetailRefresh] = useState(0);
   const orderDetailReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const sectionTitleRef = useRef<HTMLHeadingElement | null>(null);
   const products = useRuntimeCatalogProducts();
@@ -170,6 +185,18 @@ export function AdminPage({
     [products],
   );
   const rangeError = validateDateRange(from, to);
+
+  useEffect(() => {
+    onOperationStateChange?.(
+      orderAction !== null,
+      orderAction === 'approve'
+        ? 'Aprobando pedido'
+        : orderAction === 'reject'
+          ? 'Rechazando pedido'
+          : undefined,
+    );
+    return () => onOperationStateChange?.(false);
+  }, [onOperationStateChange, orderAction]);
 
   useEffect(() => {
     if (section === 'products') return undefined;
@@ -184,13 +211,16 @@ export function AdminPage({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [onUnauthorized, section, submittedRange]);
+  }, [onUnauthorized, reportRefresh, section, submittedRange]);
 
   useEffect(() => {
     if (section === 'orders') return;
     setSelectedOrderId(null);
     setOrderDetail(null);
     setDetailError('');
+    setOrderActionError('');
+    setOrderActionMessage('');
+    setConfirmingReject(false);
   }, [section]);
 
   useEffect(() => {
@@ -215,7 +245,7 @@ export function AdminPage({
         if (!controller.signal.aborted) setDetailLoading(false);
       });
     return () => controller.abort();
-  }, [onUnauthorized, section, selectedOrderId]);
+  }, [detailRefresh, onUnauthorized, section, selectedOrderId]);
 
   if (section === 'products') return null;
 
@@ -225,12 +255,47 @@ export function AdminPage({
   const heading = sectionHeading(section);
 
   function closeOrderDetail(): void {
+    if (orderAction !== null) return;
     setSelectedOrderId(null);
     window.requestAnimationFrame(() => {
       const returnTarget = orderDetailReturnFocusRef.current;
       if (returnTarget?.isConnected === true) returnTarget.focus();
       else sectionTitleRef.current?.focus();
     });
+  }
+
+  async function transitionOrder(action: 'approve' | 'reject'): Promise<void> {
+    if (
+      selectedOrderId === null ||
+      orderAction !== null ||
+      orderDetail?.order.channel !== 'whatsapp' ||
+      orderDetail.order.status !== 'pending'
+    ) return;
+    setOrderAction(action);
+    setOrderActionError('');
+    setOrderActionMessage('');
+    try {
+      const payload = await postAdminAction(
+        `/api/admin/orders/${encodeURIComponent(selectedOrderId)}/${action}`,
+        onUnauthorized,
+      );
+      const detail = parseOrderDetail(payload);
+      setOrderDetail(detail);
+      setConfirmingReject(false);
+      setOrderActionMessage(
+        action === 'approve'
+          ? 'Pedido aprobado. La reserva se convirtió en venta y el stock físico quedó actualizado.'
+          : 'Pedido rechazado. Las unidades reservadas volvieron a quedar disponibles.',
+      );
+      setReportRefresh((current) => current + 1);
+      await refreshRuntimeCatalog().catch(() => undefined);
+      window.dispatchEvent(new Event('shekinah:admin-products-refresh'));
+    } catch (error: unknown) {
+      setOrderActionError(errorMessage(error));
+      setDetailRefresh((current) => current + 1);
+    } finally {
+      setOrderAction(null);
+    }
   }
 
   return (
@@ -323,8 +388,16 @@ export function AdminPage({
             detail={orderDetail}
             error={detailError}
             loading={detailLoading}
+            action={orderAction}
+            actionError={orderActionError}
+            actionMessage={orderActionMessage}
+            confirmingReject={confirmingReject}
             orderId={selectedOrderId}
             onClose={closeOrderDetail}
+            onApprove={() => void transitionOrder('approve')}
+            onCancelReject={() => setConfirmingReject(false)}
+            onConfirmReject={() => void transitionOrder('reject')}
+            onRequestReject={() => setConfirmingReject(true)}
           />
         ) : null}
 
@@ -413,11 +486,11 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
       <section className="admin-metric-group" aria-labelledby="financial-summary-title">
         <div className="admin-subsection-heading">
           <h3 id="financial-summary-title">Métricas financieras confirmadas</h3>
-          <p>Sólo pedidos integrados y pagos aprobados persistidos en D1.</p>
+          <p>Pedidos persistidos y, por separado, pagos aprobados confirmados en D1.</p>
         </div>
         <dl className="admin-summary-grid">
-          <Metric label="Pedidos integrados" value={summary.orderCount} />
-          <Metric label="Pedidos aprobados confirmados" value={summary.approvedCount} />
+          <Metric label="Pedidos persistidos" value={summary.orderCount} />
+          <Metric label="Pedidos con pago aprobado confirmado" value={summary.approvedCount} />
           <Metric label="Pagos aprobados" value={summary.approvedPaymentCount} />
           <Metric
             label="Pedidos pendientes"
@@ -427,8 +500,9 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
           <Metric label="Ticket promedio aprobado" value={formatMoney(summary.averageTicketMinor)} />
         </dl>
         <p className="admin-context-note">
-          Checkout Pro integrado continúa deshabilitado. Por eso estas cifras pueden permanecer en cero;
-          nunca se completan con clics del flujo manual.
+          Checkout Pro integrado continúa deshabilitado. Los pedidos de WhatsApp pueden aparecer
+          aquí, pero su aprobación manual no se convierte en facturación sin un pago compatible
+          persistido y verificado.
         </p>
       </section>
     </div>
@@ -458,10 +532,11 @@ function OrdersView({
 }>) {
   return (
     <AdminTable
-      caption="Pedidos integrados del período"
-      columns={['Pedido', 'Estado', 'Fecha', 'Cliente', 'Modalidad', 'Total', 'Acción']}
+      caption="Pedidos del período y pedidos de WhatsApp pendientes"
+      columns={['Pedido', 'Canal', 'Estado', 'Fecha', 'Cliente', 'Modalidad', 'Total', 'Acción']}
       rows={orders.map((order) => [
         order.id,
+        channelLabel(order.channel),
         humanStatus(order.status),
         formatDate(order.createdAt),
         order.fullName,
@@ -695,22 +770,47 @@ function AuditView({ rows }: Readonly<{ rows: readonly UnknownRow[] }>) {
 }
 
 function OrderDetailPanel({
+  action,
+  actionError,
+  actionMessage,
+  confirmingReject,
   detail,
   error,
   loading,
   onClose,
+  onApprove,
+  onCancelReject,
+  onConfirmReject,
+  onRequestReject,
   orderId,
 }: Readonly<{
+  action: 'approve' | 'reject' | null;
+  actionError: string;
+  actionMessage: string;
+  confirmingReject: boolean;
   detail: AdminOrderDetail | null;
   error: string;
   loading: boolean;
   onClose: () => void;
+  onApprove: () => void;
+  onCancelReject: () => void;
+  onConfirmReject: () => void;
+  onRequestReject: () => void;
   orderId: string;
 }>) {
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const rejectCancelRef = useRef<HTMLButtonElement | null>(null);
+  const rejectTriggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     titleRef.current?.focus();
   }, [orderId]);
+  useEffect(() => {
+    if (confirmingReject) rejectCancelRef.current?.focus();
+  }, [confirmingReject]);
+  function cancelReject(): void {
+    onCancelReject();
+    window.requestAnimationFrame(() => rejectTriggerRef.current?.focus());
+  }
   return (
     <article
       className="admin-order-detail"
@@ -723,16 +823,65 @@ function OrderDetailPanel({
     >
       <header>
         <div>
-          <p className="eyebrow">Pedido integrado · sólo lectura</p>
+          <p className="eyebrow">Gestión de pedido</p>
           <h3 id="order-detail-title" ref={titleRef} tabIndex={-1}>Detalle de {orderId}</h3>
         </div>
-        <button className="button button-secondary" type="button" onClick={onClose}>
+        <button className="button button-secondary" type="button" disabled={action !== null} onClick={onClose}>
           Cerrar detalle
         </button>
       </header>
       {loading ? <p role="status">Cargando detalle del pedido…</p> : null}
       {error === '' ? null : <p className="form-error" role="alert">{error}</p>}
       {detail === null || loading ? null : <OrderDetailContent detail={detail} />}
+      {detail?.order.channel === 'whatsapp' && detail.order.status === 'pending' ? (
+        <section className="admin-order-actions" aria-labelledby="order-actions-title" aria-busy={action !== null}>
+          <div>
+            <h4 id="order-actions-title">Resolver pedido pendiente</h4>
+            <p>
+              Aprobar consume la reserva y descuenta el stock físico. Rechazar libera las
+              unidades sin registrar una venta.
+            </p>
+          </div>
+          {confirmingReject ? (
+            <div
+              className="admin-inline-confirmation"
+              role="alertdialog"
+              aria-labelledby="reject-order-title"
+              aria-describedby="reject-order-description"
+              onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                if (event.key !== 'Escape' || action !== null) return;
+                event.preventDefault();
+                event.stopPropagation();
+                cancelReject();
+              }}
+            >
+              <h5 id="reject-order-title">Rechazar {orderId}</h5>
+              <p id="reject-order-description">
+                El pedido quedará rechazado y todas sus unidades reservadas volverán a estar disponibles.
+              </p>
+              <div className="admin-inline-actions">
+                <button ref={rejectCancelRef} className="button button-secondary" type="button" disabled={action !== null} onClick={cancelReject}>
+                  Cancelar
+                </button>
+                <button className="button button-danger" type="button" disabled={action !== null} onClick={onConfirmReject}>
+                  {action === 'reject' ? 'Rechazando…' : 'Rechazar pedido'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="admin-inline-actions">
+              <button ref={rejectTriggerRef} className="button button-danger" type="button" disabled={action !== null} onClick={onRequestReject}>
+                Rechazar
+              </button>
+              <button className="button button-primary" type="button" disabled={action !== null} onClick={onApprove}>
+                {action === 'approve' ? 'Aprobando…' : 'Aprobar'}
+              </button>
+            </div>
+          )}
+        </section>
+      ) : null}
+      {actionMessage === '' ? null : <p className="admin-feedback admin-feedback-success" role="status">{actionMessage}</p>}
+      {actionError === '' ? null : <p className="form-error" role="alert">{actionError}</p>}
     </article>
   );
 }
@@ -745,10 +894,13 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
         title="Datos generales"
         entries={[
           ['ID', order.id],
+          ['Canal', channelLabel(order.channel)],
           ['Estado', humanStatus(order.status)],
           ['Creación', formatDate(order.createdAt)],
           ['Actualización', formatDate(order.updatedAt)],
           ['Aprobación', formatDate(order.approvedAt)],
+          ['Resolución', formatDate(order.resolvedAt)],
+          ['Resuelto por', order.resolvedBy],
           ['Moneda', order.currency],
           ['Error conocido', order.lastErrorCode],
         ]}
@@ -776,7 +928,9 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
         ]}
       />
       <AdminTable
-        caption="Items del pedido"
+        caption={order.channel === 'whatsapp' && order.status === 'pending'
+          ? 'Productos y unidades reservadas'
+          : 'Items del pedido'}
         columns={['Producto', 'Presentación', 'SKU', 'Cantidad', 'Precio unitario', 'Subtotal']}
         rows={detail.items.map((item) => [
           item.name === '—' ? item.productId : item.name,
@@ -805,7 +959,8 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
         ])}
       />
       <p className="admin-context-note">
-        Esta vista no ofrece controles para modificar estados, importes ni fechas financieras.
+        Los importes y snapshots son históricos y no se editan desde esta vista. Sólo los pedidos
+        de WhatsApp pendientes admiten aprobación o rechazo.
       </p>
     </div>
   );
@@ -987,6 +1142,33 @@ async function getJson(
   return payload;
 }
 
+async function postAdminAction(
+  path: string,
+  onUnauthorized?: () => void,
+): Promise<unknown> {
+  const response = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    redirect: 'error',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (response.status === 401) {
+    onUnauthorized?.();
+    throw new Error('La sesión administrativa venció.');
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // La validación siguiente produce un mensaje estable.
+  }
+  if (!response.ok) {
+    throw new Error(readApiMessage(payload) ?? 'No se pudo actualizar el pedido.');
+  }
+  return payload;
+}
+
 function parseSummary(value: unknown): AdminSummary {
   if (!isRecord(value)) throw new Error('El resumen administrativo no tiene un formato válido.');
   return Object.freeze({
@@ -1021,6 +1203,7 @@ function parseOrders(value: unknown): readonly AdminOrder[] {
     if (!isRecord(candidate)) throw new Error('La lista de pedidos no tiene un formato válido.');
     return Object.freeze({
       id: readRequiredText(candidate, 'id'),
+      channel: readNullableText(candidate.channel),
       status: readRequiredText(candidate, 'status'),
       currency: readRequiredText(candidate, 'currency'),
       totalMinor: readRequiredMetric(candidate, 'total_minor'),
@@ -1040,6 +1223,7 @@ function parseOrderDetail(value: unknown): AdminOrderDetail {
   return Object.freeze({
     order: Object.freeze({
       id: readRequiredText(order, 'id'),
+      channel: readNullableText(order.channel),
       status: readRequiredText(order, 'status'),
       currency: readRequiredText(order, 'currency'),
       totalMinor: readRequiredMetric(order, 'total_minor'),
@@ -1049,6 +1233,8 @@ function parseOrderDetail(value: unknown): AdminOrderDetail {
       createdAt: readRequiredText(order, 'created_at'),
       updatedAt: readRequiredText(order, 'updated_at'),
       approvedAt: readNullableText(order.approved_at),
+      resolvedAt: readNullableText(order.resolved_at),
+      resolvedBy: readNullableText(order.resolved_by),
       lastErrorCode: readNullableText(order.last_error_code),
       deliveryMethod: readNullableText(order.delivery_method),
       fullName: readNullableText(order.full_name),
@@ -1221,6 +1407,13 @@ function providerLabel(value: string): string {
   return value === 'mercadopago' ? 'Mercado Pago' : value;
 }
 
+function channelLabel(value: string): string {
+  if (value === 'whatsapp') return 'WhatsApp';
+  if (value === 'checkout_pro') return 'Checkout Pro';
+  if (value === '—') return 'Pedido previo';
+  return value;
+}
+
 function humanStatus(value: string): string {
   const labels: Record<string, string> = {
     preference_pending: 'Preparando preferencia',
@@ -1288,8 +1481,8 @@ function sectionHeading(section: Exclude<AdminSection, 'products'>) {
       } as const;
     case 'orders':
       return {
-        title: 'Pedidos integrados',
-        description: 'Listado operativo y detalle completo de sólo lectura.',
+        title: 'Pedidos',
+        description: 'Revisá pedidos, reservas y transiciones administrativas de WhatsApp.',
         loadingLabel: 'los pedidos',
       } as const;
     case 'analytics':

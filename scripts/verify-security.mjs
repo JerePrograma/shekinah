@@ -46,6 +46,7 @@ const requiredFunctions = [
   'functions/api/checkout/preferences.ts',
   'functions/api/webhooks/mercadopago.ts',
   'functions/api/orders/[publicToken]/status.ts',
+  'functions/api/orders/whatsapp.ts',
   'functions/api/analytics/events.ts',
   'functions/api/privacy/delete-session.ts',
   'functions/api/catalog.ts',
@@ -59,6 +60,8 @@ const requiredFunctions = [
   'functions/api/admin/summary.ts',
   'functions/api/admin/orders.ts',
   'functions/api/admin/orders/[id].ts',
+  'functions/api/admin/orders/[id]/approve.ts',
+  'functions/api/admin/orders/[id]/reject.ts',
   'functions/api/admin/analytics/funnel.ts',
   'functions/api/admin/analytics/products.ts',
   'functions/api/admin/analytics/sources.ts',
@@ -146,6 +149,9 @@ if (!existsSync(join(projectRoot, 'migrations', '0004_catalog_admin.sql'))) {
 }
 if (!existsSync(join(projectRoot, 'migrations', '0005_admin_auth.sql'))) {
   fail('Falta la migración de protección del login administrativo.');
+}
+if (!existsSync(join(projectRoot, 'migrations', '0007_whatsapp_order_reservations.sql'))) {
+  fail('Falta la migración de pedidos y reservas de WhatsApp.');
 }
 
 const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');

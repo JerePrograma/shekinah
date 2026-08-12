@@ -2,7 +2,7 @@
 
 ## Alcance
 
-El contrato persistente de este documento aplica al Checkout Pro integrado, actualmente preparado pero deshabilitado. El fallback manual autorizado no escribe fulfillment en D1: los datos permanecen en el estado React de la página y sólo se incluyen en el mensaje de WhatsApp si el comprador decide abrirlo.
+El contrato persistente aplica a Checkout Pro y, cuando el comprador completa datos con una tarifa determinística, al pedido pendiente de WhatsApp. Antes de abrir WhatsApp, el backend recalcula el carrito y siempre persiste `orders` y `order_items`; `order_fulfillment` se persiste sólo si el request incluye datos completos y la tarifa es determinística. El formulario totalmente vacío y los envíos que requieren cotización manual no persisten PII: esos datos permanecen en memoria React y, si fueron completados, se incluyen únicamente en el mensaje que el comprador decide abrir. Nunca se guardan en `localStorage` ni analítica.
 
 ## Contrato operativo
 
@@ -18,7 +18,7 @@ Una presentación explícita y válida se usa sólo cuando no contradice un peso
 
 En Checkout Pro integrado, `orders.total_minor` conserva el total autoritativo de productos más envío. Mercado Pago recibe el envío como un ítem separado y el webhook continúa comparando moneda e importe completo contra el pedido.
 
-En el fallback manual, el total mostrado en el navegador es sólo el importe operativo que se copia para que el comprador lo ingrese en el Link de Pago; no existe un `orders.total_minor` hasta que se active el flujo integrado. El comercio debe verificar y asociar el cobro manualmente antes del fulfillment.
+En el canal manual, el Link de Pago continúa sin monto predefinido y el cobro debe verificarse manualmente. Sin embargo, el pedido de WhatsApp ya conserva en `orders.total_minor` el total recalculado por servidor antes de abrir el mensaje; ese registro y su estado `pending` no prueban pago, venta ni revenue.
 
 ## Migración
 
@@ -29,6 +29,8 @@ En el fallback manual, el total mostrado en el navegador es sólo el importe ope
 - `analytics_maintenance`, para reclamar una única purga por mes.
 
 `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella autoritativa del carrito a `checkout_intents`, backfillea desde pedidos existentes y evita reutilizar una reserva huérfana con otro carrito.
+
+`migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido. La reserva se deriva de los items de pedidos WhatsApp pendientes: no hay contador duplicado ni TTL. Aprobar descuenta el stock físico y consume la reserva en la misma transición D1; rechazar conserva el físico y libera la reserva. Un pedido abandonado permanece pendiente y reserva stock hasta una resolución administrativa.
 
 `migrations/0001_commerce.sql` permanece intacta.
 

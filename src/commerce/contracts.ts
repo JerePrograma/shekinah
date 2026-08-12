@@ -21,6 +21,31 @@ export type CheckoutResponse = Readonly<{
   publicToken: string;
 }>;
 
+export type WhatsappOrderRequest = Readonly<{
+  idempotencyKey: string;
+  items: readonly CheckoutLineRequest[];
+  fulfillment: CheckoutFulfillment | null;
+}>;
+
+export type WhatsappOrderItem = Readonly<{
+  productId: string;
+  name: string;
+  presentation?: string;
+  quantity: number;
+  unitPriceMinor: number;
+  subtotalMinor: number;
+}>;
+
+export type WhatsappOrderResponse = Readonly<{
+  orderId: string;
+  status: 'pending';
+  currency: 'ARS';
+  totalMinor: number;
+  itemCount: number;
+  createdAt: string;
+  items: readonly WhatsappOrderItem[];
+}>;
+
 export type PublicOrderStatus =
   | 'preference_pending'
   | 'pending'
