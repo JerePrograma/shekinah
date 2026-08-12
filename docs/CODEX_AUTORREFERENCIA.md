@@ -7,9 +7,9 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: bcb6ec0956fa46bba95b2bb5aa8b645657202da8
-last_verified_at: 2026-08-11T03:15:06Z
-last_ci_run_id: 31452548845
+last_verified_sha: c19d88dc03f9d98c0c615256bda374769bd2b7a7
+last_verified_at: 2026-08-12T18:26:36Z
+last_ci_run_id: 31627455350
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
@@ -60,8 +60,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** el servidor vuelve a leer productos y precios canónicos; el navegador no fija moneda, subtotal, envío ni total.
 - **REVISADO_POR_CÓDIGO:** el checkout usa ARS y Mercado Pago Checkout Pro por redirección.
 - **REVISADO_POR_CÓDIGO:** comercio, analítica y WhatsApp deben permanecer cerrados hasta completar autorización y configuración externa.
-- **CANDIDATO REVISADO_POR_CÓDIGO:** `stockQuantity` es opcional; ausente significa stock no controlado. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o cantidad mayor que cero.
-- **CANDIDATO REVISADO_POR_CÓDIGO:** el stock controlado debe ser un entero entre `0` y `1.000.000`; el carrito limita cada línea a `min(99, stockQuantity)` y el servidor vuelve a validar disponibilidad y cantidad antes del Checkout Pro.
+- **VERIFICADO POR CÓDIGO Y PRUEBAS:** `stockQuantity` es opcional; ausente significa stock no controlado. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o cantidad disponible mayor que cero.
+- **VERIFICADO POR CÓDIGO Y PRUEBAS:** el stock controlado debe ser un entero entre `0` y `1.000.000`; el carrito limita cada línea a `min(99, availableQuantity)` y el servidor vuelve a validar disponibilidad y cantidad antes de crear un pedido.
 - **REVISADO_POR_CÓDIGO:** `0007` deriva la reserva de los items de pedidos WhatsApp pendientes; aprobar descuenta stock físico una sola vez y rechazar libera la reserva sin sumar stock. Los productos sin `stockQuantity` conservan el modelo legacy sin control numérico.
 
 ## 6. Invariantes de seguridad
@@ -94,6 +94,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** la recuperación exige coincidencia de carrito, subtotal, envío, total, peso y huella de fulfillment.
 - **VERIFICADO:** `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella del carrito y backfillea desde pedidos existentes sin editar `0001` ni `0002`.
 - **VERIFICADO LOCALMENTE:** `server/migrations.test.ts` aplica `0001` a `0007`, preserva eventos legacy y pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints, cascade, catálogo, rate limiting, CHECK analítico, reservas WhatsApp, transiciones e índices. Esta evidencia no declara `0007` aplicada en una D1 remota.
+- **VERIFICADO REMOTAMENTE EL 2026-08-12:** `0007` figura en `d1_migrations` de preview y producción; columnas, índices, triggers y claves foráneas se comprobaron después de cada import. El smoke público de error alcanzó la Function desplegada y no persistió datos.
 
 ## 10. Mercado Pago y webhooks
 

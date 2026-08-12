@@ -6,7 +6,7 @@ Este documento describe el código preparado en el repositorio. No certifica por
 
 La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
 
-El candidato de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. Para WhatsApp usa Strategy A: el stock reservado se deriva de los items de pedidos pendientes y no se duplica en un contador. El servidor calcula `disponible = físico - SUM(items pending WhatsApp)`, impide sobre-reservar y protege las ediciones administrativas que reducirían el físico por debajo de lo comprometido.
+El modelo de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. Para WhatsApp usa Strategy A: el stock reservado se deriva de los items de pedidos pendientes y no se duplica en un contador. El servidor calcula `disponible = físico - SUM(items pending WhatsApp)`, impide sobre-reservar y protege las ediciones administrativas que reducirían el físico por debajo de lo comprometido.
 
 Desde el 2026-08-10 existe además un canal manual autorizado mientras Checkout Pro permanezca cerrado. El Link de Pago sigue sin monto y sin confirmación autoritativa, pero el envío por WhatsApp ahora exige crear antes en D1 un pedido idempotente `pending`, su snapshot de items y la reserva de stock. El fulfillment se persiste sólo si está completo y tiene una tarifa determinística; para una cotización manual queda fuera de D1. Sólo después se abre el mensaje con el identificador correlacionable.
 
@@ -74,7 +74,7 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 
 `migrations/0007_whatsapp_order_reservations.sql` agrega `orders.channel`, `resolved_at` y `resolved_by`, además de índices y triggers. Las filas anteriores reciben `channel='checkout_pro'`. Para WhatsApp, D1 exige estado inicial `pending`, items inmutables y transiciones exclusivas `pending → approved|rejected`. Aprobar valida la reserva y descuenta el stock físico exactamente una vez; rechazar sólo elimina la reserva al dejar de participar en la suma derivada.
 
-Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0006` permanecen inmutables y no se rellenan cantidades ficticias para el catálogo base. `0007` todavía debe aplicarse y verificarse por separado en preview y producción antes de desplegar o activar las Functions que dependen de ella.
+Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0006` permanecen inmutables y no se rellenan cantidades ficticias para el catálogo base. `0007` se aplicó y verificó por separado, primero en preview y luego en producción, antes del cierre operativo del flujo publicado.
 
 ## Imágenes de catálogo administradas
 

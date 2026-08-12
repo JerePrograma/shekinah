@@ -26,11 +26,11 @@ Configuración de referencia: `wrangler.example.jsonc`.
 
 Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
 
-## Estado externo verificado el 2026-08-11
+## Estado externo verificado el 2026-08-12
 
 - build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
 - binding `DB`: `shekinah-commerce` en producción y `shekinah-commerce-preview` en preview;
-- migraciones `0001` a `0006`: aplicadas y sin pendientes en ambas D1;
+- migraciones `0001` a `0007`: aplicadas y sin pendientes en ambas D1;
 - variables server-side: analítica activa, retención 730 y comercio cerrado en ambos entornos;
 - secretos administrativos: cuatro nombres cifrados presentes en ambos entornos, valores no inspeccionables;
 - secreto analítico: `ANALYTICS_HMAC_SECRET` presente como `secret_text` con valor independiente por entorno;
@@ -61,7 +61,7 @@ Los dos valores `VITE_*` son públicos y están incluidos como defaults autoriza
 
 El apex fue agregado mediante Custom Domains del proyecto Pages, sin usar IPs circunstanciales ni registros A/AAAA inventados. Conservar el CNAME proxied administrado y no reemplazar el placeholder de `www` por una supuesta IP de origen. Apex, `www`, TLS y redirección quedaron verificados por separado.
 
-El fallback manual no necesita VPS ni D1. El Checkout Pro integrado tampoco requiere VPS: el backend previsto son Pages Functions y D1, pero esa capacidad continúa deshabilitada hasta completar su configuración externa.
+El fallback manual no necesita VPS. El Link de Pago externo no usa D1, pero el pedido WhatsApp publicado depende de Pages Functions, D1 y `0007` para persistir y reservar antes de abrir la conversación. Checkout Pro tampoco requiere VPS y continúa deshabilitado hasta completar su configuración externa.
 
 ## Estados separados
 
@@ -97,7 +97,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql` y `migrations/0007_whatsapp_order_reservations.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler. La evidencia remota existente sólo cubre hasta `0006`.
+Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql` y `migrations/0007_whatsapp_order_reservations.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler. La evidencia remota del 2026-08-12 cubre `0001` a `0007` en preview y producción.
 
 Antes de aplicarlas:
 
@@ -123,7 +123,7 @@ R2 y ambos bindings quedaron verificados por API. Los buckets conservan clase St
 
 ### Fallback manual actual
 
-El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto. Al solicitar WhatsApp, el candidato crea primero un pedido pendiente y reserva stock mediante Pages Functions/D1; no crea una preferencia ni verifica pagos mediante webhook. Antes de desplegar este flujo deben aplicarse y verificarse `0007` y sus Functions en cada entorno.
+El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto. Al solicitar WhatsApp, el flujo publicado crea primero un pedido pendiente y reserva stock mediante Pages Functions/D1; no crea una preferencia ni verifica pagos mediante webhook. `0007` quedó aplicada y verificada en ambos entornos antes del cierre operativo del SHA funcional.
 
 ### Checkout Pro integrado pendiente
 
@@ -157,7 +157,7 @@ Después del despliegue:
 - comprobar que usar el fallback no llame a `/api/checkout/preferences`;
 - comprobar que los endpoints server-side deshabilitados fallen de forma segura;
 - comprobar administración protegida;
-- comprobar creación de pedidos sólo cuando Checkout Pro esté configurado;
+- comprobar creación idempotente de pedidos WhatsApp aun con Checkout Pro cerrado, y comprobar pedidos Checkout Pro sólo cuando ese canal esté configurado;
 - comprobar webhook con eventos controlados antes de activar Checkout Pro;
 - comprobar que ningún secreto aparezca en respuestas o bundles.
 - comprobar semántica legacy de stock no controlado, stock cero y disponibilidad manual;

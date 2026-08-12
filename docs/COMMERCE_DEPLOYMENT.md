@@ -13,11 +13,11 @@ VITE_ANALYTICS_ENABLED=true
 
 No cambiar los flags de comercio hasta completar el checklist de sandbox, webhooks, D1 y aprobación comercial. La analítica es una capacidad separada, opt-in y ya activada después de migración, secretos independientes, preview y smoke productivo. La autenticación administrativa tampoco habilita Checkout Pro.
 
-Existe un canal manual separado y expresamente autorizado: Link de Pago de Mercado Pago sin monto predefinido más pedido por WhatsApp. No equivale a `COMMERCE_ENABLED=true` ni habilita el webhook, pero el candidato nuevo sí requiere Pages Functions, D1 y `0007` para persistir el pedido pendiente y reservar stock antes de abrir WhatsApp.
+Existe un canal manual separado y expresamente autorizado: Link de Pago de Mercado Pago sin monto predefinido más pedido por WhatsApp. No equivale a `COMMERCE_ENABLED=true` ni habilita el webhook, pero el flujo WhatsApp publicado sí requiere Pages Functions, D1 y `0007` para persistir el pedido pendiente y reservar stock antes de abrir WhatsApp.
 
 El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio técnico y de preview, mientras que `https://shekinah.ar` es el origen público canónico de producción. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
 
-No se necesita VPS. Tanto el pedido WhatsApp candidato como Checkout Pro usan Pages Functions y D1; el Link de Pago continúa siendo una navegación externa separada.
+No se necesita VPS. Tanto el pedido WhatsApp publicado como Checkout Pro usan Pages Functions y D1; el Link de Pago continúa siendo una navegación externa separada.
 
 La zona `shekinah.ar` figura `active` en Cloudflare y está delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC permanece deshabilitado y `.ar` no publica un DS, estado válido para esta etapa. El custom domain del apex, su verificación y validación figuran `active`; el CNAME proxied apunta al dominio técnico de Pages y `https://shekinah.ar` responde 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` hacia el apex preservando path y query y termina en 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no una IP de origen ni un destino de Pages. El pack Universal está activo con Google Trust Services WE1, SAN para `shekinah.ar` y `*.shekinah.ar`, y TLS 1.3 verificado.
 
@@ -102,7 +102,7 @@ npx wrangler d1 migrations list DB --remote
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
-El flujo versionado aplica en orden `0001` a `0007`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico y `0007` agrega canal/resolución de pedidos más triggers e índices de reservas WhatsApp. Las D1 remotas sólo están verificadas hasta `0006`: aplicar `0007` primero en preview, verificar `d1_migrations`, `sqlite_schema`, triggers, índices, conteos y `PRAGMA foreign_key_check`, y recién después repetir en producción. No desplegar las Functions dependientes antes de confirmar la migración en el entorno correspondiente.
+El flujo versionado aplica en orden `0001` a `0007`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico y `0007` agrega canal/resolución de pedidos más triggers e índices de reservas WhatsApp. `0007` quedó aplicada y verificada el 2026-08-12 primero en preview y luego en producción: `d1_migrations`, columnas, triggers, índices, conteos y `PRAGMA foreign_key_check` resultaron coherentes. En futuras migraciones se debe conservar el mismo orden preview → verificación → producción y no desplegar Functions dependientes antes del esquema correspondiente.
 
 `0007` no debe revertirse editando ni borrando la migración después de aplicada. Ante rollback de código, primero aprobar o rechazar de forma controlada todos los pedidos WhatsApp `pending`; sólo entonces volver a una versión que no conozca reservas, dejando el esquema aditivo sin uso. Mantener código anterior con reservas pendientes haría que el catálogo ignore unidades comprometidas.
 
