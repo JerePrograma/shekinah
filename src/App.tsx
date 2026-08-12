@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { trackAnalyticsEvent } from './analytics/client';
 import { AnalyticsConsent } from './analytics/AnalyticsConsent';
@@ -10,6 +10,7 @@ import {
   siteContent,
 } from './content/site-content';
 import { CartPage } from './pages/CartPage';
+import type { ProductInteractionState } from './admin/ProductManager';
 import { CatalogPage } from './pages/CatalogPage';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -27,10 +28,36 @@ const AdminBackoffice = lazy(() =>
   })),
 );
 
+const IDLE_ADMIN_INTERACTION: ProductInteractionState = Object.freeze({
+  busy: false,
+  dirty: false,
+});
+
 export function App() {
   const currentYear = new Date().getFullYear();
   const { itemCount } = useCart();
-  const { navigate, pathname, route } = useBrowserRoute();
+  const [adminInteraction, setAdminInteraction] = useState(IDLE_ADMIN_INTERACTION);
+  const [navigationFeedback, setNavigationFeedback] = useState('');
+  const shouldNavigate = useCallback(() => {
+    if (adminInteraction.busy) {
+      setNavigationFeedback(
+        adminInteraction.operationLabel === undefined
+          ? 'Esperá a que termine la operación administrativa antes de salir.'
+          : `Esperá a que termine: ${adminInteraction.operationLabel}.`,
+      );
+      return false;
+    }
+    if (!adminInteraction.dirty) {
+      setNavigationFeedback('');
+      return true;
+    }
+    const confirmed = window.confirm(
+      'Salir de Administración\n\nHay cambios de producto sin guardar. Si salís ahora, se perderán.',
+    );
+    setNavigationFeedback(confirmed ? '' : 'Los cambios siguen sin guardar. Permanecés en Administración.');
+    return confirmed;
+  }, [adminInteraction]);
+  const { navigate, pathname, route } = useBrowserRoute(shouldNavigate);
   const mainRef = useRef<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
 
@@ -52,6 +79,22 @@ export function App() {
     previousPathname.current = pathname;
     mainRef.current?.focus({ preventScroll: false });
   }, [pathname]);
+
+  useEffect(() => {
+    if (!adminInteraction.busy && !adminInteraction.dirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [adminInteraction.busy, adminInteraction.dirty]);
+
+  useEffect(() => {
+    if (!adminInteraction.busy && !adminInteraction.dirty) {
+      setNavigationFeedback('');
+    }
+  }, [adminInteraction.busy, adminInteraction.dirty]);
 
   const activePath = route.id === 'not-found' || route.id === 'resolving-product'
     ? null
@@ -107,15 +150,23 @@ export function App() {
                   navigate={navigate}
                   to={appPaths.cart}
                 >
-                  Carrito <span className="cart-count" aria-hidden="true">{itemCount}</span>
+                  Carrito <CartCount itemCount={itemCount} />
                 </AppLink>
               </li>
             </ul>
           </nav>
         </div>
       </header>
+      {navigationFeedback === '' ? null : (
+        <p className="container navigation-feedback" role="alert">{navigationFeedback}</p>
+      )}
       <main id="main-content" ref={mainRef} tabIndex={-1}>
-        <RouteView navigate={navigate} pathname={pathname} route={route} />
+        <RouteView
+          navigate={navigate}
+          pathname={pathname}
+          route={route}
+          onAdminInteractionStateChange={setAdminInteraction}
+        />
       </main>
       {route.id === 'admin' ? null : <AnalyticsConsent />}
       <footer className="site-footer">
@@ -143,11 +194,33 @@ export function App() {
   );
 }
 
+function CartCount({ itemCount }: Readonly<{ itemCount: number }>) {
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+  }, []);
+  return (
+    <span
+      className={`cart-count${mounted.current ? ' cart-count-updated' : ''}`}
+      key={itemCount}
+      aria-hidden="true"
+    >
+      {itemCount}
+    </span>
+  );
+}
+
 function RouteView({
   navigate,
+  onAdminInteractionStateChange,
   pathname,
   route,
-}: Readonly<{ navigate: Navigate; pathname: string; route: AppRoute }>) {
+}: Readonly<{
+  navigate: Navigate;
+  onAdminInteractionStateChange: (state: ProductInteractionState) => void;
+  pathname: string;
+  route: AppRoute;
+}>) {
   switch (route.id) {
     case 'home':
       return <HomePage navigate={navigate} />;
@@ -170,7 +243,10 @@ function RouteView({
     case 'admin':
       return (
         <Suspense fallback={<p className="container" role="status">Cargando administración…</p>}>
-          <AdminBackoffice navigate={navigate} />
+          <AdminBackoffice
+            navigate={navigate}
+            onInteractionStateChange={onAdminInteractionStateChange}
+          />
         </Suspense>
       );
     case 'resolving-product':

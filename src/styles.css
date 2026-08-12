@@ -257,6 +257,10 @@ h1 {
   transform: translateY(-2px);
 }
 
+.button:active {
+  transform: scale(0.98);
+}
+
 .button-primary {
   color: var(--color-surface);
   background: var(--color-action);
@@ -584,6 +588,8 @@ h1 {
   *,
   *::before,
   *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }

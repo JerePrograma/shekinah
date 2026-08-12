@@ -37,6 +37,17 @@ import type {
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+export type ProductInteractionState = Readonly<{
+  dirty: boolean;
+  busy: boolean;
+  operationLabel?: string;
+}>;
+
+const IDLE_INTERACTION_STATE: ProductInteractionState = Object.freeze({
+  dirty: false,
+  busy: false,
+});
+
 const EMPTY_FORM: ProductFormState = Object.freeze({
   slug: '',
   name: '',
@@ -55,8 +66,12 @@ const EMPTY_FORM: ProductFormState = Object.freeze({
 });
 
 export function ProductManager({
+  onInteractionStateChange,
   onUnauthorized,
-}: Readonly<{ onUnauthorized?: (() => void) | undefined }>) {
+}: Readonly<{
+  onInteractionStateChange?: ((state: ProductInteractionState) => void) | undefined;
+  onUnauthorized?: (() => void) | undefined;
+}>) {
   const [products, setProducts] = useState<readonly CatalogProductDetail[]>([]);
   const [imageStorageConfigured, setImageStorageConfigured] = useState(false);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
@@ -73,6 +88,7 @@ export function ProductManager({
   const [stockFilter, setStockFilter] = useState<StockFilter>(ALL_FILTERS);
   const [sort, setSort] = useState<ProductSort>('name');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [operation, setOperation] = useState<ProductOperation>({ kind: 'idle' });
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -88,12 +104,19 @@ export function ProductManager({
   const editorTitleRef = useRef<HTMLHeadingElement | null>(null);
   const editorFormRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingNavigationReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const editorOpen = editingId !== undefined;
   const isDirty = editorOpen && (
     !formsEqual(form, baseline) || pendingImage !== null || removeImage
   );
   const remoteBusy = operation.kind !== 'idle';
+  const interactionState = useMemo<ProductInteractionState>(() => {
+    const operationLabel = productOperationLabel(operation, products);
+    return operationLabel === null
+      ? Object.freeze({ dirty: isDirty, busy: remoteBusy })
+      : Object.freeze({ dirty: isDirty, busy: remoteBusy, operationLabel });
+  }, [isDirty, operation, products, remoteBusy]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,6 +153,14 @@ export function ProductManager({
   useEffect(() => {
     if (editorOpen) editorTitleRef.current?.focus();
   }, [editingId, editorOpen]);
+
+  useEffect(() => {
+    onInteractionStateChange?.(interactionState);
+  }, [interactionState, onInteractionStateChange]);
+
+  useEffect(() => () => {
+    onInteractionStateChange?.(IDLE_INTERACTION_STATE);
+  }, [onInteractionStateChange]);
 
   const summary = useMemo(() => Object.freeze({
     total: products.length,
@@ -179,7 +210,7 @@ export function ProductManager({
 
   async function reload(signal?: AbortSignal): Promise<void> {
     setLoading(true);
-    setError('');
+    setLoadError('');
     try {
       const payload = await adminJson(
         '/api/admin/products',
@@ -192,7 +223,7 @@ export function ProductManager({
       setImageStorageConfigured(catalog.imageStorageConfigured);
     } catch (loadError: unknown) {
       if (signal?.aborted === true) return;
-      setError(errorMessage(loadError));
+      setLoadError(errorMessage(loadError));
     } finally {
       if (signal?.aborted !== true) setLoading(false);
     }
@@ -205,11 +236,7 @@ export function ProductManager({
     setFieldErrors(validation);
     if (Object.keys(validation).length > 0) {
       setError('Revisá los campos indicados antes de guardar.');
-      window.requestAnimationFrame(() => {
-        editorFormRef.current
-          ?.querySelector<HTMLElement>('[aria-invalid="true"]')
-          ?.focus();
-      });
+      focusFirstInvalidField(editorFormRef.current, validation);
       return;
     }
 
@@ -306,7 +333,9 @@ export function ProductManager({
       await refreshRuntimeCatalog();
       setMessage(
         nextAvailability === 'available'
-          ? `${product.name} quedó disponible manualmente.`
+          ? isProductEffectivelyAvailable(updated)
+            ? `${product.name} quedó disponible para venta.`
+            : `La disponibilidad manual de ${product.name} quedó activa, pero sigue fuera de venta porque no tiene stock.`
           : `${product.name} quedó pausado manualmente.`,
       );
     } catch (updateError: unknown) {
@@ -439,25 +468,31 @@ export function ProductManager({
     clearFieldError('categorySlugs');
   }
 
-  function requestEdit(product: CatalogProductDetail): void {
+  function requestEdit(
+    product: CatalogProductDetail,
+    returnFocusTarget: HTMLButtonElement,
+  ): void {
     if (editingId === product.id) return;
     if (isDirty) {
+      pendingNavigationReturnFocusRef.current = returnFocusTarget;
       setPendingNavigation({ kind: 'edit', product });
       return;
     }
     openEdit(product);
   }
 
-  function requestNew(): void {
+  function requestNew(returnFocusTarget: HTMLButtonElement): void {
     if (isDirty) {
+      pendingNavigationReturnFocusRef.current = returnFocusTarget;
       setPendingNavigation({ kind: 'new' });
       return;
     }
     openNew();
   }
 
-  function requestClose(): void {
+  function requestClose(returnFocusTarget: HTMLButtonElement): void {
     if (isDirty) {
+      pendingNavigationReturnFocusRef.current = returnFocusTarget;
       setPendingNavigation({ kind: 'close' });
       return;
     }
@@ -505,6 +540,7 @@ export function ProductManager({
     setError('');
     setMessage('');
     setPendingNavigation(null);
+    pendingNavigationReturnFocusRef.current = null;
     clearFileInput();
   }
 
@@ -539,11 +575,15 @@ export function ProductManager({
     product: CatalogProductDetail,
   ): void {
     event.preventDefault();
+    const quickStockForm = event.currentTarget;
     const stock = parseStockQuantity(quickStockValue);
     if (stock === null) {
       setQuickStockError(
         `Indicá una cantidad entera entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`,
       );
+      window.requestAnimationFrame(() => {
+        quickStockForm.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+      });
       return;
     }
     void updateQuickStock(product, stock);
@@ -561,14 +601,14 @@ export function ProductManager({
           <button
             className="button button-primary"
             type="button"
-            disabled={remoteBusy}
-            onClick={requestNew}
+            disabled={remoteBusy || loading || loadError !== ''}
+            onClick={(event) => requestNew(event.currentTarget)}
           >
             Nuevo producto
           </button>
         </header>
 
-        <section aria-labelledby="catalog-summary-title">
+        <section aria-labelledby="catalog-summary-title" hidden={loading || loadError !== ''}>
           <h3 className="visually-hidden" id="catalog-summary-title">Resumen del catálogo</h3>
           <dl className="admin-catalog-summary">
             <SummaryItem label="Productos" value={summary.total} />
@@ -598,6 +638,7 @@ export function ProductManager({
             deleteCandidate={deleteCandidate}
             editingId={editingId}
             isDirty={isDirty}
+            loadError={loadError}
             loading={loading}
             operation={operation}
             query={query}
@@ -607,6 +648,7 @@ export function ProductManager({
             remoteBusy={remoteBusy}
             sort={sort}
             stockFilter={stockFilter}
+            totalProductCount={products.length}
             visibleProducts={visibleProducts}
             onAvailabilityFilterChange={setAvailabilityFilter}
             onBeginQuickStock={beginQuickStock}
@@ -615,6 +657,7 @@ export function ProductManager({
             onCategoryFilterChange={setCategoryFilter}
             onConfirmDelete={(product) => void remove(product)}
             onEdit={requestEdit}
+            onRetryLoad={() => void reload()}
             onOpenDelete={setDeleteCandidate}
             onQueryChange={setQuery}
             onQuickStockValueChange={(value) => {
@@ -646,7 +689,8 @@ export function ProductManager({
               isDirty={isDirty}
               operation={operation}
               pendingImage={pendingImage}
-              pendingNavigation={pendingNavigation !== null}
+              pendingNavigation={pendingNavigation}
+              pendingNavigationReturnFocus={pendingNavigationReturnFocusRef.current}
               removeImage={removeImage}
               titleRef={editorTitleRef}
               onCancelPendingNavigation={() => setPendingNavigation(null)}
@@ -744,10 +788,57 @@ function validateImage(file: File): string | null {
 }
 
 function parseStockQuantity(value: string): number | null {
-  const numeric = Number(value);
+  const normalized = value.trim();
+  if (normalized === '') return null;
+  const numeric = Number(normalized);
   return Number.isSafeInteger(numeric) && numeric >= 0 && numeric <= MAX_STOCK_QUANTITY
     ? numeric
     : null;
+}
+
+function focusFirstInvalidField(
+  formElement: HTMLFormElement | null,
+  errors: ProductFieldErrors,
+): void {
+  if (formElement === null) return;
+  const targets: readonly Readonly<{
+    field: ProductFieldName;
+    selector: string;
+  }>[] = [
+    { field: 'name', selector: '[aria-labelledby="product-name-label"]' },
+    { field: 'categorySlugs', selector: '.admin-category-options input[type="checkbox"]' },
+    { field: 'price', selector: '[aria-labelledby="product-price-label"]' },
+    { field: 'salePrice', selector: '[aria-labelledby="product-sale-price-label"]' },
+    { field: 'image', selector: 'input[type="file"]' },
+    { field: 'stockQuantity', selector: '[aria-labelledby="product-stock-label"]' },
+    { field: 'slug', selector: '[aria-labelledby="product-slug-label"]' },
+  ];
+  const target = targets.find(({ field }) => Object.hasOwn(errors, field));
+  if (target === undefined) return;
+  if (target.field === 'slug') {
+    const advancedFields = formElement.querySelector<HTMLDetailsElement>('.admin-advanced-fields');
+    if (advancedFields !== null) advancedFields.open = true;
+  }
+  window.requestAnimationFrame(() => {
+    const control = formElement.querySelector<HTMLElement>(target.selector);
+    control?.focus();
+    control?.scrollIntoView?.({ block: 'nearest' });
+  });
+}
+
+function productOperationLabel(
+  operation: ProductOperation,
+  products: readonly CatalogProductDetail[],
+): string | null {
+  if (operation.kind === 'idle') return null;
+  if (operation.kind === 'saving') {
+    return operation.stage === 'image' ? 'Actualizando imagen' : 'Guardando producto';
+  }
+  const productName = products.find(({ id }) => id === operation.productId)?.name ?? 'producto';
+  if (operation.kind === 'deleting') return `Quitando ${productName} del catálogo`;
+  return operation.action === 'availability'
+    ? `Actualizando disponibilidad de ${productName}`
+    : `Actualizando stock de ${productName}`;
 }
 
 function buildPayload(form: ProductFormState): CatalogProductDetail {

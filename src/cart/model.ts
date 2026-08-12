@@ -155,7 +155,6 @@ export function setCartItemQuantity(
     ? MAX_CART_QUANTITY
     : maximumQuantityOrNow;
   const effectiveNow = maximumQuantityOrNow instanceof Date ? maximumQuantityOrNow : now;
-  if (quantity === 0) return removeCartItem(cart, productId, effectiveNow);
   const normalizedQuantity = normalizeQuantity(quantity, maximumQuantity);
   if (normalizedQuantity === null || !cart.items.some((item) => item.productId === productId)) {
     return cart;

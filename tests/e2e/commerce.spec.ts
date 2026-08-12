@@ -21,6 +21,59 @@ test('persiste el carrito y lo sincroniza entre pestañas', async ({ context, pa
   await expect(secondPage.getByText('1 unidad en el carrito.')).toBeVisible();
 });
 
+test('confirma agregar, ajustar y eliminar sin cambios destructivos ambiguos', async ({ page }) => {
+  await page.goto('/catalogo');
+  const firstProduct = page.locator('[data-product]').first();
+  const productName = (await firstProduct.getByRole('heading').textContent())?.trim();
+  if (productName === undefined || productName === '') {
+    throw new Error('No se pudo identificar el producto E2E del carrito.');
+  }
+
+  await firstProduct.getByRole('button', { name: /Agregar .* al carrito/u }).click();
+  await expect(firstProduct.getByText(`${productName}: 1 unidad en el carrito.`)).toBeVisible();
+  await expect(firstProduct.getByRole('button', {
+    name: `Agregar otra unidad de ${productName} al carrito`,
+  })).toBeEnabled();
+  await expect(page.getByRole('link', { name: 'Carrito, 1 producto' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  const quantity = page.getByRole('spinbutton', { name: /Cantidad de /u });
+  const originalSubtotal = await page.locator('.cart-line-subtotal').textContent();
+  await quantity.fill('2');
+  await expect(page.getByText('2 unidades en el carrito.')).toBeVisible();
+  await expect(page.locator('.cart-context-feedback')).toHaveText(
+    `Cantidad de ${productName} actualizada a 2 unidades.`,
+  );
+  await expect(page.locator('.cart-line-subtotal')).not.toHaveText(originalSubtotal ?? '');
+
+  await quantity.fill('0');
+  await expect(page.getByText(/Para quitar el producto, usá Eliminar/u)).toBeVisible();
+  await expect(page.getByRole('heading', { name: productName })).toBeVisible();
+  await expect(page.getByText('2 unidades en el carrito.')).toBeVisible();
+
+  await page.getByRole('button', { name: /Eliminar .* del carrito/u }).click();
+  await expect(page.getByRole('heading', { name: 'El carrito está vacío' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Carrito, 0 productos' })).toBeVisible();
+});
+
+test('mantiene feedback comprensible en móvil con movimiento reducido', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/catalogo');
+  const firstProduct = page.locator('[data-product]').first();
+
+  await firstProduct.getByRole('button', { name: /Agregar .* al carrito/u }).click();
+
+  await expect(firstProduct.getByText(/1 unidad en el carrito/u)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Carrito, 1 producto' })).toBeVisible();
+  await expect(page.locator('.cart-count')).toHaveCSS('animation-name', 'none');
+  const widths = await page.evaluate(() => ({
+    content: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+    viewport: document.documentElement.clientWidth,
+  }));
+  expect(widths.content).toBeLessThanOrEqual(widths.viewport + 1);
+});
+
 test('habilita el Link de Pago y WhatsApp autorizados sin activar Checkout Pro', async ({ page }) => {
   await page.goto('/catalogo');
   await page.locator('[data-product]').first().getByRole('button', {

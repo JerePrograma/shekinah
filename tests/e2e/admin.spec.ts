@@ -125,6 +125,7 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
 });
 
 test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilidad e imagen', async ({ page }) => {
+  test.setTimeout(60_000);
   const api = await installStatefulAdminApi(page, [
     product('aceite-inicial-e2e', 'Aceite inicial E2E', {
       categoryName: 'Aceites',
@@ -148,7 +149,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await expect(page.getByText('Aceite inicial E2E quedó pausado manualmente.')).toBeVisible();
   expect(requiredProduct(api.products(), 'aceite-inicial-e2e').availability).toBe('unavailable');
   await page.getByRole('button', { name: 'Reactivar Aceite inicial E2E' }).click();
-  await expect(page.getByText('Aceite inicial E2E quedó disponible manualmente.')).toBeVisible();
+  await expect(page.getByText('Aceite inicial E2E quedó disponible para venta.')).toBeVisible();
   expect(requiredProduct(api.products(), 'aceite-inicial-e2e').availability).toBe('available');
 
   await page.getByRole('searchbox', { name: 'Buscar' }).fill('ace-e2e-1');
@@ -159,15 +160,42 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await expect(page.getByRole('heading', { level: 4, name: 'Aceite inicial E2E' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 4, name: 'Producto pausado E2E' })).toHaveCount(0);
 
+  await page.getByRole('link', { name: 'Catálogo' }).first().click();
+  await expect(page).toHaveURL(/\/catalogo$/u);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin$/u);
+  await page.getByRole('button', { name: 'Productos' }).click();
+  await page.getByRole('searchbox', { name: 'Buscar' }).fill('ace-e2e-1');
+
   await page.getByRole('button', { name: 'Editar Aceite inicial E2E' }).click();
   await expect(page.getByRole('heading', { level: 3, name: 'Editar Aceite inicial E2E' })).toBeVisible();
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('1750.25');
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toContain('Hay cambios de producto sin guardar');
+    await dialog.dismiss();
+  });
+  await page.getByRole('link', { name: 'Shekinah, ir al inicio' }).click();
+  await expect(page).toHaveURL(/\/admin$/u);
+  await expect(page.getByRole('alert')).toHaveText(
+    'Los cambios siguen sin guardar. Permanecés en Administración.',
+  );
+  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
+  const forwardDialogPromise = page.waitForEvent('dialog');
+  await page.evaluate(() => window.history.forward());
+  const forwardDialog = await forwardDialogPromise;
+  expect(forwardDialog.message()).toContain('Hay cambios de producto sin guardar');
+  await forwardDialog.dismiss();
+  await expect(page).toHaveURL(/\/admin$/u);
+  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
   await page.getByRole('button', { name: 'Resumen' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
   await page.getByRole('button', { name: 'Productos' }).click();
   await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
   await page.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
+  await expect(page.getByText('Los cambios siguen sin guardar. Permanecés en Administración.'))
+    .toHaveCount(0);
   expect(requiredProduct(api.products(), 'aceite-inicial-e2e').price.amount).toBe(1_750.25);
 
   await page.getByRole('button', { name: 'Nuevo producto' }).click();
@@ -231,7 +259,8 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await page.getByRole('searchbox', { name: 'Buscar' }).fill(TECHNICAL_PRODUCT_ID);
   const persistedRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
   await expect(persistedRow).toBeVisible();
-  await expect(persistedRow.getByText('Disponible · 3 unidades')).toBeVisible();
+  await expect(persistedRow.getByText('Disponible manualmente')).toBeVisible();
+  await expect(persistedRow.getByText('Stock: 3 unidades')).toBeVisible();
   await expect(persistedRow.getByRole('img', { name: TECHNICAL_PRODUCT_NAME })).toHaveAttribute(
     'src',
     MANAGED_IMAGE_PATH,
@@ -250,6 +279,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await expect(page.getByRole('dialog', {
     name: `¿Quitar ${TECHNICAL_PRODUCT_NAME}?`,
   })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancelar' })).toBeFocused();
   await page.getByRole('button', { name: 'Confirmar baja' }).click();
   await expect(page.getByText(`${TECHNICAL_PRODUCT_NAME} fue quitado del catálogo público.`)).toBeVisible();
   await expect(page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME })).toHaveCount(0);
@@ -304,6 +334,7 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   await expect(page.getByRole('button', { name: 'Cerrar detalle' })).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar detalle' }).click();
   await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeFocused();
 });
 
 test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet y móvil', async ({ page }, testInfo) => {
@@ -318,6 +349,10 @@ test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet
   await page.goto('/admin');
   await loginWithFixture(page);
   await page.getByRole('button', { name: 'Editar Producto responsive E2E' }).click();
+  await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('');
+  await page.getByRole('button', { name: 'Guardar cambios' }).click();
+  const feedback = page.locator('.admin-feedback');
+  await expect(feedback).toBeVisible();
 
   const viewports = [
     { width: 1_440, height: 900 },
@@ -344,6 +379,7 @@ test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet
     await expectNoGlobalHorizontalOverflow(page);
     await expectHorizontallyInsideViewport(page.getByRole('button', { name: 'Guardar cambios' }), viewport.width);
     await expectHorizontallyInsideViewport(page.getByRole('button', { name: 'Cerrar editor' }), viewport.width);
+    await expect(feedback).toHaveCSS('position', viewport.width <= 700 ? 'static' : 'sticky');
     if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
       await page.screenshot({
         path: testInfo.outputPath(`admin-${viewport.width}-editor.png`),

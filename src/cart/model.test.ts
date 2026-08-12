@@ -45,6 +45,7 @@ describe('carrito', () => {
     expect(addCartItem(capped, 'uno')).toBe(capped);
     const updated = setCartItemQuantity(capped, 'uno', 3);
     expect(summarizeCart(updated, products)).toMatchObject({ itemCount: 3, total: 600 });
+    expect(setCartItemQuantity(updated, 'uno', 0)).toBe(updated);
     expect(removeCartItem(updated, 'uno').items).toHaveLength(0);
     expect(clearCart(updated).items).toHaveLength(0);
   });

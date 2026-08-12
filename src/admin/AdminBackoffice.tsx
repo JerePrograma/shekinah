@@ -10,6 +10,7 @@ import { AdminPage } from '../pages/AdminPage';
 import type { AdminSection } from '../pages/AdminPage';
 import type { Navigate } from '../routing/routes';
 import { ProductManager } from './ProductManager';
+import type { ProductInteractionState } from './ProductManager';
 
 type AdminIdentity = Readonly<{
   label: string;
@@ -26,8 +27,18 @@ type AdminViewState =
   | Readonly<{ status: 'authenticated'; identity: AdminIdentity }>;
 
 const LOGIN_ERROR = 'No se pudo iniciar sesión. Revisá las credenciales e intentá nuevamente.';
+const IDLE_PRODUCT_INTERACTION: ProductInteractionState = Object.freeze({
+  dirty: false,
+  busy: false,
+});
 
-export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) {
+export function AdminBackoffice({
+  navigate,
+  onInteractionStateChange,
+}: Readonly<{
+  navigate: Navigate;
+  onInteractionStateChange?: ((state: ProductInteractionState) => void) | undefined;
+}>) {
   const [viewState, setViewState] = useState<AdminViewState>({ status: 'checking' });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -35,9 +46,21 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
   const [submitting, setSubmitting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [section, setSection] = useState<AdminSection>('summary');
+  const [productInteraction, setProductInteraction] = useState<ProductInteractionState>(
+    IDLE_PRODUCT_INTERACTION,
+  );
   const submittingRef = useRef(false);
   const loggingOutRef = useRef(false);
   const usernameRef = useRef<HTMLInputElement | null>(null);
+
+  const handleProductInteractionChange = useCallback((state: ProductInteractionState) => {
+    setProductInteraction(state);
+    onInteractionStateChange?.(state);
+  }, [onInteractionStateChange]);
+
+  useEffect(() => () => {
+    onInteractionStateChange?.(IDLE_PRODUCT_INTERACTION);
+  }, [onInteractionStateChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,6 +128,19 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
 
   async function logout(): Promise<void> {
     if (loggingOutRef.current) return;
+    if (productInteraction.busy) {
+      setError(activeOperationMessage(productInteraction));
+      return;
+    }
+    if (
+      productInteraction.dirty &&
+      !window.confirm(
+        'Cerrar sesión administrativa\n\nHay cambios de producto sin guardar. Si cerrás sesión ahora, se perderán.',
+      )
+    ) {
+      setError('La sesión sigue abierta y los cambios continúan sin guardar.');
+      return;
+    }
     loggingOutRef.current = true;
     setLoggingOut(true);
     setError('');
@@ -204,7 +240,7 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
           <button
             className="button button-secondary"
             type="button"
-            disabled={loggingOut}
+            disabled={loggingOut || productInteraction.busy}
             onClick={() => {
               void logout();
             }}
@@ -225,9 +261,20 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
                   className="admin-section-navigation-button"
                   type="button"
                   aria-current={section === item.id ? 'page' : undefined}
-                  onClick={() => setSection(item.id)}
+                  disabled={productInteraction.busy && section !== item.id}
+                  onClick={() => {
+                    if (productInteraction.busy && section !== item.id) {
+                      setError(activeOperationMessage(productInteraction));
+                      return;
+                    }
+                    setError('');
+                    setSection(item.id);
+                  }}
                 >
                   {item.label}
+                  {item.id === 'products' && productInteraction.dirty
+                    ? ' · cambios sin guardar'
+                    : ''}
                 </button>
               </li>
             ))}
@@ -235,7 +282,10 @@ export function AdminBackoffice({ navigate }: Readonly<{ navigate: Navigate }>) 
         </div>
       </nav>
       <div hidden={section !== 'products'}>
-        <ProductManager onUnauthorized={handleUnauthorized} />
+        <ProductManager
+          onInteractionStateChange={handleProductInteractionChange}
+          onUnauthorized={handleUnauthorized}
+        />
       </div>
       <AdminPage
         navigate={navigate}
@@ -304,4 +354,10 @@ function identitySourceLabel(source: AdminIdentity['source']): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function activeOperationMessage(state: ProductInteractionState): string {
+  return state.operationLabel === undefined
+    ? 'Esperá a que termine la operación del producto antes de continuar.'
+    : `Esperá a que termine: ${state.operationLabel}.`;
 }

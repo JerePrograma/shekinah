@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 
-import { trackAnalyticsEvent } from '../analytics/client';
-import { useCart } from '../cart/CartContext';
-import { isProductAvailable } from '../cart/model';
+import { AddToCartButton } from '../cart/AddToCartButton';
 import { siteContent } from '../content/site-content';
 import { AppLink } from '../routing/AppLink';
 import type { Navigate } from '../routing/routes';
@@ -36,6 +34,8 @@ export function CatalogSection({
   const [query, setQuery] = useState('');
   const [selectedCategorySlug, setSelectedCategorySlug] = useState(ALL_CATEGORIES);
   const [requestedPage, setRequestedPage] = useState(1);
+  const catalogGridRef = useRef<HTMLDivElement>(null);
+  const focusNextPageResult = useRef(false);
   const categorySlug = fixedCategorySlug ?? selectedCategorySlug;
   const categoryOptions = useMemo(() => getProductCategories(products), [products]);
   const filteredProducts = useMemo(
@@ -51,6 +51,18 @@ export function CatalogSection({
     filteredProducts.length === 1
       ? '1 producto encontrado'
       : `${filteredProducts.length} productos encontrados`;
+
+  useEffect(() => {
+    if (!focusNextPageResult.current) return;
+    focusNextPageResult.current = false;
+    catalogGridRef.current?.querySelector<HTMLAnchorElement>('[data-product] h2 a, [data-product] h3 a')?.focus();
+  }, [pageResult.page]);
+
+  function resetFilters() {
+    setQuery('');
+    setSelectedCategorySlug(ALL_CATEGORIES);
+    setRequestedPage(1);
+  }
   return (
     <section className="catalog-section section" aria-labelledby="catalog-title">
       <div className="container catalog-shell">
@@ -91,7 +103,7 @@ export function CatalogSection({
           ) : null}
         </div>
         <p className="catalog-results" role="status" aria-live="polite">
-          {resultLabel}
+          {resultLabel}. Página {pageResult.page} de {pageResult.totalPages}.
         </p>
         {filteredProducts.length === 0 ? (
           <div className="empty-state empty-state-compact">
@@ -100,14 +112,25 @@ export function CatalogSection({
             </span>
             <div>
               <CatalogResultHeading level={resultHeadingLevel}>
-                {siteContent.catalog.noResultsTitle}
+                {products.length === 0
+                  ? 'No hay productos disponibles'
+                  : siteContent.catalog.noResultsTitle}
               </CatalogResultHeading>
-              <p>{siteContent.catalog.noResultsDescription}</p>
+              <p>
+                {products.length === 0
+                  ? 'El catálogo no tiene productos disponibles en este momento.'
+                  : siteContent.catalog.noResultsDescription}
+              </p>
+              {products.length === 0 ? null : (
+                <button className="text-button" type="button" onClick={resetFilters}>
+                  {fixedCategorySlug === undefined ? 'Limpiar búsqueda y categoría' : 'Limpiar búsqueda'}
+                </button>
+              )}
             </div>
           </div>
         ) : (
           <>
-            <div className="catalog-grid">
+            <div className="catalog-grid" ref={catalogGridRef}>
               {pageResult.items.map((product) => (
                 <ProductCard
                   headingLevel={resultHeadingLevel}
@@ -122,6 +145,7 @@ export function CatalogSection({
                 type="button"
                 disabled={pageResult.page === 1}
                 onClick={() => {
+                  focusNextPageResult.current = true;
                   setRequestedPage((currentPage) => currentPage - 1);
                 }}
               >
@@ -134,6 +158,7 @@ export function CatalogSection({
                 type="button"
                 disabled={pageResult.page === pageResult.totalPages}
                 onClick={() => {
+                  focusNextPageResult.current = true;
                   setRequestedPage((currentPage) => currentPage + 1);
                 }}
               >
@@ -155,8 +180,6 @@ function ProductCard({
   navigate: Navigate;
   product: Product;
 }>) {
-  const { add } = useCart();
-  const available = isProductAvailable(product);
   return (
     <article className="product-card" data-product={product.slug}>
       {product.primaryImage === undefined ? (
@@ -202,19 +225,12 @@ function ProductCard({
             <dd>{formatProductPrice(product.salePrice ?? product.price)}</dd>
           </div>
         </dl>
-        <button
+        <AddToCartButton
           className="button button-secondary product-add-button"
-          type="button"
-          disabled={!available}
-          aria-label={available ? `Agregar ${product.name} al carrito` : `${product.name} no está disponible`}
-          onClick={() => {
-            if (add(product.id)) {
-              void trackAnalyticsEvent('cart_add', { path: product.path, productId: product.id });
-            }
-          }}
-        >
-          {available ? 'Agregar al carrito' : 'No disponible'}
-        </button>
+          product={product}
+          productNamedLabel
+          unavailableLabel="No disponible"
+        />
       </div>
     </article>
   );

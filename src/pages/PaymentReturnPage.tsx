@@ -16,6 +16,8 @@ import type { Navigate } from '../routing/routes';
 const POLL_INTERVAL_MS = 3_000;
 const MAX_POLLS = 6;
 
+type VerificationPhase = 'checking' | 'polling' | 'settled' | 'exhausted' | 'error';
+
 export function PaymentReturnPage({
   expected,
   navigate,
@@ -26,50 +28,63 @@ export function PaymentReturnPage({
   const { clear, items } = useCart();
   const [status, setStatus] = useState<PublicOrderStatusResponse | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState<VerificationPhase>('checking');
+  const [retryVersion, setRetryVersion] = useState(0);
   const clearedToken = useRef<string | null>(null);
+  const itemsRef = useRef(items);
   const publicToken = useMemo(readPublicToken, []);
 
   useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
     if (publicToken === null) {
-      setLoading(false);
       setError('No se pudo identificar el pedido de forma segura.');
+      setPhase('error');
       return undefined;
     }
     const controller = new AbortController();
     let pollCount = 0;
     let timeoutId: number | undefined;
 
+    setError('');
+    setPhase('checking');
+
     const load = async () => {
       try {
         const next = await getPublicOrderStatus(publicToken, controller.signal);
+        if (controller.signal.aborted) return;
         setStatus(next);
         setError('');
-        setLoading(false);
         if (
           next.status === 'approved' &&
           clearedToken.current !== publicToken &&
-          shouldClearCartAfterApproval(items, publicToken)
+          shouldClearCartAfterApproval(itemsRef.current, publicToken)
         ) {
           clearedToken.current = publicToken;
           clear();
           clearRememberedCheckoutOrder();
         }
-        if (
-          ['preference_pending', 'pending'].includes(next.status) &&
-          pollCount < MAX_POLLS
-        ) {
-          pollCount += 1;
-          timeoutId = window.setTimeout(() => void load(), POLL_INTERVAL_MS);
+        if (isPendingStatus(next.status)) {
+          if (pollCount < MAX_POLLS) {
+            pollCount += 1;
+            setPhase('polling');
+            timeoutId = window.setTimeout(() => void load(), POLL_INTERVAL_MS);
+          } else {
+            setPhase('exhausted');
+          }
+        } else {
+          setPhase('settled');
         }
       } catch (loadError: unknown) {
         if (controller.signal.aborted) return;
-        setLoading(false);
         setError(
           loadError instanceof Error
             ? loadError.message
             : 'No se pudo consultar el pedido.',
         );
+        setPhase('error');
       }
     };
     void load();
@@ -77,15 +92,27 @@ export function PaymentReturnPage({
       controller.abort();
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     };
-  }, [clear, items, publicToken]);
+  }, [clear, publicToken, retryVersion]);
 
-  const presentation = statusPresentation(status, expected, loading, error);
+  const presentation = statusPresentation(status, expected, phase, error);
+  const busy = phase === 'checking' || phase === 'polling';
+  const canRetry = publicToken !== null && (phase === 'error' || phase === 'exhausted');
   return (
-    <section className="payment-return section" aria-labelledby="payment-title">
+    <section
+      className="payment-return section"
+      aria-labelledby="payment-title"
+      aria-busy={busy}
+    >
       <div className="container payment-return-card">
         <p className="eyebrow">Mercado Pago</p>
         <h1 id="payment-title">{presentation.title}</h1>
-        <p role={error === '' ? undefined : 'alert'}>{presentation.message}</p>
+        <p
+          role={phase === 'error' ? 'alert' : 'status'}
+          aria-live={phase === 'error' ? undefined : 'polite'}
+          aria-atomic="true"
+        >
+          {presentation.message}
+        </p>
         {status === null ? null : (
           <dl className="payment-summary">
             <div>
@@ -108,7 +135,20 @@ export function PaymentReturnPage({
           </dl>
         )}
         <div className="payment-return-actions">
-          <AppLink className="button button-primary" navigate={navigate} to={appPaths.cart}>
+          {canRetry ? (
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => setRetryVersion((current) => current + 1)}
+            >
+              Reintentar verificación
+            </button>
+          ) : null}
+          <AppLink
+            className={`button ${canRetry ? 'button-secondary' : 'button-primary'}`}
+            navigate={navigate}
+            to={appPaths.cart}
+          >
             Ver carrito
           </AppLink>
           <AppLink className="button button-secondary" navigate={navigate} to={appPaths.catalog}>
@@ -131,13 +171,20 @@ function readPublicToken(): string | null {
 function statusPresentation(
   status: PublicOrderStatusResponse | null,
   expected: 'success' | 'pending' | 'failure',
-  loading: boolean,
+  phase: VerificationPhase,
   error: string,
 ): Readonly<{ title: string; message: string }> {
-  if (loading) {
-    return { title: 'Verificando tu pedido…', message: 'Estamos consultando el estado confirmado por el servidor.' };
+  if (phase === 'checking') {
+    return {
+      title: 'Verificando tu pedido…',
+      message: status !== null && isPendingStatus(status.status)
+        ? 'Estamos volviendo a consultar el estado confirmado por el servidor.'
+        : 'Estamos consultando el estado confirmado por el servidor.',
+    };
   }
-  if (error !== '') return { title: 'No pudimos verificar el pedido', message: error };
+  if (phase === 'error' || error !== '') {
+    return { title: 'No pudimos verificar el pedido', message: error };
+  }
   if (status === null) return { title: 'Estado no disponible', message: 'No hay información verificable del pedido.' };
   switch (status.status) {
     case 'approved':
@@ -154,9 +201,15 @@ function statusPresentation(
     case 'pending':
       return {
         title: expected === 'failure' ? 'Pago todavía no confirmado' : 'Pago pendiente',
-        message: 'El servidor todavía no recibió una confirmación definitiva. El carrito no se modificó.',
+        message: phase === 'exhausted'
+          ? 'El servidor todavía no recibió una confirmación definitiva. Las verificaciones automáticas terminaron por ahora. Podés reintentar la consulta; el carrito no se modificó.'
+          : 'El servidor todavía no recibió una confirmación definitiva. Seguimos verificando automáticamente. El carrito no se modificó.',
       };
   }
+}
+
+function isPendingStatus(status: PublicOrderStatusResponse['status']): boolean {
+  return status === 'preference_pending' || status === 'pending';
 }
 
 function humanStatus(status: PublicOrderStatusResponse['status']): string {

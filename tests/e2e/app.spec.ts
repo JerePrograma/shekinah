@@ -88,13 +88,20 @@ test('presenta navegación, carrito y los 510 productos compilados', async ({ pa
   await expect(footerNavigation.getByRole('link')).toHaveText(['Inicio', 'Catálogo', 'Privacidad']);
   await page.getByRole('link', { name: 'Ver catálogo' }).click();
   await expect(page).toHaveURL(/\/catalogo$/u);
-  await expect(page.getByRole('status')).toHaveText('510 productos encontrados');
+  await expect(page.getByRole('status')).toHaveText(
+    '510 productos encontrados. Página 1 de 22.',
+  );
   await expect(page.locator('[data-product]')).toHaveCount(24);
-  await expect(page.getByText('Página 1 de 22')).toBeVisible();
+  await expect(page.getByText('Página 1 de 22', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Siguiente' }).click();
-  await expect(page.getByText('Página 2 de 22')).toBeVisible();
+  await expect(page.getByText('Página 2 de 22', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText(
+    '510 productos encontrados. Página 2 de 22.',
+  );
   await page.getByRole('searchbox').fill('  GUAYABA   ');
-  await expect(page.getByRole('status')).toHaveText('1 producto encontrado');
+  await expect(page.getByRole('status')).toHaveText(
+    '1 producto encontrado. Página 1 de 1.',
+  );
   await page.getByRole('link', { name: 'Guayaba hojas x 50 gr' }).click();
   await expect(page).toHaveURL(/\/guayaba$/u);
   await expect(page.getByRole('button', { name: 'Agregar al carrito' })).toBeVisible();
@@ -136,7 +143,9 @@ test('resuelve categoría, privacidad, /enfoque y 404', async ({ page }) => {
   const observation = observePage(page);
   await page.goto('/tienda/categoria/hierbas-medicinales/');
   await expect(page).toHaveTitle('Hierbas Medicinales | Catálogo Shekinah');
-  await expect(page.getByRole('status')).toHaveText('205 productos encontrados');
+  await expect(page.getByRole('status')).toHaveText(
+    '205 productos encontrados. Página 1 de 9.',
+  );
   await expect(page.locator('h1')).toHaveText('Hierbas Medicinales');
   await page.goto('/privacidad');
   await expect(page).toHaveTitle('Privacidad | Shekinah');
@@ -192,7 +201,9 @@ test('resuelve un producto dinámico confirmado en acceso directo, refresh y Bac
   await expect(page).toHaveTitle(`${dynamicProduct.name} | Shekinah`);
   await page.goto('/catalogo');
   await page.getByRole('searchbox').fill('dinámico e2e');
-  await expect(page.getByRole('status')).toHaveText('1 producto encontrado');
+  await expect(page.getByRole('status')).toHaveText(
+    '1 producto encontrado. Página 1 de 1.',
+  );
   await page.getByRole('link', { name: dynamicProduct.name }).click();
   await expect(page.getByRole('heading', { level: 1, name: dynamicProduct.name })).toBeVisible();
   await page.reload();

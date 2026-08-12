@@ -27,6 +27,8 @@ El repositorio contiene una evolución full-stack basada en:
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
 - detalle de pedidos integrado de sólo lectura;
 - analítica first-party opcional con `manual_payment_click` para el fallback manual.
+- feedback de interacción contextual y accesible en catálogo, carrito, retorno de pago y ABM administrativo;
+- protección de cambios sin guardar y operaciones administrativas activas frente a navegación o cierre de sesión.
 
 Consultar primero:
 

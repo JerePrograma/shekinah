@@ -40,7 +40,8 @@ describe('Backoffice V2 de sólo lectura', () => {
 
     expect(await screen.findByRole('table', { name: 'Pedidos integrados del período' })).toBeVisible();
     expect(detailCalls(fetchMock)).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    const openDetail = screen.getByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(openDetail);
 
     expect(await screen.findByRole('heading', { name: `Detalle de ${ORDER_ID}` })).toHaveFocus();
     expect(detailCalls(fetchMock)).toHaveLength(1);
@@ -50,8 +51,18 @@ describe('Backoffice V2 de sólo lectura', () => {
     expect(screen.getByText(/no ofrece controles para modificar estados/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar detalle' }));
+    fireEvent.keyDown(screen.getByRole('heading', { name: `Detalle de ${ORDER_ID}` }), {
+      key: 'Escape',
+    });
     expect(screen.queryByRole('heading', { name: `Detalle de ${ORDER_ID}` })).not.toBeInTheDocument();
+    await waitFor(() => expect(openDetail).toHaveFocus());
+
+    fireEvent.click(openDetail);
+    const reopenedTitle = await screen.findByRole('heading', { name: `Detalle de ${ORDER_ID}` });
+    openDetail.remove();
+    fireEvent.keyDown(reopenedTitle, { key: 'Escape' });
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Pedidos integrados' }))
+      .toHaveFocus());
   });
 
   it('mantiene datos parciales, porcentajes seguros y estados vacíos en analítica', async () => {

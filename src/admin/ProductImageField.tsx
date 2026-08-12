@@ -68,7 +68,10 @@ export function ProductImageField({
             </p>
           )}
           {pendingImage === null ? null : (
-            <p>{pendingImage.name} · {formatFileSize(pendingImage.size)}</p>
+            <p>
+              <strong>Vista previa local.</strong>{' '}
+              {pendingImage.name} · {formatFileSize(pendingImage.size)}. Se subirá al guardar.
+            </p>
           )}
           {error === undefined ? null : (
             <span className="admin-field-error" id="product-image-error">{error}</span>

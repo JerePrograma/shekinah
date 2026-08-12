@@ -76,7 +76,11 @@ describe('App', () => {
 
     renderApp();
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
+    expect(await screen.findByRole(
+      'heading',
+      { level: 1, name: 'Acceso administrativo' },
+      { timeout: 5_000 },
+    )).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Analítica opcional' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Aceptar analítica' })).not.toBeInTheDocument();
   });

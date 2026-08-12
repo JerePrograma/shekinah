@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createNotFoundRoute,
@@ -20,15 +20,54 @@ function readCurrentPathname(): string {
   return normalizePathname(window.location.pathname);
 }
 
-export function useBrowserRoute() {
+const HISTORY_INDEX_KEY = '__shekinahHistoryIndex';
+
+export function useBrowserRoute(shouldNavigate: () => boolean = () => true) {
   const [pathname, setPathname] = useState(readCurrentPathname);
   const [runtimeResolution, setRuntimeResolution] = useState<Readonly<{
     pathname: string;
     route: AppRoute;
   }> | null>(null);
+  const currentHistoryIndex = useRef(0);
+  const restoringHistory = useRef(false);
+  const shouldNavigateRef = useRef(shouldNavigate);
 
   useEffect(() => {
-    const handlePopState = () => {
+    shouldNavigateRef.current = shouldNavigate;
+  }, [shouldNavigate]);
+
+  useEffect(() => {
+    const initialIndex = readHistoryIndex(window.history.state);
+    if (initialIndex === null) {
+      window.history.replaceState(
+        withHistoryIndex(window.history.state, currentHistoryIndex.current),
+        '',
+        window.location.href,
+      );
+    } else {
+      currentHistoryIndex.current = initialIndex;
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const targetIndex = readHistoryIndex(event.state);
+      if (restoringHistory.current) {
+        restoringHistory.current = false;
+        if (targetIndex !== null) currentHistoryIndex.current = targetIndex;
+        setPathname(readCurrentPathname());
+        return;
+      }
+
+      if (!shouldNavigateRef.current()) {
+        restoringHistory.current = true;
+        if (targetIndex === null) {
+          window.history.forward();
+        } else {
+          window.history.go(currentHistoryIndex.current - targetIndex);
+        }
+        return;
+      }
+
+      if (targetIndex !== null) currentHistoryIndex.current = targetIndex;
       setPathname(readCurrentPathname());
     };
 
@@ -42,10 +81,15 @@ export function useBrowserRoute() {
   const navigate: Navigate = useCallback((path: string) => {
     const normalizedPath = normalizePathname(path);
 
-    if (readCurrentPathname() !== normalizedPath) {
-      window.history.pushState(null, '', normalizedPath);
-    }
+    if (readCurrentPathname() === normalizedPath) return;
+    if (!shouldNavigateRef.current()) return;
 
+    currentHistoryIndex.current += 1;
+    window.history.pushState(
+      withHistoryIndex(window.history.state, currentHistoryIndex.current),
+      '',
+      normalizedPath,
+    );
     setPathname(normalizedPath);
   }, []);
 
@@ -91,4 +135,17 @@ export function useBrowserRoute() {
     pathname,
     route,
   } as const;
+}
+
+function readHistoryIndex(value: unknown): number | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const index = (value as Record<string, unknown>)[HISTORY_INDEX_KEY];
+  return typeof index === 'number' && Number.isSafeInteger(index) ? index : null;
+}
+
+function withHistoryIndex(value: unknown, index: number): Record<string, unknown> {
+  const current = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return { ...current, [HISTORY_INDEX_KEY]: index };
 }

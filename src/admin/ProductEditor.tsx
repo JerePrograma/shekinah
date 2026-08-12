@@ -5,6 +5,7 @@ import {
 import type {
   ChangeEvent,
   FormEvent,
+  KeyboardEvent,
   RefObject,
 } from 'react';
 
@@ -12,6 +13,7 @@ import { MAX_STOCK_QUANTITY } from '../catalog/model';
 import { authorizedCategories } from '../data/authorized-commercial-data';
 import { ProductImageField } from './ProductImageField';
 import type {
+  PendingNavigation,
   ProductFieldErrors,
   ProductFormState,
   ProductOperation,
@@ -41,6 +43,7 @@ export function ProductEditor({
   operation,
   pendingImage,
   pendingNavigation,
+  pendingNavigationReturnFocus,
   removeImage,
   titleRef,
 }: Readonly<{
@@ -57,7 +60,7 @@ export function ProductEditor({
   onConfirmPendingNavigation: () => void;
   onDiscardImage: () => void;
   onNameChange: (value: string) => void;
-  onRequestClose: () => void;
+  onRequestClose: (returnFocusTarget: HTMLButtonElement) => void;
   onSelectImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onSlugChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -69,7 +72,8 @@ export function ProductEditor({
   ) => void;
   operation: ProductOperation;
   pendingImage: File | null;
-  pendingNavigation: boolean;
+  pendingNavigation: PendingNavigation | null;
+  pendingNavigationReturnFocus: HTMLElement | null;
   removeImage: boolean;
   titleRef: RefObject<HTMLHeadingElement | null>;
 }>) {
@@ -77,17 +81,47 @@ export function ProductEditor({
   const busy = operation.kind !== 'idle';
   const editorStatus = formAvailabilityLabel(form);
   const pendingNavigationRef = useRef<HTMLDivElement | null>(null);
-  const discardChangesRef = useRef<HTMLButtonElement | null>(null);
+  const continueEditingRef = useRef<HTMLButtonElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const pendingNavigationWasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!pendingNavigation) return;
+    if (pendingNavigation === null) {
+      pendingNavigationWasOpenRef.current = false;
+      return;
+    }
+    if (pendingNavigationWasOpenRef.current) return;
+    pendingNavigationWasOpenRef.current = true;
+    returnFocusRef.current = pendingNavigationReturnFocus ?? (
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    );
     pendingNavigationRef.current?.scrollIntoView?.({ block: 'nearest' });
-    discardChangesRef.current?.focus();
-  }, [pendingNavigation]);
+    continueEditingRef.current?.focus();
+  }, [pendingNavigation, pendingNavigationReturnFocus]);
 
   function cancelPendingNavigation(): void {
     onCancelPendingNavigation();
-    window.requestAnimationFrame(() => titleRef.current?.focus());
+    window.requestAnimationFrame(() => {
+      const returnTarget = returnFocusRef.current;
+      if (returnTarget?.isConnected === true) returnTarget.focus();
+      else titleRef.current?.focus();
+    });
+  }
+
+  function confirmPendingNavigation(): void {
+    const closingEditor = pendingNavigation?.kind === 'close';
+    onConfirmPendingNavigation();
+    if (!closingEditor) return;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('#product-list-title')?.focus();
+    });
+  }
+
+  function handlePendingNavigationKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== 'Escape' || operation.kind !== 'idle') return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelPendingNavigation();
   }
 
   return (
@@ -106,34 +140,28 @@ export function ProductEditor({
           className="button button-secondary admin-compact-button"
           type="button"
           disabled={busy}
-          onClick={onRequestClose}
+          onClick={(event) => onRequestClose(event.currentTarget)}
         >
           Cerrar editor
         </button>
       </div>
 
-      {pendingNavigation ? (
+      {pendingNavigation === null ? null : (
         <div
           ref={pendingNavigationRef}
           className="admin-inline-confirmation"
           role="dialog"
           aria-labelledby="discard-title"
+          aria-describedby="discard-description"
+          onKeyDown={handlePendingNavigationKeyDown}
         >
           <div>
             <h4 id="discard-title">Hay cambios sin guardar</h4>
-            <p>Si continuás, se perderán los cambios de este editor.</p>
+            <p id="discard-description">Si continuás, se perderán los cambios de este editor.</p>
           </div>
           <div className="admin-inline-actions">
             <button
-              ref={discardChangesRef}
-              className="button button-danger admin-compact-button"
-              type="button"
-              disabled={busy}
-              onClick={onConfirmPendingNavigation}
-            >
-              Descartar cambios
-            </button>
-            <button
+              ref={continueEditingRef}
               className="button button-secondary admin-compact-button"
               type="button"
               disabled={busy}
@@ -141,11 +169,28 @@ export function ProductEditor({
             >
               Seguir editando
             </button>
+            <button
+              className="button button-danger admin-compact-button"
+              type="button"
+              disabled={busy}
+              onClick={confirmPendingNavigation}
+            >
+              Descartar cambios
+            </button>
           </div>
         </div>
-      ) : null}
+      )}
 
-      <form ref={formRef} className="admin-product-form" noValidate onSubmit={onSubmit}>
+      <form
+        ref={formRef}
+        className="admin-product-form"
+        noValidate
+        aria-describedby="product-form-guidance"
+        onSubmit={onSubmit}
+      >
+        <p className="admin-field-note" id="product-form-guidance">
+          Nombre y precio son obligatorios. Al crear, elegí al menos una categoría. Si controlás stock, indicá la cantidad actual. Los demás campos son opcionales.
+        </p>
         <fieldset className="admin-editor-section" disabled={busy}>
           <legend>Datos básicos</legend>
           <div className="admin-form-grid">
@@ -372,11 +417,17 @@ export function ProductEditor({
             className="button button-secondary"
             type="button"
             disabled={busy}
-            onClick={onRequestClose}
+            onClick={(event) => onRequestClose(event.currentTarget)}
           >
             {isDirty ? 'Descartar / cerrar' : 'Cerrar'}
           </button>
-          {isDirty ? <p>Hay cambios sin guardar.</p> : <p>Todos los cambios están guardados.</p>}
+          <p role="status" aria-live="polite">
+            {isDirty
+              ? 'Hay cambios sin guardar.'
+              : editingId === null
+                ? 'El producto todavía no fue creado.'
+                : 'Todos los cambios están guardados.'}
+          </p>
         </div>
       </form>
     </aside>
@@ -399,6 +450,9 @@ function describedBy(hintId: string, error: string | undefined, errorId: string)
 function formAvailabilityLabel(form: ProductFormState) {
   if (form.availability === 'unavailable') {
     return { label: 'No disponible manualmente', tone: 'paused' } as const;
+  }
+  if (form.trackStock && form.stockQuantity.trim() === '') {
+    return { label: 'Falta indicar el stock actual', tone: 'out' } as const;
   }
   if (form.trackStock && Number(form.stockQuantity) === 0) {
     return { label: 'Sin stock — no disponible para compra', tone: 'out' } as const;

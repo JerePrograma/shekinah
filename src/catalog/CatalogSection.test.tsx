@@ -11,6 +11,10 @@ function renderCatalog(element: ReactElement) {
 }
 
 describe('CatalogSection', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it('informa 510 resultados y renderiza sólo la primera página de 24', () => {
     renderCatalog(
       <CatalogSection
@@ -19,7 +23,7 @@ describe('CatalogSection', () => {
       />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('510 productos encontrados');
+    expect(screen.getByRole('status')).toHaveTextContent('510 productos encontrados. Página 1 de 22.');
     expect(document.querySelectorAll('[data-product]')).toHaveLength(24);
     expect(screen.getByText('Página 1 de 22')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
@@ -70,6 +74,8 @@ describe('CatalogSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
     expect(screen.getByText('Página 2 de 2')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Página 2 de 2');
+    expect(screen.getByRole('link', { name: 'Menta 24' })).toHaveFocus();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'menta 1' } });
     expect(screen.getByText('Página 1 de 1')).toBeVisible();
   });
@@ -102,5 +108,35 @@ describe('CatalogSection', () => {
     expect(screen.getByText('No se encontraron productos')).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('0 productos encontrados');
     expect(document.querySelector('[data-product]')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda y categoría' }));
+    expect(screen.getByRole('heading', { name: 'Menta seca' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Pimentón dulce' })).toBeVisible();
+  });
+
+  it('distingue un catálogo realmente vacío de filtros sin coincidencias', () => {
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={[]} />);
+
+    expect(screen.getByRole('heading', { name: 'No hay productos disponibles' })).toBeVisible();
+    expect(screen.getByText('El catálogo no tiene productos disponibles en este momento.'))
+      .toBeVisible();
+    expect(screen.queryByRole('button', { name: /Limpiar/u })).not.toBeInTheDocument();
+  });
+
+  it('muestra en la tarjeta la cantidad agregada al carrito', () => {
+    const product = authorizedProducts[0]!;
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={[product]} />);
+
+    const card = document.querySelector<HTMLElement>(`[data-product="${product.slug}"]`);
+    if (card === null) throw new Error('No se encontró la tarjeta del producto.');
+    fireEvent.click(within(card).getByRole('button', {
+      name: `Agregar ${product.name} al carrito`,
+    }));
+
+    expect(within(card).getByText(
+      `${product.name}: 1 unidad en el carrito.`,
+    )).toBeVisible();
+    expect(within(card).getByRole('button', {
+      name: `Agregar otra unidad de ${product.name} al carrito`,
+    })).toBeEnabled();
   });
 });

@@ -45,7 +45,7 @@ describe('autenticación del backoffice', () => {
     });
 
     const username = await screen.findByRole('textbox', { name: 'Usuario' });
-    expect(username).toHaveFocus();
+    await waitFor(() => expect(username).toHaveFocus());
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
@@ -99,6 +99,9 @@ describe('autenticación del backoffice', () => {
 
   it('navega por secciones, preserva una edición de producto y vuelve al login', async () => {
     let authenticated = false;
+    const confirmLogout = vi.spyOn(window, 'confirm')
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
     const fetchMock = vi.fn<typeof fetch>((input, init) => {
       const path = requestPath(input);
       const method = requestMethod(input, init);
@@ -146,9 +149,18 @@ describe('autenticación del backoffice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analítica' }));
     expect(await screen.findByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Analítica' })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Productos · cambios sin guardar' }));
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toHaveValue('Edición todavía no guardada');
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'La sesión sigue abierta y los cambios continúan sin guardar.',
+    );
+    expect(authenticated).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/auth/logout'),
+    ).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
 
@@ -159,8 +171,9 @@ describe('autenticación del backoffice', () => {
     expect(
       fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/auth/logout'),
     ).toHaveLength(1);
+    expect(confirmLogout).toHaveBeenCalledTimes(2);
     expect(storageSnapshot()).not.toContain(FIXTURE_PASSWORD);
-  });
+  }, 10_000);
 
   it('desmonta el contenido protegido cuando una API responde 401', async () => {
     const fetchMock = vi.fn<typeof fetch>((input) => {
@@ -176,7 +189,7 @@ describe('autenticación del backoffice', () => {
     render(<AdminBackoffice navigate={vi.fn()} />);
 
     const username = await screen.findByRole('textbox', { name: 'Usuario' });
-    expect(username).toHaveFocus();
+    await waitFor(() => expect(username).toHaveFocus());
     expect(screen.getByRole('alert')).toHaveTextContent(
       'La sesión administrativa venció. Ingresá nuevamente.',
     );

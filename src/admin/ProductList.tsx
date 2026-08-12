@@ -1,4 +1,5 @@
-import type { FormEvent } from 'react';
+import { useEffect, useRef } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 
 import { formatProductPrice } from '../catalog/catalog';
 import type { CatalogProductDetail } from '../catalog/model';
@@ -20,6 +21,7 @@ export function ProductList({
   deleteCandidate,
   editingId,
   isDirty,
+  loadError,
   loading,
   onBeginQuickStock,
   onAvailabilityFilterChange,
@@ -32,6 +34,7 @@ export function ProductList({
   onQueryChange,
   onQuickStockValueChange,
   onResetFilters,
+  onRetryLoad,
   onSetUntrackedStock,
   onSortChange,
   onStockFilterChange,
@@ -45,6 +48,7 @@ export function ProductList({
   remoteBusy,
   sort,
   stockFilter,
+  totalProductCount,
   visibleProducts,
 }: Readonly<{
   availabilityFilter: AvailabilityFilter;
@@ -52,6 +56,7 @@ export function ProductList({
   deleteCandidate: CatalogProductDetail | null;
   editingId: string | null | undefined;
   isDirty: boolean;
+  loadError: string;
   loading: boolean;
   onBeginQuickStock: (product: CatalogProductDetail) => void;
   onAvailabilityFilterChange: (value: AvailabilityFilter) => void;
@@ -59,11 +64,12 @@ export function ProductList({
   onCancelQuickStock: () => void;
   onCategoryFilterChange: (value: string) => void;
   onConfirmDelete: (product: CatalogProductDetail) => void;
-  onEdit: (product: CatalogProductDetail) => void;
+  onEdit: (product: CatalogProductDetail, returnFocusTarget: HTMLButtonElement) => void;
   onOpenDelete: (product: CatalogProductDetail) => void;
   onQueryChange: (value: string) => void;
   onQuickStockValueChange: (value: string) => void;
   onResetFilters: () => void;
+  onRetryLoad: () => void;
   onSetUntrackedStock: (product: CatalogProductDetail) => void;
   onSortChange: (value: ProductSort) => void;
   onStockFilterChange: (value: StockFilter) => void;
@@ -80,18 +86,44 @@ export function ProductList({
   remoteBusy: boolean;
   sort: ProductSort;
   stockFilter: StockFilter;
+  totalProductCount: number;
   visibleProducts: readonly CatalogProductDetail[];
 }>) {
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const listTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const previousDeleteCandidateIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const candidateId = deleteCandidate?.id ?? null;
+    const previousCandidateId = previousDeleteCandidateIdRef.current;
+    previousDeleteCandidateIdRef.current = candidateId;
+    if (candidateId !== null && candidateId !== previousCandidateId) {
+      window.requestAnimationFrame(() => deleteCancelRef.current?.focus());
+      return;
+    }
+    if (candidateId !== null || previousCandidateId === null) return;
+    window.requestAnimationFrame(() => {
+      const trigger = deleteTriggerRefs.current.get(previousCandidateId);
+      if (trigger?.isConnected === true) trigger.focus();
+      else listTitleRef.current?.focus();
+    });
+  }, [deleteCandidate]);
+
   return (
     <section className="admin-product-list-panel" aria-labelledby="product-list-title">
       <div className="admin-panel-heading">
         <div>
-          <h3 id="product-list-title">Productos</h3>
+          <h3 id="product-list-title" ref={listTitleRef} tabIndex={-1}>Productos</h3>
           <p>Los estados indican si hoy pueden comprarse.</p>
         </div>
       </div>
 
-      <div className="admin-catalog-controls" aria-label="Buscar, filtrar y ordenar productos">
+      <div
+        className="admin-catalog-controls"
+        aria-label="Buscar, filtrar y ordenar productos"
+        hidden={loading || loadError !== ''}
+      >
         <label className="admin-form-field admin-search-field">
           <span>Buscar</span>
           <input
@@ -155,7 +187,12 @@ export function ProductList({
         </label>
       </div>
 
-      <p className="admin-results-count" role="status" aria-live="polite">
+      <p
+        className="admin-results-count"
+        role="status"
+        aria-live="polite"
+        hidden={loading || loadError !== ''}
+      >
         {visibleProducts.length === 1
           ? '1 producto encontrado'
           : `${visibleProducts.length} productos encontrados`}
@@ -163,22 +200,41 @@ export function ProductList({
 
       {loading ? (
         <p role="status" aria-busy="true">Cargando productos…</p>
-      ) : visibleProducts.length === 0 ? (
+      ) : loadError !== '' ? (
         <div className="admin-empty-state">
-          <h4>No encontramos productos</h4>
-          <p>Probá otra búsqueda o limpiá los filtros.</p>
+          <h4>No pudimos cargar los productos</h4>
+          <p className="form-error" role="alert">{loadError}</p>
           <button
             className="button button-secondary admin-compact-button"
             type="button"
-            onClick={onResetFilters}
+            onClick={onRetryLoad}
           >
-            Limpiar filtros
+            Reintentar carga
           </button>
+        </div>
+      ) : visibleProducts.length === 0 ? (
+        <div className="admin-empty-state">
+          <h4>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h4>
+          <p>
+            {totalProductCount === 0
+              ? 'Usá Nuevo producto para cargar el primero.'
+              : 'Probá otra búsqueda o limpiá los filtros.'}
+          </p>
+          {totalProductCount === 0 ? null : (
+            <button
+              className="button button-secondary admin-compact-button"
+              type="button"
+              onClick={onResetFilters}
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       ) : (
         <ul className="admin-product-list">
           {visibleProducts.map((product) => {
-            const status = productAvailabilityLabel(product);
+            const availabilityStatus = productAvailabilityLabel(product);
+            const stockStatus = productStockLabel(product);
             const selected = editingId === product.id;
             const rowBusy = operation.kind !== 'idle' &&
               'productId' in operation && operation.productId === product.id;
@@ -206,8 +262,11 @@ export function ProductList({
                     <p className="admin-product-id">{product.id}</p>
                     <div className="admin-product-row-facts">
                       <strong>{formatProductPrice(product.salePrice ?? product.price)}</strong>
-                      <span className={`admin-status-badge admin-status-${status.tone}`}>
-                        {status.label}
+                      <span className={`admin-status-badge admin-status-${availabilityStatus.tone}`}>
+                        {availabilityStatus.label}
+                      </span>
+                      <span className={`admin-status-badge admin-status-${stockStatus.tone}`}>
+                        {stockStatus.label}
                       </span>
                     </div>
                   </div>
@@ -217,7 +276,7 @@ export function ProductList({
                       type="button"
                       disabled={remoteBusy}
                       aria-label={`Editar ${product.name}`}
-                      onClick={() => onEdit(product)}
+                      onClick={(event) => onEdit(product, event.currentTarget)}
                     >
                       {selected ? 'Editando' : 'Editar'}
                     </button>
@@ -244,6 +303,10 @@ export function ProductList({
                       Ajustar stock
                     </button>
                     <button
+                      ref={(element) => {
+                        if (element === null) deleteTriggerRefs.current.delete(product.id);
+                        else deleteTriggerRefs.current.set(product.id, element);
+                      }}
                       className="button button-danger admin-compact-button"
                       type="button"
                       disabled={remoteBusy || (selected && isDirty)}
@@ -304,12 +367,34 @@ export function ProductList({
                   ) : null}
 
                   {deleteCandidate?.id === product.id ? (
-                    <div className="admin-inline-confirmation" role="dialog" aria-labelledby={`delete-title-${product.id}`}>
+                    <div
+                      className="admin-inline-confirmation"
+                      role="dialog"
+                      aria-labelledby={`delete-title-${product.id}`}
+                      aria-describedby={`delete-description-${product.id}`}
+                      onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                        if (event.key !== 'Escape' || rowBusy) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onCancelDelete();
+                      }}
+                    >
                       <div>
                         <h5 id={`delete-title-${product.id}`}>¿Quitar {product.name}?</h5>
-                        <p>Dejará de aparecer en el catálogo público. La baja lógica y su auditoría se conservarán.</p>
+                        <p id={`delete-description-${product.id}`}>
+                          Dejará de aparecer en el catálogo público. La baja lógica y su auditoría se conservarán.
+                        </p>
                       </div>
                       <div className="admin-inline-actions">
+                        <button
+                          ref={deleteCancelRef}
+                          className="button button-secondary admin-compact-button"
+                          type="button"
+                          disabled={rowBusy}
+                          onClick={onCancelDelete}
+                        >
+                          Cancelar
+                        </button>
                         <button
                           className="button button-danger admin-compact-button"
                           type="button"
@@ -317,14 +402,6 @@ export function ProductList({
                           onClick={() => onConfirmDelete(product)}
                         >
                           {rowBusy ? 'Quitando…' : 'Confirmar baja'}
-                        </button>
-                        <button
-                          className="button button-secondary admin-compact-button"
-                          type="button"
-                          disabled={rowBusy}
-                          onClick={onCancelDelete}
-                        >
-                          Cancelar
                         </button>
                       </div>
                     </div>
@@ -343,12 +420,16 @@ function productAvailabilityLabel(product: CatalogProductDetail) {
   if (product.availability === 'unavailable') {
     return { label: 'No disponible manualmente', tone: 'paused' } as const;
   }
-  if (product.stockQuantity === 0) return { label: 'Sin stock', tone: 'out' } as const;
+  return { label: 'Disponible manualmente', tone: 'available' } as const;
+}
+
+function productStockLabel(product: CatalogProductDetail) {
   if (product.stockQuantity === undefined) {
-    return { label: 'Disponible · stock no controlado', tone: 'untracked' } as const;
+    return { label: 'Stock no controlado', tone: 'untracked' } as const;
   }
+  if (product.stockQuantity === 0) return { label: 'Sin stock', tone: 'out' } as const;
   return {
-    label: `Disponible · ${product.stockQuantity.toLocaleString('es-AR')} unidades`,
+    label: `Stock: ${product.stockQuantity.toLocaleString('es-AR')} ${product.stockQuantity === 1 ? 'unidad' : 'unidades'}`,
     tone: 'available',
   } as const;
 }

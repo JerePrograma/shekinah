@@ -7,6 +7,7 @@ import {
 import type {
   ChangeEvent,
   FormEvent,
+  KeyboardEvent,
   ReactNode,
 } from 'react';
 
@@ -161,6 +162,8 @@ export function AdminPage({
   const [orderDetail, setOrderDetail] = useState<AdminOrderDetail | null>(null);
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
+  const orderDetailReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const sectionTitleRef = useRef<HTMLHeadingElement | null>(null);
   const products = useRuntimeCatalogProducts();
   const productNames = useMemo(
     () => new Map(products.map((product) => [product.id, product.name])),
@@ -221,12 +224,23 @@ export function AdminPage({
   const analyticsQuery = exportQuery(submittedRange, false);
   const heading = sectionHeading(section);
 
+  function closeOrderDetail(): void {
+    setSelectedOrderId(null);
+    window.requestAnimationFrame(() => {
+      const returnTarget = orderDetailReturnFocusRef.current;
+      if (returnTarget?.isConnected === true) returnTarget.focus();
+      else sectionTitleRef.current?.focus();
+    });
+  }
+
   return (
     <section className="admin-page section" aria-labelledby={`admin-${section}-title`}>
       <div className="container admin-shell">
         <div className="section-heading admin-report-heading">
           <p className="eyebrow">Administración</p>
-          <h2 id={`admin-${section}-title`}>{heading.title}</h2>
+          <h2 id={`admin-${section}-title`} ref={sectionTitleRef} tabIndex={-1}>
+            {heading.title}
+          </h2>
           <p>{heading.description}</p>
         </div>
 
@@ -295,7 +309,10 @@ export function AdminPage({
         {visibleReport === null || loading ? null : (
           <SectionContent
             data={visibleReport.data}
-            onOpenOrder={(id) => setSelectedOrderId(id)}
+            onOpenOrder={(id, returnFocusTarget) => {
+              orderDetailReturnFocusRef.current = returnFocusTarget;
+              setSelectedOrderId(id);
+            }}
             productNames={productNames}
             section={section}
           />
@@ -307,7 +324,7 @@ export function AdminPage({
             error={detailError}
             loading={detailLoading}
             orderId={selectedOrderId}
-            onClose={() => setSelectedOrderId(null)}
+            onClose={closeOrderDetail}
           />
         ) : null}
 
@@ -326,7 +343,7 @@ function SectionContent({
   section,
 }: Readonly<{
   data: AdminData;
-  onOpenOrder: (id: string) => void;
+  onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
   productNames: ReadonlyMap<string, string>;
   section: Exclude<AdminSection, 'products'>;
 }>) {
@@ -435,7 +452,10 @@ function Metric({
 function OrdersView({
   onOpenOrder,
   orders,
-}: Readonly<{ onOpenOrder: (id: string) => void; orders: readonly AdminOrder[] }>) {
+}: Readonly<{
+  onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
+  orders: readonly AdminOrder[];
+}>) {
   return (
     <AdminTable
       caption="Pedidos integrados del período"
@@ -450,7 +470,7 @@ function OrdersView({
         <button
           className="button button-secondary admin-table-action"
           type="button"
-          onClick={() => onOpenOrder(order.id)}
+          onClick={(event) => onOpenOrder(order.id, event.currentTarget)}
         >
           Ver detalle
         </button>,
@@ -692,7 +712,15 @@ function OrderDetailPanel({
     titleRef.current?.focus();
   }, [orderId]);
   return (
-    <article className="admin-order-detail" aria-labelledby="order-detail-title">
+    <article
+      className="admin-order-detail"
+      aria-labelledby="order-detail-title"
+      onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <header>
         <div>
           <p className="eyebrow">Pedido integrado · sólo lectura</p>

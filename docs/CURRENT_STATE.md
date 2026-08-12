@@ -1,6 +1,6 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-11.
+Fecha de revisión: 2026-08-12.
 
 SHA funcional publicado, validado y usado para la activación de Backoffice V2 y analítica manual:
 
@@ -37,6 +37,11 @@ El candidato incorpora:
 - Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria y detalle de pedidos de sólo lectura bajo demanda;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
+- feedback contextual y accesible al agregar, ajustar y eliminar productos del carrito, con límites de stock visibles y prevención de borrados ambiguos;
+- estados recuperables del retorno de pago y comunicación explícita de verificación, procesamiento y resultado;
+- protección de cambios administrativos sin guardar en navegación cliente, historial y cierre de sesión, además de estados `dirty`, `saving`, `uploading`, `deleting`, éxito y error;
+- confirmaciones destructivas específicas, gestión de foco y soporte de `Escape` en carrito y backoffice;
+- carga administrativa diferenciada de los estados vacíos y disponibilidad manual separada del stock.
 
 ## Configuración pública autorizada
 
