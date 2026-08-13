@@ -101,13 +101,20 @@ describe('endpoint de checkout', () => {
         images: [],
         variants: [],
       }, 'admin@example.test');
-      globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
-        id: 'preference_dynamic_123',
-        sandbox_init_point: 'https://sandbox.mercadopago.com.ar/checkout/v1/redirect',
-      }), {
-        status: 201,
-        headers: { 'content-type': 'application/json' },
-      })));
+      globalThis.fetch = vi.fn<typeof fetch>((_input, init) => {
+        if (typeof init?.body !== 'string') throw new Error('Mercado Pago no recibió JSON.');
+        const preferenceBody = JSON.parse(init.body) as Record<string, unknown>;
+        return Promise.resolve(new Response(JSON.stringify({
+          id: 'preference_dynamic_123',
+          sandbox_init_point: 'https://sandbox.mercadopago.com.ar/checkout/v1/redirect',
+          expiration_date_from: preferenceBody.expiration_date_from,
+          expiration_date_to: preferenceBody.expiration_date_to,
+          preference_expired: false,
+        }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        }));
+      });
 
       const checkoutBody = {
         idempotencyKey: crypto.randomUUID(),
@@ -141,15 +148,17 @@ describe('endpoint de checkout', () => {
         error: { code: 'INVALID_CART_LINE' },
       });
 
+      const validIdempotencyKey = crypto.randomUUID();
+      const validCheckoutBody = {
+        ...checkoutBody,
+        idempotencyKey: validIdempotencyKey,
+        items: [{ productId: 'producto-preferencia', quantity: 2 }],
+      };
       const validResponse = await onRequest({
         ...context(new Request(request.url, {
           method: 'POST',
           headers: request.headers,
-          body: JSON.stringify({
-            ...checkoutBody,
-            idempotencyKey: crypto.randomUUID(),
-            items: [{ productId: 'producto-preferencia', quantity: 2 }],
-          }),
+          body: JSON.stringify(validCheckoutBody),
         })),
         env: checkoutEnv(testD1.database),
       });
@@ -162,6 +171,23 @@ describe('endpoint de checkout', () => {
         unit_price_minor: 234_567,
         subtotal_minor: 469_134,
       });
+
+      testD1.sqlite.prepare(
+        "UPDATE orders SET created_at = '2000-01-01T00:00:00.000Z' WHERE checkout_idempotency_key = ?",
+      ).run(validIdempotencyKey);
+      const expiredResponse = await onRequest({
+        ...context(new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify(validCheckoutBody),
+        })),
+        env: checkoutEnv(testD1.database),
+      });
+      expect(expiredResponse.status).toBe(409);
+      await expect(expiredResponse.json()).resolves.toMatchObject({
+        error: { code: 'CHECKOUT_INTENT_EXPIRED' },
+      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     } finally {
       testD1.close();
     }

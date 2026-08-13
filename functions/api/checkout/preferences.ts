@@ -2,7 +2,7 @@ import { recalculateDynamicCart } from '../../../server/dynamic-cart';
 import { requireCommerceMode, requireEnabledFlag, requirePublicSiteUrl } from '../../../server/config';
 import { createPaymentCart, persistOrderFulfillment, reserveCheckoutIntent } from '../../../server/fulfillment';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../server/http';
-import { createMercadoPagoPreference, recoverMercadoPagoPreference } from '../../../server/mercado-pago';
+import { assertMercadoPagoPreferenceActive, createMercadoPagoPreference, recoverMercadoPagoPreference } from '../../../server/mercado-pago';
 import { claimPreferenceAttempt, markOrderFailed, markPreferenceCreated, prepareOrder, resetRetrySafeFailedOrder } from '../../../server/orders';
 import type { PagesFunction } from '../../../server/platform';
 import { assertExactKeys, assertSameOrigin, assertUuid, isRecord, readJsonBody } from '../../../server/validation';
@@ -20,16 +20,17 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     await reserveCheckoutIntent(database, idempotencyKey, cart); const prepared = await prepareOrder({ cart, database, idempotencyKey, tokenSecret });
     await persistOrderFulfillment(database, prepared.order.id, cart); const paymentCart = createPaymentCart(cart); const { order } = prepared;
     if (order.status === 'approved' || order.status === 'refunded') throw new HttpError(409, 'ORDER_ALREADY_FINALIZED', 'Este pedido ya tiene un estado final.');
+    assertMercadoPagoPreferenceActive(order.created_at);
     if (order.mp_preference_id !== null && order.mp_checkout_url !== null) return checkoutResponse(order.mp_checkout_url, prepared.publicToken, 200);
     if (order.mp_preference_attempted_at !== null) {
-      const recovered = await recoverMercadoPagoPreference({ accessToken, cart: paymentCart, mode, orderId: order.id });
+      const recovered = await recoverMercadoPagoPreference({ accessToken, cart: paymentCart, createdAt: order.created_at, mode, orderId: order.id });
       if (recovered === null) throw new HttpError(409, 'PREFERENCE_RECOVERY_PENDING', 'Existe un intento de pago previo que todavía no puede confirmarse.');
       await markPreferenceCreated(database, order.id, recovered.id, recovered.checkoutUrl); return checkoutResponse(recovered.checkoutUrl, prepared.publicToken, 200);
     }
     if (order.status === 'failed') await resetRetrySafeFailedOrder(database, order.id); const attemptToken = await claimPreferenceAttempt(database, order.id);
     if (attemptToken === null) throw new HttpError(409, 'PREFERENCE_ATTEMPT_IN_PROGRESS', 'Ya existe un intento de pago en curso para este pedido.');
     try {
-      const preference = await createMercadoPagoPreference({ accessToken, cart: paymentCart, mode, orderId: order.id, publicToken: prepared.publicToken, siteUrl });
+      const preference = await createMercadoPagoPreference({ accessToken, cart: paymentCart, createdAt: order.created_at, mode, orderId: order.id, publicToken: prepared.publicToken, siteUrl });
       await markPreferenceCreated(database, order.id, preference.id, preference.checkoutUrl, attemptToken);
       return checkoutResponse(preference.checkoutUrl, prepared.publicToken, prepared.created ? 201 : 200);
     } catch (error: unknown) {

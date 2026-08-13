@@ -4,7 +4,7 @@
 
 Este documento describe el código preparado en el repositorio. No certifica por sí solo que D1, Mercado Pago Checkout Pro, Cloudflare Access, Pages o el webhook estén configurados en producción.
 
-La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia.
+La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia. Checkout Pro acepta sólo productos sin `stockQuantity`: cuando el producto tiene stock controlado, el servidor falla cerrado y deriva a WhatsApp, que es el canal que actualmente reserva unidades de forma atómica.
 
 El modelo de inventario extiende el producto con `stockQuantity` opcional. Su ausencia conserva el modelo legacy sin control de existencias; con control, el valor debe ser entero entre 0 y 1.000.000. Para WhatsApp usa Strategy A: el stock reservado se deriva de los items de pedidos pendientes y no se duplica en un contador. El servidor calcula `disponible = físico - SUM(items pending WhatsApp)`, impide sobre-reservar y protege las ediciones administrativas que reducirían el físico por debajo de lo comprometido.
 
@@ -107,15 +107,16 @@ No existe transición entre estados terminales ni expiración automática. Un pe
 
 ## Flujo de pago de Checkout Pro integrado
 
-1. El navegador genera una UUID de idempotencia, la reutiliza durante 30 minutos para el mismo carrito y fulfillment normalizado y la sincroniza mediante `localStorage` sin guardar PII; luego envía productos, cantidades y datos de entrega.
+1. El navegador genera una UUID de idempotencia, la reutiliza durante 30 minutos para el mismo carrito y fulfillment normalizado y la sincroniza mediante `localStorage` sin guardar PII; luego envía productos, cantidades y datos de entrega. La preferencia se crea con la misma vigencia server-side, contada desde `orders.created_at`; una intención vencida no devuelve ni recupera una URL de checkout antigua.
 2. La Function valida origen, flags, bindings y secretos.
-3. El servidor recalcula el carrito desde el catálogo efectivo canónico más D1.
+3. El servidor recalcula el carrito desde el catálogo efectivo canónico más D1 y rechaza Checkout Pro si alguna línea tiene stock controlado, aun cuando queden unidades; esos productos deben pasar por WhatsApp para obtener reserva transaccional.
 4. D1 registra cabecera e ítems en un único `batch` y reclama atómicamente un solo intento de creación de preferencia.
-5. Se crea la preferencia de Checkout Pro por API con `external_reference` igual al ID interno. Ante un resultado de red incierto, no se repite la creación: se busca y recupera la preferencia por `external_reference`.
+5. Se crea la preferencia de Checkout Pro por API con `external_reference` igual al ID interno, vencimiento a los 30 minutos y `notification_url` identificada como Webhooks. Ante un resultado de red incierto, no se repite la creación: se busca por `external_reference` y sólo se recupera una preferencia única cuyo carrito y vigencia coincidan exactamente.
 6. El navegador recibe una URL HTTPS autorizada de Mercado Pago y redirige fuera del sitio.
 7. Los retornos `/pago/*` consultan D1 mediante un token público derivado con HMAC.
-8. El webhook verifica `x-signature`, registra el evento de forma idempotente y consulta el pago directamente a Mercado Pago.
-9. El pedido sólo cambia a `approved` cuando moneda e importe coinciden exactamente con el pedido registrado.
+8. El webhook limita el body JSON a 64.000 bytes mientras lee el stream, verifica `x-signature`, registra el evento de forma idempotente y consulta el pago directamente a Mercado Pago.
+9. Cada pago recuperado debe coincidir individualmente con `external_reference`, moneda e importe total del pedido; pagos parciales o agregados no se suman para alcanzar el total.
+10. Si Mercado Pago asocia más de un ID de pago compatible al mismo pedido, el estado se reconcilia desde todas las filas con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`.
 
 ## Estados de pedido
 
@@ -127,7 +128,7 @@ Los siguientes estados corresponden exclusivamente al Checkout Pro integrado:
 - `rejected`, `cancelled`, `refunded`: estados confirmados por proveedor;
 - `failed`: no se pudo crear la preferencia; puede reintentarse con la misma clave y carrito.
 
-Una notificación tardía no degrada un pedido ya aprobado a pendiente, rechazado o cancelado. Un reintegro puede llevarlo a `refunded`, estado que tampoco se degrada por notificaciones posteriores.
+Para un mismo `provider_payment_id`, un reintegro conserva prioridad sobre su aprobación anterior. Entre IDs distintos del mismo pedido, cualquier pago exacto todavía aprobado mantiene el pedido `approved`; sólo cuando ya no queda uno aprobado puede prevalecer `refunded`. Notificaciones posteriores se reconcilian de nuevo desde el conjunto persistido y no dependen del orden de llegada.
 
 ## Analítica y privacidad
 
@@ -170,5 +171,5 @@ El canal WhatsApp ahora hereda precio y total autoritativos, reserva transaccion
 - La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
 - El rate limiting mínimo del login es persistente en D1. WAF, alertas y políticas de Access pueden sumar defensa de borde cuando exista un dominio/zona compatible, sin interceptar el login propio.
 - El fallback manual debe retirarse o reevaluarse cuando Checkout Pro se active en producción, para no ofrecer dos flujos con garantías distintas sin una decisión comercial explícita.
-- Las reservas existen sólo para pedidos WhatsApp pendientes y se derivan de sus items. No existe contador reservado, cancelación del cliente ni expiración automática.
+- Las reservas existen sólo para pedidos WhatsApp pendientes y se derivan de sus items. Checkout Pro rechaza productos con `stockQuantity` para no vender sin reserva; no existe contador reservado, cancelación del cliente ni expiración automática de la reserva WhatsApp.
 - La persistencia de imágenes requiere R2 habilitado y el binding correcto en el deployment exacto; sin él, la API debe fallar cerrada y conservar la imagen anterior.

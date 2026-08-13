@@ -100,6 +100,22 @@ describe('entrada del webhook de Mercado Pago', () => {
     }
   });
 
+  it('limita el cuerpo aunque no se declare Content-Length', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const response = await onRequest(context(
+        database,
+        request(`{"padding":"${'x'.repeat(64_001)}"}`, 'application/json', await signature()),
+      ));
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'BODY_TOO_LARGE' },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it('rechaza un identificador corporal distinto del valor firmado', async () => {
     const database = new SqliteD1(migration);
     try {
@@ -116,7 +132,7 @@ describe('entrada del webhook de Mercado Pago', () => {
     }
   });
 
-  it('aprueba desde la consulta autoritativa y hace idempotente el evento duplicado', async () => {
+  it('aprueba desde la consulta autoritativa sin duplicar efectos en redeliveries', async () => {
     const database = new SqliteD1(migration);
     try {
       const prepared = await prepareOrder({
@@ -134,10 +150,46 @@ describe('entrada del webhook de Mercado Pago', () => {
       });
       const first = await onRequest(context(database, request(body, 'application/json', await signature())));
       const duplicate = await onRequest(context(database, request(body, 'application/json', await signature())));
+      const semanticRedelivery = await onRequest(context(database, request(JSON.stringify({
+        id: 'notification-2', type: 'payment', action: 'payment.updated', data: { id: dataId },
+      }), 'application/json', await signature())));
       expect(first.status).toBe(200);
       expect(duplicate.status).toBe(200);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(semanticRedelivery.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       expect((await getOrderById(database, prepared.order.id))?.status).toBe('approved');
+      await expect(database.prepare('SELECT COUNT(*) AS count FROM payments').first())
+        .resolves.toEqual({ count: 1 });
+      await expect(database.prepare("SELECT COUNT(*) AS count FROM payment_events WHERE status = 'processed'").first())
+        .resolves.toEqual({ count: 2 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('persiste las transiciones pending, rejected, approved y refunded consultadas al proveedor', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: testCart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      const statuses = ['pending', 'rejected', 'approved', 'refunded'] as const;
+      globalThis.fetch = vi.fn<typeof fetch>();
+      for (const [index, status] of statuses.entries()) {
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce(paymentResponse({
+          externalReference: prepared.order.id,
+          amountMinor: prepared.order.total_minor,
+          currency: 'ARS',
+          status,
+        }));
+        const response = await onRequest(context(database, request(JSON.stringify({
+          id: `notification-status-${index}`, type: 'payment', action: 'payment.updated', data: { id: dataId },
+        }), 'application/json', await signature())));
+        expect(response.status).toBe(200);
+        expect((await getOrderById(database, prepared.order.id))?.status).toBe(status);
+      }
+      await expect(database.prepare('SELECT COUNT(*) AS count FROM payments').first())
+        .resolves.toEqual({ count: 1 });
     } finally {
       database.close();
     }

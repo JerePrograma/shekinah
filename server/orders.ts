@@ -330,14 +330,66 @@ export async function updateOrderFromPayment(
       .prepare(
         `UPDATE orders
          SET status = CASE
-           WHEN status = 'refunded' THEN 'refunded'
-           WHEN ? = 'refunded' THEN 'refunded'
-           WHEN status = 'approved' THEN 'approved'
-           WHEN ? = 'approved' THEN 'approved'
-           ELSE ?
+           WHEN EXISTS (
+             SELECT 1
+             FROM payments
+             WHERE order_id = orders.id
+               AND mapped_status = 'approved'
+               AND amount_minor = orders.total_minor
+               AND currency = orders.currency
+               AND external_reference = orders.id
+           ) THEN 'approved'
+           WHEN EXISTS (
+             SELECT 1
+             FROM payments
+             WHERE order_id = orders.id
+               AND mapped_status = 'refunded'
+               AND amount_minor = orders.total_minor
+               AND currency = orders.currency
+               AND external_reference = orders.id
+           ) THEN 'refunded'
+           WHEN EXISTS (
+             SELECT 1
+             FROM payments
+             WHERE order_id = orders.id
+               AND mapped_status = 'pending'
+               AND amount_minor = orders.total_minor
+               AND currency = orders.currency
+               AND external_reference = orders.id
+           ) THEN 'pending'
+           WHEN EXISTS (
+             SELECT 1
+             FROM payments
+             WHERE order_id = orders.id
+               AND mapped_status = 'rejected'
+               AND amount_minor = orders.total_minor
+               AND currency = orders.currency
+               AND external_reference = orders.id
+           ) THEN 'rejected'
+           ELSE 'cancelled'
          END,
          approved_at = CASE
-           WHEN ? = 'approved' THEN COALESCE(approved_at, ?, ?)
+           WHEN EXISTS (
+             SELECT 1
+             FROM payments
+             WHERE order_id = orders.id
+               AND mapped_status = 'approved'
+               AND amount_minor = orders.total_minor
+               AND currency = orders.currency
+               AND external_reference = orders.id
+           ) THEN COALESCE(
+             approved_at,
+             (
+               SELECT MIN(approved_at)
+               FROM payments
+               WHERE order_id = orders.id
+                 AND mapped_status = 'approved'
+                 AND amount_minor = orders.total_minor
+                 AND currency = orders.currency
+                 AND external_reference = orders.id
+             ),
+             ?
+           )
            ELSE approved_at
          END,
          last_error_code = NULL,
@@ -354,11 +406,6 @@ export async function updateOrderFromPayment(
            )`,
       )
       .bind(
-        mappedStatus,
-        mappedStatus,
-        mappedStatus,
-        mappedStatus,
-        payment.approvedAt,
         now,
         now,
         order.id,

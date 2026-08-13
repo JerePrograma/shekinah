@@ -190,14 +190,18 @@ Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo tr
 ## 6. Configurar Mercado Pago Checkout Pro
 
 1. Usar primero credenciales de prueba y `MERCADO_PAGO_CHECKOUT_MODE=sandbox`.
-2. Registrar la URL de notificación exacta: `https://shekinah.ar/api/webhooks/mercadopago`.
+2. Registrar la URL de notificación exacta: `https://shekinah.ar/api/webhooks/mercadopago`. Al crear cada preferencia, el backend agrega `source_news=webhooks` para solicitar ese formato de notificación sin cambiar el endpoint público.
 3. Habilitar eventos de pagos.
 4. Copiar el secreto de firma de Webhooks en `MERCADO_PAGO_WEBHOOK_SECRET`.
-5. Confirmar que el proveedor envía `x-signature` y `x-request-id`.
+5. Confirmar que el proveedor envía `x-signature`; validar `x-request-id` dentro del manifiesto cuando el header esté presente, sin inventarlo cuando el proveedor lo omita.
 6. Realizar pagos de prueba aprobados, pendientes y rechazados.
-7. Verificar en D1 que el importe y la moneda coincidan y que un webhook duplicado no duplique pagos ni eventos.
+7. Verificar en D1 que cada pago coincida individualmente en `external_reference`, importe total y moneda, y que un webhook duplicado no duplique pagos ni efectos. El endpoint rechaza bodies que excedan 64.000 bytes durante la lectura del stream.
 
-La creación de preferencias no depende de un encabezado de idempotencia no documentado por Checkout Pro. D1 reclama un único intento por pedido. Si la respuesta del proveedor es incierta, las solicitudes siguientes recuperan por `external_reference` y permanecen cerradas si no pueden demostrar un resultado único.
+La creación de preferencias no depende de un encabezado de idempotencia no documentado por Checkout Pro. D1 reclama un único intento por pedido y la preferencia vence al concluir la misma ventana de 30 minutos, calculada desde `orders.created_at`. Si la respuesta del proveedor es incierta, las solicitudes siguientes recuperan por `external_reference` y permanecen cerradas si no pueden demostrar un resultado único con carrito y vigencia exactos.
+
+Los productos con `stockQuantity` no son elegibles para Checkout Pro mientras ese canal no implemente reserva o consumo transaccional. El servidor responde `CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP` y el comprador debe continuar por WhatsApp, que sí persiste el pedido pendiente y reserva unidades. No retirar esta restricción sólo para hacer pasar un smoke.
+
+Cada `provider_payment_id` aceptado debe cubrir por sí solo el total exacto en ARS y referenciar el pedido; no se suman pagos parciales. Ante varios pagos compatibles, el pedido se deriva del conjunto persistido con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`. La facturación administrativa cuenta el pedido una vez, pero `Pagos aprobados` conserva el conteo de IDs exactos para evidenciar un posible doble cobro.
 
 Los parámetros de retorno nunca constituyen prueba de pago. La prueba válida es el estado recuperado con el access token después de un webhook firmado.
 
@@ -240,17 +244,17 @@ Con D1 de preview y sandbox:
 - `/privacidad`: disponible;
 - persistencia y sincronización del carrito entre pestañas;
 - modificación manual del total en el navegador: sin efecto en el importe del servidor para Checkout Pro;
-- repetición, recarga o segunda pestaña con el mismo carrito dentro de 30 minutos: misma UUID, pedido y preferencia;
+- repetición, recarga o segunda pestaña con el mismo carrito dentro de 30 minutos: misma UUID, pedido y preferencia con vigencia coincidente; vencida la ventana, la URL anterior no se devuelve;
 - misma UUID con otro carrito: `409 IDEMPOTENCY_CONFLICT`;
 - firma de webhook inválida: `401` y pedido sin aprobar;
 - retorno `?status=approved` sin webhook: pedido no aprobado;
-- evento duplicado: una sola actualización lógica;
+- evento duplicado: una sola actualización lógica; varios IDs de pago exactos para un pedido conservan filas separadas y disparan conciliación operativa;
 - analítica rechazada o sin decidir: cero POST a `/api/analytics/events`;
 - retiro de consentimiento: borrado de sesión y eventos en D1, con HMAC revocado para bloquear solicitudes en vuelo;
 - exportaciones CSV: sin fórmulas ejecutables;
 - artefacto `dist`: sin secretos ni `.map`.
-- inventario legacy: ausencia de `stockQuantity` conserva compra sin control; stock 0 controlado queda no disponible;
-- cantidades: cliente limita a `min(99, stock)` y servidor rechaza una cantidad superior al stock vigente;
+- inventario legacy: ausencia de `stockQuantity` conserva Checkout Pro sin control; cualquier `stockQuantity` deriva a WhatsApp, y stock 0 controlado queda no disponible;
+- cantidades: cliente limita a `min(99, stock)`; el servidor rechaza cantidad insuficiente y, si existe `stockQuantity`, bloquea Checkout Pro aunque haya unidades para exigir reserva por WhatsApp;
 - WhatsApp: creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
 - administración: aprobar descuenta físico exactamente una vez; rechazar libera por derivación; estados cruzados y clicks repetidos no duplican efectos;
 - imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;

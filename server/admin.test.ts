@@ -162,7 +162,8 @@ function seedOrdersAndPayments(database: ReturnType<typeof createTestD1>['sqlite
   insertOrder(database, 'ord_without_payment_123456789012345', 'approved', 20_000);
   insertOrder(database, 'ord_pending_1234567890123456789012', 'pending', 30_000);
   insertPayment(database, 'payment-compatible', 'ord_confirmed_12345678901234567890', 10_000);
-  insertPayment(database, 'payment-extra-real', 'ord_confirmed_12345678901234567890', 9_999);
+  insertPayment(database, 'payment-compatible-repeated', 'ord_confirmed_12345678901234567890', 10_000);
+  insertPayment(database, 'payment-incompatible', 'ord_confirmed_12345678901234567890', 9_999);
 }
 
 function insertOrder(

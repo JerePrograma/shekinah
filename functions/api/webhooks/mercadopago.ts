@@ -15,7 +15,7 @@ import {
 import { getOrderById, updateOrderFromPayment } from '../../../server/orders';
 import { finishPaymentEvent, registerPaymentEvent } from '../../../server/payment-events';
 import type { D1Database, PagesFunction } from '../../../server/platform';
-import { isRecord } from '../../../server/validation';
+import { isRecord, readJsonBody } from '../../../server/validation';
 
 export const onRequest: PagesFunction = async ({ env, request }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
@@ -136,31 +136,11 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
 };
 
 async function readWebhookBody(request: Request): Promise<Record<string, unknown>> {
-  const contentType = request.headers.get('content-type') ?? '';
-  if (!/^application\/json(?:\s*;|$)/iu.test(contentType)) {
-    throw new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', 'El webhook requiere Content-Type application/json.');
+  const value = await readJsonBody(request, 64_000);
+  if (!isRecord(value)) {
+    throw new HttpError(400, 'INVALID_WEBHOOK_BODY', 'El webhook no contiene un objeto JSON válido.');
   }
-  const declared = request.headers.get('content-length');
-  if (declared !== null) {
-    const declaredBytes = Number(declared);
-    if (!Number.isFinite(declaredBytes) || declaredBytes < 0) {
-      throw new HttpError(400, 'INVALID_CONTENT_LENGTH', 'El tamaño declarado no es válido.');
-    }
-    if (declaredBytes > 64_000) {
-      throw new HttpError(413, 'BODY_TOO_LARGE', 'El webhook excede el límite permitido.');
-    }
-  }
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > 64_000) {
-    throw new HttpError(413, 'BODY_TOO_LARGE', 'El webhook excede el límite permitido.');
-  }
-  if (raw.trim() === '') return {};
-  try {
-    const value: unknown = JSON.parse(raw);
-    return isRecord(value) ? value : {};
-  } catch {
-    throw new HttpError(400, 'INVALID_JSON', 'El webhook no contiene JSON válido.');
-  }
+  return value;
 }
 
 function readNestedDataId(payload: Record<string, unknown>): string | null {

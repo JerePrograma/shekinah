@@ -151,6 +151,206 @@ describe('pedidos e idempotencia D1', () => {
     }
   });
 
+  it('agrega pagos exactos sin duplicar filas y conserva approved mientras otro pago lo cubre', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      const firstPayment = {
+        id: 'multi-1001',
+        status: 'approved',
+        statusDetail: 'accredited',
+        amountMinor: prepared.order.total_minor,
+        currency: 'ARS',
+        externalReference: prepared.order.id,
+        approvedAt: '2026-08-13T10:00:00.000Z',
+        updatedAt: '2026-08-13T10:00:00.000Z',
+      } as const;
+      const secondPayment = {
+        ...firstPayment,
+        id: 'multi-1002',
+        approvedAt: '2026-08-13T10:05:00.000Z',
+        updatedAt: '2026-08-13T10:05:00.000Z',
+      } as const;
+
+      await updateOrderFromPayment(database, prepared.order, firstPayment, 'approved', 'multi-event-1');
+      await updateOrderFromPayment(database, prepared.order, secondPayment, 'approved', 'multi-event-2');
+      await updateOrderFromPayment(database, prepared.order, secondPayment, 'approved', 'multi-event-2-repeated');
+
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('approved');
+      await expect(database.prepare(
+        'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+      ).bind(prepared.order.id).first<number>('count')).resolves.toBe(2);
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        {
+          ...firstPayment,
+          status: 'refunded',
+          statusDetail: 'refunded',
+          updatedAt: '2026-08-13T11:00:00.000Z',
+        },
+        'refunded',
+        'multi-refund-1',
+      );
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('approved');
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        {
+          ...secondPayment,
+          status: 'charged_back',
+          statusDetail: 'charged_back',
+          updatedAt: '2026-08-13T11:05:00.000Z',
+        },
+        'refunded',
+        'multi-refund-2',
+      );
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('refunded');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('no aprueba una orden sumando pagos parciales rechazados individualmente', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(2),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      const partialAmount = prepared.order.total_minor / 2;
+      for (const paymentId of ['partial-1001', 'partial-1002']) {
+        await expect(updateOrderFromPayment(
+          database,
+          prepared.order,
+          {
+            id: paymentId,
+            status: 'approved',
+            statusDetail: 'accredited',
+            amountMinor: partialAmount,
+            currency: 'ARS',
+            externalReference: prepared.order.id,
+            approvedAt: '2026-08-13T12:00:00.000Z',
+            updatedAt: '2026-08-13T12:00:00.000Z',
+          },
+          'approved',
+          `event-${paymentId}`,
+        )).rejects.toMatchObject({ code: 'PAYMENT_ORDER_MISMATCH' });
+      }
+
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('preference_pending');
+      await expect(database.prepare(
+        'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+      ).bind(prepared.order.id).first<number>('count')).resolves.toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('mantiene pending ante otro pago rechazado y deriva el estado sin depender del orden de eventos', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      const basePayment = {
+        statusDetail: null,
+        amountMinor: prepared.order.total_minor,
+        currency: 'ARS',
+        externalReference: prepared.order.id,
+        approvedAt: null,
+        updatedAt: '2026-08-13T12:00:00.000Z',
+      } as const;
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'multi-pending', status: 'pending' },
+        'pending',
+        'multi-pending-event',
+      );
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'multi-rejected', status: 'rejected' },
+        'rejected',
+        'multi-rejected-event',
+      );
+
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('pending');
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'multi-pending', status: 'cancelled' },
+        'cancelled',
+        'multi-cancelled-event',
+      );
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('rejected');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('mantiene refunded ante otro pago pendiente y sus redeliveries', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      const basePayment = {
+        statusDetail: null,
+        amountMinor: prepared.order.total_minor,
+        currency: 'ARS',
+        externalReference: prepared.order.id,
+        approvedAt: null,
+        updatedAt: '2026-08-13T12:00:00.000Z',
+      } as const;
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'refunded-payment', status: 'refunded' },
+        'refunded',
+        'refunded-event',
+      );
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'pending-after-refund', status: 'pending' },
+        'pending',
+        'pending-after-refund-event',
+      );
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('refunded');
+
+      await updateOrderFromPayment(
+        database,
+        prepared.order,
+        { ...basePayment, id: 'pending-after-refund', status: 'pending' },
+        'pending',
+        'pending-after-refund-redelivery',
+      );
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('refunded');
+    } finally {
+      database.close();
+    }
+  });
+
   it('rechaza monto, moneda, referencia o identidad de pago incompatibles', async () => {
     const database = new SqliteD1(migration);
     try {

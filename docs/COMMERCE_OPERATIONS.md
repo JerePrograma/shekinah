@@ -25,6 +25,7 @@ Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 - Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
 - Comparar `payments.amount_minor` y `orders.total_minor` para detectar inconsistencias.
 - Revisar que no haya pedidos aprobados sin pago asociado.
+- Comparar `approved_payment_count` con la cantidad de pedidos con pago aprobado confirmado: el primer valor cuenta pagos exactos individuales y, si es mayor, conserva la señal de un posible cobro duplicado.
 - Controlar errores de Functions sin registrar cuerpos, access tokens, firmas ni secretos.
 
 Consultas de diagnóstico de sólo lectura:
@@ -51,6 +52,21 @@ ORDER BY received_at DESC;
 ```
 
 ```sql
+SELECT p.order_id, COUNT(*) AS approved_payments
+FROM payments p
+JOIN orders o ON o.id = p.order_id
+WHERE p.mapped_status = 'approved'
+  AND p.amount_minor = o.total_minor
+  AND p.currency = o.currency
+  AND p.external_reference = o.id
+GROUP BY p.order_id
+HAVING COUNT(*) > 1
+ORDER BY approved_payments DESC, p.order_id;
+```
+
+Cada fila devuelta por esta última consulta requiere conciliación en Mercado Pago: el pedido cuenta una sola vez para facturación y ticket, pero la métrica de pagos conserva todos los IDs aprobados exactos para no ocultar un posible doble cobro.
+
+```sql
 SELECT id, status, mp_preference_attempted_at, last_error_code, updated_at
 FROM orders
 WHERE mp_preference_attempted_at IS NOT NULL
@@ -58,7 +74,7 @@ WHERE mp_preference_attempted_at IS NOT NULL
 ORDER BY updated_at DESC;
 ```
 
-Un pedido en este último estado no debe liberarse ni reintentarse manualmente sin confirmar primero en Mercado Pago que no existe una preferencia para su `external_reference`.
+Un pedido en este último estado no debe liberarse ni reintentarse manualmente sin confirmar primero en Mercado Pago que no existe una preferencia para su `external_reference`. Una intención con más de 30 minutos debe iniciar un checkout nuevo; no extender ni reutilizar manualmente su preferencia vencida.
 
 ## Backoffice
 
@@ -92,7 +108,7 @@ El stock reservado es `SUM(order_items.quantity)` de pedidos WhatsApp pendientes
 - usar la disponibilidad manual para retirar un producto de venta aunque tenga stock;
 - recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada.
 
-El carrito nunca acepta más de `min(99, stockQuantity)` por línea y Checkout Pro vuelve a validar el stock vigente. Si el stock cambia mientras existe un carrito, el comprador debe corregirlo antes de continuar.
+El carrito nunca acepta más de `min(99, stockQuantity)` por línea. Checkout Pro vuelve a validar el catálogo y rechaza cualquier producto con `stockQuantity`, incluso si tiene unidades disponibles, porque ese flujo no reserva inventario. El comprador debe usar WhatsApp, que crea el pedido y reserva antes de abrir el canal.
 
 ### Imágenes administrativas
 
@@ -115,7 +131,7 @@ Los intentos de login se limitan en D1 por IP y por usuario mediante scopes HMAC
 
 ## Reportes
 
-- `summary`: separa sesiones e interacciones consentidas de pedidos, pagos aprobados, facturación confirmada y ticket promedio; un click manual nunca alimenta revenue.
+- `summary`: separa sesiones e interacciones consentidas de pedidos, pagos aprobados individuales, pedidos con pago aprobado, facturación confirmada y ticket promedio; un click manual nunca alimenta revenue. La facturación cuenta cada pedido una vez, mientras `Pagos aprobados` puede ser mayor para alertar sobre múltiples IDs exactos asociados al mismo pedido.
 - `analytics/funnel`: sesiones únicas con page view, product view, agregado, clic manual, WhatsApp e hitos del checkout integrado.
 - `analytics/products`: eventos y sesiones de vistas/agregados por producto, con conversión segura y sin divisiones inválidas.
 - `analytics/sources`: fuente agrupada.

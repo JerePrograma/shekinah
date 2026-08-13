@@ -174,6 +174,22 @@ describe('CartPage', () => {
     expect(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` })).toBeEnabled();
   });
 
+  it('explica el bloqueo de Checkout Pro por stock controlado y mantiene WhatsApp disponible', async () => {
+    commerceState.enabled = true;
+    createCheckoutPreference.mockRejectedValueOnce(new Error(
+      `${product.name} tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.`,
+    ));
+    renderCart();
+    fillFulfillment();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar con Mercado Pago' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.',
+    );
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+  });
+
   it('registra una sola vez antes de ofrecer WhatsApp y usa el snapshot autoritativo', async () => {
     let resolveOrder: ((value: ReturnType<typeof whatsappOrderFixture>) => void) | undefined;
     createWhatsappOrder.mockImplementationOnce(() => new Promise((resolve) => {

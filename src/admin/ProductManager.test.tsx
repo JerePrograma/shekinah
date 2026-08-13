@@ -415,7 +415,9 @@ describe('gestión visual de productos', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar baja' }));
 
     expect(await screen.findByText('Producto para quitar fue quitado del catálogo público.')).toBeVisible();
-    expect(screen.getByRole('heading', { level: 3, name: 'Productos' })).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 3, name: 'Productos' })).toHaveFocus();
+    });
   });
 });
 

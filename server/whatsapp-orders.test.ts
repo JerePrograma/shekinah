@@ -269,7 +269,7 @@ describe('pedidos WhatsApp y reservas de stock', () => {
     }
   });
 
-  it('hace que Checkout Pro respete las reservas WhatsApp sin modificar su flujo', async () => {
+  it('mantiene los productos con stock controlado en el canal reservado de WhatsApp', async () => {
     const database = new SqliteD1(migration);
     try {
       await createCatalogProduct(database, productInput('coexistencia-checkout', 1_000, 5), 'admin@test');
@@ -288,10 +288,15 @@ describe('pedidos WhatsApp y reservas de stock', () => {
         items: [{ productId: 'coexistencia-checkout', quantity }],
       }, database);
       await expect(checkout(2)).rejects.toMatchObject({
-        status: 409,
         code: 'INSUFFICIENT_STOCK',
+        status: 409,
       });
-      await expect(checkout(1)).resolves.toMatchObject({ itemCount: 1 });
+      const controlledStockCheckout = checkout(1);
+      await expect(controlledStockCheckout).rejects.toMatchObject({
+        code: 'CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP',
+        status: 409,
+      });
+      await expect(controlledStockCheckout).rejects.toThrow(/stock controlado.*WhatsApp/iu);
     } finally {
       database.close();
     }

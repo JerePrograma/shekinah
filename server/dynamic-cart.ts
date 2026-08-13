@@ -26,6 +26,13 @@ export async function recalculateDynamicCart(value: unknown, database: D1Databas
     if (detail.availability === 'unavailable') throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
     const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
     if (availableQuantity !== undefined && quantity > availableQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
+    if (detail.stockQuantity !== undefined) {
+      throw new HttpError(
+        409,
+        'CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP',
+        `${detail.name} tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.`,
+      );
+    }
     const available = isProductEffectivelyAvailable(detail);
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);

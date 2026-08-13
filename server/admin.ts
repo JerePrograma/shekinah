@@ -77,6 +77,9 @@ export async function getAdminSummary(database: D1Database, range: AdminRange): 
          JOIN requested_range r
          WHERE o.created_at BETWEEN r.from_at AND r.to_at
            AND p.mapped_status = 'approved'
+           AND p.amount_minor = o.total_minor
+           AND p.currency = o.currency
+           AND p.external_reference = o.id
        ),
        analytics_metrics AS (
          SELECT

@@ -1,3 +1,4 @@
+import { CHECKOUT_IDEMPOTENCY_WINDOW_MS } from '../src/commerce/contracts';
 import type { RecalculatedCart } from './catalog';
 import { toMajorUnits } from './catalog';
 import { verifyHmacSha256Hex } from './crypto';
@@ -23,6 +24,7 @@ export type MercadoPagoPayment = Readonly<{
 export async function createMercadoPagoPreference({
   accessToken,
   cart,
+  createdAt,
   mode,
   orderId,
   publicToken,
@@ -30,11 +32,15 @@ export async function createMercadoPagoPreference({
 }: Readonly<{
   accessToken: string;
   cart: RecalculatedCart;
+  createdAt: string;
   mode: CommerceMode;
   orderId: string;
   publicToken: string;
   siteUrl: URL;
 }>): Promise<PreferenceResult> {
+  const preferenceTerm = requireActivePreferenceTerm(createdAt);
+  const notificationUrl = new URL('/api/webhooks/mercadopago', siteUrl);
+  notificationUrl.searchParams.set('source_news', 'webhooks');
   const body = {
     items: cart.lines.map(({ product, quantity }) => ({
       id: product.id,
@@ -45,7 +51,7 @@ export async function createMercadoPagoPreference({
       unit_price: toMajorUnits(product.unitPriceMinor),
     })),
     external_reference: orderId,
-    notification_url: new URL('/api/webhooks/mercadopago', siteUrl).toString(),
+    notification_url: notificationUrl.toString(),
     back_urls: {
       success: withOrderToken(siteUrl, '/pago/exito', publicToken),
       pending: withOrderToken(siteUrl, '/pago/pendiente', publicToken),
@@ -53,6 +59,9 @@ export async function createMercadoPagoPreference({
     },
     auto_return: 'approved',
     binary_mode: false,
+    expires: true,
+    expiration_date_from: preferenceTerm.from,
+    expiration_date_to: preferenceTerm.to,
     metadata: { order_id: orderId },
   };
   let response: Response;
@@ -83,24 +92,30 @@ export async function createMercadoPagoPreference({
     }
     throw new HttpError(502, 'PAYMENT_PROVIDER_REJECTED', 'Mercado Pago rechazó la preferencia.');
   }
-  return parsePreferencePayload(
-    await readProviderJson(response, 'PAYMENT_PROVIDER_OUTCOME_UNKNOWN'),
+  const payload = await readProviderJson(response, 'PAYMENT_PROVIDER_OUTCOME_UNKNOWN');
+  const preference = parsePreferencePayload(
+    payload,
     mode,
     'PAYMENT_PROVIDER_OUTCOME_UNKNOWN',
   );
+  assertCreatedPreferenceExpiration(payload, preferenceTerm);
+  return preference;
 }
 
 export async function recoverMercadoPagoPreference({
   accessToken,
   cart,
+  createdAt,
   mode,
   orderId,
 }: Readonly<{
   accessToken: string;
   cart: RecalculatedCart;
+  createdAt: string;
   mode: CommerceMode;
   orderId: string;
 }>): Promise<PreferenceResult | null> {
+  const preferenceTerm = requireActivePreferenceTerm(createdAt);
   const searchUrl = new URL(`${MERCADO_PAGO_API}/checkout/preferences/search`);
   searchUrl.searchParams.set('external_reference', orderId);
   searchUrl.searchParams.set('limit', '2');
@@ -138,11 +153,16 @@ export async function recoverMercadoPagoPreference({
     throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia no corresponde al pedido.');
   }
   assertPreferenceMatchesCart(detail, cart);
+  assertRecoveredPreferenceExpiration(detail, preferenceTerm);
   const recovered = parsePreferencePayload(detail, mode, 'PREFERENCE_RECOVERY_INVALID_RESPONSE');
   if (recovered.id !== preferenceId) {
     throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia recuperada no coincide con la solicitada.');
   }
   return recovered;
+}
+
+export function assertMercadoPagoPreferenceActive(createdAt: string): void {
+  void requireActivePreferenceTerm(createdAt);
 }
 
 export async function getMercadoPagoPayment(
@@ -306,15 +326,19 @@ function assertPreferenceMatchesCart(
       typeof rawItem.id !== 'string' ||
       typeof rawItem.quantity !== 'number' ||
       !Number.isSafeInteger(rawItem.quantity) ||
-      typeof rawItem.unit_price !== 'number' ||
       rawItem.currency_id !== 'ARS'
     ) {
       throw new HttpError(502, 'PREFERENCE_RECOVERY_INVALID_RESPONSE', 'La preferencia previa contiene ítems inválidos.');
     }
-    const unitPriceMinor = Math.round(rawItem.unit_price * 100);
+    const unitPrice = typeof rawItem.unit_price === 'number'
+      ? rawItem.unit_price
+      : typeof rawItem.unit_price === 'string' && /^\d+(?:\.\d{1,2})?$/u.test(rawItem.unit_price)
+        ? Number(rawItem.unit_price)
+        : Number.NaN;
+    const unitPriceMinor = Math.round(unitPrice * 100);
     if (
       !Number.isSafeInteger(unitPriceMinor) ||
-      Math.abs(rawItem.unit_price * 100 - unitPriceMinor) > 0.000001 ||
+      Math.abs(unitPrice * 100 - unitPriceMinor) > 0.000001 ||
       expected.get(rawItem.id) !== `${rawItem.quantity}:${unitPriceMinor}`
     ) {
       throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia previa no coincide con el carrito.');
@@ -324,6 +348,104 @@ function assertPreferenceMatchesCart(
   }
   if (expected.size !== 0 || recoveredTotal !== cart.totalMinor) {
     throw new HttpError(409, 'PREFERENCE_RECOVERY_MISMATCH', 'La preferencia previa no coincide con el carrito.');
+  }
+}
+
+type PreferenceTerm = Readonly<{
+  from: string;
+  to: string;
+  fromEpochMs: number;
+  toEpochMs: number;
+}>;
+
+function requireActivePreferenceTerm(createdAt: string): PreferenceTerm {
+  const fromEpochMs = Date.parse(createdAt);
+  const toEpochMs = fromEpochMs + CHECKOUT_IDEMPOTENCY_WINDOW_MS;
+  if (!Number.isFinite(fromEpochMs) || !Number.isFinite(toEpochMs)) {
+    throw new HttpError(
+      500,
+      'ORDER_CREATED_AT_INVALID',
+      'No se pudo determinar la vigencia del pedido.',
+      false,
+    );
+  }
+  let from: string;
+  let to: string;
+  try {
+    from = new Date(fromEpochMs).toISOString();
+    to = new Date(toEpochMs).toISOString();
+  } catch {
+    throw new HttpError(
+      500,
+      'ORDER_CREATED_AT_INVALID',
+      'No se pudo determinar la vigencia del pedido.',
+      false,
+    );
+  }
+  if (toEpochMs <= Date.now()) {
+    throw new HttpError(
+      409,
+      'CHECKOUT_INTENT_EXPIRED',
+      'Este intento de pago venció. Volvé a iniciar el checkout.',
+    );
+  }
+  return Object.freeze({ from, to, fromEpochMs, toEpochMs });
+}
+
+function readPreferenceExpiration(
+  payload: unknown,
+  errorCode: string,
+): Readonly<{ fromEpochMs: number; toEpochMs: number; expired: boolean }> {
+  if (
+    !isRecord(payload) ||
+    typeof payload.expiration_date_from !== 'string' ||
+    typeof payload.expiration_date_to !== 'string' ||
+    typeof payload.preference_expired !== 'boolean'
+  ) {
+    throw new HttpError(502, errorCode, 'Mercado Pago devolvió una vigencia de preferencia inválida.');
+  }
+  const fromEpochMs = Date.parse(payload.expiration_date_from);
+  const toEpochMs = Date.parse(payload.expiration_date_to);
+  if (!Number.isFinite(fromEpochMs) || !Number.isFinite(toEpochMs)) {
+    throw new HttpError(502, errorCode, 'Mercado Pago devolvió una vigencia de preferencia inválida.');
+  }
+  return Object.freeze({
+    fromEpochMs,
+    toEpochMs,
+    expired: payload.preference_expired,
+  });
+}
+
+function assertCreatedPreferenceExpiration(payload: unknown, expected: PreferenceTerm): void {
+  const actual = readPreferenceExpiration(payload, 'PAYMENT_PROVIDER_OUTCOME_UNKNOWN');
+  if (
+    actual.fromEpochMs !== expected.fromEpochMs ||
+    actual.toEpochMs !== expected.toEpochMs ||
+    actual.expired ||
+    expected.toEpochMs <= Date.now()
+  ) {
+    throw new HttpError(
+      502,
+      'PAYMENT_PROVIDER_OUTCOME_UNKNOWN',
+      'Mercado Pago no confirmó la vigencia esperada de la preferencia.',
+    );
+  }
+}
+
+function assertRecoveredPreferenceExpiration(payload: unknown, expected: PreferenceTerm): void {
+  const actual = readPreferenceExpiration(payload, 'PREFERENCE_RECOVERY_INVALID_RESPONSE');
+  if (
+    actual.fromEpochMs !== expected.fromEpochMs ||
+    actual.toEpochMs !== expected.toEpochMs
+  ) {
+    throw new HttpError(
+      409,
+      'PREFERENCE_RECOVERY_MISMATCH',
+      'La vigencia de la preferencia no corresponde al pedido.',
+    );
+  }
+  if (actual.expired || expected.toEpochMs <= Date.now()) {
+    throw new HttpError(409, 'PREFERENCE_RECOVERY_EXPIRED', 'La preferencia previa ya venció.');
   }
 }
 
