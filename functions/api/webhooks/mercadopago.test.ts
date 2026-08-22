@@ -8,10 +8,16 @@ import type { Env, PagesFunctionContext } from '../../../server/platform';
 import { SqliteD1 } from '../../../server/test/sqlite-d1';
 import { onRequest } from './mercadopago';
 
-const migration = readFileSync(
-  resolve(process.cwd(), 'migrations', '0001_commerce.sql'),
-  'utf8',
-);
+const migration = [
+  '0001_commerce.sql',
+  '0002_fulfillment_and_retention.sql',
+  '0003_checkout_intent_cart_fingerprint.sql',
+  '0004_catalog_admin.sql',
+  '0005_admin_auth.sql',
+  '0006_analytics_manual_payment_click.sql',
+  '0007_whatsapp_order_reservations.sql',
+  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
 const webhookSecret = 's'.repeat(40);
 const requestId = 'request-123';
 const timestamp = '1720000000';

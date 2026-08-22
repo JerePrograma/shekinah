@@ -3,6 +3,11 @@ import { resolve } from 'node:path';
 
 import type { RecalculatedCart } from './catalog';
 import {
+  createCatalogProduct,
+  getCatalogProductDetail,
+  patchCatalogProductInventory,
+} from './catalog-store';
+import {
   claimPreferenceAttempt,
   getOrderById,
   markPreferenceCreated,
@@ -11,10 +16,16 @@ import {
 } from './orders';
 import { SqliteD1 } from './test/sqlite-d1';
 
-const migration = readFileSync(
-  resolve(process.cwd(), 'migrations', '0001_commerce.sql'),
-  'utf8',
-);
+const migration = [
+  '0001_commerce.sql',
+  '0002_fulfillment_and_retention.sql',
+  '0003_checkout_intent_cart_fingerprint.sql',
+  '0004_catalog_admin.sql',
+  '0005_admin_auth.sql',
+  '0006_analytics_manual_payment_click.sql',
+  '0007_whatsapp_order_reservations.sql',
+  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
 
 function cart(quantity = 1): RecalculatedCart {
   const unitPriceMinor = 75_000;
@@ -53,7 +64,232 @@ function cart(quantity = 1): RecalculatedCart {
   });
 }
 
+function controlledCart(
+  quantity = 1,
+  productId = 'producto-stock-checkout',
+): RecalculatedCart {
+  const value = cart(quantity);
+  const line = value.lines[0];
+  if (line === undefined) throw new Error('Falta la línea controlada de prueba.');
+  return Object.freeze({
+    ...value,
+    lines: Object.freeze([
+      Object.freeze({
+        ...line,
+        product: Object.freeze({
+          ...line.product,
+          id: productId,
+          stockControlled: true,
+        }),
+      }),
+    ]),
+  });
+}
+
 describe('pedidos e idempotencia D1', () => {
+  it('reserva stock al crear Checkout Pro y lo consume exactamente una vez por webhook', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(database, {
+        id: 'producto-stock-checkout',
+        slug: 'producto-stock-checkout',
+        path: '/producto-stock-checkout/',
+        name: 'Producto de prueba',
+        categorySlugs: ['agroecologicos'],
+        categoryNames: ['Agroecologicos'],
+        presentation: '50 g',
+        price: { amount: 750, currency: 'ARS' },
+        availability: 'available',
+        stockQuantity: 2,
+        images: [],
+        variants: [],
+      }, 'admin@example.test');
+
+      const first = await prepareOrder({
+        cart: controlledCart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      const second = await prepareOrder({
+        cart: controlledCart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      await expect(prepareOrder({
+        cart: controlledCart(),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      })).rejects.toMatchObject({ status: 409, code: 'INSUFFICIENT_STOCK' });
+      expect(await getCatalogProductDetail(database, 'producto-stock-checkout')).toMatchObject({
+        stockQuantity: 2,
+        reservedQuantity: 2,
+        availableQuantity: 0,
+      });
+
+      const payment = {
+        id: 'checkout-stock-payment',
+        status: 'approved',
+        statusDetail: 'accredited',
+        amountMinor: first.order.total_minor,
+        currency: 'ARS',
+        externalReference: first.order.id,
+        approvedAt: '2026-08-22T12:00:00.000Z',
+        updatedAt: '2026-08-22T12:00:00.000Z',
+      } as const;
+      await updateOrderFromPayment(database, first.order, payment, 'approved', 'stock-approved');
+      expect(await getCatalogProductDetail(database, 'producto-stock-checkout')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 1,
+        availableQuantity: 0,
+      });
+
+      const approved = await getOrderById(database, first.order.id);
+      if (approved === null) throw new Error('Pedido aprobado ausente.');
+      expect(approved.stock_consumed_at).not.toBeNull();
+      await updateOrderFromPayment(database, approved, payment, 'approved', 'stock-redelivery');
+      expect(await getCatalogProductDetail(database, 'producto-stock-checkout')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 1,
+      });
+
+      await updateOrderFromPayment(
+        database,
+        approved,
+        { ...payment, status: 'refunded', updatedAt: '2026-08-22T13:00:00.000Z' },
+        'refunded',
+        'stock-refunded',
+      );
+      expect(await getCatalogProductDetail(database, 'producto-stock-checkout')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 1,
+      });
+      expect(second.order.stock_consumed_at).toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
+  it('libera la ventana vencida, la mantiene por pago pendiente y consume una aprobación tardía', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(database, {
+        id: 'producto-stock-vencido',
+        slug: 'producto-stock-vencido',
+        path: '/producto-stock-vencido/',
+        name: 'Producto vencido',
+        categorySlugs: ['agroecologicos'],
+        categoryNames: ['Agroecologicos'],
+        presentation: '50 g',
+        price: { amount: 750, currency: 'ARS' },
+        availability: 'available',
+        stockQuantity: 1,
+        images: [],
+        variants: [],
+      }, 'admin@example.test');
+      const orderId = 'ord_checkout_stock_expired_test';
+      await database.prepare(`INSERT INTO orders (
+        id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
+        status, currency, total_minor, item_count, created_at, updated_at, channel,
+        stock_reserved_at, stock_reservation_expires_at
+      ) VALUES (?, ?, ?, ?, 'preference_pending', 'ARS', 75000, 1, ?, ?,
+        'checkout_pro', ?, ?)`)
+        .bind(
+          orderId,
+          'expired-public-token-hash',
+          '00000000-0000-4000-8000-000000000099',
+          'expired-cart-fingerprint',
+          '2000-01-01T00:00:00.000Z',
+          '2000-01-01T00:00:00.000Z',
+          '2000-01-01T00:00:00.000Z',
+          '2000-01-01T00:30:00.000Z',
+        )
+        .run();
+      await database.prepare(`INSERT INTO order_items (
+        order_id, product_id, name, presentation, quantity, unit_price_minor,
+        subtotal_minor, stock_controlled
+      ) VALUES (?, 'producto-stock-vencido', 'Producto vencido', '50 g', 1,
+        75000, 75000, 1)`)
+        .bind(orderId)
+        .run();
+      expect(await getCatalogProductDetail(database, 'producto-stock-vencido')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 0,
+        availableQuantity: 1,
+      });
+
+      const expired = await getOrderById(database, orderId);
+      if (expired === null) throw new Error('Pedido vencido ausente.');
+      const payment = {
+        id: 'expired-stock-payment',
+        status: 'pending',
+        statusDetail: 'pending_contingency',
+        amountMinor: 75_000,
+        currency: 'ARS',
+        externalReference: orderId,
+        approvedAt: null,
+        updatedAt: '2026-08-22T12:00:00.000Z',
+      } as const;
+      await prepareOrder({
+        cart: controlledCart(1, 'producto-stock-vencido'),
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      });
+      await expect(updateOrderFromPayment(
+        database,
+        expired,
+        payment,
+        'pending',
+        'expired-pending-overbooked',
+      )).rejects.toMatchObject({
+        status: 409,
+        code: 'STOCK_RECONCILIATION_REQUIRED',
+      });
+      await expect(database.prepare(
+        'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+      ).bind(orderId).first<number>('count')).resolves.toBe(0);
+
+      await patchCatalogProductInventory(
+        database,
+        'producto-stock-vencido',
+        { stockQuantity: 2 },
+        'admin@example.test',
+      );
+      await updateOrderFromPayment(database, expired, payment, 'pending', 'expired-pending');
+      expect(await getCatalogProductDetail(database, 'producto-stock-vencido')).toMatchObject({
+        stockQuantity: 2,
+        reservedQuantity: 2,
+        availableQuantity: 0,
+      });
+
+      const pending = await getOrderById(database, orderId);
+      if (pending === null) throw new Error('Pedido pendiente ausente.');
+      await updateOrderFromPayment(
+        database,
+        pending,
+        {
+          ...payment,
+          status: 'approved',
+          statusDetail: 'accredited',
+          approvedAt: '2026-08-22T12:05:00.000Z',
+          updatedAt: '2026-08-22T12:05:00.000Z',
+        },
+        'approved',
+        'expired-approved',
+      );
+      expect(await getCatalogProductDetail(database, 'producto-stock-vencido')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 1,
+        availableQuantity: 0,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it('recupera el mismo pedido y rechaza reutilizar la clave con otro carrito', async () => {
     const database = new SqliteD1(migration);
     try {

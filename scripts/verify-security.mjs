@@ -153,6 +153,9 @@ if (!existsSync(join(projectRoot, 'migrations', '0005_admin_auth.sql'))) {
 if (!existsSync(join(projectRoot, 'migrations', '0007_whatsapp_order_reservations.sql'))) {
   fail('Falta la migración de pedidos y reservas de WhatsApp.');
 }
+if (!existsSync(join(projectRoot, 'migrations', '0008_checkout_pro_stock_and_whatsapp_identity.sql'))) {
+  fail('Falta la migración de stock de Checkout Pro y datos de WhatsApp.');
+}
 
 const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');
 if (!headers.includes("connect-src 'self'")) {

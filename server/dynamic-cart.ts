@@ -8,7 +8,11 @@ import { HttpError } from './http';
 import type { D1Database } from './platform';
 import { assertExactKeys, isRecord, readInteger, readSafeText } from './validation';
 
-export async function recalculateDynamicCart(value: unknown, database: D1Database): Promise<RecalculatedCart> {
+export async function recalculateDynamicCart(
+  value: unknown,
+  database: D1Database,
+  excludedReservationOrderId: string | null = null,
+): Promise<RecalculatedCart> {
   if (!isRecord(value)) throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
   assertExactKeys(value, ['idempotencyKey', 'items', 'fulfillment'], 'INVALID_CHECKOUT', 'La solicitud de checkout contiene campos no permitidos.');
   const fulfillment = requireCheckoutFulfillment(value.fulfillment);
@@ -21,22 +25,19 @@ export async function recalculateDynamicCart(value: unknown, database: D1Databas
     const quantity = readInteger(rawLine.quantity, 'quantity', 1, MAX_CART_QUANTITY);
     if (seen.has(productId)) throw new HttpError(400, 'DUPLICATE_PRODUCT', 'El carrito contiene un producto duplicado.');
     seen.add(productId);
-    const detail = await getCatalogProductDetail(database, productId);
+    const detail = await getCatalogProductDetail(
+      database,
+      productId,
+      excludedReservationOrderId,
+    );
     if (detail === null) throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
     if (detail.availability === 'unavailable') throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
     const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
     if (availableQuantity !== undefined && quantity > availableQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
-    if (detail.stockQuantity !== undefined) {
-      throw new HttpError(
-        409,
-        'CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP',
-        `${detail.name} tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.`,
-      );
-    }
     const available = isProductEffectivelyAvailable(detail);
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
-    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available });
+    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available, stockControlled: detail.stockQuantity !== undefined });
     const subtotalMinor = unitPriceMinor * quantity;
     if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
     productsTotalMinor += subtotalMinor; itemCount += quantity;

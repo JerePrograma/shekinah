@@ -1,3 +1,4 @@
+import { CHECKOUT_IDEMPOTENCY_WINDOW_MS } from '../src/commerce/contracts';
 import type { RecalculatedCart } from './catalog';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import { HttpError } from './http';
@@ -29,6 +30,10 @@ export type OrderRow = Readonly<{
   created_at: string;
   updated_at: string;
   approved_at: string | null;
+  channel: 'checkout_pro' | 'whatsapp';
+  stock_reserved_at: string | null;
+  stock_reservation_expires_at: string | null;
+  stock_consumed_at: string | null;
 }>;
 
 export type PreparedOrder = Readonly<{
@@ -53,14 +58,18 @@ export async function prepareOrder({
   const fingerprint = await cartFingerprint(cart);
   const orderId = `ord_${randomToken(18)}`;
   const now = new Date().toISOString();
+  const stockReservationExpiresAt = new Date(
+    Date.parse(now) + CHECKOUT_IDEMPOTENCY_WINDOW_MS,
+  ).toISOString();
 
   const statements = [
     database
       .prepare(
         `INSERT OR IGNORE INTO orders (
           id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
-          status, currency, total_minor, item_count, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'preference_pending', 'ARS', ?, ?, ?, ?)`,
+          status, currency, total_minor, item_count, created_at, updated_at,
+          stock_reserved_at, stock_reservation_expires_at
+        ) VALUES (?, ?, ?, ?, 'preference_pending', 'ARS', ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         orderId,
@@ -71,15 +80,17 @@ export async function prepareOrder({
         cart.itemCount,
         now,
         now,
+        now,
+        stockReservationExpiresAt,
       ),
     ...cart.lines.map(({ product, quantity, subtotalMinor }) =>
       database
         .prepare(
           `INSERT INTO order_items (
             order_id, product_id, name, presentation, sku,
-            quantity, unit_price_minor, subtotal_minor
+            quantity, unit_price_minor, subtotal_minor, stock_controlled
           )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
         )
         .bind(
@@ -91,11 +102,16 @@ export async function prepareOrder({
           quantity,
           product.unitPriceMinor,
           subtotalMinor,
+          product.stockControlled === true ? 1 : 0,
           orderId,
         ),
     ),
   ];
-  await database.batch(statements);
+  try {
+    await database.batch(statements);
+  } catch (error: unknown) {
+    throwOrderStorageError(error);
+  }
 
   const order = await getOrderByIdempotencyKey(database, idempotencyKey);
   if (order === null) {
@@ -284,7 +300,8 @@ export async function updateOrderFromPayment(
   }
 
   const now = new Date().toISOString();
-  await database.batch([
+  try {
+    await database.batch([
     database
       .prepare(
         `INSERT INTO payments (
@@ -415,7 +432,10 @@ export async function updateOrderFromPayment(
         payment.currency,
         payment.externalReference,
       ),
-  ]);
+    ]);
+  } catch (error: unknown) {
+    throwOrderStorageError(error);
+  }
 
   const persisted = await database
     .prepare(
@@ -458,4 +478,47 @@ export async function cartFingerprint(
     .sort()
     .join('|');
   return sha256Hex(`${cart.currency}:${cart.totalMinor}:${cart.itemCount}:${canonical}`);
+}
+
+function throwOrderStorageError(error: unknown): never {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('STOCK_RESERVATION_INSUFFICIENT')) {
+    throw new HttpError(
+      409,
+      'INSUFFICIENT_STOCK',
+      'Algunos productos ya no tienen la cantidad solicitada.',
+    );
+  }
+  if (
+    message.includes('STOCK_PRODUCT_DELETED') ||
+    message.includes('STOCK_PRODUCT_UNAVAILABLE')
+  ) {
+    throw new HttpError(
+      409,
+      'PRODUCT_UNAVAILABLE',
+      'Uno de los productos ya no está disponible.',
+    );
+  }
+  if (
+    message.includes('CHECKOUT_STOCK_RESERVATION_INCONSISTENT') ||
+    message.includes('CHECKOUT_STOCK_CONTROL_INCONSISTENT') ||
+    message.includes('STOCK_CONTROL_SNAPSHOT_INCONSISTENT')
+  ) {
+    throw new HttpError(
+      409,
+      'STOCK_RECONCILIATION_REQUIRED',
+      'El inventario del pedido requiere conciliación antes de continuar.',
+    );
+  }
+  if (
+    message.includes('CHECKOUT_STOCK_WINDOW_REQUIRED') ||
+    /no such column:\s*(?:\w+\.)?(?:stock_reserved_at|stock_reservation_expires_at|stock_consumed_at|stock_controlled)/iu.test(message)
+  ) {
+    throw new HttpError(
+      503,
+      'CHECKOUT_STOCK_MIGRATION_REQUIRED',
+      'La migración de reservas de Checkout Pro todavía no fue aplicada.',
+    );
+  }
+  throw error;
 }

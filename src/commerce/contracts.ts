@@ -24,7 +24,7 @@ export type CheckoutResponse = Readonly<{
 export type WhatsappOrderRequest = Readonly<{
   idempotencyKey: string;
   items: readonly CheckoutLineRequest[];
-  fulfillment: CheckoutFulfillment | null;
+  fulfillment: CheckoutFulfillment;
 }>;
 
 export type WhatsappOrderItem = Readonly<{

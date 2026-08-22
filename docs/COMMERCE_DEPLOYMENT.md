@@ -102,9 +102,9 @@ npx wrangler d1 migrations list DB --remote
 
 No aplicar SQL manual distinto de las migraciones versionadas.
 
-El flujo versionado aplica en orden `0001` a `0007`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico y `0007` agrega canal/resolución de pedidos más triggers e índices de reservas WhatsApp. `0007` quedó aplicada y verificada el 2026-08-12 primero en preview y luego en producción: `d1_migrations`, columnas, triggers, índices, conteos y `PRAGMA foreign_key_check` resultaron coherentes. En futuras migraciones se debe conservar el mismo orden preview → verificación → producción y no desplegar Functions dependientes antes del esquema correspondiente.
+El flujo versionado aplica en orden `0001` a `0008`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico, `0007` agrega canal/resolución de pedidos y reservas WhatsApp, y `0008` incorpora la reserva/consumo de Checkout Pro y la huella de datos WhatsApp. `0007` quedó aplicada y verificada el 2026-08-12 primero en preview y luego en producción. `0008` debe repetir el orden preview → verificación → producción antes de desplegar Functions dependientes: confirmar columnas, índice, triggers, conteos, `PRAGMA foreign_key_check` y migración registrada.
 
-`0007` no debe revertirse editando ni borrando la migración después de aplicada. Ante rollback de código, primero aprobar o rechazar de forma controlada todos los pedidos WhatsApp `pending`; sólo entonces volver a una versión que no conozca reservas, dejando el esquema aditivo sin uso. Mantener código anterior con reservas pendientes haría que el catálogo ignore unidades comprometidas.
+`0007` ni `0008` deben revertirse editando o borrando una migración aplicada. Ante rollback de código, primero cortar nuevas preferencias, conciliar pagos y resolver de forma controlada todas las reservas activas; sólo entonces volver a una versión anterior, dejando el esquema aditivo sin uso. Mantener código anterior con reservas Checkout Pro activas haría que el catálogo ignore unidades comprometidas y que un webhook deje de consumirlas.
 
 ### 3.1. R2 para imágenes administrativas
 
@@ -147,18 +147,19 @@ ANALYTICS_RETENTION_DAYS=730
 En preview:
 
 ```text
-PUBLIC_SITE_URL=https://shekinah-7dl.pages.dev
-ALLOWED_SITE_ORIGINS=https://shekinah-7dl.pages.dev
-COMMERCE_ENABLED=false
+PUBLIC_SITE_URL=https://mp-sandbox.shekinah-7dl.pages.dev
+ALLOWED_SITE_ORIGINS=https://mp-sandbox.shekinah-7dl.pages.dev
+COMMERCE_ENABLED=true
 VITE_COMMERCE_ENABLED=false
 ANALYTICS_ENABLED=true
 VITE_ANALYTICS_ENABLED=true
 ANALYTICS_RETENTION_DAYS=730
+MERCADO_PAGO_CHECKOUT_MODE=sandbox
 ```
 
 `PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Production debe usar el apex canónico y preview el dominio técnico de Pages; no intercambiar ambos entornos.
 
-Los valores anteriores quedaron verificados por API en sus respectivos entornos. `VITE_ANALYTICS_ENABLED` exige un build nuevo porque se incorpora al bundle. `MERCADO_PAGO_CHECKOUT_MODE` y los secretos del proveedor permanecen sin configurar porque Checkout Pro sigue deshabilitado. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
+Los valores anteriores se releyeron el 2026-08-22. Preview permite llamadas backend controladas en sandbox pero mantiene oculto el botón público; producción conserva ambos flags en `false` y `MERCADO_PAGO_CHECKOUT_MODE=production`. `VITE_*` exige un build nuevo porque se incorpora al bundle. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
 
 ## 5. Configurar secretos
 
@@ -181,7 +182,7 @@ Crear valores aleatorios independientes, de al menos 32 bytes, para `ORDER_TOKEN
 
 Cargar cada valor como `secret_text` en el entorno exacto desde Pages o mediante la API autenticada. Confirmar después únicamente nombres y tipos; nunca leer, copiar ni registrar valores.
 
-Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. `ANALYTICS_HMAC_SECRET` quedó presente con valores independientes en ambos entornos el 2026-08-11. Los secretos de Mercado Pago y pedidos continúan ausentes mientras Checkout Pro permanezca deshabilitado.
+Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. `ANALYTICS_HMAC_SECRET` quedó presente con valores independientes en ambos entornos el 2026-08-11. El 2026-08-22 se verificó por nombre —sin leer valores— que producción también contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET`. La presencia no certifica vigencia: una credencial expuesta debe rotarse en el proveedor y actualizarse en Pages antes de cualquier activación.
 
 ### Precaución con deployments directos
 
@@ -191,7 +192,7 @@ Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo tr
 
 1. Usar primero credenciales de prueba y `MERCADO_PAGO_CHECKOUT_MODE=sandbox`.
 2. Registrar la URL de notificación exacta: `https://shekinah.ar/api/webhooks/mercadopago`. Al crear cada preferencia, el backend agrega `source_news=webhooks` para solicitar ese formato de notificación sin cambiar el endpoint público.
-3. Habilitar eventos de pagos.
+3. Habilitar únicamente el tópico de pagos usado por Checkout Pro. No suscribir eventos que el endpoint no procesa.
 4. Copiar el secreto de firma de Webhooks en `MERCADO_PAGO_WEBHOOK_SECRET`.
 5. Confirmar que el proveedor envía `x-signature`; validar `x-request-id` dentro del manifiesto cuando el header esté presente, sin inventarlo cuando el proveedor lo omita.
 6. Realizar pagos de prueba aprobados, pendientes y rechazados.
@@ -199,7 +200,7 @@ Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo tr
 
 La creación de preferencias no depende de un encabezado de idempotencia no documentado por Checkout Pro. D1 reclama un único intento por pedido y la preferencia vence al concluir la misma ventana de 30 minutos, calculada desde `orders.created_at`. Si la respuesta del proveedor es incierta, las solicitudes siguientes recuperan por `external_reference` y permanecen cerradas si no pueden demostrar un resultado único con carrito y vigencia exactos.
 
-Los productos con `stockQuantity` no son elegibles para Checkout Pro mientras ese canal no implemente reserva o consumo transaccional. El servidor responde `CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP` y el comprador debe continuar por WhatsApp, que sí persiste el pedido pendiente y reserva unidades. No retirar esta restricción sólo para hacer pasar un smoke.
+Los productos con `stockQuantity` son elegibles sólo con `0008` aplicada. D1 reserva antes de llamar al proveedor, comparte disponibilidad con WhatsApp y serializa la última unidad. La reserva vence con la preferencia salvo que exista un pago `pending`; `approved` o `refunded` consume el físico una vez. No activar Functions nuevas contra un esquema anterior ni tratar un reembolso como reposición de mercadería.
 
 Cada `provider_payment_id` aceptado debe cubrir por sí solo el total exacto en ARS y referenciar el pedido; no se suman pagos parciales. Ante varios pagos compatibles, el pedido se deriva del conjunto persistido con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`. La facturación administrativa cuenta el pedido una vez, pero `Pagos aprobados` conserva el conteo de IDs exactos para evidenciar un posible doble cobro.
 
@@ -253,9 +254,10 @@ Con D1 de preview y sandbox:
 - retiro de consentimiento: borrado de sesión y eventos en D1, con HMAC revocado para bloquear solicitudes en vuelo;
 - exportaciones CSV: sin fórmulas ejecutables;
 - artefacto `dist`: sin secretos ni `.map`.
-- inventario legacy: ausencia de `stockQuantity` conserva Checkout Pro sin control; cualquier `stockQuantity` deriva a WhatsApp, y stock 0 controlado queda no disponible;
-- cantidades: cliente limita a `min(99, stock)`; el servidor rechaza cantidad insuficiente y, si existe `stockQuantity`, bloquea Checkout Pro aunque haya unidades para exigir reserva por WhatsApp;
-- WhatsApp: creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
+- inventario legacy: ausencia de `stockQuantity` conserva Checkout Pro sin control; stock 0 controlado queda no disponible;
+- cantidades: cliente limita a `min(99, disponible)`; el servidor y los triggers rechazan carreras y sobre-reservas entre Checkout Pro y WhatsApp;
+- Checkout Pro con stock: reserva antes de preferencia, replay de la misma UUID sin auto-bloqueo, vencimiento a 30 minutos, extensión por pago pendiente, aprobación exactamente una vez y reembolso sin reposición automática;
+- WhatsApp: datos completos obligatorios, creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
 - administración: aprobar descuenta físico exactamente una vez; rechazar libera por derivación; estados cruzados y clicks repetidos no duplican efectos;
 - imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;
 - R2: `shekinah` y `shekinah-preview` aislados, `CATALOG_IMAGES` visible en el deployment y `publicR2DevEnabled=false`, sin confundir infraestructura con persistencia ya probada.
@@ -272,11 +274,12 @@ Validar por separado el fallback manual:
 ## 9. Activar Checkout Pro de forma escalonada
 
 1. Mantener `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`; la analítica opt-in puede permanecer activa de forma independiente.
-2. Confirmar Functions, binding, migraciones y autenticación administrativa; Access es opcional.
+2. Confirmar Functions, binding, `0008` en preview y producción, reservas/consumo y autenticación administrativa; Access es opcional.
 3. Conservar `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true`, retención 730 y secretos independientes; no mezclar eventos manuales con métricas financieras.
-4. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de la compra controlada y aprobación del titular de Mercado Pago.
-5. Supervisar webhooks, estados e importes durante la ventana inicial.
-6. Resolver explícitamente la coexistencia o retiro del fallback manual.
+4. Rotar cualquier credencial expuesta, actualizar el secreto cifrado de Pages y dejar en Webhooks únicamente el tópico de pagos.
+5. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de una compra controlada con comprador distinto del vendedor, webhook procesado, stock consumido y aprobación del titular de Mercado Pago.
+6. Supervisar webhooks, estados, importes y reservas durante la ventana inicial.
+7. Resolver explícitamente la coexistencia o retiro del fallback manual.
 
 ## Estados que deben informarse por separado
 

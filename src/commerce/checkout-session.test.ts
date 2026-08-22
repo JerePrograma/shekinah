@@ -99,21 +99,21 @@ describe('intento de checkout', () => {
 
   it('persiste una idempotencia separada para WhatsApp sin guardar PII', async () => {
     const now = 1_800_000_000_000;
-    const withoutFulfillment = await getOrCreateWhatsappOrderIdempotencyKey(
+    const first = await getOrCreateWhatsappOrderIdempotencyKey(
       [item('uno', 1)],
-      null,
+      fulfillment,
       now,
     );
     expect(
-      await getOrCreateWhatsappOrderIdempotencyKey([item('uno', 1)], null, now + 1_000),
-    ).toBe(withoutFulfillment);
+      await getOrCreateWhatsappOrderIdempotencyKey([item('uno', 1)], fulfillment, now + 1_000),
+    ).toBe(first);
 
-    const withFulfillment = await getOrCreateWhatsappOrderIdempotencyKey(
+    const changedFulfillment = await getOrCreateWhatsappOrderIdempotencyKey(
       [item('uno', 1)],
-      fulfillment,
+      { ...fulfillment, locality: 'La Plata' },
       now + 2_000,
     );
-    expect(withFulfillment).not.toBe(withoutFulfillment);
+    expect(changedFulfillment).not.toBe(first);
     const stored = window.localStorage.getItem('shekinah.whatsapp-order-idempotency.v1');
     expect(stored).not.toBeNull();
     expect(stored).not.toContain('Ana Pérez');
@@ -126,7 +126,7 @@ describe('intento de checkout', () => {
         fulfillment,
         now + 3_000,
       ),
-    ).not.toBe(withFulfillment);
+    ).not.toBe(changedFulfillment);
   });
 
   it('conserva la idempotencia de WhatsApp en memoria si localStorage no está disponible', async () => {
@@ -140,12 +140,12 @@ describe('intento de checkout', () => {
       const now = 1_800_000_000_000;
       const first = await getOrCreateWhatsappOrderIdempotencyKey(
         [item('sin-storage', 1)],
-        null,
+        fulfillment,
         now,
       );
       const repeated = await getOrCreateWhatsappOrderIdempotencyKey(
         [item('sin-storage', 1)],
-        null,
+        fulfillment,
         now + 1_000,
       );
       expect(repeated).toBe(first);

@@ -59,7 +59,7 @@ export async function getOrCreateCheckoutIdempotencyKey(
 
 export async function getOrCreateWhatsappOrderIdempotencyKey(
   items: readonly CartItem[],
-  fulfillment: CheckoutFulfillment | null,
+  fulfillment: CheckoutFulfillment,
   now = Date.now(),
 ): Promise<string> {
   const operation = async () => getOrCreateIdempotencyKey(
@@ -142,11 +142,11 @@ async function getOrCreateCheckoutIdempotencyKeyUnlocked(
 
 async function whatsappOrderFingerprint(
   items: readonly CartItem[],
-  fulfillment: CheckoutFulfillment | null,
+  fulfillment: CheckoutFulfillment,
 ): Promise<string> {
   const canonical = JSON.stringify([
     cartFingerprint(items),
-    fulfillment === null ? null : fulfillmentCanonicalValue(fulfillment),
+    fulfillmentCanonicalValue(fulfillment),
   ]);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)]

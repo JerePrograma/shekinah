@@ -15,6 +15,10 @@ const whatsappOrderReservationsMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0007_whatsapp_order_reservations.sql'),
   'utf8',
 );
+const checkoutProStockMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0008_checkout_pro_stock_and_whatsapp_identity.sql'),
+  'utf8',
+);
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -32,6 +36,7 @@ describe('migraciones D1', () => {
       const legacyAnalytics = insertLegacyAnalytics(database);
       database.exec(analyticsManualPaymentMigration);
       database.exec(whatsappOrderReservationsMigration);
+      database.exec(checkoutProStockMigration);
       expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}\n${adminAuthMigration}`)).not.toThrow();
 
       const schema = database.prepare('SELECT name, type FROM sqlite_schema ORDER BY type, name').all();
@@ -49,11 +54,12 @@ describe('migraciones D1', () => {
         expect.objectContaining({ name: 'idx_analytics_events_product', type: 'index' }),
         expect.objectContaining({ name: 'idx_orders_channel_status_created', type: 'index' }),
         expect.objectContaining({ name: 'idx_order_items_product_order', type: 'index' }),
-        expect.objectContaining({ name: 'whatsapp_order_items_reserve_stock', type: 'trigger' }),
+        expect.objectContaining({ name: 'commerce_order_items_reserve_stock', type: 'trigger' }),
         expect.objectContaining({ name: 'whatsapp_order_items_pending_only', type: 'trigger' }),
         expect.objectContaining({ name: 'whatsapp_order_items_update_immutable', type: 'trigger' }),
         expect.objectContaining({ name: 'whatsapp_order_items_delete_immutable', type: 'trigger' }),
         expect.objectContaining({ name: 'whatsapp_orders_consume_reservation', type: 'trigger' }),
+        expect.objectContaining({ name: 'checkout_orders_consume_stock', type: 'trigger' }),
       ]));
       expect(schema).not.toContainEqual(expect.objectContaining({ name: 'analytics_events_v2' }));
       expect(database.prepare(
@@ -186,7 +192,7 @@ describe('migraciones D1', () => {
         'whatsapp-overstock',
         'producto-controlado',
         3,
-      )).toThrow('WHATSAPP_INSUFFICIENT_STOCK');
+      )).toThrow('STOCK_RESERVATION_INSUFFICIENT');
       database.prepare("DELETE FROM orders WHERE id = 'whatsapp-overstock'").run();
 
       expect(() => database.prepare(
@@ -248,21 +254,21 @@ describe('migraciones D1', () => {
       expect(() => database.prepare(`UPDATE catalog_product_mutations
         SET payload_json = json_set(payload_json, '$.stockQuantity', 1)
         WHERE product_id = 'producto-controlado'`).run())
-        .toThrow('WHATSAPP_STOCK_BELOW_RESERVATIONS');
+        .toThrow('STOCK_BELOW_RESERVATIONS');
       expect(() => database.prepare(`UPDATE catalog_product_mutations
         SET payload_json = json_remove(payload_json, '$.stockQuantity')
         WHERE product_id = 'producto-controlado'`).run())
-        .toThrow('WHATSAPP_STOCK_CONTROL_REQUIRED');
+        .toThrow('STOCK_CONTROL_REQUIRED');
       expect(() => database.prepare(`UPDATE catalog_product_mutations
         SET payload_json = NULL, deleted = 1
         WHERE product_id = 'producto-controlado'`).run())
-        .toThrow('WHATSAPP_STOCK_CONTROL_REQUIRED');
+        .toThrow('STOCK_CONTROL_REQUIRED');
       resolveWhatsappOrder(database, 'whatsapp-pending-stock', 'rejected');
 
       insertWhatsappOrder(database, 'whatsapp-untracked', 'whatsapp-key-untracked', 1);
       insertOrderItem(database, 'whatsapp-untracked', 'producto-sin-control', 1);
       expect(() => insertCatalogMutation(database, 'producto-sin-control', 0))
-        .toThrow('WHATSAPP_STOCK_BELOW_RESERVATIONS');
+        .toThrow('STOCK_BELOW_RESERVATIONS');
       insertCatalogMutation(database, 'producto-sin-control', 1);
 
       insertDeletedCatalogMutation(database, 'producto-eliminado');
@@ -272,7 +278,7 @@ describe('migraciones D1', () => {
         'whatsapp-deleted',
         'producto-eliminado',
         1,
-      )).toThrow('WHATSAPP_PRODUCT_DELETED');
+      )).toThrow('STOCK_PRODUCT_DELETED');
 
       insertCatalogMutation(database, 'producto-no-disponible', 3, 'unavailable');
       insertWhatsappOrder(database, 'whatsapp-unavailable', 'whatsapp-key-unavailable', 1);
@@ -281,7 +287,7 @@ describe('migraciones D1', () => {
         'whatsapp-unavailable',
         'producto-no-disponible',
         1,
-      )).toThrow('WHATSAPP_PRODUCT_UNAVAILABLE');
+      )).toThrow('STOCK_PRODUCT_UNAVAILABLE');
 
       insertCatalogMutation(database, 'producto-inconsistente', 2);
       insertWhatsappOrder(database, 'whatsapp-inconsistent', 'whatsapp-key-inconsistent', 2);
@@ -356,6 +362,7 @@ function applyAllMigrations(database: DatabaseSync): void {
     adminAuthMigration,
     analyticsManualPaymentMigration,
     whatsappOrderReservationsMigration,
+    checkoutProStockMigration,
   ]) {
     database.exec(migration);
   }
@@ -389,10 +396,23 @@ function insertOrderItem(
   productId: string,
   quantity: number,
 ): void {
+  const controlled = database.prepare(`SELECT COUNT(*) AS count
+    FROM catalog_product_mutations
+    WHERE product_id = ? AND deleted = 0
+      AND json_type(payload_json, '$.stockQuantity') = 'integer'`)
+    .get(productId) as Readonly<{ count: number }>;
   database.prepare(`INSERT INTO order_items (
-    order_id, product_id, name, quantity, unit_price_minor, subtotal_minor
-  ) VALUES (?, ?, ?, ?, 1000, ?)`)
-    .run(orderId, productId, `Producto ${productId}`, quantity, quantity * 1_000);
+    order_id, product_id, name, quantity, unit_price_minor, subtotal_minor,
+    stock_controlled
+  ) VALUES (?, ?, ?, ?, 1000, ?, ?)`)
+    .run(
+      orderId,
+      productId,
+      `Producto ${productId}`,
+      quantity,
+      quantity * 1_000,
+      controlled.count === 1 ? 1 : 0,
+    );
 }
 
 function insertCatalogMutation(

@@ -30,7 +30,7 @@ El router propio conserva History API y enlaces HTML reales.
 
 La fuente canónica conserva 510 productos y 16 categorías. `server/catalog-store.ts` construye el catálogo efectivo como base canónica más altas y overrides D1, menos tombstones D1. Si D1 o la tabla nueva no están disponibles, las lecturas públicas conservan el catálogo base; las escrituras administrativas fallan de forma explícita.
 
-El modelo actual agrega `stockQuantity` como atributo opcional dentro del mismo payload de mutación: ausencia significa stock no controlado y conserva el comportamiento de los 510 productos legacy. Si está presente debe ser un entero entre 0 y 1.000.000. Para WhatsApp se eligió Strategy A: el stock reservado no se duplica en un contador, sino que se deriva de `SUM(order_items.quantity)` para pedidos `channel='whatsapp'` y `status='pending'`; el disponible es físico menos reservado. D1 impide reservar por encima del disponible y bajar o retirar el control de stock por debajo de reservas vigentes. Al aprobar descuenta físicamente los items una sola vez y al rechazar libera por derivación, sin sumar stock.
+El modelo actual agrega `stockQuantity` como atributo opcional dentro del mismo payload de mutación: ausencia significa stock no controlado y conserva el comportamiento de los 510 productos legacy. Si está presente debe ser un entero entre 0 y 1.000.000. El stock reservado no se duplica en un contador: se deriva de `order_items` para WhatsApp `pending` y Checkout Pro con ventana vigente o pago pendiente autoritativo. D1 impide reservar por encima del disponible y bajar o retirar el control de stock por debajo de reservas vigentes. WhatsApp consume al aprobar; Checkout Pro consume una sola vez al observar `approved` o `refunded` por webhook. Rechazar WhatsApp o vencer una preferencia sin pago libera por derivación, sin sumar stock.
 
 La compatibilidad de categorías también es deliberada: los 75 productos legacy sin categoría continúan editables y aparecen bajo el filtro administrativo «Sin categoría». Sólo el alta de un producto nuevo exige al menos una de las categorías canónicas; no se fuerza una clasificación ficticia sobre el catálogo base.
 
@@ -48,6 +48,7 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 - `migrations/0005_admin_auth.sql`: contadores opacos y persistentes para limitar intentos de login;
 - `migrations/0006_analytics_manual_payment_click.sql`: amplía de forma aditiva el CHECK cerrado de eventos para medir el clic manual sin perder eventos ni índices existentes;
 - `migrations/0007_whatsapp_order_reservations.sql`: canal de pedido, resolución administrativa, índices y triggers de reserva derivada, stock e invariantes de la máquina de estados WhatsApp;
+- `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql`: ventana y consumo de stock de Checkout Pro, snapshot de control por item y huella idempotente de los datos WhatsApp;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
@@ -56,13 +57,13 @@ No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la
 
 ### Fallback manual vigente
 
-Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el Link de Pago autorizado continúa separado y sin monto. Al solicitar por WhatsApp, la Function recalcula productos, precios, total y stock disponible, crea de forma idempotente un pedido `pending` y sus items en D1 y sólo entonces permite abrir el mensaje. El flujo no usa webhook ni confirma pagos automáticamente: el administrador debe aprobar para consumir la reserva o rechazar para liberarla.
+Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el Link de Pago autorizado continúa separado y sin monto. Al solicitar por WhatsApp, la UI y la Function exigen los datos mínimos completos, recalculan productos, precios, total y stock disponible, crean de forma idempotente un pedido `pending` y sus items en D1 y sólo entonces permiten abrir el mensaje. El flujo no usa webhook ni confirma pagos automáticamente: el administrador debe aprobar para consumir la reserva o rechazar para liberarla.
 
 ### Checkout Pro preparado
 
 La creación de preferencias ocurre en servidor. El navegador es redirigido a Checkout Pro y los retornos no prueban un pago.
 
-El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. Las transiciones se registran con idempotencia y auditoría.
+El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. Las transiciones se registran con idempotencia; un pago pendiente mantiene la reserva de stock y una aprobación o reembolso la consume exactamente una vez, sin reposición automática.
 
 ## Administración
 

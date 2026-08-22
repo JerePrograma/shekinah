@@ -20,6 +20,7 @@ const migrations = [
   '0005_admin_auth.sql',
   '0006_analytics_manual_payment_click.sql',
   '0007_whatsapp_order_reservations.sql',
+  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8'));
 
 const adminData: AdminContextData = {
@@ -31,6 +32,16 @@ const adminData: AdminContextData = {
   requestId: 'whatsapp-order-admin-test',
 };
 
+const fulfillment = Object.freeze({
+  method: 'coordinated_pickup' as const,
+  fullName: 'Ana Pérez',
+  phone: '5491155554444',
+  address: 'Calle 123',
+  locality: 'CABA',
+  province: 'Buenos Aires',
+  postalCode: 'C1234ABC',
+});
+
 describe('Functions de pedidos WhatsApp', () => {
   it('crea antes de responder, reusa la clave y exige origen autorizado', async () => {
     const testD1 = createTestD1(...migrations);
@@ -38,7 +49,7 @@ describe('Functions de pedidos WhatsApp', () => {
       await createProduct(testD1.database, 'pedido-function');
       const body = {
         idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
+        fulfillment,
         items: [{ productId: 'pedido-function', quantity: 2 }],
       };
       const first = await whatsappOrder(publicContext(testD1.database, body));
@@ -74,13 +85,23 @@ describe('Functions de pedidos WhatsApp', () => {
     }
   });
 
-  it('rechaza precio del navegador, stock insuficiente y falla cerrado sin D1 o sin 0007', async () => {
+  it('rechaza datos incompletos, precio del navegador y stock insuficiente, y falla cerrado sin D1 o 0008', async () => {
     const testD1 = createTestD1(...migrations);
     try {
       await createProduct(testD1.database, 'pedido-validaciones');
-      const manipulated = await whatsappOrder(publicContext(testD1.database, {
+      const incomplete = await whatsappOrder(publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
         fulfillment: null,
+        items: [{ productId: 'pedido-validaciones', quantity: 1 }],
+      }));
+      expect(incomplete.status).toBe(400);
+      await expect(incomplete.json()).resolves.toMatchObject({
+        error: { code: 'INVALID_FULFILLMENT' },
+      });
+
+      const manipulated = await whatsappOrder(publicContext(testD1.database, {
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment,
         items: [{ productId: 'pedido-validaciones', quantity: 1, price: 1 }],
       }));
       expect(manipulated.status).toBe(400);
@@ -90,7 +111,7 @@ describe('Functions de pedidos WhatsApp', () => {
 
       const insufficient = await whatsappOrder(publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
+        fulfillment,
         items: [{ productId: 'pedido-validaciones', quantity: 6 }],
       }));
       expect(insufficient.status).toBe(409);
@@ -109,12 +130,12 @@ describe('Functions de pedidos WhatsApp', () => {
 
       const beforeWhatsappMigration = createTestD1(...migrations.slice(0, -1));
       try {
-        await createProduct(beforeWhatsappMigration.database, 'pedido-sin-migracion');
+        await createProduct(beforeWhatsappMigration.database, 'pedido-sin-migracion', false);
         const migrationRequired = await whatsappOrder(publicContext(
           beforeWhatsappMigration.database,
           {
             idempotencyKey: crypto.randomUUID(),
-            fulfillment: null,
+            fulfillment,
             items: [{ productId: 'pedido-sin-migracion', quantity: 1 }],
           },
         ));
@@ -136,7 +157,7 @@ describe('Functions de pedidos WhatsApp', () => {
       await createProduct(testD1.database, 'pedido-admin-function');
       const created = await whatsappOrder(publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
+        fulfillment,
         items: [{ productId: 'pedido-admin-function', quantity: 2 }],
       }));
       const { orderId } = await created.json() as Readonly<{ orderId: string }>;
@@ -183,7 +204,7 @@ describe('Functions de pedidos WhatsApp', () => {
       await createProduct(testD1.database, 'pedido-rechazo-function');
       const created = await whatsappOrder(publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
+        fulfillment,
         items: [{ productId: 'pedido-rechazo-function', quantity: 1 }],
       }));
       const { orderId } = await created.json() as Readonly<{ orderId: string }>;
@@ -262,7 +283,11 @@ function adminContext(
   };
 }
 
-async function createProduct(database: NonNullable<Env['DB']>, id: string): Promise<void> {
+async function createProduct(
+  database: NonNullable<Env['DB']>,
+  id: string,
+  controlled = true,
+): Promise<void> {
   await createCatalogProduct(database, {
     id,
     slug: id,
@@ -273,7 +298,7 @@ async function createProduct(database: NonNullable<Env['DB']>, id: string): Prom
     presentation: '100 g',
     price: { amount: 1_000, currency: 'ARS' },
     availability: 'available',
-    stockQuantity: 5,
+    ...(controlled ? { stockQuantity: 5 } : {}),
     images: [],
     variants: [],
   }, 'admin@example.test');

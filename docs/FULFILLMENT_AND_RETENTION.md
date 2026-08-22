@@ -2,11 +2,11 @@
 
 ## Alcance
 
-El contrato persistente aplica a Checkout Pro y, cuando el comprador completa datos con una tarifa determinística, al pedido pendiente de WhatsApp. Antes de abrir WhatsApp, el backend recalcula el carrito y siempre persiste `orders` y `order_items`; `order_fulfillment` se persiste sólo si el request incluye datos completos y la tarifa es determinística. El formulario totalmente vacío y los envíos que requieren cotización manual no persisten PII: esos datos permanecen en memoria React y, si fueron completados, se incluyen únicamente en el mensaje que el comprador decide abrir. Nunca se guardan en `localStorage` ni analítica.
+El contrato de datos completos aplica tanto a Checkout Pro como a WhatsApp. Antes de abrir WhatsApp, el backend valida nombre, celular y domicilio, recalcula el carrito y persiste `orders` y `order_items`. `order_fulfillment` se persiste cuando la tarifa es determinística. Si Correo requiere una cotización manual, los datos quedan en memoria React y en el mensaje que el comprador decide abrir; D1 conserva sólo una huella SHA-256 para verificar la idempotencia, no la PII en claro. Nunca se guardan en `localStorage` ni analítica.
 
 ## Contrato operativo
 
-El checkout solicita nombre completo, celular, dirección, localidad, provincia y código postal. Esos datos no se almacenan en `localStorage`. En Checkout Pro integrado se envían al iniciar el pedido y se persisten en `order_fulfillment`.
+El checkout y la continuación por WhatsApp solicitan nombre completo, celular, dirección, localidad, provincia y código postal. El cliente y el servidor rechazan solicitudes parciales o vacías antes de crear el pedido o reservar stock. No se solicitan documento, datos de tarjeta ni información ajena a la coordinación. Esos datos no se almacenan en `localStorage`. En Checkout Pro integrado se envían al iniciar el pedido y se persisten en `order_fulfillment`.
 
 Modalidades:
 
@@ -31,6 +31,8 @@ En el canal manual, el Link de Pago continúa sin monto predefinido y el cobro d
 `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella autoritativa del carrito a `checkout_intents`, backfillea desde pedidos existentes y evita reutilizar una reserva huérfana con otro carrito.
 
 `migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido. La reserva se deriva de los items de pedidos WhatsApp pendientes: no hay contador duplicado ni TTL. Aprobar descuenta el stock físico y consume la reserva en la misma transición D1; rechazar conserva el físico y libera la reserva. Un pedido abandonado permanece pendiente y reserva stock hasta una resolución administrativa.
+
+`migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` agrega la ventana y marca de consumo de stock de Checkout Pro, la fotografía de control de stock por item y la huella de fulfillment de WhatsApp. La reserva de Checkout Pro dura lo mismo que la preferencia o mientras exista un pago `pending` consultado al proveedor. La transición autoritativa a `approved` o `refunded` consume el físico una sola vez; un reembolso no repone stock porque no prueba devolución de mercadería.
 
 `migrations/0001_commerce.sql` permanece intacta.
 

@@ -58,7 +58,7 @@ const fields: readonly Readonly<{
 
 type WhatsappOrderResult = Readonly<{
   order: WhatsappOrderResponse;
-  fulfillment: CheckoutFulfillment | null;
+  fulfillment: CheckoutFulfillment;
   manualQuoteTier: string | null;
 }>;
 
@@ -245,16 +245,14 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       checkoutPending
     ) return;
 
-    const includesFulfillment = hasPartialFulfillment(fulfillmentDraft);
-    if (includesFulfillment && validation.value === null) {
+    if (validation.value === null) {
       setShowErrors(true);
-      setCheckoutError('Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.');
+      setCheckoutError('Completá o corregí todos los datos antes de continuar por WhatsApp.');
       focusFirstError(validation.errors);
       return;
     }
 
-    const messageFulfillment = includesFulfillment ? validation.value : null;
-    const persistedFulfillment = quote.kind === 'manual' ? null : messageFulfillment;
+    const fulfillment = validation.value;
     whatsappOrderPendingRef.current = true;
     setWhatsappOrderPending(true);
     setConfirmingClear(false);
@@ -262,12 +260,12 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     try {
       const idempotencyKey = await getOrCreateWhatsappOrderIdempotencyKey(
         items,
-        persistedFulfillment,
+        fulfillment,
       );
-      const order = await createWhatsappOrder(items, idempotencyKey, persistedFulfillment);
+      const order = await createWhatsappOrder(items, idempotencyKey, fulfillment);
       setWhatsappOrderResult(Object.freeze({
         order,
-        fulfillment: messageFulfillment,
+        fulfillment,
         manualQuoteTier: quote.kind === 'manual' ? quote.tier : null,
       }));
       void refreshRuntimeCatalog().catch(() => undefined);
@@ -483,7 +481,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
                 <div>
                   <h2 id="fulfillment-title">Datos de entrega</h2>
-                  <p>Todos los campos son obligatorios para pagar. No se guardan en el carrito del navegador; se usan sólo para preparar el pedido y el mensaje.</p>
+                  <p>Todos los campos son obligatorios para pagar o continuar por WhatsApp. No se guardan en el carrito del navegador; se envían sólo para preparar y coordinar el pedido.</p>
                 </div>
                 <label htmlFor="fulfillment-method">
                   Modalidad
@@ -693,11 +691,6 @@ function manualQuoteMessage(tier: string): string {
     : 'El pedido supera los 5 kg. Solicitá la cotización por WhatsApp.';
 }
 
-function hasPartialFulfillment(value: FulfillmentDraft): boolean {
-  return value.method !== INITIAL_FULFILLMENT.method ||
-    fields.some(({ key }) => value[key].trim() !== '');
-}
-
 function buildWhatsappUrl(
   whatsappNumber: string,
   result: WhatsappOrderResult,
@@ -706,15 +699,13 @@ function buildWhatsappUrl(
     const presentation = item.presentation === undefined ? '' : ` (${item.presentation})`;
     return `• ${item.quantity} × ${item.name}${presentation}: ${formatMinor(item.subtotalMinor)}`;
   });
-  const customerLines = result.fulfillment === null
-    ? []
-    : [
-        '',
-        `Modalidad: ${deliveryMethodLabel(result.fulfillment.method)}`,
-        `Nombre: ${result.fulfillment.fullName}`,
-        `Celular: ${result.fulfillment.phone}`,
-        `Dirección: ${result.fulfillment.address}, ${result.fulfillment.locality}, ${result.fulfillment.province} (${result.fulfillment.postalCode})`,
-      ];
+  const customerLines = [
+    '',
+    `Modalidad: ${deliveryMethodLabel(result.fulfillment.method)}`,
+    `Nombre: ${result.fulfillment.fullName}`,
+    `Celular: ${result.fulfillment.phone}`,
+    `Dirección: ${result.fulfillment.address}, ${result.fulfillment.locality}, ${result.fulfillment.province} (${result.fulfillment.postalCode})`,
+  ];
   const message = [
     `Hola, quiero consultar por el pedido ${result.order.orderId} de Shekinah:`,
     '',

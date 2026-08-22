@@ -3,7 +3,7 @@ import { requireCommerceMode, requireEnabledFlag, requirePublicSiteUrl } from '.
 import { createPaymentCart, persistOrderFulfillment, reserveCheckoutIntent } from '../../../server/fulfillment';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../server/http';
 import { assertMercadoPagoPreferenceActive, createMercadoPagoPreference, recoverMercadoPagoPreference } from '../../../server/mercado-pago';
-import { claimPreferenceAttempt, markOrderFailed, markPreferenceCreated, prepareOrder, resetRetrySafeFailedOrder } from '../../../server/orders';
+import { claimPreferenceAttempt, getOrderByIdempotencyKey, markOrderFailed, markPreferenceCreated, prepareOrder, resetRetrySafeFailedOrder } from '../../../server/orders';
 import type { PagesFunction } from '../../../server/platform';
 import { assertExactKeys, assertSameOrigin, assertUuid, isRecord, readJsonBody } from '../../../server/validation';
 export const onRequest: PagesFunction = async ({ env, request }) => {
@@ -16,7 +16,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     const tokenSecret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de pedidos no está configurada.', 32); const mode = requireCommerceMode(env);
     const body = await readJsonBody(request, 32_768); if (!isRecord(body)) throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
     assertExactKeys(body, ['idempotencyKey', 'items', 'fulfillment'], 'INVALID_CHECKOUT', 'La solicitud contiene campos no permitidos.');
-    const idempotencyKey = assertUuid(body.idempotencyKey, 'idempotencyKey'); const cart = await recalculateDynamicCart(body, database);
+    const idempotencyKey = assertUuid(body.idempotencyKey, 'idempotencyKey'); const existingOrder = await getOrderByIdempotencyKey(database, idempotencyKey); const cart = await recalculateDynamicCart(body, database, existingOrder?.channel === 'checkout_pro' ? existingOrder.id : null);
     await reserveCheckoutIntent(database, idempotencyKey, cart); const prepared = await prepareOrder({ cart, database, idempotencyKey, tokenSecret });
     await persistOrderFulfillment(database, prepared.order.id, cart); const paymentCart = createPaymentCart(cart); const { order } = prepared;
     if (order.status === 'approved' || order.status === 'refunded') throw new HttpError(409, 'ORDER_ALREADY_FINALIZED', 'Este pedido ya tiene un estado final.');

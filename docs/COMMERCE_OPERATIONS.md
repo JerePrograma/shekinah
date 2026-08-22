@@ -7,7 +7,7 @@ Mientras `COMMERCE_ENABLED=false`, el flujo público autorizado usa el Link de P
 Procedimiento operativo mínimo:
 
 1. El comprador arma el carrito y, si el envío tiene total definido, puede copiar el monto y abrir el Link de Pago.
-2. Al solicitar WhatsApp, el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
+2. Al solicitar WhatsApp, el cliente y el servidor exigen nombre, celular y domicilio completos; recién entonces el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
 3. El comprador ingresa el monto en Mercado Pago y envía el mensaje que incluye el identificador del pedido.
 4. Antes de aprobar, preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
 5. Aprobar desde el backoffice confirma la venta, descuenta el stock físico una vez y consume la reserva. Rechazar conserva el físico y libera la reserva.
@@ -25,6 +25,8 @@ Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 - Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
 - Comparar `payments.amount_minor` y `orders.total_minor` para detectar inconsistencias.
 - Revisar que no haya pedidos aprobados sin pago asociado.
+- Comparar stock físico, reservado y consumido; un pago `pending` autoritativo puede mantener una reserva después del vencimiento de la preferencia.
+- No reponer stock por `refunded` o `charged_back`: la devolución financiera no demuestra que la mercadería haya vuelto.
 - Comparar `approved_payment_count` con la cantidad de pedidos con pago aprobado confirmado: el primer valor cuenta pagos exactos individuales y, si es mayor, conserva la señal de un posible cobro duplicado.
 - Controlar errores de Functions sin registrar cuerpos, access tokens, firmas ni secretos.
 
@@ -95,9 +97,11 @@ El catálogo de productos es editable. Pedidos, analítica, exportaciones y audi
 
 La excepción son los pedidos `channel='whatsapp'` en estado `pending`: pueden aprobarse o rechazarse. Los botones quedan inactivos durante la request y desaparecen al alcanzar un estado terminal. Los pedidos Checkout Pro y los pedidos WhatsApp aprobados/rechazados permanecen de sólo lectura.
 
-## Reservas pendientes de WhatsApp
+## Reservas de stock
 
-El stock reservado es `SUM(order_items.quantity)` de pedidos WhatsApp pendientes. No existe contador que deba «devolverse». Revisar diariamente los pendientes antiguos: no tienen TTL y seguirán reduciendo disponibilidad hasta una resolución administrativa. Nunca corregirlos editando SQL, sumando stock o cambiando items; aprobar o rechazar mediante la API autenticada.
+El stock reservado se deriva de `order_items`; no existe contador que deba «devolverse». Incluye pedidos WhatsApp `pending` y pedidos Checkout Pro no consumidos mientras su ventana de 30 minutos esté vigente o exista al menos un pago `pending` verificado. Los pendientes WhatsApp no tienen TTL y requieren aprobación o rechazo administrativo. Las preferencias sin pago liberan disponibilidad al vencer; un pago pendiente la conserva hasta una notificación terminal.
+
+Nunca corregir reservas editando SQL, sumando stock o cambiando items. Para WhatsApp, aprobar o rechazar mediante la API autenticada. Para Checkout Pro, contrastar primero el pago en Mercado Pago: `approved` y `refunded` consumen una sola vez por webhook, y cualquier `STOCK_RECONCILIATION_REQUIRED` exige detener fulfillment, conciliar pago e inventario y resolver el incidente sin forzar el estado.
 
 ### Operación cotidiana del catálogo candidato
 
@@ -108,7 +112,7 @@ El stock reservado es `SUM(order_items.quantity)` de pedidos WhatsApp pendientes
 - usar la disponibilidad manual para retirar un producto de venta aunque tenga stock;
 - recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada.
 
-El carrito nunca acepta más de `min(99, stockQuantity)` por línea. Checkout Pro vuelve a validar el catálogo y rechaza cualquier producto con `stockQuantity`, incluso si tiene unidades disponibles, porque ese flujo no reserva inventario. El comprador debe usar WhatsApp, que crea el pedido y reserva antes de abrir el canal.
+El carrito nunca acepta más de `min(99, disponible)` por línea. Checkout Pro vuelve a validar el catálogo, reserva de forma atómica antes de crear la preferencia y comparte disponibilidad con WhatsApp. Una repetición con la misma UUID excluye únicamente su propia reserva para poder reproducir el mismo pedido; no recupera unidades reservadas por terceros.
 
 ### Imágenes administrativas
 

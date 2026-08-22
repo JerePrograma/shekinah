@@ -89,7 +89,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
     }
   });
 
-  it('deriva productos con stock controlado a WhatsApp y conserva Checkout Pro para stock no controlado', async () => {
+  it('admite stock controlado en Checkout Pro y conserva el límite autoritativo', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
       const tracked = await createCatalogProduct(
@@ -97,16 +97,11 @@ describe('carrito autoritativo con catálogo dinámico', () => {
         { ...productInput('producto-con-stock', 1_000), stockQuantity: 2 },
         'admin@example.test',
       );
-      const controlledStockCheckout = recalculateDynamicCart({
+      await expect(recalculateDynamicCart({
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: tracked.id, quantity: 2 }],
-      }, testD1.database);
-      await expect(controlledStockCheckout).rejects.toMatchObject({
-        code: 'CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP',
-        status: 409,
-      });
-      await expect(controlledStockCheckout).rejects.toThrow(/stock controlado.*WhatsApp/iu);
+      }, testD1.database)).resolves.toMatchObject({ itemCount: 2 });
       await expect(recalculateDynamicCart({
         idempotencyKey: crypto.randomUUID(),
         fulfillment,

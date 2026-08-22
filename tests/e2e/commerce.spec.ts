@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -7,6 +8,15 @@ test.beforeEach(async ({ page }) => {
     window.localStorage.setItem('shekinah.analytics-consent.v1', 'rejected');
   });
 });
+
+async function fillWhatsappFulfillment(page: Page) {
+  await page.getByLabel('Nombre completo').fill('Ana Pérez');
+  await page.getByLabel('Celular').fill('+54 9 11 5555-4444');
+  await page.getByLabel('Dirección').fill('Calle 123');
+  await page.getByLabel('Localidad').fill('La Plata');
+  await page.getByLabel('Provincia').fill('Buenos Aires');
+  await page.getByLabel('Código postal').fill('B1900');
+}
 
 test('persiste el carrito y lo sincroniza entre pestañas', async ({ context, page }) => {
   const secondPage = await context.newPage();
@@ -114,6 +124,7 @@ test('registra y reserva una sola vez antes de ofrecer el segundo gesto de Whats
     name: /Agregar .* al carrito/u,
   }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  await fillWhatsappFulfillment(page);
 
   const createOrder = page.getByRole('button', { name: 'Pedir por WhatsApp' });
   await createOrder.evaluate((button: HTMLButtonElement) => {
@@ -166,6 +177,7 @@ for (const [status, message] of [
       name: /Agregar .* al carrito/u,
     }).click();
     await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+    await fillWhatsappFulfillment(page);
     await page.getByRole('button', { name: 'Pedir por WhatsApp' }).click();
 
     await expect(page.getByRole('alert')).toHaveText(message);

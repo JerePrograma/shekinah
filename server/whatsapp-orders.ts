@@ -38,7 +38,7 @@ export type WhatsappCart = Readonly<{
   shippingMinor: number;
   shippingTier: OnlineShippingTier | null;
   totalWeightGrams: number | null;
-  fulfillment: CheckoutFulfillment | null;
+  fulfillment: CheckoutFulfillment;
   totalMinor: number;
 }>;
 
@@ -72,6 +72,7 @@ type WhatsappOrderRow = Readonly<{
   total_minor: number;
   item_count: number;
   cart_fingerprint: string;
+  whatsapp_fulfillment_fingerprint: string | null;
   created_at: string;
 }>;
 
@@ -86,7 +87,7 @@ type WhatsappOrderItemRow = Readonly<{
 
 type ParsedWhatsappOrderInput = Readonly<{
   idempotencyKey: string;
-  fulfillment: CheckoutFulfillment | null;
+  fulfillment: CheckoutFulfillment;
   items: readonly Readonly<{ productId: string; quantity: number }>[];
 }>;
 
@@ -118,10 +119,11 @@ export async function createWhatsappOrder(
   }
   const { idempotencyKey } = input;
   const baseFingerprint = await cartFingerprint(cart);
+  const fulfillmentFingerprint = await sha256Hex(
+    fulfillmentCanonicalValue(cart.fulfillment),
+  );
   const fingerprint = await sha256Hex(
-    `${baseFingerprint}:${cart.fulfillment === null
-      ? 'no-fulfillment'
-      : fulfillmentCanonicalValue(cart.fulfillment)}`,
+    `${baseFingerprint}:${fulfillmentCanonicalValue(cart.fulfillment)}`,
   );
   const orderId = `ord_${randomToken(18)}`;
   const publicTokenHash = await sha256Hex(randomToken(32));
@@ -132,8 +134,9 @@ export async function createWhatsappOrder(
       .prepare(
         `INSERT OR IGNORE INTO orders (
           id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
-          status, currency, total_minor, item_count, created_at, updated_at, channel
-        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', ?, ?, ?, ?, 'whatsapp')`,
+          status, currency, total_minor, item_count, created_at, updated_at, channel,
+          whatsapp_fulfillment_fingerprint
+        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', ?, ?, ?, ?, 'whatsapp', ?)`,
       )
       .bind(
         orderId,
@@ -144,15 +147,16 @@ export async function createWhatsappOrder(
         cart.itemCount,
         now,
         now,
+        fulfillmentFingerprint,
       ),
     ...cart.lines.map(({ product, quantity, subtotalMinor }) =>
       database
         .prepare(
           `INSERT INTO order_items (
             order_id, product_id, name, presentation, sku,
-            quantity, unit_price_minor, subtotal_minor
+            quantity, unit_price_minor, subtotal_minor, stock_controlled
           )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
         )
         .bind(
@@ -164,19 +168,19 @@ export async function createWhatsappOrder(
           quantity,
           product.unitPriceMinor,
           subtotalMinor,
+          product.stockControlled === true ? 1 : 0,
           orderId,
         ),
     ),
   ];
-  const fulfillment = cart.fulfillment;
   const shippingTier = cart.shippingTier;
-  if (fulfillment !== null && shippingTier !== null) {
+  if (shippingTier !== null) {
     statements.push(
       prepareFulfillmentInsert(
         database,
         orderId,
         cart,
-        fulfillment,
+        cart.fulfillment,
         shippingTier,
         now,
       ),
@@ -192,7 +196,7 @@ export async function createWhatsappOrder(
   const order = await database
     .prepare(
       `SELECT id, channel, status, currency, total_minor, item_count,
-              cart_fingerprint, created_at
+              cart_fingerprint, whatsapp_fulfillment_fingerprint, created_at
        FROM orders WHERE checkout_idempotency_key = ? LIMIT 1`,
     )
     .bind(idempotencyKey)
@@ -203,6 +207,7 @@ export async function createWhatsappOrder(
   if (
     order.channel !== 'whatsapp' ||
     order.cart_fingerprint !== fingerprint ||
+    order.whatsapp_fulfillment_fingerprint !== fulfillmentFingerprint ||
     order.total_minor !== cart.totalMinor ||
     order.item_count !== cart.itemCount ||
     order.currency !== cart.currency
@@ -307,9 +312,7 @@ function parseWhatsappOrderInput(value: unknown): ParsedWhatsappOrderInput {
   if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > MAX_CART_LINES) {
     throw new HttpError(400, 'INVALID_CART', 'El carrito no contiene una cantidad válida de productos.');
   }
-  const fulfillment = value.fulfillment === null
-    ? null
-    : requireCheckoutFulfillment(value.fulfillment);
+  const fulfillment = requireCheckoutFulfillment(value.fulfillment);
   const seen = new Set<string>();
   const items = value.items.map((rawLine) => {
     if (!isRecord(rawLine)) {
@@ -370,6 +373,7 @@ async function calculateWhatsappCart(
       ...(detail.sku === undefined ? {} : { sku: detail.sku }),
       unitPriceMinor,
       available: true,
+      stockControlled: detail.stockQuantity !== undefined,
     });
     const subtotalMinor = unitPriceMinor * quantity;
     productsTotalMinor += subtotalMinor;
@@ -387,26 +391,18 @@ async function calculateWhatsappCart(
 
   let shippingMinor = 0;
   let shippingTier: OnlineShippingTier | null = null;
-  let totalWeightGrams: number | null = null;
-  if (input.fulfillment !== null) {
-    const quote = calculateShippingQuote(
-      lines.map(({ product, quantity }) => ({
-        name: product.name,
-        ...(product.presentation === undefined ? {} : { presentation: product.presentation }),
-        quantity,
-      })),
-      input.fulfillment.method,
-    );
-    if (quote.kind === 'manual') {
-      throw new HttpError(
-        409,
-        'MANUAL_SHIPPING_REQUIRES_NO_FULFILLMENT',
-        'Este envío requiere coordinación manual por WhatsApp.',
-      );
-    }
+  const quote = calculateShippingQuote(
+    lines.map(({ product, quantity }) => ({
+      name: product.name,
+      ...(product.presentation === undefined ? {} : { presentation: product.presentation }),
+      quantity,
+    })),
+    input.fulfillment.method,
+  );
+  const totalWeightGrams = quote.totalWeightGrams;
+  if (quote.kind === 'online') {
     shippingMinor = quote.shippingMinor;
     shippingTier = quote.tier;
-    totalWeightGrams = quote.totalWeightGrams;
   }
   const totalMinor = productsTotalMinor + shippingMinor;
   if (!Number.isSafeInteger(totalMinor) || totalMinor <= 0) {
@@ -435,7 +431,7 @@ async function replayWhatsappOrder(
     order = await database
       .prepare(
         `SELECT id, channel, status, currency, total_minor, item_count,
-                cart_fingerprint, created_at
+                cart_fingerprint, whatsapp_fulfillment_fingerprint, created_at
          FROM orders WHERE checkout_idempotency_key = ? LIMIT 1`,
       )
       .bind(input.idempotencyKey)
@@ -465,7 +461,7 @@ async function replayWhatsappOrder(
       const persisted = persistedItems.results?.[index];
       return persisted?.product_id !== item.productId || persisted.quantity !== item.quantity;
     }) ||
-    !await fulfillmentMatches(database, order.id, input.fulfillment)
+    !await fulfillmentMatches(database, order, input.fulfillment)
   ) {
     throw new HttpError(
       409,
@@ -488,17 +484,20 @@ async function replayWhatsappOrder(
 
 async function fulfillmentMatches(
   database: D1Database,
-  orderId: string,
-  fulfillment: CheckoutFulfillment | null,
+  order: WhatsappOrderRow,
+  fulfillment: CheckoutFulfillment,
 ): Promise<boolean> {
+  const fingerprint = await sha256Hex(fulfillmentCanonicalValue(fulfillment));
+  if (order.whatsapp_fulfillment_fingerprint !== null) {
+    return order.whatsapp_fulfillment_fingerprint === fingerprint;
+  }
   const persisted = await database
     .prepare(
       `SELECT delivery_method, full_name, phone, address, locality, province, postal_code
        FROM order_fulfillment WHERE order_id = ? LIMIT 1`,
     )
-    .bind(orderId)
+    .bind(order.id)
     .first<PersistedFulfillmentRow>();
-  if (fulfillment === null) return persisted === null;
   return persisted !== null &&
     persisted.delivery_method === fulfillment.method &&
     persisted.full_name === fulfillment.fullName &&
@@ -594,7 +593,10 @@ function assertOrderId(orderId: string): void {
 
 function throwWhatsappStorageError(error: unknown): never {
   const message = error instanceof Error ? error.message : '';
-  if (message.includes('WHATSAPP_INSUFFICIENT_STOCK')) {
+  if (
+    message.includes('WHATSAPP_INSUFFICIENT_STOCK') ||
+    message.includes('STOCK_RESERVATION_INSUFFICIENT')
+  ) {
     throw new HttpError(
       409,
       'INSUFFICIENT_STOCK',
@@ -603,7 +605,9 @@ function throwWhatsappStorageError(error: unknown): never {
   }
   if (
     message.includes('WHATSAPP_PRODUCT_DELETED') ||
-    message.includes('WHATSAPP_PRODUCT_UNAVAILABLE')
+    message.includes('WHATSAPP_PRODUCT_UNAVAILABLE') ||
+    message.includes('STOCK_PRODUCT_DELETED') ||
+    message.includes('STOCK_PRODUCT_UNAVAILABLE')
   ) {
     throw new HttpError(
       409,
@@ -611,7 +615,10 @@ function throwWhatsappStorageError(error: unknown): never {
       'Uno de los productos ya no está disponible.',
     );
   }
-  if (message.includes('WHATSAPP_RESERVATION_INCONSISTENT')) {
+  if (
+    message.includes('WHATSAPP_RESERVATION_INCONSISTENT') ||
+    message.includes('STOCK_CONTROL_SNAPSHOT_INCONSISTENT')
+  ) {
     throw new HttpError(
       409,
       'RESERVATION_INCONSISTENT',
@@ -625,7 +632,7 @@ function throwWhatsappStorageError(error: unknown): never {
     throw new HttpError(409, 'ORDER_STATE_CONFLICT', 'El pedido no admite esa transición.');
   }
   if (
-    /no such column:\s*(?:\w+\.)?(?:channel|resolved_at|resolved_by)/iu.test(message) ||
+    /no such column:\s*(?:\w+\.)?(?:channel|resolved_at|resolved_by|whatsapp_fulfillment_fingerprint|stock_controlled)/iu.test(message) ||
     /table orders has no column named channel/iu.test(message) ||
     /no such table:\s*(?:orders|order_items|catalog_product_mutations)/iu.test(message)
   ) {

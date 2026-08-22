@@ -31,6 +31,7 @@ La evolución administrativa conserva HTML semántico y agrega:
 - miniaturas con alternativa útil o estado textual de imagen ausente;
 - mensajes de carga, guardado, upload, éxito y error mediante regiones vivas apropiadas, con reintento cuando falla la carga inicial;
 - errores próximos al campo y asociados al control;
+- validación y foco en el primer dato faltante antes de pagar o continuar por WhatsApp;
 - botones con nombre accesible y diferenciación textual de acciones destructivas;
 - foco del primer control inválido, incluso para categorías y opciones avanzadas cerradas;
 - confirmaciones específicas con foco inicial en la acción segura, cierre con `Escape` y retorno al disparador;

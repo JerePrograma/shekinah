@@ -56,7 +56,7 @@ export async function createCheckoutPreference(
 export async function createWhatsappOrder(
   items: readonly CartItem[],
   idempotencyKey: string,
-  fulfillment: CheckoutFulfillment | null,
+  fulfillment: CheckoutFulfillment,
 ): Promise<WhatsappOrderResponse> {
   const request: WhatsappOrderRequest = Object.freeze({
     idempotencyKey,

@@ -115,7 +115,7 @@ describe('CartPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.',
+      'Completá o corregí todos los datos antes de continuar por WhatsApp.',
     );
     expect(screen.getByRole('textbox', { name: /^Celular/u })).toHaveFocus();
     expect(createWhatsappOrder).not.toHaveBeenCalled();
@@ -130,7 +130,7 @@ describe('CartPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Completá o corregí los datos de entrega antes de enviarlos por WhatsApp.',
+      'Completá o corregí todos los datos antes de continuar por WhatsApp.',
     );
     expect(screen.getByRole('textbox', { name: /^Nombre completo/u })).toHaveFocus();
     expect(createWhatsappOrder).not.toHaveBeenCalled();
@@ -174,18 +174,16 @@ describe('CartPage', () => {
     expect(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` })).toBeEnabled();
   });
 
-  it('explica el bloqueo de Checkout Pro por stock controlado y mantiene WhatsApp disponible', async () => {
+  it('mantiene WhatsApp disponible si Mercado Pago rechaza el inicio', async () => {
     commerceState.enabled = true;
-    createCheckoutPreference.mockRejectedValueOnce(new Error(
-      `${product.name} tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.`,
-    ));
+    createCheckoutPreference.mockRejectedValueOnce(new Error('Mercado Pago no pudo iniciar el pago.'));
     renderCart();
     fillFulfillment();
 
     fireEvent.click(screen.getByRole('button', { name: 'Pagar con Mercado Pago' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'tiene stock controlado y no admite pago automático. Pedilo por WhatsApp para reservar sus unidades.',
+      'Mercado Pago no pudo iniciar el pago.',
     );
     expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
   });
@@ -196,6 +194,7 @@ describe('CartPage', () => {
       resolveOrder = resolve;
     }));
     renderCart();
+    fillFulfillment();
 
     const createOrder = screen.getByRole('button', { name: 'Pedir por WhatsApp' });
     fireEvent.click(createOrder);
@@ -223,12 +222,12 @@ describe('CartPage', () => {
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(getOrCreateWhatsappOrderIdempotencyKey).toHaveBeenCalledWith(
       expect.any(Array),
-      null,
+      expect.objectContaining({ fullName: 'Cliente de prueba' }),
     );
     expect(createWhatsappOrder).toHaveBeenCalledWith(
       expect.any(Array),
       'whatsapp-test-key',
-      null,
+      expect.objectContaining({ fullName: 'Cliente de prueba' }),
     );
     expect(refreshRuntimeCatalog).toHaveBeenCalledTimes(1);
     expect(trackAnalyticsEvent).not.toHaveBeenCalledWith('whatsapp_open', expect.anything());
@@ -257,6 +256,7 @@ describe('CartPage', () => {
       new Error('Algunos productos ya no tienen la cantidad solicitada.'),
     );
     renderCart();
+    fillFulfillment();
 
     fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
 

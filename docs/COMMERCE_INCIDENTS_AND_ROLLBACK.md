@@ -64,7 +64,7 @@ El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir 
 
 ## Stock inconsistente
 
-Para WhatsApp, comparar stock físico con la suma derivada de `order_items` de pedidos `pending`; no reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Si existe una reserva atascada legítima, resolver el pedido mediante aprobar o rechazar. Si físico es menor que reservado, detener nuevos pedidos WhatsApp, conservar evidencia y diagnosticar antes de editar datos.
+Comparar stock físico con la suma derivada de `order_items`: pedidos WhatsApp `pending` y Checkout Pro no consumidos con ventana vigente o pago `pending`. No reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Una reserva WhatsApp atascada se resuelve mediante aprobar o rechazar. Una reserva Checkout Pro se concilia primero con el proveedor; no liberar un pago pendiente por edad. Si físico es menor que reservado, detener ambos canales, conservar evidencia y diagnosticar antes de editar datos.
 
 Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la existencia:
 
@@ -72,6 +72,7 @@ Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la ex
 - retirar temporalmente el producto mediante disponibilidad manual si la existencia real es incierta;
 - comprobar el payload efectivo en `catalog_product_mutations` y la auditoría;
 - recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada;
+- recordar que `refunded` o `charged_back` no demuestra devolución física: no reponer automáticamente;
 - no asignar cantidades ficticias a los productos legacy sin control de stock.
 
 ## R2 o imágenes administrativas no disponibles
@@ -113,7 +114,7 @@ La administración debe permanecer cerrada. `/admin` puede seguir sirviendo el f
 
 No usar `git reset --hard`, reescritura de historial, force-push ni borrado manual del commit publicado.
 
-Si `0007` ya fue aplicada, no desplegar código anterior mientras existan pedidos WhatsApp `pending`: esa versión ignoraría las reservas derivadas. Cortar nuevas creaciones, inventariar los pendientes y aprobarlos o rechazarlos de manera controlada. Recién con cero pendientes se puede revertir el código, dejando la migración aditiva aplicada y sin modificar.
+Si `0008` ya fue aplicada, no desplegar código anterior mientras existan reservas activas de cualquier canal: esa versión ignoraría las de Checkout Pro y no consumiría stock por webhook. Cortar nuevas preferencias, inventariar WhatsApp pendientes, preferencias vigentes y pagos pendientes, y resolver cada caso de manera controlada. Recién con cero reservas activas se puede revertir el código, dejando las migraciones aditivas aplicadas y sin modificar.
 
 Sobre `main` sincronizado:
 
@@ -133,7 +134,7 @@ Verificar GitHub Actions sobre el nuevo SHA de revert y el deployment correspond
 
 ## Rollback de base
 
-Las migraciones son aditivas. Un rollback de aplicación puede dejar columnas, índices y triggers sin uso; ésa es la opción conservadora. Para `0007`, este rollback sólo es seguro después de resolver todos los pedidos WhatsApp pendientes.
+Las migraciones son aditivas. Un rollback de aplicación puede dejar columnas, índices y triggers sin uso; ésa es la opción conservadora. Para `0007` y `0008`, este rollback sólo es seguro después de resolver todas las reservas activas y conciliar pagos con Mercado Pago.
 
 No hacer `DROP TABLE` como parte de un rollback inmediato. Para revertir esquema o datos:
 

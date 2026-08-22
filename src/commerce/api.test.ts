@@ -95,7 +95,7 @@ describe('cliente de comercio', () => {
     }), { status: 201, headers: { 'content-type': 'application/json' } }));
 
     await expect(
-      createWhatsappOrder([item], '00000000-0000-4000-8000-000000000001', null),
+      createWhatsappOrder([item], '00000000-0000-4000-8000-000000000001', fulfillment),
     ).resolves.toMatchObject({ orderId, status: 'pending', totalMinor: 246_800 });
 
     const request = fetchMock.mock.calls[0]?.[1];
@@ -105,7 +105,7 @@ describe('cliente de comercio', () => {
     expect(JSON.parse(request.body)).toEqual({
       idempotencyKey: '00000000-0000-4000-8000-000000000001',
       items: [{ productId: product.id, quantity: 2 }],
-      fulfillment: null,
+      fulfillment,
     });
     expect(request.credentials).toBe('same-origin');
     expect(request.redirect).toBe('error');

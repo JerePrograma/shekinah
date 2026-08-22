@@ -6,8 +6,16 @@ import type { PagesFunctionContext } from '../../../server/platform';
 import { createTestD1 } from '../../../src/test/d1';
 import { onRequest } from './preferences';
 
-const migrations = ['0001_commerce.sql', '0002_fulfillment_and_retention.sql',
-  '0003_checkout_intent_cart_fingerprint.sql', '0004_catalog_admin.sql']
+const migrations = [
+  '0001_commerce.sql',
+  '0002_fulfillment_and_retention.sql',
+  '0003_checkout_intent_cart_fingerprint.sql',
+  '0004_catalog_admin.sql',
+  '0005_admin_auth.sql',
+  '0006_analytics_manual_payment_click.sql',
+  '0007_whatsapp_order_reservations.sql',
+  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+]
   .map((file) => readFileSync(resolve(process.cwd(), 'migrations', file), 'utf8'));
 const originalFetch = globalThis.fetch;
 
@@ -98,6 +106,7 @@ describe('endpoint de checkout', () => {
         presentation: '100 g',
         price: { amount: 2_345.67, currency: 'ARS' },
         availability: 'available',
+        stockQuantity: 2,
         images: [],
         variants: [],
       }, 'admin@example.test');
@@ -164,13 +173,30 @@ describe('endpoint de checkout', () => {
       });
       expect(validResponse.status).toBe(201);
       expect(testD1.sqlite.prepare(
-        "SELECT product_id, quantity, unit_price_minor, subtotal_minor FROM order_items WHERE product_id = 'producto-preferencia'",
+        "SELECT product_id, quantity, unit_price_minor, subtotal_minor, stock_controlled FROM order_items WHERE product_id = 'producto-preferencia'",
       ).get()).toEqual({
         product_id: 'producto-preferencia',
         quantity: 2,
         unit_price_minor: 234_567,
         subtotal_minor: 469_134,
+        stock_controlled: 1,
       });
+      expect(testD1.sqlite.prepare(`SELECT
+        stock_reserved_at IS NOT NULL AS reserved,
+        stock_reservation_expires_at IS NOT NULL AS expires
+        FROM orders WHERE checkout_idempotency_key = ?`).get(validIdempotencyKey))
+        .toEqual({ reserved: 1, expires: 1 });
+
+      const replayResponse = await onRequest({
+        ...context(new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify(validCheckoutBody),
+        })),
+        env: checkoutEnv(testD1.database),
+      });
+      expect(replayResponse.status).toBe(200);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
       testD1.sqlite.prepare(
         "UPDATE orders SET created_at = '2000-01-01T00:00:00.000Z' WHERE checkout_idempotency_key = ?",

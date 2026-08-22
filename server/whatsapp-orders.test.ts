@@ -23,7 +23,18 @@ const migration = [
   '0005_admin_auth.sql',
   '0006_analytics_manual_payment_click.sql',
   '0007_whatsapp_order_reservations.sql',
+  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
+
+const fulfillment = Object.freeze({
+  method: 'coordinated_pickup' as const,
+  fullName: 'Ana Pérez',
+  phone: '5491155554444',
+  address: 'Calle 123',
+  locality: 'CABA',
+  province: 'Buenos Aires',
+  postalCode: 'C1234ABC',
+});
 
 describe('pedidos WhatsApp y reservas de stock', () => {
   it('crea un snapshot pendiente con precio canónico y proyecta la reserva sin tocar stock físico', async () => {
@@ -63,6 +74,53 @@ describe('pedidos WhatsApp y reservas de stock', () => {
     }
   });
 
+  it('exige datos completos antes de crear o reservar un pedido', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(database, productInput('datos-obligatorios', 500, 2), 'admin@test');
+      await expect(createWhatsappOrder(database, {
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment: null,
+        items: [{ productId: 'datos-obligatorios', quantity: 1 }],
+      })).rejects.toMatchObject({ status: 400, code: 'INVALID_FULFILLMENT' });
+      expect(await count(database, 'orders')).toBe(0);
+      expect(await getCatalogProductDetail(database, 'datos-obligatorios')).toMatchObject({
+        reservedQuantity: 0,
+        availableQuantity: 2,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('valida datos también para cotización manual sin persistir PII innecesaria', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const input = productInput('cotizacion-manual', 800, 2);
+      delete input.presentation;
+      await createCatalogProduct(database, input, 'admin@test');
+      const request = {
+        ...orderRequest('cotizacion-manual', 1),
+        fulfillment: { ...fulfillment, method: 'correo_argentino' as const },
+      };
+      const created = await createWhatsappOrder(database, request);
+      expect(created.response.totalMinor).toBe(80_000);
+      await expect(database.prepare(
+        'SELECT COUNT(*) AS count FROM order_fulfillment WHERE order_id = ?',
+      ).bind(created.response.orderId).first<number>('count')).resolves.toBe(0);
+      await expect(database.prepare(
+        'SELECT whatsapp_fulfillment_fingerprint FROM orders WHERE id = ?',
+      ).bind(created.response.orderId).first<string>('whatsapp_fulfillment_fingerprint'))
+        .resolves.toMatch(/^[a-f0-9]{64}$/u);
+      await expect(createWhatsappOrder(database, request)).resolves.toEqual({
+        created: false,
+        response: created.response,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it('rechaza stock insuficiente y un pedido multi-item completo sin persistencia parcial', async () => {
     const database = new SqliteD1(migration);
     try {
@@ -70,7 +128,7 @@ describe('pedidos WhatsApp y reservas de stock', () => {
       await createCatalogProduct(database, productInput('multi-insuficiente', 200, 1), 'admin@test');
       const request = {
         idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
+        fulfillment,
         items: [
           { productId: 'multi-suficiente', quantity: 2 },
           { productId: 'multi-insuficiente', quantity: 2 },
@@ -269,7 +327,7 @@ describe('pedidos WhatsApp y reservas de stock', () => {
     }
   });
 
-  it('mantiene los productos con stock controlado en el canal reservado de WhatsApp', async () => {
+  it('comparte la disponibilidad reservada entre WhatsApp y Checkout Pro', async () => {
     const database = new SqliteD1(migration);
     try {
       await createCatalogProduct(database, productInput('coexistencia-checkout', 1_000, 5), 'admin@test');
@@ -291,12 +349,7 @@ describe('pedidos WhatsApp y reservas de stock', () => {
         code: 'INSUFFICIENT_STOCK',
         status: 409,
       });
-      const controlledStockCheckout = checkout(1);
-      await expect(controlledStockCheckout).rejects.toMatchObject({
-        code: 'CHECKOUT_STOCK_CONTROLLED_REQUIRES_WHATSAPP',
-        status: 409,
-      });
-      await expect(controlledStockCheckout).rejects.toThrow(/stock controlado.*WhatsApp/iu);
+      await expect(checkout(1)).resolves.toMatchObject({ itemCount: 1 });
     } finally {
       database.close();
     }
@@ -352,7 +405,7 @@ function productInput(id: string, amount: number, stockQuantity: number): Record
 function orderRequest(productId: string, quantity: number) {
   return {
     idempotencyKey: crypto.randomUUID(),
-    fulfillment: null,
+    fulfillment,
     items: [{ productId, quantity }],
   };
 }

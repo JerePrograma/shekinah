@@ -40,6 +40,26 @@ type ReservedQuantityRow = Readonly<{
   reserved_quantity: number;
 }>;
 
+const activeStockReservationSql = `(
+  (reserved_orders.channel = 'whatsapp' AND reserved_orders.status = 'pending')
+  OR (
+    reserved_orders.channel = 'checkout_pro'
+    AND reserved_orders.stock_reserved_at IS NOT NULL
+    AND reserved_orders.stock_reservation_expires_at IS NOT NULL
+    AND reserved_orders.stock_consumed_at IS NULL
+    AND reserved_orders.status NOT IN ('approved', 'refunded')
+    AND (
+      unixepoch(reserved_orders.stock_reservation_expires_at) > unixepoch()
+      OR EXISTS (
+        SELECT 1
+        FROM payments AS pending_payments
+        WHERE pending_payments.order_id = reserved_orders.id
+          AND pending_payments.mapped_status = 'pending'
+      )
+    )
+  )
+)`;
+
 export function getBaseCatalogProducts(): readonly Product[] {
   return baseProducts;
 }
@@ -98,6 +118,7 @@ export async function listCatalogProductDetails(
 export async function getCatalogProductDetail(
   database: D1Database,
   productId: string,
+  excludedReservationOrderId: string | null = null,
 ): Promise<CatalogProductDetail | null> {
   assertProductId(productId);
   let row: CatalogMutationRow | null;
@@ -117,10 +138,16 @@ export async function getCatalogProductDetail(
 
   if (row === null) {
     const product = baseDetailById.get(productId) ?? null;
-    return product === null ? null : projectProductInventory(database, product);
+    return product === null
+      ? null
+      : projectProductInventory(database, product, excludedReservationOrderId);
   }
   if (row.deleted === 1 || row.payload_json === null) return null;
-  return projectProductInventory(database, parseStoredProduct(row.payload_json));
+  return projectProductInventory(
+    database,
+    parseStoredProduct(row.payload_json),
+    excludedReservationOrderId,
+  );
 }
 
 export async function createCatalogProduct(
@@ -424,10 +451,23 @@ function isMissingCatalogTable(error: unknown): boolean {
   return error instanceof Error && /no such table:\s*catalog_product_mutations/iu.test(error.message);
 }
 
-function isMissingWhatsappReservationSchema(error: unknown): boolean {
+function isMissingOrderReservationTables(error: unknown): boolean {
   return error instanceof Error && (
-    /no such (?:table|column):\s*(?:orders|order_items|(?:\w+\.)?channel)/iu.test(error.message) ||
+    /no such (?:table|column):\s*(?:orders|order_items|payments|(?:\w+\.)?channel)/iu.test(error.message) ||
     /no such column:\s*(?:\w+\.)?channel/iu.test(error.message)
+  );
+}
+
+function isMissingCheckoutReservationColumns(error: unknown): boolean {
+  return error instanceof Error &&
+    /no such column:\s*(?:\w+\.)?(?:stock_reserved_at|stock_reservation_expires_at|stock_consumed_at)/iu.test(error.message);
+}
+
+function checkoutStockMigrationRequired(): HttpError {
+  return new HttpError(
+    503,
+    'CHECKOUT_STOCK_MIGRATION_REQUIRED',
+    'La migración de reservas de Checkout Pro todavía no fue aplicada.',
   );
 }
 
@@ -439,9 +479,8 @@ async function listReservedQuantities(
       .prepare(
         `SELECT items.product_id, SUM(items.quantity) AS reserved_quantity
          FROM order_items AS items
-         INNER JOIN orders AS pending_orders ON pending_orders.id = items.order_id
-         WHERE pending_orders.channel = 'whatsapp'
-           AND pending_orders.status = 'pending'
+         INNER JOIN orders AS reserved_orders ON reserved_orders.id = items.order_id
+         WHERE ${activeStockReservationSql}
          GROUP BY items.product_id`,
       )
       .all<ReservedQuantityRow>();
@@ -452,7 +491,8 @@ async function listReservedQuantities(
       ]),
     );
   } catch (error: unknown) {
-    if (isMissingWhatsappReservationSchema(error)) return new Map();
+    if (isMissingOrderReservationTables(error)) return new Map();
+    if (isMissingCheckoutReservationColumns(error)) throw checkoutStockMigrationRequired();
     throw error;
   }
 }
@@ -460,6 +500,7 @@ async function listReservedQuantities(
 async function projectProductInventory(
   database: D1Database,
   product: CatalogProductDetail,
+  excludedReservationOrderId: string | null = null,
 ): Promise<CatalogProductDetail> {
   if (product.stockQuantity === undefined) return product;
   let reservedQuantity = 0;
@@ -468,16 +509,17 @@ async function projectProductInventory(
       .prepare(
         `SELECT COALESCE(SUM(items.quantity), 0) AS reserved_quantity
          FROM order_items AS items
-         INNER JOIN orders AS pending_orders ON pending_orders.id = items.order_id
+         INNER JOIN orders AS reserved_orders ON reserved_orders.id = items.order_id
          WHERE items.product_id = ?1
-           AND pending_orders.channel = 'whatsapp'
-           AND pending_orders.status = 'pending'`,
+           AND (?2 IS NULL OR reserved_orders.id <> ?2)
+           AND ${activeStockReservationSql}`,
       )
-      .bind(product.id)
+      .bind(product.id, excludedReservationOrderId)
       .first<Readonly<{ reserved_quantity: number }>>();
     reservedQuantity = assertReservedQuantity(row?.reserved_quantity ?? 0);
   } catch (error: unknown) {
-    if (!isMissingWhatsappReservationSchema(error)) throw error;
+    if (isMissingCheckoutReservationColumns(error)) throw checkoutStockMigrationRequired();
+    if (!isMissingOrderReservationTables(error)) throw error;
   }
   return withInventoryProjection(product, reservedQuantity);
 }
@@ -512,14 +554,26 @@ function throwCatalogStorageError(error: unknown): never {
       'La migración del catálogo administrativo todavía no fue aplicada.',
     );
   }
-  if (error instanceof Error && error.message.includes('WHATSAPP_STOCK_BELOW_RESERVATIONS')) {
+  if (
+    error instanceof Error &&
+    (
+      error.message.includes('WHATSAPP_STOCK_BELOW_RESERVATIONS') ||
+      error.message.includes('STOCK_BELOW_RESERVATIONS')
+    )
+  ) {
     throw new HttpError(
       409,
       'STOCK_BELOW_RESERVATIONS',
       'El stock físico no puede quedar por debajo de las unidades reservadas.',
     );
   }
-  if (error instanceof Error && error.message.includes('WHATSAPP_STOCK_CONTROL_REQUIRED')) {
+  if (
+    error instanceof Error &&
+    (
+      error.message.includes('WHATSAPP_STOCK_CONTROL_REQUIRED') ||
+      error.message.includes('STOCK_CONTROL_REQUIRED')
+    )
+  ) {
     throw new HttpError(
       409,
       'PRODUCT_HAS_RESERVATIONS',
