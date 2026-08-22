@@ -65,6 +65,45 @@ describe('Backoffice V2', () => {
       .toHaveFocus());
   });
 
+  it('concilia un pedido Checkout Pro y muestra el impacto de reserva y reintegro', async () => {
+    const onOperationStateChange = vi.fn();
+    let detail = orderDetailFixture({
+      status: 'pending',
+      approved_at: null,
+      stock_consumed_at: null,
+      stock_reservation_state: 'reserved',
+    });
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      const path = requestPath(input);
+      if (path.startsWith('/api/admin/orders?')) return Promise.resolve(json(orderListFixture({ status: detail.order.status })));
+      if (path === `/api/admin/orders/${ORDER_ID}/reconcile` && init?.method === 'POST') {
+        detail = orderDetailFixture({ status: 'refunded', stock_reservation_state: 'consumed' });
+        return Promise.resolve(json({ ...detail, reconciliation: { checkedPayments: 1 } }));
+      }
+      if (path === `/api/admin/orders/${ORDER_ID}`) return Promise.resolve(json(detail));
+      if (path === '/api/catalog') return Promise.resolve(json({ products: [] }));
+      return Promise.resolve(json({ error: { message: 'No encontrado.' } }, 404));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <AdminPage
+        navigate={vi.fn()}
+        onOperationStateChange={onOperationStateChange}
+        section="orders"
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+    expect(await screen.findByText('Reservado')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Conciliar con Mercado Pago' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('1 pago verificado');
+    expect(screen.getByText(/El reintegro no repone stock automáticamente/i)).toBeVisible();
+    expect(fetchMock.mock.calls.filter(([input]) => requestPath(input).endsWith('/reconcile')))
+      .toHaveLength(1);
+    expect(onOperationStateChange).toHaveBeenCalledWith(true, 'Conciliando pedido con Mercado Pago');
+  });
+
   it('mantiene datos parciales, porcentajes seguros y estados vacíos en analítica', async () => {
     const fetchMock = vi.fn<typeof fetch>((input) => {
       const path = requestPath(input);
@@ -279,6 +318,11 @@ function orderDetailFixture(overrides: Readonly<Record<string, unknown>> = {}) {
       resolved_at: null,
       resolved_by: null,
       last_error_code: null,
+      mp_preference_id: 'preference-test',
+      stock_reserved_at: '2026-08-10T12:00:00.000Z',
+      stock_reservation_expires_at: '2026-08-10T12:30:00.000Z',
+      stock_consumed_at: '2026-08-10T12:05:00.000Z',
+      stock_reservation_state: 'consumed',
       delivery_method: 'correo_argentino',
       full_name: 'Cliente de prueba',
       phone: '5491100000000',
@@ -297,6 +341,7 @@ function orderDetailFixture(overrides: Readonly<Record<string, unknown>> = {}) {
       quantity: 2,
       unit_price_minor: 5_000,
       subtotal_minor: 10_000,
+      stock_controlled: 1,
     }],
     payments: [{
       provider: 'mercadopago',

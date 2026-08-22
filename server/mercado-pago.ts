@@ -17,9 +17,17 @@ export type MercadoPagoPayment = Readonly<{
   statusDetail: string | null;
   amountMinor: number;
   currency: string;
+  liveMode: boolean;
+  collectorId: string;
+  metadataOrderId: string | null;
   approvedAt: string | null;
   updatedAt: string | null;
 }>;
+
+export type MercadoPagoPaymentContextError =
+  | 'PAYMENT_ENVIRONMENT_MISMATCH'
+  | 'PAYMENT_ACCOUNT_MISMATCH'
+  | 'PAYMENT_METADATA_MISMATCH';
 
 export async function createMercadoPagoPreference({
   accessToken,
@@ -187,7 +195,8 @@ export async function getMercadoPagoPayment(
     typeof payload.external_reference !== 'string' ||
     typeof payload.status !== 'string' ||
     typeof payload.transaction_amount !== 'number' ||
-    typeof payload.currency_id !== 'string'
+    typeof payload.currency_id !== 'string' ||
+    typeof payload.live_mode !== 'boolean'
   ) {
     throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un pago incompleto.');
   }
@@ -205,6 +214,13 @@ export async function getMercadoPagoPayment(
   ) {
     throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un importe inválido.');
   }
+  const collectorId = readProviderIdentifier(payload.collector_id);
+  if (collectorId === null) {
+    throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió una cuenta inválida.');
+  }
+  const metadataOrderId = isRecord(payload.metadata) && typeof payload.metadata.order_id === 'string'
+    ? payload.metadata.order_id
+    : null;
   return Object.freeze({
     id: returnedId,
     externalReference: payload.external_reference,
@@ -212,9 +228,97 @@ export async function getMercadoPagoPayment(
     statusDetail: typeof payload.status_detail === 'string' ? payload.status_detail : null,
     amountMinor,
     currency: payload.currency_id,
+    liveMode: payload.live_mode,
+    collectorId,
+    metadataOrderId,
     approvedAt: typeof payload.date_approved === 'string' ? payload.date_approved : null,
     updatedAt: typeof payload.date_last_updated === 'string' ? payload.date_last_updated : null,
   });
+}
+
+export async function searchMercadoPagoPayments(
+  externalReference: string,
+  accessToken: string,
+): Promise<readonly MercadoPagoPayment[]> {
+  if (!/^ord_[A-Za-z0-9_-]{20,128}$/u.test(externalReference)) {
+    throw new HttpError(400, 'INVALID_ORDER_ID', 'El identificador de pedido no es válido.');
+  }
+  const searchUrl = new URL(`${MERCADO_PAGO_API}/v1/payments/search`);
+  searchUrl.searchParams.set('external_reference', externalReference);
+  searchUrl.searchParams.set('sort', 'date_last_updated');
+  searchUrl.searchParams.set('criteria', 'desc');
+  searchUrl.searchParams.set('limit', '50');
+  searchUrl.searchParams.set('offset', '0');
+  const response = await fetchProvider(searchUrl, accessToken, 'PAYMENT_RECONCILIATION_FAILED');
+  if (!response.ok) {
+    throw new HttpError(502, 'PAYMENT_RECONCILIATION_FAILED', 'No se pudieron buscar los pagos del pedido.');
+  }
+  const payload = await readProviderJson(response, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.results) ||
+    !isRecord(payload.paging) ||
+    typeof payload.paging.total !== 'number' ||
+    !Number.isSafeInteger(payload.paging.total) ||
+    payload.paging.total < 0
+  ) {
+    throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió una búsqueda inválida.');
+  }
+  if (payload.paging.total > 50) {
+    throw new HttpError(409, 'PAYMENT_RECONCILIATION_AMBIGUOUS', 'El pedido tiene demasiados pagos para conciliar automáticamente.');
+  }
+  const paymentIds = new Set<string>();
+  for (const result of payload.results) {
+    if (!isRecord(result) || result.external_reference !== externalReference) continue;
+    const paymentId = readProviderIdentifier(result.id);
+    if (paymentId === null || !/^\d{1,30}$/u.test(paymentId)) {
+      throw new HttpError(502, 'PAYMENT_PROVIDER_INVALID_RESPONSE', 'Mercado Pago devolvió un pago inválido.');
+    }
+    paymentIds.add(paymentId);
+  }
+  return Object.freeze(await Promise.all(
+    [...paymentIds].map((paymentId) => getMercadoPagoPayment(paymentId, accessToken)),
+  ));
+}
+
+export function mercadoPagoPaymentContextError(
+  payment: MercadoPagoPayment,
+  context: Readonly<{
+    mode: CommerceMode;
+    orderId: string;
+    notificationLiveMode?: boolean;
+    notificationUserId?: string;
+  }>,
+): MercadoPagoPaymentContextError | null {
+  const expectedLiveMode = context.mode === 'production';
+  if (
+    payment.liveMode !== expectedLiveMode ||
+    (context.notificationLiveMode !== undefined && context.notificationLiveMode !== expectedLiveMode)
+  ) {
+    return 'PAYMENT_ENVIRONMENT_MISMATCH';
+  }
+  if (
+    context.notificationUserId !== undefined &&
+    payment.collectorId !== context.notificationUserId
+  ) {
+    return 'PAYMENT_ACCOUNT_MISMATCH';
+  }
+  if (payment.metadataOrderId !== context.orderId) return 'PAYMENT_METADATA_MISMATCH';
+  return null;
+}
+
+export function assertMercadoPagoPaymentContext(
+  payment: MercadoPagoPayment,
+  context: Readonly<{ mode: CommerceMode; orderId: string }>,
+): void {
+  const code = mercadoPagoPaymentContextError(payment, context);
+  if (code === null) return;
+  const message = code === 'PAYMENT_ENVIRONMENT_MISMATCH'
+    ? 'El pago no corresponde al entorno configurado.'
+    : code === 'PAYMENT_ACCOUNT_MISMATCH'
+      ? 'El pago no corresponde a la cuenta configurada.'
+      : 'El pago no corresponde a la orden interna.';
+  throw new HttpError(409, code, message);
 }
 
 export async function verifyMercadoPagoWebhook({
@@ -304,6 +408,15 @@ async function readProviderJson(response: Response, code: string): Promise<unkno
   } catch {
     throw new HttpError(502, code, 'Mercado Pago devolvió una respuesta no válida.');
   }
+}
+
+function readProviderIdentifier(value: unknown): string | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return /^\d{1,30}$/u.test(normalized) ? normalized : null;
 }
 
 function assertPreferenceMatchesCart(

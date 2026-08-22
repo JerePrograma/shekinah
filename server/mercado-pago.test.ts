@@ -5,7 +5,9 @@ import {
   createMercadoPagoPreference,
   getMercadoPagoPayment,
   mapPaymentStatus,
+  mercadoPagoPaymentContextError,
   recoverMercadoPagoPreference,
+  searchMercadoPagoPayments,
   verifyMercadoPagoWebhook,
 } from './mercado-pago';
 
@@ -237,6 +239,67 @@ describe('Mercado Pago', () => {
       mode: 'sandbox',
       orderId: 'order-123',
     })).rejects.toMatchObject({ code: 'PREFERENCE_RECOVERY_MISMATCH' });
+  });
+
+  it('busca pagos exactos y valida entorno, cuenta y metadata autoritativos', async () => {
+    const orderId = 'ord_payment_reconciliation_1234567890';
+    const payment = {
+      id: 456,
+      external_reference: orderId,
+      status: 'approved',
+      status_detail: 'accredited',
+      transaction_amount: 26_500,
+      currency_id: 'ARS',
+      live_mode: true,
+      collector_id: 998877,
+      metadata: { order_id: orderId },
+      date_approved: '2026-08-04T10:00:00.000Z',
+      date_last_updated: '2026-08-04T10:00:00.000Z',
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        paging: { total: 1, limit: 50, offset: 0 },
+        results: [{ id: 456, external_reference: orderId }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(payment), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+    globalThis.fetch = fetchMock;
+
+    const [authoritative] = await searchMercadoPagoPayments(
+      orderId,
+      'test-token-without-real-credentials',
+    );
+    expect(authoritative).toMatchObject({
+      id: '456',
+      liveMode: true,
+      collectorId: '998877',
+      metadataOrderId: orderId,
+    });
+    if (authoritative === undefined) throw new Error('Falta el pago autoritativo.');
+    expect(mercadoPagoPaymentContextError(authoritative, {
+      mode: 'production',
+      orderId,
+      notificationLiveMode: true,
+      notificationUserId: '998877',
+    })).toBeNull();
+    expect(mercadoPagoPaymentContextError(authoritative, {
+      mode: 'sandbox',
+      orderId,
+    })).toBe('PAYMENT_ENVIRONMENT_MISMATCH');
+    expect(mercadoPagoPaymentContextError(authoritative, {
+      mode: 'production',
+      orderId,
+      notificationUserId: '112233',
+    })).toBe('PAYMENT_ACCOUNT_MISMATCH');
+    expect(mercadoPagoPaymentContextError(
+      { ...authoritative, metadataOrderId: 'ord_other_12345678901234567890' },
+      { mode: 'production', orderId },
+    )).toBe('PAYMENT_METADATA_MISMATCH');
+    const searchInput = fetchMock.mock.calls[0]?.[0];
+    expect(searchInput).toBeInstanceOf(URL);
+    expect((searchInput as URL).searchParams.get('external_reference')).toBe(orderId);
   });
 
   it('rechaza IDs de proveedor vacíos o diferentes al recurso solicitado', async () => {

@@ -6,6 +6,29 @@ import type { D1Database } from './platform';
 const orderColumns = `
   o.id, o.status, o.channel, o.currency, o.total_minor, o.item_count,
   o.created_at, o.updated_at, o.approved_at, o.resolved_at, o.resolved_by,
+  o.stock_reserved_at, o.stock_reservation_expires_at, o.stock_consumed_at,
+  CASE
+    WHEN NOT EXISTS (
+      SELECT 1 FROM order_items AS controlled_items
+      WHERE controlled_items.order_id = o.id AND controlled_items.stock_controlled = 1
+    ) THEN 'not_controlled'
+    WHEN o.channel = 'whatsapp' AND o.status = 'approved' THEN 'consumed'
+    WHEN o.stock_consumed_at IS NOT NULL THEN 'consumed'
+    WHEN o.channel = 'whatsapp' AND o.status = 'pending' THEN 'reserved'
+    WHEN o.channel = 'checkout_pro'
+      AND o.stock_reserved_at IS NOT NULL
+      AND o.stock_consumed_at IS NULL
+      AND o.status NOT IN ('approved', 'refunded')
+      AND (
+        unixepoch(o.stock_reservation_expires_at) > unixepoch()
+        OR EXISTS (
+          SELECT 1 FROM payments AS pending_payments
+          WHERE pending_payments.order_id = o.id
+            AND pending_payments.mapped_status = 'pending'
+        )
+      ) THEN 'reserved'
+    ELSE 'released'
+  END AS stock_reservation_state,
   f.delivery_method, f.full_name, f.phone, f.address, f.locality,
   f.province, f.postal_code, f.total_weight_grams, f.shipping_tier,
   COALESCE(f.products_total_minor, o.total_minor) AS products_total_minor,
@@ -62,7 +85,7 @@ export async function getAdminOrderWithFulfillment(
   const items = await database
     .prepare(
       `SELECT product_id, name, presentation, sku, quantity,
-              unit_price_minor, subtotal_minor
+              unit_price_minor, subtotal_minor, stock_controlled
        FROM order_items WHERE order_id = ? ORDER BY name`,
     )
     .bind(id)

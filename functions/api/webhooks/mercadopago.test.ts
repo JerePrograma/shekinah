@@ -28,6 +28,7 @@ function context(database: SqliteD1, request: Request): PagesFunctionContext<Env
     request,
     env: {
       DB: database,
+      MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
       MERCADO_PAGO_ACCESS_TOKEN: 'access-token-for-tests-only',
       MERCADO_PAGO_WEBHOOK_SECRET: webhookSecret,
     },
@@ -152,12 +153,14 @@ describe('entrada del webhook de Mercado Pago', () => {
       })));
       globalThis.fetch = fetchMock;
       const body = JSON.stringify({
-        id: 'notification-1', type: 'payment', action: 'payment.updated', data: { id: dataId },
+        id: 'notification-1', type: 'payment', action: 'payment.updated',
+        live_mode: false, user_id: 998877, data: { id: dataId },
       });
       const first = await onRequest(context(database, request(body, 'application/json', await signature())));
       const duplicate = await onRequest(context(database, request(body, 'application/json', await signature())));
       const semanticRedelivery = await onRequest(context(database, request(JSON.stringify({
-        id: 'notification-2', type: 'payment', action: 'payment.updated', data: { id: dataId },
+        id: 'notification-2', type: 'payment', action: 'payment.updated',
+        live_mode: false, user_id: 998877, data: { id: dataId },
       }), 'application/json', await signature())));
       expect(first.status).toBe(200);
       expect(duplicate.status).toBe(200);
@@ -189,7 +192,8 @@ describe('entrada del webhook de Mercado Pago', () => {
           status,
         }));
         const response = await onRequest(context(database, request(JSON.stringify({
-          id: `notification-status-${index}`, type: 'payment', action: 'payment.updated', data: { id: dataId },
+          id: `notification-status-${index}`, type: 'payment', action: 'payment.updated',
+          live_mode: false, user_id: 998877, data: { id: dataId },
         }), 'application/json', await signature())));
         expect(response.status).toBe(200);
         expect((await getOrderById(database, prepared.order.id))?.status).toBe(status);
@@ -218,7 +222,10 @@ describe('entrada del webhook de Mercado Pago', () => {
           status: 'approved',
         })));
         const response = await onRequest(context(database, request(
-          JSON.stringify({ id: 'notification-mismatch', type: 'payment', data: { id: dataId } }),
+          JSON.stringify({
+            id: 'notification-mismatch', type: 'payment', live_mode: false,
+            user_id: 998877, data: { id: dataId },
+          }),
           'application/json',
           await signature(),
         )));
@@ -229,6 +236,58 @@ describe('entrada del webhook de Mercado Pago', () => {
       } finally {
         database.close();
       }
+    }
+  });
+
+  it.each([
+    {
+      label: 'entorno',
+      bodyLiveMode: true,
+      bodyUserId: 998877,
+      provider: { liveMode: true },
+      expectedCode: 'PAYMENT_ENVIRONMENT_MISMATCH',
+    },
+    {
+      label: 'cuenta',
+      bodyLiveMode: false,
+      bodyUserId: 112233,
+      provider: {},
+      expectedCode: 'PAYMENT_ACCOUNT_MISMATCH',
+    },
+    {
+      label: 'metadata',
+      bodyLiveMode: false,
+      bodyUserId: 998877,
+      provider: { metadataOrderId: 'ord_other_order_12345678901234567890' },
+      expectedCode: 'PAYMENT_METADATA_MISMATCH',
+    },
+  ] as const)('ignora un pago que no corresponde al $label configurado', async (scenario) => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: testCart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      globalThis.fetch = vi.fn<typeof fetch>(() => Promise.resolve(paymentResponse({
+        externalReference: prepared.order.id,
+        amountMinor: prepared.order.total_minor,
+        currency: 'ARS',
+        status: 'approved',
+        ...scenario.provider,
+      })));
+      const response = await onRequest(context(database, request(JSON.stringify({
+        id: `notification-${scenario.label}`,
+        type: 'payment',
+        live_mode: scenario.bodyLiveMode,
+        user_id: scenario.bodyUserId,
+        data: { id: dataId },
+      }), 'application/json', await signature())));
+
+      expect(response.status).toBe(200);
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('preference_pending');
+      await expect(database.prepare('SELECT status, error_code FROM payment_events LIMIT 1').first())
+        .resolves.toEqual({ status: 'ignored', error_code: scenario.expectedCode });
+    } finally {
+      database.close();
     }
   });
 });
@@ -259,13 +318,19 @@ function testCart(): RecalculatedCart {
 
 function paymentResponse({
   amountMinor,
+  collectorId = 998877,
   currency,
   externalReference,
+  liveMode = false,
+  metadataOrderId = externalReference,
   status,
 }: Readonly<{
   amountMinor: number;
+  collectorId?: number;
   currency: string;
   externalReference: string;
+  liveMode?: boolean;
+  metadataOrderId?: string;
   status: string;
 }>): Response {
   return new Response(JSON.stringify({
@@ -275,6 +340,9 @@ function paymentResponse({
     status_detail: 'accredited',
     transaction_amount: amountMinor / 100,
     currency_id: currency,
+    live_mode: liveMode,
+    collector_id: collectorId,
+    metadata: { order_id: metadataOrderId },
     date_approved: '2026-08-04T10:00:00.000Z',
     date_last_updated: '2026-08-04T10:00:00.000Z',
   }), { status: 200, headers: { 'content-type': 'application/json' } });

@@ -31,6 +31,7 @@ type OrderStatusFilter =
   | 'cancelled'
   | 'refunded'
   | 'failed';
+type OrderAction = 'approve' | 'reject' | 'reconcile';
 type AdminFilter = Readonly<{ from: string; to: string; status: OrderStatusFilter }>;
 type AdminSummary = Readonly<{
   orderCount: number;
@@ -91,6 +92,11 @@ type AdminOrderDetail = Readonly<{
     resolvedAt: string;
     resolvedBy: string;
     lastErrorCode: string;
+    preferenceId: string;
+    stockReservedAt: string;
+    stockReservationExpiresAt: string;
+    stockConsumedAt: string;
+    stockReservationState: string;
     deliveryMethod: string;
     fullName: string;
     phone: string;
@@ -108,6 +114,7 @@ type AdminOrderDetail = Readonly<{
     quantity: number;
     unitPriceMinor: number;
     subtotalMinor: number;
+    stockControlled: boolean;
   }>[];
   payments: readonly Readonly<{
     provider: string;
@@ -171,7 +178,7 @@ export function AdminPage({
   const [orderDetail, setOrderDetail] = useState<AdminOrderDetail | null>(null);
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
-  const [orderAction, setOrderAction] = useState<'approve' | 'reject' | null>(null);
+  const [orderAction, setOrderAction] = useState<OrderAction | null>(null);
   const [orderActionError, setOrderActionError] = useState('');
   const [orderActionMessage, setOrderActionMessage] = useState('');
   const [confirmingReject, setConfirmingReject] = useState(false);
@@ -193,7 +200,9 @@ export function AdminPage({
         ? 'Aprobando pedido'
         : orderAction === 'reject'
           ? 'Rechazando pedido'
-          : undefined,
+          : orderAction === 'reconcile'
+            ? 'Conciliando pedido con Mercado Pago'
+            : undefined,
     );
     return () => onOperationStateChange?.(false);
   }, [onOperationStateChange, orderAction]);
@@ -286,6 +295,38 @@ export function AdminPage({
         action === 'approve'
           ? 'Pedido aprobado. La reserva se convirtió en venta y el stock físico quedó actualizado.'
           : 'Pedido rechazado. Las unidades reservadas volvieron a quedar disponibles.',
+      );
+      setReportRefresh((current) => current + 1);
+      await refreshRuntimeCatalog().catch(() => undefined);
+      window.dispatchEvent(new Event('shekinah:admin-products-refresh'));
+    } catch (error: unknown) {
+      setOrderActionError(errorMessage(error));
+      setDetailRefresh((current) => current + 1);
+    } finally {
+      setOrderAction(null);
+    }
+  }
+
+  async function reconcileOrder(): Promise<void> {
+    if (
+      selectedOrderId === null ||
+      orderAction !== null ||
+      orderDetail?.order.channel !== 'checkout_pro'
+    ) return;
+    setOrderAction('reconcile');
+    setOrderActionError('');
+    setOrderActionMessage('');
+    try {
+      const payload = await postAdminAction(
+        `/api/admin/orders/${encodeURIComponent(selectedOrderId)}/reconcile`,
+        onUnauthorized,
+      );
+      const checkedPayments = parseReconciliationCount(payload);
+      setOrderDetail(parseOrderDetail(payload));
+      setOrderActionMessage(
+        checkedPayments === 0
+          ? 'Conciliación completada: Mercado Pago no informó pagos para este pedido.'
+          : `Conciliación completada: ${checkedPayments.toLocaleString('es-AR')} pago${checkedPayments === 1 ? '' : 's'} verificado${checkedPayments === 1 ? '' : 's'} contra Mercado Pago.`,
       );
       setReportRefresh((current) => current + 1);
       await refreshRuntimeCatalog().catch(() => undefined);
@@ -397,6 +438,7 @@ export function AdminPage({
             onApprove={() => void transitionOrder('approve')}
             onCancelReject={() => setConfirmingReject(false)}
             onConfirmReject={() => void transitionOrder('reject')}
+            onReconcile={() => void reconcileOrder()}
             onRequestReject={() => setConfirmingReject(true)}
           />
         ) : null}
@@ -781,10 +823,11 @@ function OrderDetailPanel({
   onApprove,
   onCancelReject,
   onConfirmReject,
+  onReconcile,
   onRequestReject,
   orderId,
 }: Readonly<{
-  action: 'approve' | 'reject' | null;
+  action: OrderAction | null;
   actionError: string;
   actionMessage: string;
   confirmingReject: boolean;
@@ -795,6 +838,7 @@ function OrderDetailPanel({
   onApprove: () => void;
   onCancelReject: () => void;
   onConfirmReject: () => void;
+  onReconcile: () => void;
   onRequestReject: () => void;
   orderId: string;
 }>) {
@@ -880,6 +924,28 @@ function OrderDetailPanel({
           )}
         </section>
       ) : null}
+      {detail?.order.channel === 'checkout_pro' ? (
+        <section className="admin-order-actions" aria-labelledby="reconcile-order-title" aria-busy={action !== null}>
+          <div>
+            <h4 id="reconcile-order-title">Conciliar pago y stock</h4>
+            <p>
+              Consulta Mercado Pago con la credencial del entorno. Si encuentra un pago autoritativo,
+              actualiza el pedido y consume la reserva exactamente una vez cuando corresponda.
+            </p>
+            {detail.order.status === 'refunded' ? (
+              <p className="admin-context-note">
+                El reintegro no repone stock automáticamente. Cualquier reposición física requiere
+                una decisión y un ajuste manual trazable.
+              </p>
+            ) : null}
+          </div>
+          <div className="admin-inline-actions">
+            <button className="button button-primary" type="button" disabled={action !== null} onClick={onReconcile}>
+              {action === 'reconcile' ? 'Conciliando…' : 'Conciliar con Mercado Pago'}
+            </button>
+          </div>
+        </section>
+      ) : null}
       {actionMessage === '' ? null : <p className="admin-feedback admin-feedback-success" role="status">{actionMessage}</p>}
       {actionError === '' ? null : <p className="form-error" role="alert">{actionError}</p>}
     </article>
@@ -902,7 +968,18 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
           ['Resolución', formatDate(order.resolvedAt)],
           ['Resuelto por', order.resolvedBy],
           ['Moneda', order.currency],
+          ['Preferencia Mercado Pago', order.preferenceId],
           ['Error conocido', order.lastErrorCode],
+        ]}
+      />
+      <DetailGroup
+        title="Reserva e inventario"
+        entries={[
+          ['Estado de stock', reservationStateLabel(order.stockReservationState)],
+          ['Reserva creada', formatDate(order.stockReservedAt)],
+          ['Vencimiento de reserva', formatDate(order.stockReservationExpiresAt)],
+          ['Consumo de stock', formatDate(order.stockConsumedAt)],
+          ['Política de reintegro', 'No repone stock automáticamente'],
         ]}
       />
       <DetailGroup
@@ -931,11 +1008,12 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
         caption={order.channel === 'whatsapp' && order.status === 'pending'
           ? 'Productos y unidades reservadas'
           : 'Items del pedido'}
-        columns={['Producto', 'Presentación', 'SKU', 'Cantidad', 'Precio unitario', 'Subtotal']}
+        columns={['Producto', 'Presentación', 'SKU', 'Stock', 'Cantidad', 'Precio unitario', 'Subtotal']}
         rows={detail.items.map((item) => [
           item.name === '—' ? item.productId : item.name,
           item.presentation,
           item.sku,
+          item.stockControlled ? 'Controlado' : 'Sin control numérico',
           item.quantity.toLocaleString('es-AR'),
           formatMoney(item.unitPriceMinor, order.currency),
           formatMoney(item.subtotalMinor, order.currency),
@@ -960,7 +1038,8 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
       />
       <p className="admin-context-note">
         Los importes y snapshots son históricos y no se editan desde esta vista. Sólo los pedidos
-        de WhatsApp pendientes admiten aprobación o rechazo.
+        de WhatsApp pendientes admiten aprobación o rechazo; Checkout Pro sólo admite una
+        conciliación contra el estado autoritativo de Mercado Pago.
       </p>
     </div>
   );
@@ -1236,6 +1315,11 @@ function parseOrderDetail(value: unknown): AdminOrderDetail {
       resolvedAt: readNullableText(order.resolved_at),
       resolvedBy: readNullableText(order.resolved_by),
       lastErrorCode: readNullableText(order.last_error_code),
+      preferenceId: readNullableText(order.mp_preference_id),
+      stockReservedAt: readNullableText(order.stock_reserved_at),
+      stockReservationExpiresAt: readNullableText(order.stock_reservation_expires_at),
+      stockConsumedAt: readNullableText(order.stock_consumed_at),
+      stockReservationState: readRequiredText(order, 'stock_reservation_state'),
       deliveryMethod: readNullableText(order.delivery_method),
       fullName: readNullableText(order.full_name),
       phone: readNullableText(order.phone),
@@ -1260,6 +1344,7 @@ function parseOrderItem(value: unknown): AdminOrderDetail['items'][number] {
     quantity: readRequiredMetric(value, 'quantity'),
     unitPriceMinor: readRequiredMetric(value, 'unit_price_minor'),
     subtotalMinor: readRequiredMetric(value, 'subtotal_minor'),
+    stockControlled: readRequiredFlag(value, 'stock_controlled'),
   });
 }
 
@@ -1277,6 +1362,13 @@ function parsePayment(value: unknown): AdminOrderDetail['payments'][number] {
     providerUpdatedAt: readNullableText(value.provider_updated_at),
     updatedAt: readRequiredText(value, 'updated_at'),
   });
+}
+
+function parseReconciliationCount(value: unknown): number {
+  if (!isRecord(value) || !isRecord(value.reconciliation)) {
+    throw new Error('La conciliación no tiene un formato válido.');
+  }
+  return readRequiredMetric(value.reconciliation, 'checkedPayments');
 }
 
 function parseRows(value: unknown): readonly UnknownRow[] {
@@ -1346,6 +1438,13 @@ function readRequiredMetric(row: UnknownRow, key: string): number {
   return Math.round(value);
 }
 
+function readRequiredFlag(row: UnknownRow, key: string): boolean {
+  if (row[key] !== 0 && row[key] !== 1 && row[key] !== false && row[key] !== true) {
+    throw new Error('La respuesta administrativa no tiene un formato válido.');
+  }
+  return row[key] === 1 || row[key] === true;
+}
+
 function readNonNegativeInteger(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0;
@@ -1405,6 +1504,16 @@ function deliveryLabel(value: string): string {
 
 function providerLabel(value: string): string {
   return value === 'mercadopago' ? 'Mercado Pago' : value;
+}
+
+function reservationStateLabel(value: string): string {
+  const labels: Record<string, string> = {
+    consumed: 'Consumido',
+    not_controlled: 'Sin control numérico',
+    released: 'Liberado',
+    reserved: 'Reservado',
+  };
+  return labels[value] ?? value;
 }
 
 function channelLabel(value: string): string {

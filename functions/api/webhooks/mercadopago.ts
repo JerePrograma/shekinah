@@ -1,4 +1,5 @@
 import { sha256Hex } from '../../../server/crypto';
+import { requireCommerceMode } from '../../../server/config';
 import {
   HttpError,
   methodNotAllowedResponse,
@@ -10,6 +11,7 @@ import {
 import {
   getMercadoPagoPayment,
   mapPaymentStatus,
+  mercadoPagoPaymentContextError,
   verifyMercadoPagoWebhook,
 } from '../../../server/mercado-pago';
 import { getOrderById, updateOrderFromPayment } from '../../../server/orders';
@@ -24,6 +26,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
   let eventOwner: string | null = null;
   try {
     database = requireDatabase(env);
+    const mode = requireCommerceMode(env);
     const accessToken = requireSecret(
       env.MERCADO_PAGO_ACCESS_TOKEN,
       'PAYMENT_CREDENTIALS_MISSING',
@@ -57,6 +60,8 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     if (bodyDataId !== null && bodyDataId !== queryDataId) {
       throw new HttpError(400, 'PAYMENT_ID_MISMATCH', 'El pago no coincide con el valor firmado.');
     }
+    const notificationLiveMode = readRequiredLiveMode(payload.live_mode);
+    const notificationUserId = readRequiredUserId(payload.user_id);
     const eventType =
       readOptionalEventLabel(payload.type, 'type') ??
       readOptionalEventLabel(url.searchParams.get('type'), 'type') ??
@@ -104,6 +109,20 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
         status: 'ignored',
         responseCode: 200,
         errorCode: 'PAYMENT_AMOUNT_MISMATCH',
+      });
+      return noContentResponse(200);
+    }
+    const contextError = mercadoPagoPaymentContextError(payment, {
+      mode,
+      orderId: order.id,
+      notificationLiveMode,
+      notificationUserId,
+    });
+    if (contextError !== null) {
+      await finishPaymentEvent(database, eventKey, eventOwner, {
+        status: 'ignored',
+        responseCode: 200,
+        errorCode: contextError,
       });
       return noContentResponse(200);
     }
@@ -173,4 +192,19 @@ function readOptionalIdentifier(value: unknown, field: string): string | null {
     throw new HttpError(400, 'INVALID_WEBHOOK_FIELD', `El campo ${field} del webhook no es válido.`);
   }
   return normalized;
+}
+
+function readRequiredLiveMode(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new HttpError(400, 'INVALID_WEBHOOK_FIELD', 'El campo live_mode del webhook no es válido.');
+  }
+  return value;
+}
+
+function readRequiredUserId(value: unknown): string {
+  const userId = readOptionalIdentifier(value, 'user_id');
+  if (userId === null || !/^\d{1,30}$/u.test(userId)) {
+    throw new HttpError(400, 'INVALID_WEBHOOK_FIELD', 'El campo user_id del webhook no es válido.');
+  }
+  return userId;
 }

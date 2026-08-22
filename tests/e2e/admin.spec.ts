@@ -374,6 +374,30 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeFocused();
 });
 
+test('concilia Checkout Pro y hace visible que un reintegro no repone stock', async ({ page }) => {
+  const orderId = 'ord_checkout_reconcile_e2e_1234567890';
+  const pending = orderDetailFixture(orderId);
+  pending.order.status = 'pending';
+  pending.order.approved_at = null;
+  pending.order.stock_consumed_at = null;
+  pending.order.stock_reservation_state = 'reserved';
+  pending.payments = [];
+  const api = await installStatefulAdminApi(page, [], { orders: [pending] });
+
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Ver detalle' }).click();
+
+  await expect(page.getByText('Reservado')).toBeVisible();
+  await page.getByRole('button', { name: 'Conciliar con Mercado Pago' }).click();
+  await expect(page.locator('.admin-feedback-success')).toContainText('1 pago verificado');
+  await expect(page.getByText(/El reintegro no repone stock automáticamente/u)).toBeVisible();
+  expect(api.requests.filter(({ method, pathname }) => (
+    method === 'POST' && pathname === `/api/admin/orders/${orderId}/reconcile`
+  ))).toHaveLength(1);
+});
+
 test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async ({ page }) => {
   const orderId = 'ord_whatsapp_pending_approve_e2e';
   const api = await installStatefulAdminApi(page, [
@@ -696,6 +720,42 @@ async function installStatefulAdminApi(
       return;
     }
 
+    const reconcileMatch = /^\/api\/admin\/orders\/([^/]+)\/reconcile$/u.exec(pathname);
+    if (reconcileMatch !== null && method === 'POST') {
+      const orderId = decodeURIComponent(reconcileMatch[1] ?? '');
+      const current = orders.find(({ order }) => order.id === orderId);
+      if (current?.order.channel !== 'checkout_pro') {
+        await json(route, { error: { code: 'ORDER_CHANNEL_CONFLICT' } }, 409);
+        return;
+      }
+      const reconciledAt = '2026-08-22T20:00:00.000Z';
+      const updated: MockAdminOrder = {
+        ...current,
+        order: {
+          ...current.order,
+          status: 'refunded',
+          updated_at: reconciledAt,
+          stock_consumed_at: reconciledAt,
+          stock_reservation_state: 'consumed',
+        },
+        payments: [{
+          provider: 'mercadopago',
+          provider_payment_id: 'payment-reconciled-e2e',
+          mapped_status: 'refunded',
+          provider_status: 'refunded',
+          status_detail: 'refunded',
+          amount_minor: current.order.total_minor,
+          currency: current.order.currency,
+          approved_at: reconciledAt,
+          provider_updated_at: reconciledAt,
+          updated_at: reconciledAt,
+        }],
+      };
+      orders = orders.map((candidate) => candidate.order.id === orderId ? updated : candidate);
+      await json(route, { ...updated, reconciliation: { checkedPayments: 1 } });
+      return;
+    }
+
     const orderActionMatch = /^\/api\/admin\/orders\/([^/]+)\/(approve|reject)$/u.exec(pathname);
     if (orderActionMatch !== null && method === 'POST') {
       const orderId = decodeURIComponent(orderActionMatch[1] ?? '');
@@ -902,6 +962,11 @@ function orderDetailFixture(orderId: string): MockAdminOrder {
       resolved_at: null,
       resolved_by: null,
       last_error_code: null,
+      mp_preference_id: 'preference-e2e',
+      stock_reserved_at: '2026-08-10T12:00:00.000Z',
+      stock_reservation_expires_at: '2026-08-10T12:30:00.000Z',
+      stock_consumed_at: '2026-08-10T12:05:00.000Z',
+      stock_reservation_state: 'consumed',
       delivery_method: 'correo_argentino',
       full_name: 'Cliente E2E',
       phone: '5491100000000',
@@ -919,6 +984,7 @@ function orderDetailFixture(orderId: string): MockAdminOrder {
       quantity: 2,
       unit_price_minor: 5_000,
       subtotal_minor: 10_000,
+      stock_controlled: 1,
     }],
     payments: [{
       provider: 'mercadopago',
@@ -956,6 +1022,11 @@ function whatsappOrderDetailFixture(
       resolved_at: null,
       resolved_by: null,
       last_error_code: null,
+      mp_preference_id: null,
+      stock_reserved_at: null,
+      stock_reservation_expires_at: null,
+      stock_consumed_at: null,
+      stock_reservation_state: 'reserved',
       delivery_method: 'coordinated_pickup',
       full_name: 'Cliente WhatsApp E2E',
       phone: '5491100000001',
@@ -973,6 +1044,7 @@ function whatsappOrderDetailFixture(
       quantity: 2,
       unit_price_minor: 5_000,
       subtotal_minor: 10_000,
+      stock_controlled: 1,
     }],
     payments: [],
   };
