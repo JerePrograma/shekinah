@@ -4,15 +4,18 @@
   "name": "shekinah",
   "pages_build_output_dir": "./dist",
   "compatibility_date": "2026-07-21",
-  // Valores de production verificados por API el 2026-08-10. En Pages, preview
-  // conserva PUBLIC_SITE_URL y ALLOWED_SITE_ORIGINS en https://shekinah-7dl.pages.dev.
+  // Para uploads directos de Pages, el nivel superior representa preview y
+  // env.production representa production. Mantener ambos completos: Wrangler
+  // puede reemplazar la configuración remota usando este archivo como autoridad.
   "vars": {
-    "COMMERCE_ENABLED": "false",
-    "ANALYTICS_ENABLED": "false",
-    "PUBLIC_SITE_URL": "https://shekinah.ar",
-    "ALLOWED_SITE_ORIGINS": "https://shekinah.ar",
+    "ALLOWED_SITE_ORIGINS": "https://mp-sandbox.shekinah-7dl.pages.dev",
+    "ANALYTICS_ENABLED": "true",
+    "ANALYTICS_RETENTION_DAYS": "730",
+    "COMMERCE_ENABLED": "true",
     "MERCADO_PAGO_CHECKOUT_MODE": "sandbox",
-    "ANALYTICS_RETENTION_DAYS": "730"
+    "PUBLIC_SITE_URL": "https://mp-sandbox.shekinah-7dl.pages.dev",
+    "VITE_ANALYTICS_ENABLED": "true",
+    "VITE_COMMERCE_ENABLED": "false"
   },
   // Cargar ADMIN_USERNAME, ADMIN_PASSWORD_HASH, ADMIN_SESSION_SECRET y
   // ADMIN_RATE_LIMIT_SECRET sólo como secretos cifrados de Pages, por entorno.
@@ -21,16 +24,42 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "REEMPLAZAR_NOMBRE_D1",
-      "database_id": "REEMPLAZAR_ID_D1",
+      "database_name": "REEMPLAZAR_NOMBRE_D1_PREVIEW",
+      "database_id": "REEMPLAZAR_ID_D1_PREVIEW",
       "preview_database_id": "REEMPLAZAR_ID_D1_PREVIEW"
     }
   ],
   "r2_buckets": [
     {
       "binding": "CATALOG_IMAGES",
-      "bucket_name": "REEMPLAZAR_BUCKET_R2_PRODUCTION",
-      "preview_bucket_name": "REEMPLAZAR_BUCKET_R2_PREVIEW"
+      "bucket_name": "REEMPLAZAR_BUCKET_R2_PREVIEW"
     }
-  ]
+  ],
+  "env": {
+    "production": {
+      "vars": {
+        "ALLOWED_SITE_ORIGINS": "https://shekinah.ar",
+        "ANALYTICS_ENABLED": "true",
+        "ANALYTICS_RETENTION_DAYS": "730",
+        "COMMERCE_ENABLED": "false",
+        "MERCADO_PAGO_CHECKOUT_MODE": "production",
+        "PUBLIC_SITE_URL": "https://shekinah.ar",
+        "VITE_ANALYTICS_ENABLED": "true",
+        "VITE_COMMERCE_ENABLED": "false"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "REEMPLAZAR_NOMBRE_D1_PRODUCTION",
+          "database_id": "REEMPLAZAR_ID_D1_PRODUCTION"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "CATALOG_IMAGES",
+          "bucket_name": "REEMPLAZAR_BUCKET_R2_PRODUCTION"
+        }
+      ]
+    }
+  }
 }

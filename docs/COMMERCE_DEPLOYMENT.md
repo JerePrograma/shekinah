@@ -89,15 +89,15 @@ npx wrangler d1 migrations apply shekinah-commerce --local
 npx wrangler d1 execute shekinah-commerce --local --command "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
 ```
 
-Antes de una migración remota sobre una base que ya contenga datos, conservar una exportación o bookmark verificable y documentar el punto de reversión. En una configuración con `database_id` y `preview_database_id`, aplicar primero preview y después producción:
+Antes de una migración remota sobre una base que ya contenga datos, conservar una exportación o bookmark verificable y documentar el punto de reversión. Con la configuración completa de Pages —preview en el nivel superior y production en `env.production`— aplicar primero preview y después producción:
 
 ```powershell
 npx wrangler d1 time-travel info shekinah-commerce-preview --json
 npx wrangler d1 migrations apply DB --remote --preview
 npx wrangler d1 migrations list DB --remote --preview
 npx wrangler d1 time-travel info shekinah-commerce --json
-npx wrangler d1 migrations apply DB --remote
-npx wrangler d1 migrations list DB --remote
+npx wrangler d1 migrations apply DB --remote --env production
+npx wrangler d1 migrations list DB --remote --env production
 ```
 
 No aplicar SQL manual distinto de las migraciones versionadas.
@@ -186,7 +186,7 @@ Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entor
 
 ### Precaución con deployments directos
 
-Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo trata como fuente de verdad del deployment y puede reemplazar variables o bindings configurados en el dashboard. El archivo operativo real está ignorado por Git y contiene IDs; no publicarlo. Para un upload manual, mantenerlo completamente sincronizado o excluirlo temporalmente de forma reversible, y releer después por API los destinos reales de `DB` y `CATALOG_IMAGES`, los flags, secretos por nombre y `fail_open=false` antes de ejecutar smoke.
+Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo trata como fuente de verdad del deployment y puede reemplazar variables o bindings configurados en el dashboard. El archivo operativo real está ignorado por Git y contiene IDs; no publicarlo. Para un upload manual, mantener preview completo en el nivel superior y production completo en `env.production`: variables, D1 y R2 deben figurar en ambos. En particular, el `database_id` del nivel superior debe ser la D1 preview; `preview_database_id` no sustituye ese valor al publicar Pages. Releer después por API los destinos reales de `DB` y `CATALOG_IMAGES`, los flags, secretos por nombre y `fail_open=false` antes de ejecutar smoke.
 
 ## 6. Configurar Mercado Pago Checkout Pro
 
@@ -196,7 +196,8 @@ Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo tr
 4. Copiar el secreto de firma de Webhooks en `MERCADO_PAGO_WEBHOOK_SECRET`.
 5. Confirmar que el proveedor envía `x-signature`; validar `x-request-id` dentro del manifiesto cuando el header esté presente, sin inventarlo cuando el proveedor lo omita.
 6. Realizar pagos de prueba aprobados, pendientes y rechazados.
-7. Verificar en D1 que cada pago coincida individualmente en `external_reference`, importe total y moneda, y que un webhook duplicado no duplique pagos ni efectos. El endpoint rechaza bodies que excedan 64.000 bytes durante la lectura del stream.
+7. Verificar en D1 que cada pago coincida individualmente en `external_reference`, `metadata.order_id`, importe total y moneda; que `live_mode` corresponda al entorno; que el `user_id` de la notificación coincida con el `collector_id` consultado; y que un webhook duplicado no duplique pagos ni efectos. El endpoint rechaza bodies que excedan 64.000 bytes durante la lectura del stream.
+8. Probar la conciliación desde el backoffice: debe consultar por `external_reference`, validar nuevamente pago y entorno, registrar `admin.order.reconcile` y conservar exactamente un consumo de stock ante repeticiones.
 
 La creación de preferencias no depende de un encabezado de idempotencia no documentado por Checkout Pro. D1 reclama un único intento por pedido y la preferencia vence al concluir la misma ventana de 30 minutos, calculada desde `orders.created_at`. Si la respuesta del proveedor es incierta, las solicitudes siguientes recuperan por `external_reference` y permanecen cerradas si no pueden demostrar un resultado único con carrito y vigencia exactos.
 
@@ -248,6 +249,7 @@ Con D1 de preview y sandbox:
 - repetición, recarga o segunda pestaña con el mismo carrito dentro de 30 minutos: misma UUID, pedido y preferencia con vigencia coincidente; vencida la ventana, la URL anterior no se devuelve;
 - misma UUID con otro carrito: `409 IDEMPOTENCY_CONFLICT`;
 - firma de webhook inválida: `401` y pedido sin aprobar;
+- `live_mode`, cuenta notificadora o `metadata.order_id` ajenos: evento ignorado, sin mutar pedido, pago ni stock;
 - retorno `?status=approved` sin webhook: pedido no aprobado;
 - evento duplicado: una sola actualización lógica; varios IDs de pago exactos para un pedido conservan filas separadas y disparan conciliación operativa;
 - analítica rechazada o sin decidir: cero POST a `/api/analytics/events`;
@@ -257,6 +259,7 @@ Con D1 de preview y sandbox:
 - inventario legacy: ausencia de `stockQuantity` conserva Checkout Pro sin control; stock 0 controlado queda no disponible;
 - cantidades: cliente limita a `min(99, disponible)`; el servidor y los triggers rechazan carreras y sobre-reservas entre Checkout Pro y WhatsApp;
 - Checkout Pro con stock: reserva antes de preferencia, replay de la misma UUID sin auto-bloqueo, vencimiento a 30 minutos, extensión por pago pendiente, aprobación exactamente una vez y reembolso sin reposición automática;
+- conciliación administrativa: sesión y origen requeridos, búsqueda autoritativa, repetición idempotente y auditoría por solicitud;
 - WhatsApp: datos completos obligatorios, creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
 - administración: aprobar descuenta físico exactamente una vez; rechazar libera por derivación; estados cruzados y clicks repetidos no duplican efectos;
 - imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;

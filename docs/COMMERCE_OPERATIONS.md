@@ -22,6 +22,7 @@ Con consentimiento y analítica habilitada, un clic válido en el enlace registr
 Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 
 - Revisar pedidos `pending` antiguos y contrastarlos con Mercado Pago antes de cualquier acción manual.
+- Usar **Conciliar con Mercado Pago** ante un webhook demorado o un estado dudoso; la acción consulta al proveedor, valida el entorno, la referencia, la metadata, el importe y la moneda, y queda registrada en auditoría.
 - Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
 - Comparar `payments.amount_minor` y `orders.total_minor` para detectar inconsistencias.
 - Revisar que no haya pedidos aprobados sin pago asociado.
@@ -89,19 +90,20 @@ La interfaz `/admin` consume:
 - `/api/admin/products` y `/api/admin/products/:id` para el ABM del catálogo;
 - `/api/admin/summary`;
 - `/api/admin/orders?limit=25`;
+- `/api/admin/orders/:id` para el detalle y `/api/admin/orders/:id/reconcile` para conciliación autoritativa de Checkout Pro;
 - `/api/admin/exports/orders.csv`;
 - `/api/admin/exports/analytics.csv`;
 - `/api/admin/audit`.
 
-El catálogo de productos es editable. Pedidos, analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
+El catálogo de productos es editable. Los snapshots, importes y estados de pedidos no se editan; analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
 
-La excepción son los pedidos `channel='whatsapp'` en estado `pending`: pueden aprobarse o rechazarse. Los botones quedan inactivos durante la request y desaparecen al alcanzar un estado terminal. Los pedidos Checkout Pro y los pedidos WhatsApp aprobados/rechazados permanecen de sólo lectura.
+Los pedidos `channel='whatsapp'` en estado `pending` pueden aprobarse o rechazarse. Los pedidos Checkout Pro exponen una conciliación que sólo consulta Mercado Pago y aplica su estado autoritativo mediante la misma transición idempotente del webhook; no permite seleccionar un estado. Los botones quedan inactivos durante la request. Los detalles muestran si cada item tenía stock controlado, la reserva, su vencimiento, el consumo y la política explícita de no reposición automática ante reintegros.
 
 ## Reservas de stock
 
 El stock reservado se deriva de `order_items`; no existe contador que deba «devolverse». Incluye pedidos WhatsApp `pending` y pedidos Checkout Pro no consumidos mientras su ventana de 30 minutos esté vigente o exista al menos un pago `pending` verificado. Los pendientes WhatsApp no tienen TTL y requieren aprobación o rechazo administrativo. Las preferencias sin pago liberan disponibilidad al vencer; un pago pendiente la conserva hasta una notificación terminal.
 
-Nunca corregir reservas editando SQL, sumando stock o cambiando items. Para WhatsApp, aprobar o rechazar mediante la API autenticada. Para Checkout Pro, contrastar primero el pago en Mercado Pago: `approved` y `refunded` consumen una sola vez por webhook, y cualquier `STOCK_RECONCILIATION_REQUIRED` exige detener fulfillment, conciliar pago e inventario y resolver el incidente sin forzar el estado.
+Nunca corregir reservas editando SQL, sumando stock o cambiando items. Para WhatsApp, aprobar o rechazar mediante la API autenticada. Para Checkout Pro, usar la conciliación administrativa protegida: `approved` y `refunded` consumen una sola vez por webhook o conciliación, y cualquier `STOCK_RECONCILIATION_REQUIRED` exige detener fulfillment, conciliar pago e inventario y resolver el incidente sin forzar el estado. Un reintegro no repone stock automáticamente; la devolución física requiere un ajuste manual trazable.
 
 ### Operación cotidiana del catálogo candidato
 
@@ -123,7 +125,7 @@ R2 y `CATALOG_IMAGES` están configurados y desplegados con `shekinah` para prod
 La auditoría registra:
 
 - subject y actor normalizados por sesión propia o por Access;
-- acción administrativa de lectura o mutación de catálogo;
+- acción administrativa de lectura, mutación de catálogo, resolución WhatsApp o conciliación Checkout Pro;
 - tipo e identificador de destino cuando corresponda;
 - resultado HTTP;
 - request ID técnico;

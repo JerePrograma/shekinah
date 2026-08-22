@@ -25,7 +25,7 @@ El repositorio contiene una evolución full-stack basada en:
 - autenticación administrativa propia y Cloudflare Access opcional;
 - backoffice visual de catálogo con stock opcional e imágenes administradas preparadas para R2;
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
-- detalle de pedidos y resolución administrativa limitada a aprobar/rechazar pendientes de WhatsApp;
+- detalle de pedidos, resolución administrativa limitada a aprobar/rechazar pendientes de WhatsApp y conciliación de Checkout Pro exclusivamente contra Mercado Pago;
 - analítica first-party opcional con `manual_payment_click` para el fallback manual.
 - feedback de interacción contextual y accesible en catálogo, carrito, retorno de pago y ABM administrativo;
 - protección de cambios sin guardar y operaciones administrativas activas frente a navegación o cierre de sesión.
@@ -89,6 +89,8 @@ La configuración autenticada confirma dos D1 aisladas (`shekinah-commerce` y `s
 `migrations/0007_whatsapp_order_reservations.sql` fue aplicada el 2026-08-12 primero en preview y luego en producción mediante el import autenticado de D1 usando el SQL versionado exacto. En ambos entornos se verificaron `d1_migrations`, columnas, índices, triggers, conteos y `PRAGMA foreign_key_check`; no había pedidos previos y la aplicación no creó ninguno.
 
 `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` fue aplicada el 2026-08-22 primero en preview y luego en producción, con bookmarks de Time Travel previos. Wrangler `/query` rechazó inicialmente los triggers con `7500 incomplete input` y se comprobó rollback total; la aplicación definitiva usó el import oficial de D1 con el SQL versionado más la fila exacta de `d1_migrations`. Ambos entornos registran cuatro columnas de pedido, una columna de item, once triggers nuevos o reemplazados, conteos preservados y cero violaciones FK. Preview probó la carrera por la última unidad y limpió todo dato sintético.
+
+El SHA funcional de conciliación autoritativa es `0f93d620faad6e93f76a364e9dc6794ac5c5f119`: CI `32605619627`, job `97110114994`, y deployment productivo `53f7208f-3fa4-4127-9106-90c1f8632c62` terminaron correctamente. Producción conserva Checkout Pro cerrado; el smoke devolvió 200 en apex e URL inmutable, 503 `COMMERCE_DISABLED` para preferencias, 401 para firma inválida y 401 para conciliación sin sesión. Preview quedó nuevamente aislado en su D1 y R2, con backend sandbox activo y botón público oculto. Falta la reautenticación humana de Mercado Pago para completar un pago de prueba y observar el webhook firmado.
 
 El SHA funcional de stock unificado es `58ff324133cf665baacf946f54e960cd3d519398`: CI `32584798635`, job `97059454902` y check Cloudflare Pages concluyeron `success`; producción publicó `https://6483757c.shekinah-7dl.pages.dev`. El smoke público devolvió 503 `COMMERCE_DISABLED` para Checkout Pro, 400 `PRODUCT_NOT_FOUND` para un pedido sintético y cero filas D1.
 

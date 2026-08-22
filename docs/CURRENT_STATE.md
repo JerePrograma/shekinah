@@ -2,9 +2,9 @@
 
 Fecha de revisión: 2026-08-22.
 
-SHA funcional publicado y validado para stock unificado de Mercado Pago y WhatsApp:
+SHA funcional publicado y validado para conciliación autoritativa de Mercado Pago:
 
-`58ff324133cf665baacf946f54e960cd3d519398`
+`0f93d620faad6e93f76a364e9dc6794ac5c5f119`
 
 Este documento separa código, validación, publicación y configuración externa. La analítica y el fallback manual están activos; credenciales y Webhooks ya fueron corregidos, pero Checkout Pro continúa expresamente deshabilitado hasta completar pagos controlados y su conciliación.
 
@@ -34,7 +34,7 @@ La aplicación incorpora:
 - upload administrativo first-party para JPEG/PNG/WebP mediante R2 configurado y presente en el deployment; el smoke autenticado de imágenes no se repitió en esta activación por no disponer de la credencial en claro;
 - analítica first-party con consentimiento;
 - evento `manual_payment_click` sin PII, importe ni carrito, separado de `whatsapp_open` y de los estados financieros;
-- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria, detalle bajo demanda y aprobación/rechazo de pedidos WhatsApp pendientes;
+- Backoffice V2 con Resumen, Productos, Pedidos, Analítica y Auditoría, tendencia diaria, detalle bajo demanda, aprobación/rechazo de pedidos WhatsApp pendientes y conciliación autoritativa de Checkout Pro;
 - exportaciones administrativas;
 - eliminación de sesión analítica.
 - feedback contextual y accesible al agregar, ajustar y eliminar productos del carrito, con límites de stock visibles y prevención de borrados ambiguos;
@@ -76,9 +76,13 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre funcion
 - el Access Token y Client Secret expuestos fueron renovados; el nuevo token productivo quedó cifrado sólo en Pages production, el token sandbox de preview permaneció intacto y la clave firmada vigente quedó reconciliada cifrada en ambos entornos;
 - la calidad figura `0/100` y no existe todavía evidencia de un pago productivo válido, por lo que los flags públicos permanecen cerrados.
 
+La conciliación autoritativa se publicó en el SHA `0f93d620faad6e93f76a364e9dc6794ac5c5f119`: CI `32605619627`, job `97110114994`, y deployment productivo `53f7208f-3fa4-4127-9106-90c1f8632c62` concluyeron correctamente. El smoke comprobó apex e URL inmutable 200, checkout 503 `COMMERCE_DISABLED`, webhook inválido 401 y conciliación anónima 401. Preview se restauró con D1/R2 aislados y volvió a reproducir la preferencia sandbox existente con 200 e identidad idempotente. El pago simulado continúa pendiente porque Mercado Pago exige reautenticación humana por QR o código; no se afirma pago, webhook firmado ni consumo remoto.
+
 `migrations/0006_analytics_manual_payment_click.sql` está aplicada remotamente en ambas D1. El backoffice queda fuera de la captura mediante defensas en cliente y servidor. Los smokes reales demostraron cero eventos sin consentimiento y tras rechazo, captura consentida de producto/carrito/clic manual/WhatsApp, ausencia de llamadas a preferencias, exclusión de `/admin` y borrado tras revocación. Los datos sintéticos se retiraron después de verificar el contrato y ambas bases terminaron con cero sesiones, eventos y revocaciones de smoke.
 
 El modelo actual mantiene `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. `0008` comparte disponibilidad entre WhatsApp pendiente y Checkout Pro con preferencia vigente o pago pendiente autoritativo. Checkout Pro reserva durante 30 minutos, un pago pendiente prolonga la reserva y `approved` o `refunded` consume el físico exactamente una vez; un reembolso no repone mercadería automáticamente. WhatsApp conserva aprobación para consumir y rechazo para liberar, sin TTL automático.
+
+El webhook y la conciliación administrativa verifican además el modo `live_mode`, la identidad notificadora frente al `collector_id` consultado y `metadata.order_id` frente a la orden interna. La acción del backoffice busca por `external_reference`, vuelve a consultar cada pago y reutiliza la misma persistencia idempotente; no permite asignar estados manualmente. El detalle administrativo hace visibles la reserva, su vencimiento, el consumo y si cada item estaba o no bajo control numérico.
 
 Las imágenes administrativas del candidato se limitan a JPEG, PNG y WebP de hasta 4 MiB, con magic bytes validados en servidor. La referencia persistida es first-party y los objetos pertenecen a R2; reemplazo y eliminación sólo limpian objetos administrados no referenciados, nunca assets legacy.
 

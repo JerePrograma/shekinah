@@ -119,8 +119,10 @@ No existe transición entre estados terminales ni expiración automática. Un pe
 6. El navegador recibe una URL HTTPS autorizada de Mercado Pago y redirige fuera del sitio.
 7. Los retornos `/pago/*` consultan D1 mediante un token público derivado con HMAC.
 8. El webhook limita el body JSON a 64.000 bytes mientras lee el stream, verifica `x-signature`, registra el evento de forma idempotente y consulta el pago directamente a Mercado Pago.
-9. Cada pago recuperado debe coincidir individualmente con `external_reference`, moneda e importe total del pedido; pagos parciales o agregados no se suman para alcanzar el total.
-10. Si Mercado Pago asocia más de un ID de pago compatible al mismo pedido, el estado se reconcilia desde todas las filas con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`. Un pago `pending` prolonga la reserva; `approved` o `refunded` consume el stock una sola vez y ninguna notificación repone mercadería automáticamente.
+9. La notificación y el pago consultado deben pertenecer al modo configurado (`live_mode`), la cuenta notificadora debe coincidir con el `collector_id` autoritativo y `metadata.order_id` debe señalar el mismo pedido interno. Un desajuste se registra como evento ignorado y no muta pedido, pago ni stock.
+10. Cada pago recuperado debe coincidir individualmente con `external_reference`, moneda e importe total del pedido; pagos parciales o agregados no se suman para alcanzar el total.
+11. Si Mercado Pago asocia más de un ID de pago compatible al mismo pedido, el estado se reconcilia desde todas las filas con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`. Un pago `pending` prolonga la reserva; `approved` o `refunded` consume el stock una sola vez y ninguna notificación repone mercadería automáticamente.
+12. El backoffice permite volver a consultar por `external_reference` mediante una acción protegida y auditada. La conciliación obtiene cada pago desde la API, repite las mismas validaciones de entorno, metadata, importe y moneda, y reutiliza la transición idempotente del webhook; nunca permite elegir ni forzar un estado manualmente.
 
 ## Estados de pedido
 
@@ -158,6 +160,7 @@ El fallback manual no envía productos ni datos de entrega a Mercado Pago desde 
 - repetición de POST de checkout;
 - webhooks duplicados o concurrentes;
 - firmas de webhook ausentes o adulteradas e identificadores no incluidos en la firma;
+- notificaciones o pagos provenientes de otro entorno, cuenta o metadata de pedido;
 - aprobación simulada modificando la URL de retorno;
 - exposición accidental de secretos o source maps;
 - acceso directo a APIs administrativas sin sesión propia o JWT Access válido;
@@ -170,10 +173,10 @@ El canal WhatsApp ahora hereda precio y total autoritativos, reserva transaccion
 
 - El WhatsApp `5492236216559`, el dominio canónico `shekinah.ar` y el Link de Pago `shekinahmoreno` son datos actuales autorizados explícitamente el 2026-08-10; no proceden de la recuperación histórica del catálogo. `shekinah-7dl.pages.dev` permanece como dominio técnico de Pages y origen de preview.
 - Se recopilan sólo los datos de entrega requeridos para fulfillment; no se solicitan datos de tarjeta ni facturación.
-- La única edición administrativa de pedidos es aprobar o rechazar pendientes de WhatsApp; no hay reembolsos ni mutaciones de estados de Checkout Pro desde el backoffice.
+- La única edición administrativa de pedidos es aprobar o rechazar pendientes de WhatsApp. Para Checkout Pro existe sólo una conciliación contra Mercado Pago: no admite elegir estados, crear reembolsos ni editar importes o snapshots.
 - El retiro de consentimiento elimina los eventos de la sesión y conserva únicamente su HMAC en una lista de revocación para impedir que solicitudes en vuelo la vuelvan a crear.
 - La purga analítica se reclama como máximo una vez por mes y elimina datos anteriores al plazo configurado; producción requiere la política autorizada de 730 días y `ANALYTICS_RETENTION_DAYS=730`.
 - El rate limiting mínimo del login es persistente en D1. WAF, alertas y políticas de Access pueden sumar defensa de borde cuando exista un dominio/zona compatible, sin interceptar el login propio.
 - El fallback manual debe retirarse o reevaluarse cuando Checkout Pro se active en producción, para no ofrecer dos flujos con garantías distintas sin una decisión comercial explícita.
-- Las reservas existen sólo para pedidos WhatsApp pendientes y se derivan de sus items. Checkout Pro rechaza productos con `stockQuantity` para no vender sin reserva; no existe contador reservado, cancelación del cliente ni expiración automática de la reserva WhatsApp.
+- Las reservas se derivan de los items controlados de pedidos WhatsApp pendientes y de Checkout Pro dentro de su vigencia o con pago pendiente verificado. No existe contador reservado duplicado ni expiración automática de la reserva WhatsApp; Checkout Pro libera disponibilidad al vencer si el proveedor no informa un pago pendiente.
 - La persistencia de imágenes requiere R2 habilitado y el binding correcto en el deployment exacto; sin él, la API debe fallar cerrada y conservar la imagen anterior.
