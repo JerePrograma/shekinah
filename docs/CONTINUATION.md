@@ -20,8 +20,8 @@ El repositorio contiene una evolución full-stack basada en:
 - React, TypeScript estricto y Vite;
 - Cloudflare Pages Functions;
 - Cloudflare D1;
-- Mercado Pago Checkout Pro preparado para activación;
-- Link de Pago manual y pedido pendiente de WhatsApp con reserva de stock en D1;
+- Mercado Pago Checkout Pro con reserva de stock D1 ligada a preferencia y pago, preparado pero no activado públicamente;
+- Link de Pago manual y pedido pendiente de WhatsApp con datos obligatorios y reserva de stock en D1;
 - autenticación administrativa propia y Cloudflare Access opcional;
 - backoffice visual de catálogo con stock opcional e imágenes administradas preparadas para R2;
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
@@ -53,6 +53,8 @@ La activación de Checkout Pro requiere evidencia separada de:
 - secretos cargados sin exposición;
 - credenciales de Mercado Pago válidas;
 - webhook con URL definitiva;
+- suscripción exclusiva al tópico de pagos que procesa el endpoint;
+- pago controlado de un comprador distinto de la cuenta vendedora, con webhook firmado, referencia, importe, moneda, estado D1 y stock conciliados;
 - autenticación administrativa propia configurada y probada;
 - pruebas de humo aprobadas.
 
@@ -82,9 +84,15 @@ El canal manual no requiere VPS. El flujo publicado registra el pedido y reserva
 
 La zona DNS `shekinah.ar` figura `active` en Cloudflare y usa `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC está deshabilitado sin DS publicado en `.ar`, estado coherente y sin riesgo de validación rota. El custom domain del apex, su verificación y validación están `active`; el CNAME proxied apunta al dominio técnico de Pages y el apex responde HTTPS 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www` responde `301`, preserva path/query y termina en el apex 200; el A proxied `192.0.2.1` es sólo el placeholder oficial para que la regla reciba tráfico, nunca un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre el apex y `*.shekinah.ar`, y el handshake negocia TLS 1.3.
 
-La configuración autenticada confirma dos D1 aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones remotas `0001` a `0007`, secretos administrativos y analíticos cifrados por entorno y `Fail closed` en production/preview. `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y retención `730` están activos en ambos; los HMAC son independientes. `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` mantienen Checkout Pro cerrado. Zero Trust/Access continúa sin configurar porque es un fallback opcional; el Worker homónimo permaneció intacto.
+La configuración autenticada confirma dos D1 aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones remotas `0001` a `0008`, secretos cifrados y `Fail closed` en production/preview. `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y retención `730` están activos en ambos; producción mantiene `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Preview usa el origen sandbox autorizado, backend habilitado, botón público oculto y modo `sandbox`. El Worker homónimo permaneció intacto.
 
 `migrations/0007_whatsapp_order_reservations.sql` fue aplicada el 2026-08-12 primero en preview y luego en producción mediante el import autenticado de D1 usando el SQL versionado exacto. En ambos entornos se verificaron `d1_migrations`, columnas, índices, triggers, conteos y `PRAGMA foreign_key_check`; no había pedidos previos y la aplicación no creó ninguno.
+
+`migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` fue aplicada el 2026-08-22 primero en preview y luego en producción, con bookmarks de Time Travel previos. Wrangler `/query` rechazó inicialmente los triggers con `7500 incomplete input` y se comprobó rollback total; la aplicación definitiva usó el import oficial de D1 con el SQL versionado más la fila exacta de `d1_migrations`. Ambos entornos registran cuatro columnas de pedido, una columna de item, once triggers nuevos o reemplazados, conteos preservados y cero violaciones FK. Preview probó la carrera por la última unidad y limpió todo dato sintético.
+
+El SHA funcional de stock unificado es `58ff324133cf665baacf946f54e960cd3d519398`: CI `32584798635`, job `97059454902` y check Cloudflare Pages concluyeron `success`; producción publicó `https://6483757c.shekinah-7dl.pages.dev`. El smoke público devolvió 503 `COMMERCE_DISABLED` para Checkout Pro, 400 `PRODUCT_NOT_FOUND` para un pedido sintético y cero filas D1.
+
+La aplicación real de Mercado Pago y sus URLs de Webhook fueron inspeccionadas. La calidad permanece `0/100`, todas las categorías de eventos están seleccionadas aunque la Function sólo procesa pagos y no hay un pago productivo válido. Las credenciales expuestas deben renovarse; no reutilizar valores compartidos, no reemplazar el token sandbox de preview con uno productivo y no habilitar Checkout Pro antes de cerrar esa rotación y el smoke de pago.
 
 El SHA funcional de reservas WhatsApp es `c19d88dc03f9d98c0c615256bda374769bd2b7a7`: CI `31627455350` concluyó `success`, Pages publicó producción con stage `success` y el origen canónico respondió 200. Un POST sintético con producto inexistente alcanzó la Function publicada, devolvió 400 `PRODUCT_NOT_FOUND` y dejó cero filas con su clave de idempotencia. No se creó un pedido positivo en producción para evitar reservar stock real.
 
@@ -96,16 +104,18 @@ R2 está activo y verificado por API. Production reutiliza `shekinah`; preview u
 
 1. resolver siempre el SHA vigente de `main` y `origin/main` antes de continuar;
 2. comprobar CI y deployment de Pages para ese mismo SHA;
-3. confirmar que `DB`, `Fail closed`, migraciones y nombres cifrados `ADMIN_*` siguen presentes en ambos entornos;
+3. confirmar que `DB`, `Fail closed`, migraciones y nombres cifrados requeridos siguen presentes en ambos entornos;
 4. ejecutar el smoke administrativo: API 401, login, alta, consulta, modificación, baja, logout y nuevo 401;
 5. no crear una política externa de Access sobre todo `/admin*` o `/api/admin/*`, porque bloquearía el login propio; configurarlo sólo si se diseña como defensa adicional compatible;
-6. mantener Checkout Pro cerrado y la analítica opt-in activa; cualquier rotación o cambio debe repetirse preview → producción sin tocar credenciales, modo ni webhook de Mercado Pago;
-7. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece.
-8. antes del smoke de imágenes, releer que `CATALOG_IMAGES` apunte a `shekinah` en production y a `shekinah-preview` en preview, que `publicR2DevEnabled=false` continúe vigente y que el binding pertenezca a Pages, nunca al Worker homónimo;
-9. validar stock legacy sin control, stock cero, stock físico/reservado/disponible, reserva concurrente de la última unidad y aprobación/rechazo exactamente una vez.
-10. preservar los valores verificados por API de `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://shekinah-7dl.pages.dev` en preview.
-11. comprobar que `manual_payment_click` se persiste sólo tras un clic manual válido y nunca alimenta pedidos, pagos ni revenue.
-12. operar los pedidos WhatsApp pendientes sin TTL: revisar y aprobar o rechazar explícitamente los abandonados para no mantener reservas indefinidas.
+6. renovar en Mercado Pago el Access Token y Client Secret expuestos, reemplazar sólo los secretos del entorno correcto sin imprimirlos y releer nombres/tipos cifrados;
+7. guardar Webhooks de prueba y producción únicamente con el tópico de pagos procesado por `/api/webhooks/mercadopago`, preservando las URLs exactas y conciliando el secreto firmado;
+8. ejecutar primero un pago sandbox y luego un pago productivo controlado con comprador distinto del vendedor; comprobar proveedor, webhook, pedido, pago, stock y calidad antes de cambiar flags;
+9. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece;
+10. antes del smoke de imágenes, releer que `CATALOG_IMAGES` apunte a `shekinah` en production y a `shekinah-preview` en preview, que `publicR2DevEnabled=false` continúe vigente y que el binding pertenezca a Pages, nunca al Worker homónimo;
+11. validar stock legacy sin control, stock cero, stock físico/reservado/disponible, reserva concurrente de la última unidad y consumo exactamente una vez por ambos canales;
+12. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://mp-sandbox.shekinah-7dl.pages.dev` en preview;
+13. comprobar que `manual_payment_click` se persiste sólo tras un clic manual válido y nunca alimenta pedidos, pagos ni revenue;
+14. operar los pedidos WhatsApp pendientes sin TTL: revisar y aprobar o rechazar explícitamente los abandonados para no mantener reservas indefinidas.
 
 ## Prohibiciones
 

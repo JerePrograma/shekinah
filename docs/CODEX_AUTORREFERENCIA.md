@@ -7,9 +7,9 @@ repository: JerePrograma/shekinah
 local_checkout: C:\laburo\shekinah
 branch: main
 remote: origin/main
-last_verified_sha: c19d88dc03f9d98c0c615256bda374769bd2b7a7
-last_verified_at: 2026-08-12T18:26:36Z
-last_ci_run_id: 31627455350
+last_verified_sha: 58ff324133cf665baacf946f54e960cd3d519398
+last_verified_at: 2026-08-22T16:30:40Z
+last_ci_run_id: 32584798635
 last_ci_conclusion: success
 cloudflare_pages_check: success
 commerce_enabled: false
@@ -17,7 +17,7 @@ analytics_enabled: true
 whatsapp_enabled: true
 d1_preview: shekinah-commerce-preview
 d1_production: shekinah-commerce
-mercado_pago_mode: no_verificado
+mercado_pago_mode: production_configured_activation_blocked
 ```
 
 ## 1. Identidad del proyecto
@@ -41,8 +41,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 3. Estado Git verificado
 
-- **VERIFICADO:** la base sincronizada anterior al candidato de UX/inventario/imágenes es `a543c39c025a952f632f38c6bf97b4ea3501b0d1`; `HEAD == origin/main` y el worktree estaban limpios al iniciar la tarea.
-- **VERIFICADO:** la rama activa es `main`; no se creó una rama, PR, worktree o stash para el candidato.
+- **VERIFICADO:** la base sincronizada al iniciar el cierre de Mercado Pago fue `77f61cf48fae91a4296e4e8ce66a4ac41c5d6392`; `HEAD == origin/main` y el worktree estaban limpios.
+- **VERIFICADO:** la rama activa es `main`; el commit funcional `58ff324133cf665baacf946f54e960cd3d519398` se publicó mediante push normal y no se creó rama, PR, worktree o stash.
 - **HISTÓRICO VERIFICADO:** la base funcional anterior del ABM fue `f704424f614b917ffd42eb47ab31e5057a7ba5ec` y el cierre operativo de autenticación fue validado sobre `7f93e29ad64f081b2dd1efe7f3c4c4b53e081225`.
 - **VERIFICADO:** no se crearon ramas, pull requests, worktrees ni stashes; no se usó force-push ni se reescribió historial.
 
@@ -52,17 +52,17 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** `functions/api/` expone checkout, webhook, estado público, analítica, privacidad y administración; la lógica compartida vive en `server/`.
 - **REVISADO_POR_CÓDIGO:** Cloudflare D1 implementa pedidos, intenciones de checkout, fulfillment, eventos de pago, analítica, retención y auditoría.
 - **REVISADO_POR_CÓDIGO:** el catálogo comercial rastreado genera el catálogo de Functions mediante `scripts/generate-commerce-catalog.mjs`.
-- **CANDIDATO REVISADO_POR_CÓDIGO:** el inventario opcional y las referencias de imágenes administradas reutilizan el payload JSON de `catalog_product_mutations`; los binarios se diseñaron para R2 mediante el binding `CATALOG_IMAGES`, sin modificar las migraciones `0001` a `0005`.
+- **VERIFICADO POR CÓDIGO, PRUEBAS Y D1:** el inventario opcional y las referencias de imágenes administradas reutilizan el payload JSON de `catalog_product_mutations`; los binarios usan R2 mediante `CATALOG_IMAGES` y `0008` agrega reservas de Checkout Pro sin modificar migraciones aplicadas.
 
 ## 5. Invariantes funcionales
 
 - **VERIFICADO:** el catálogo canónico conserva 510 productos y 16 categorías.
 - **REVISADO_POR_CÓDIGO:** el servidor vuelve a leer productos y precios canónicos; el navegador no fija moneda, subtotal, envío ni total.
 - **REVISADO_POR_CÓDIGO:** el checkout usa ARS y Mercado Pago Checkout Pro por redirección.
-- **REVISADO_POR_CÓDIGO:** comercio, analítica y WhatsApp deben permanecer cerrados hasta completar autorización y configuración externa.
+- **VERIFICADO:** analítica consentida y WhatsApp están habilitados; Checkout Pro público permanece cerrado hasta completar proveedor, pago y autorización de activación.
 - **VERIFICADO POR CÓDIGO Y PRUEBAS:** `stockQuantity` es opcional; ausente significa stock no controlado. La disponibilidad efectiva es disponibilidad manual activa y, además, stock no controlado o cantidad disponible mayor que cero.
 - **VERIFICADO POR CÓDIGO Y PRUEBAS:** el stock controlado debe ser un entero entre `0` y `1.000.000`; el carrito limita cada línea a `min(99, availableQuantity)` y el servidor vuelve a validar disponibilidad y cantidad antes de crear un pedido.
-- **REVISADO_POR_CÓDIGO:** `0007` deriva la reserva de los items de pedidos WhatsApp pendientes; aprobar descuenta stock físico una sola vez y rechazar libera la reserva sin sumar stock. Los productos sin `stockQuantity` conservan el modelo legacy sin control numérico.
+- **VERIFICADO POR CÓDIGO, PRUEBAS Y D1:** `0008` comparte el stock reservado entre WhatsApp pendiente y Checkout Pro con ventana vigente o pago pendiente. WhatsApp consume al aprobar; Checkout Pro consume una vez con pago `approved` o `refunded`; ningún reembolso repone inventario automáticamente. Los productos sin `stockQuantity` conservan el modelo legacy.
 
 ## 6. Invariantes de seguridad
 
@@ -86,6 +86,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** el estado inicial aceptaba silenciosamente 50 g para el producto conflictivo y bloqueaba retiro coordinado cuando el peso era desconocido; ambos comportamientos quedaron corregidos y cubiertos por pruebas focalizadas.
 - **REVISADO_POR_CÓDIGO:** Correo Argentino cobra ARS 19.000 hasta 1 kg inclusive y ARS 25.000 entre más de 1 kg y 5 kg inclusive; pesos desconocidos o mayores a 5 kg requieren cotización manual.
 - **VERIFICADO:** `validateFulfillment` normaliza NFKC, espacios, teléfono y código postal; rechaza claves adicionales, formas no válidas, controles C0/C1 y controles bidireccionales Unicode.
+- **VERIFICADO:** WhatsApp exige el fulfillment completo antes de reservar. La tarifa determinística persiste `order_fulfillment`; la cotización manual conserva sólo una huella SHA-256 en D1 y envía los datos en el mensaje confirmado, sin PII en `localStorage` ni analítica.
 
 ## 9. Pedidos, D1 e idempotencia
 
@@ -93,8 +94,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** `reserveCheckoutIntent` fija por separado las huellas normalizadas de fulfillment y carrito; `prepareOrder` crea/lee pedido e ítems mediante `D1Database.batch`, y el fulfillment se persiste antes de reclamar la preferencia.
 - **REVISADO_POR_CÓDIGO:** la recuperación exige coincidencia de carrito, subtotal, envío, total, peso y huella de fulfillment.
 - **VERIFICADO:** `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella del carrito y backfillea desde pedidos existentes sin editar `0001` ni `0002`.
-- **VERIFICADO LOCALMENTE:** `server/migrations.test.ts` aplica `0001` a `0007`, preserva eventos legacy y pedidos históricos, consulta `sqlite_schema` y prueba backfill, idempotencia, constraints, cascade, catálogo, rate limiting, CHECK analítico, reservas WhatsApp, transiciones e índices. Esta evidencia no declara `0007` aplicada en una D1 remota.
-- **VERIFICADO REMOTAMENTE EL 2026-08-12:** `0007` figura en `d1_migrations` de preview y producción; columnas, índices, triggers y claves foráneas se comprobaron después de cada import. El smoke público de error alcanzó la Function desplegada y no persistió datos.
+- **VERIFICADO LOCALMENTE:** `server/migrations.test.ts` aplica `0001` a `0008` y cubre upgrades históricos, schema, snapshots, reservas compartidas, vencimiento, pago pendiente, consumo único, reembolso sin reposición, guardas de catálogo y claves foráneas.
+- **VERIFICADO REMOTAMENTE EL 2026-08-22:** `0008` figura en `d1_migrations` de preview y producción; cuatro columnas de pedido, una de item, once triggers agregados o reemplazados, conteos y `PRAGMA foreign_key_check` resultaron coherentes. Preview rechazó una segunda reserva de la última unidad y quedó limpia después del smoke.
 
 ## 10. Mercado Pago y webhooks
 
@@ -103,7 +104,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** los estados terminales no se degradan; `refunded` y `charged_back` prevalecen sobre estados anteriores.
 - **VERIFICADO:** las respuestas de pago y preferencia validan sus IDs; el GET de pago debe devolver exactamente el recurso solicitado y la recuperación debe devolver el ID encontrado.
 - **VERIFICADO:** pruebas sin credenciales reales cubren la línea de envío, ARS, total completo, firma ausente/inválida, evento duplicado, monto/moneda incompatibles y aprobación autoritativa.
-- **BLOQUEADO:** credenciales, modo y aplicación real de Mercado Pago no se verificaron ni se activarán sin autorización expresa.
+- **VERIFICADO EXTERNAMENTE:** existe la aplicación real de Checkout Pro, las URLs de Webhook apuntan a los endpoints esperados y producción tiene modo `production` y nombres cifrados requeridos. La calidad figura `0/100` y todas las categorías de eventos están seleccionadas aunque el endpoint procesa pagos.
+- **BLOQUEADO:** no activar ni reutilizar credenciales expuestas. Falta renovarlas, actualizar Pages sin imprimir valores, limitar Webhooks a pagos y completar un pago productivo controlado con comprador distinto del vendedor, webhook firmado y conciliación D1/stock.
 
 ## 11. Administración, sesión propia y Access opcional
 
@@ -127,16 +129,16 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 
 ## 13. Variables, flags, bindings y secretos
 
-- **VERIFICADO:** `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` mantienen Checkout Pro deshabilitado; `ANALYTICS_ENABLED=true` y `VITE_ANALYTICS_ENABLED=true` habilitan únicamente analítica consentida en preview y producción.
+- **VERIFICADO:** producción usa `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false` y modo `production`. Preview usa backend `true`, botón público `false` y modo `sandbox`; la analítica permanece consentida en ambos.
 - **VERIFICADO:** producción y preview tienen `DB`, variables mínimas, `Fail closed` y los cuatro nombres administrativos como `secret_text`.
-- **VERIFICADO:** existen `shekinah-commerce` y `shekinah-commerce-preview`; ambas registran `0001` a `0006` sin pendientes y conservan aislamiento por environment.
-- **VERIFICADO:** Mercado Pago no tiene secretos cargados en Pages; el modo y la aplicación del proveedor siguen `no_verificado`.
+- **VERIFICADO:** existen `shekinah-commerce` y `shekinah-commerce-preview`; ambas registran `0001` a `0008` sin pendientes y conservan aislamiento por environment.
+- **VERIFICADO POR NOMBRE:** producción contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como secretos cifrados. No se inspeccionaron valores; el Access Token expuesto debe rotarse y su presencia no prueba vigencia.
 - **VERIFICADO:** Zero Trust y Cloudflare Access están ausentes.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
 - **VERIFICADO:** R2 está activo. Production reutiliza el bucket existente `shekinah`; preview usa el bucket aislado creado `shekinah-preview`; Pages expone ambos como `CATALOG_IMAGES` en su entorno correspondiente.
 - **VERIFICADO:** ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`. No existe dominio público `r2.dev`; la lectura comercial se sirve exclusivamente mediante la ruta first-party de Pages.
 - **VERIFICADO:** la relectura posterior a configurar R2 confirmó que `DB`, variables, los cuatro nombres administrativos como `secret_text` y `fail_open=false` permanecen preservados en production y preview. No se imprimieron ni persistieron valores secretos.
-- **VERIFICADO POR API:** production usa `PUBLIC_SITE_URL=https://shekinah.ar` y `ALLOWED_SITE_ORIGINS=https://shekinah.ar`; preview conserva ambos valores en `https://shekinah-7dl.pages.dev`.
+- **VERIFICADO POR API:** production usa `PUBLIC_SITE_URL=https://shekinah.ar` y `ALLOWED_SITE_ORIGINS=https://shekinah.ar`; preview usa `https://mp-sandbox.shekinah-7dl.pages.dev` para ambos.
 - **VERIFICADO:** `ANALYTICS_HMAC_SECRET` está presente como `secret_text` con valor independiente por entorno; retención 730 y `fail_open=false` permanecen verificados. Sus valores no se imprimieron ni persistieron.
 - **INCIDENCIA CERRADA:** un upload preview con el Wrangler local como fuente de verdad reemplazó temporalmente variables/R2 y apuntó `DB` a production. Se detectó antes de aprobar preview, se limpió toda telemetría sintética, se restauraron bindings por identidad y los deployments finales se realizaron sin esa configuración local. Ambas D1 terminaron sin datos de smoke.
 
@@ -147,6 +149,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **HISTÓRICO VERIFICADO (`7f93e29`):** el smoke real sobre `https://shekinah-7dl.pages.dev` demostró login inválido 401 uniforme, login válido, cookie segura, cookie alterada 401, API `401 → 200 → 401`, alta/consulta/modificación/baja del producto técnico `codex-admin-smoke-msnopefj`, auditoría, logout y flujo Chromium sin credenciales en Web Storage.
 - **VERIFICADO:** Pages usa `npm run build:pages`, salida `dist`, rama `main`, Build System v3 y deployments automáticos; previews aceptan todas las ramas no productivas.
 - **VERIFICADO (SHA FUNCIONAL):** `npm run verify` aprobó lint, TypeScript, 41 archivos/193 pruebas Vitest, verificadores, build y 16 pruebas Playwright; `npm run build:pages` también aprobó. El workflow `CI`, run `31452548845`, concluyó `success` para `bcb6ec0956fa46bba95b2bb5aa8b645657202da8`; preview `ad63cf05` y production `786bc7fe` desplegaron ese SHA con stage `success` y smoke real.
+- **VERIFICADO (STOCK UNIFICADO):** el SHA `58ff324133cf665baacf946f54e960cd3d519398` pasó `npm run verify` con 46 archivos/251 pruebas Vitest y 24/24 Playwright, además de `npm run build:pages`. CI `32584798635`, job `97059454902`, artefacto `shekinah-dist-58ff324133cf665baacf946f54e960cd3d519398` y check Cloudflare Pages concluyeron `success`; deployment `6483757c-5d46-4559-a6b4-d22caab70d16` quedó activo y el smoke productivo no persistió datos.
 
 ## 15. Validaciones disponibles
 

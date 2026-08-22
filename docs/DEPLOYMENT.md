@@ -26,17 +26,17 @@ Configuración de referencia: `wrangler.example.jsonc`.
 
 Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
 
-## Estado externo verificado el 2026-08-12
+## Estado externo verificado el 2026-08-22
 
 - build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
 - binding `DB`: `shekinah-commerce` en producción y `shekinah-commerce-preview` en preview;
-- migraciones `0001` a `0007`: aplicadas y sin pendientes en ambas D1;
-- variables server-side: analítica activa, retención 730 y comercio cerrado en ambos entornos;
+- migraciones `0001` a `0008`: aplicadas y sin pendientes en ambas D1;
+- variables server-side: analítica activa y retención 730 en ambos; backend de comercio cerrado en producción y habilitado sólo para sandbox de preview, con botón público cerrado en ambos;
 - secretos administrativos: cuatro nombres cifrados presentes en ambos entornos, valores no inspeccionables;
 - secreto analítico: `ANALYTICS_HMAC_SECRET` presente como `secret_text` con valor independiente por entorno;
 - Zero Trust y Access: no configurados; el código lo admite sólo como fallback opcional;
 - runtime de producción y preview: `Fail closed`;
-- Checkout Pro: continúa deshabilitado y sin secretos de proveedor; analítica first-party activa bajo consentimiento.
+- Checkout Pro: continúa deshabilitado. Producción tiene los nombres cifrados requeridos y modo `production`, pero la credencial expuesta debe rotarse, Webhooks debe limitarse a pagos y falta un pago productivo controlado; analítica first-party permanece activa bajo consentimiento.
 - R2: activo, con bucket existente `shekinah` reutilizado en producción y bucket aislado `shekinah-preview` en preview;
 - binding `CATALOG_IMAGES`: configurado en producción y preview; ambos buckets Standard/default, `publicR2DevEnabled=false` y lectura pública exclusivamente first-party mediante Pages;
 - upload administrativo: infraestructura y deployment listos; smoke autenticado de imágenes no repetido en esta activación por ausencia de credencial en claro.
@@ -97,7 +97,9 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql` y `migrations/0007_whatsapp_order_reservations.sql`; deben aplicarse en ese orden mediante el mecanismo de migraciones de Wrangler. La evidencia remota del 2026-08-12 cubre `0001` a `0007` en preview y producción.
+Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql`, `migrations/0007_whatsapp_order_reservations.sql` y `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql`; deben aplicarse en ese orden. La evidencia remota del 2026-08-22 cubre `0001` a `0008` en preview y producción, con bookmarks previos, esquema, triggers, conteos y claves foráneas verificados.
+
+El endpoint `/query` de D1 devolvió `7500 incomplete input` al intentar `0008` con triggers y revirtió todo. El cierre usó `wrangler d1 execute --file`, que invoca el import oficial, con el SQL versionado y la inserción exacta de su nombre en `d1_migrations`; producción sólo se migró después de la verificación funcional y limpieza de preview.
 
 Antes de aplicarlas:
 
@@ -123,15 +125,18 @@ R2 y ambos bindings quedaron verificados por API. Los buckets conservan clase St
 
 ### Fallback manual actual
 
-El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto. Al solicitar WhatsApp, el flujo publicado crea primero un pedido pendiente y reserva stock mediante Pages Functions/D1; no crea una preferencia ni verifica pagos mediante webhook. `0007` quedó aplicada y verificada en ambos entornos antes del cierre operativo del SHA funcional.
+El Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` está autorizado como solución temporal sin monto predefinido. El carrito copia el total y abre el enlace; el comprador ingresa el monto. Al solicitar WhatsApp, cliente y servidor exigen nombre, celular y domicilio completos; luego el flujo crea un pedido pendiente y reserva stock mediante Pages Functions/D1. No crea una preferencia ni verifica pagos por webhook.
 
-### Checkout Pro integrado pendiente
+### Checkout Pro integrado pendiente de activación
 
 - usar primero credenciales de prueba;
 - configurar secretos fuera de Git;
 - registrar la URL definitiva del webhook;
 - no aceptar precios ni estados enviados por el cliente;
 - comprobar firma, consulta autoritativa e idempotencia.
+- renovar toda credencial expuesta y actualizarla directamente como secreto cifrado;
+- suscribir únicamente eventos de pagos, porque la Function no procesa otros tópicos;
+- validar reserva, pago pendiente, aprobación, idempotencia, consumo de stock y reconciliación mediante un pago real controlado antes de habilitar el botón público.
 
 ## Autenticación administrativa
 
@@ -142,7 +147,7 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 ## Activación
 
 - fallback manual de Link de Pago y WhatsApp: autorizado en código desde el 2026-08-10;
-- Checkout Pro automatizado: deshabilitado;
+- Checkout Pro automatizado: código, D1, CI y deployment listos; activación productiva bloqueada por rotación, Webhooks, pago controlado y calidad de integración;
 - analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 
