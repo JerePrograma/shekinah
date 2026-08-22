@@ -6,7 +6,7 @@ SHA funcional publicado y validado para stock unificado de Mercado Pago y WhatsA
 
 `58ff324133cf665baacf946f54e960cd3d519398`
 
-Este documento separa código, validación, publicación y configuración externa. La analítica y el fallback manual están activos; Checkout Pro continúa expresamente deshabilitado hasta rotar credenciales, corregir Webhooks y completar un pago productivo controlado.
+Este documento separa código, validación, publicación y configuración externa. La analítica y el fallback manual están activos; credenciales y Webhooks ya fueron corregidos, pero Checkout Pro continúa expresamente deshabilitado hasta completar pagos controlados y su conciliación.
 
 ## Producto
 
@@ -72,8 +72,9 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre funcion
 - D1, binding y migraciones `0001` a `0008` están configurados de forma aislada en production y preview;
 - el SHA funcional `58ff324133cf665baacf946f54e960cd3d519398` tiene CI `32584798635` y check de Cloudflare Pages en `success`; producción lo publicó en `https://6483757c.shekinah-7dl.pages.dev`;
 - el smoke público no destructivo comprobó sitio 200, checkout integrado 503 `COMMERCE_DISABLED`, pedido WhatsApp inválido 400 `PRODUCT_NOT_FOUND` y cero pedidos persistidos con sus claves sintéticas;
-- la aplicación real de Mercado Pago tiene URLs de Webhook configuradas, pero todas las categorías de eventos están seleccionadas aunque el endpoint procesa pagos; la calidad figura `0/100` y no existe evidencia de un pago productivo válido;
-- las credenciales compartidas fuera del gestor seguro se consideran comprometidas: deben renovarse y reemplazarse en Pages antes de cualquier activación.
+- la aplicación real de Mercado Pago conserva las URLs de Webhook esperadas y prueba/producción quedaron suscriptas únicamente a `Pagos`, el tópico procesado por la Function;
+- el Access Token y Client Secret expuestos fueron renovados; el nuevo token productivo quedó cifrado sólo en Pages production, el token sandbox de preview permaneció intacto y la clave firmada vigente quedó reconciliada cifrada en ambos entornos;
+- la calidad figura `0/100` y no existe todavía evidencia de un pago productivo válido, por lo que los flags públicos permanecen cerrados.
 
 `migrations/0006_analytics_manual_payment_click.sql` está aplicada remotamente en ambas D1. El backoffice queda fuera de la captura mediante defensas en cliente y servidor. Los smokes reales demostraron cero eventos sin consentimiento y tras rechazo, captura consentida de producto/carrito/clic manual/WhatsApp, ausencia de llamadas a preferencias, exclusión de `/admin` y borrado tras revocación. Los datos sintéticos se retiraron después de verificar el contrato y ambas bases terminaron con cero sesiones, eventos y revocaciones de smoke.
 
@@ -98,7 +99,7 @@ Consulta y configuración autenticadas actualizadas el 2026-08-22, sin registrar
 - `ANALYTICS_HMAC_SECRET` existe como `secret_text` con valores criptográficamente aleatorios independientes en production y preview; sus valores no se imprimieron ni persistieron;
 - `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y `ANALYTICS_RETENTION_DAYS=730` están verificados en ambos entornos; producción conserva `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`;
 - preview usa `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` en `https://mp-sandbox.shekinah-7dl.pages.dev`, `COMMERCE_ENABLED=true`, `VITE_COMMERCE_ENABLED=false` y modo `sandbox`; producción usa `https://shekinah.ar`, ambos flags en `false` y modo `production`;
-- producción contiene, sólo por nombre y como valores cifrados, `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET`; su presencia no demuestra vigencia y el token expuesto requiere rotación;
+- producción contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como valores cifrados; el primero fue reemplazado con el token productivo renovado y el segundo fue reconciliado en production y preview con la clave vigente de Mercado Pago, sin imprimir valores;
 - Zero Trust/Access continúa ausente y se conserva sólo como fallback interno opcional;
 - producción y preview usan `Fail closed`;
 - existe además un Worker independiente llamado `shekinah`, sin bindings ni variables, que no es el proyecto Pages conectado a `JerePrograma/shekinah`.

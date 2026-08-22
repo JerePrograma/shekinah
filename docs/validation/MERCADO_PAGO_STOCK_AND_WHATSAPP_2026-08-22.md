@@ -141,12 +141,13 @@ Verificado mediante la sesión autenticada, sin guardar ni repetir valores secre
 - aplicación: `Shekinah Moreno Checkout`, producto Checkout Pro;
 - Webhook de prueba: `https://mp-sandbox.shekinah-7dl.pages.dev/api/webhooks/mercadopago`;
 - Webhook productivo: `https://shekinah.ar/api/webhooks/mercadopago`;
-- el secreto firmado figura configurado, pero no se inspeccionó su valor;
-- prueba y producción tienen todas las categorías de eventos seleccionadas; el endpoint implementado acepta únicamente eventos numéricos de pago;
+- el Access Token y Client Secret expuestos fueron renovados mediante dos reautenticaciones del proveedor; la clave anterior quedó programada para su vencimiento más próximo;
+- el nuevo Access Token se transfirió directamente al secreto cifrado de Pages production y luego se descartó de la sesión de automatización; el token sandbox de preview no fue reemplazado;
+- prueba y producción quedaron seleccionadas únicamente para `Pagos`, el tópico que acepta el endpoint;
+- la clave secreta de firma vigente coincidió en ambos modos y se reemplazó directamente como secreto cifrado de Pages production y preview, sin imprimirla ni llevarla al repositorio o terminal;
 - calidad de integración: `0/100`, sin medición productiva válida;
 - no existe evidencia de un pago productivo aprobado para el SHA funcional;
-- producción Pages tiene, sólo por nombre, `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como valores cifrados;
-- la credencial productiva compartida fuera del gestor seguro se considera comprometida y no fue copiada, probada, almacenada ni reutilizada.
+- producción Pages conserva `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como valores cifrados; preview conserva su token sandbox y recibió sólo la clave de firma vigente.
 
 ## Estado de activación y pendientes
 
@@ -161,15 +162,11 @@ preview COMMERCE_ENABLED=true
 preview VITE_COMMERCE_ENABLED=false
 ```
 
-Falta, con confirmación inmediata antes de cada cambio sensible:
+Falta, con confirmación inmediata antes de cada transacción:
 
-1. renovar Access Token y Client Secret expuestos;
-2. reemplazar el Access Token únicamente en producción Pages, sin sustituir el token sandbox de preview;
-3. releer el secreto cifrado y, si Mercado Pago lo regenera, actualizar el entorno correspondiente;
-4. dejar seleccionados sólo eventos de pagos en Webhooks de prueba y producción;
-5. ejecutar un pago sandbox controlado;
-6. ejecutar un pago productivo con comprador distinto de la cuenta vendedora;
-7. verificar firma, consulta al proveedor, referencia, importe, ARS, estado D1, reserva y consumo físico;
-8. revisar la calidad de integración y recién entonces autorizar el cambio de flags públicos.
+1. ejecutar un pago sandbox controlado;
+2. ejecutar un pago productivo con comprador distinto de la cuenta vendedora;
+3. verificar firma, consulta al proveedor, referencia, importe, ARS, estado D1, reserva y consumo físico;
+4. revisar la calidad de integración y recién entonces autorizar el cambio de flags públicos.
 
 Un push, una preferencia pendiente o un retorno del navegador no prueban pago, activación ni calidad. No hubo force-push.

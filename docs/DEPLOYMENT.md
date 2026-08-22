@@ -36,7 +36,7 @@ Existe un Worker independiente también llamado `shekinah`. Verificar siempre qu
 - secreto analítico: `ANALYTICS_HMAC_SECRET` presente como `secret_text` con valor independiente por entorno;
 - Zero Trust y Access: no configurados; el código lo admite sólo como fallback opcional;
 - runtime de producción y preview: `Fail closed`;
-- Checkout Pro: continúa deshabilitado. Producción tiene los nombres cifrados requeridos y modo `production`, pero la credencial expuesta debe rotarse, Webhooks debe limitarse a pagos y falta un pago productivo controlado; analítica first-party permanece activa bajo consentimiento.
+- Checkout Pro: continúa deshabilitado. El Access Token y Client Secret expuestos fueron renovados, el token productivo se reemplazó cifrado sólo en production, la clave firmada se reconcilió en ambos entornos y Webhooks quedó limitado a `Pagos`; falta validar pagos controlados y calidad antes de activar. La analítica first-party permanece activa bajo consentimiento.
 - R2: activo, con bucket existente `shekinah` reutilizado en producción y bucket aislado `shekinah-preview` en preview;
 - binding `CATALOG_IMAGES`: configurado en producción y preview; ambos buckets Standard/default, `publicR2DevEnabled=false` y lectura pública exclusivamente first-party mediante Pages;
 - upload administrativo: infraestructura y deployment listos; smoke autenticado de imágenes no repetido en esta activación por ausencia de credencial en claro.
@@ -147,7 +147,7 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 ## Activación
 
 - fallback manual de Link de Pago y WhatsApp: autorizado en código desde el 2026-08-10;
-- Checkout Pro automatizado: código, D1, CI y deployment listos; activación productiva bloqueada por rotación, Webhooks, pago controlado y calidad de integración;
+- Checkout Pro automatizado: código, D1, credenciales renovadas y Webhooks listos; activación productiva bloqueada por pagos controlados, conciliación y calidad de integración;
 - analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 

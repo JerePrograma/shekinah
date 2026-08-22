@@ -104,8 +104,8 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **REVISADO_POR_CÓDIGO:** los estados terminales no se degradan; `refunded` y `charged_back` prevalecen sobre estados anteriores.
 - **VERIFICADO:** las respuestas de pago y preferencia validan sus IDs; el GET de pago debe devolver exactamente el recurso solicitado y la recuperación debe devolver el ID encontrado.
 - **VERIFICADO:** pruebas sin credenciales reales cubren la línea de envío, ARS, total completo, firma ausente/inválida, evento duplicado, monto/moneda incompatibles y aprobación autoritativa.
-- **VERIFICADO EXTERNAMENTE:** existe la aplicación real de Checkout Pro, las URLs de Webhook apuntan a los endpoints esperados y producción tiene modo `production` y nombres cifrados requeridos. La calidad figura `0/100` y todas las categorías de eventos están seleccionadas aunque el endpoint procesa pagos.
-- **BLOQUEADO:** no activar ni reutilizar credenciales expuestas. Falta renovarlas, actualizar Pages sin imprimir valores, limitar Webhooks a pagos y completar un pago productivo controlado con comprador distinto del vendedor, webhook firmado y conciliación D1/stock.
+- **VERIFICADO EXTERNAMENTE:** existe la aplicación real de Checkout Pro; las URLs de prueba y producción apuntan a los endpoints esperados y ambos modos quedaron suscriptos únicamente a `Pagos`. El Access Token y Client Secret expuestos fueron renovados; el nuevo Access Token se reemplazó como secreto cifrado sólo en Pages production, el token sandbox de preview se preservó y la clave firmada vigente se reconcilió cifrada en ambos entornos sin imprimir valores.
+- **BLOQUEADO:** la calidad continúa `0/100` y falta completar un pago sandbox y otro productivo controlado con comprador distinto del vendedor, webhook firmado y conciliación D1/stock antes de autorizar los flags públicos.
 
 ## 11. Administración, sesión propia y Access opcional
 
@@ -132,7 +132,7 @@ La autoridad se resuelve en este orden: Git sincronizado; código y configuraci�
 - **VERIFICADO:** producción usa `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false` y modo `production`. Preview usa backend `true`, botón público `false` y modo `sandbox`; la analítica permanece consentida en ambos.
 - **VERIFICADO:** producción y preview tienen `DB`, variables mínimas, `Fail closed` y los cuatro nombres administrativos como `secret_text`.
 - **VERIFICADO:** existen `shekinah-commerce` y `shekinah-commerce-preview`; ambas registran `0001` a `0008` sin pendientes y conservan aislamiento por environment.
-- **VERIFICADO POR NOMBRE:** producción contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como secretos cifrados. No se inspeccionaron valores; el Access Token expuesto debe rotarse y su presencia no prueba vigencia.
+- **VERIFICADO POR OPERACIÓN SEGURA:** producción contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET` como secretos cifrados. El token productivo renovado se transfirió directamente al primero y la clave firmada vigente se reemplazó en production y preview; el token sandbox de preview permaneció intacto. Ningún valor fue impreso, guardado en Git o llevado al terminal.
 - **VERIFICADO:** Zero Trust y Cloudflare Access están ausentes.
 - **REVISADO_POR_CÓDIGO:** `.env*`, `.dev.vars`, el `wrangler.jsonc` real, `dist`, logs y backups están excluidos o prohibidos para publicación.
 - **VERIFICADO:** R2 está activo. Production reutiliza el bucket existente `shekinah`; preview usa el bucket aislado creado `shekinah-preview`; Pages expone ambos como `CATALOG_IMAGES` en su entorno correspondiente.
