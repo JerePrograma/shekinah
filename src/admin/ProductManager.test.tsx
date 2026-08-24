@@ -98,7 +98,7 @@ describe('gestión visual de productos', () => {
   it('crea con slug automático, categorías múltiples y stock sin doble submit', async () => {
     const api = installCatalogApi([], { deferCreate: true, imageStorageConfigured: true });
     render(<ProductManager />);
-    await screen.findByText('0 productos encontrados');
+    await screen.findByRole('heading', { name: 'No hay productos cargados' });
     expect(screen.getByRole('heading', { name: 'No hay productos cargados' })).toBeVisible();
     expect(screen.getByText('Usá Nuevo producto para cargar el primero.')).toBeVisible();
 
@@ -143,7 +143,7 @@ describe('gestión visual de productos', () => {
     const { unmount } = render(
       <ProductManager onInteractionStateChange={onInteractionStateChange} />,
     );
-    await screen.findByText('0 productos encontrados');
+    await screen.findByRole('heading', { name: 'No hay productos cargados' });
     expect(onInteractionStateChange).toHaveBeenLastCalledWith({ dirty: false, busy: false });
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
@@ -220,7 +220,7 @@ describe('gestión visual de productos', () => {
   it('rechaza stock vacío en el editor completo sin convertirlo en cero', async () => {
     const api = installCatalogApi([]);
     render(<ProductManager />);
-    await screen.findByText('0 productos encontrados');
+    await screen.findByRole('heading', { name: 'No hay productos cargados' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
@@ -261,7 +261,7 @@ describe('gestión visual de productos', () => {
   it('valida precio, categoría y stock antes de crear', async () => {
     const api = installCatalogApi([]);
     render(<ProductManager />);
-    await screen.findByText('0 productos encontrados');
+    await screen.findByRole('heading', { name: 'No hay productos cargados' });
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
       target: { value: 'Producto inválido' },
@@ -285,7 +285,7 @@ describe('gestión visual de productos', () => {
   it('abre opciones avanzadas y enfoca el identificador cuando es el primer error', async () => {
     const api = installCatalogApi([]);
     render(<ProductManager />);
-    await screen.findByText('0 productos encontrados');
+    await screen.findByRole('heading', { name: 'No hay productos cargados' });
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
       target: { value: 'Producto válido' },
