@@ -1,4 +1,6 @@
 const expectedPath = '/api/internal/mercadolibre/reconcile';
+class NonRetryableReconciliationError extends Error {}
+
 const target = parseTarget(process.env.SHEKINAH_RECONCILE_URL);
 const secret = requireSecret(process.env.SHEKINAH_RECONCILE_SECRET);
 
@@ -123,5 +125,3 @@ function isMetric(value) {
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
-class NonRetryableReconciliationError extends Error {}
