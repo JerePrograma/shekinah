@@ -59,8 +59,11 @@ for (const [name, value] of Object.entries(expectedScripts)) {
 }
 
 const workflowFiles = listFiles(workflowRoot);
-if (workflowFiles.length !== 1 || workflowFiles[0] !== '.github/workflows/ci.yml') {
-  fail('Debe existir únicamente .github/workflows/ci.yml.');
+if (JSON.stringify(workflowFiles) !== JSON.stringify([
+  '.github/workflows/ci.yml',
+  '.github/workflows/mercadolibre-reconcile.yml',
+])) {
+  fail('Sólo están autorizados CI y la reconciliación de Mercado Libre.');
 }
 const workflow = read(join(root, '.github', 'workflows', 'ci.yml'));
 for (const fragment of [
@@ -82,6 +85,39 @@ for (const forbidden of [
   /github-script/iu, /repository_dispatch/iu,
 ]) {
   if (forbidden.test(workflow)) fail(`Contenido prohibido en CI: ${forbidden}`);
+}
+
+const reconciliationWorkflow = read(join(root, '.github', 'workflows', 'mercadolibre-reconcile.yml'));
+for (const fragment of [
+  'name: Mercado Libre reconciliation', "cron: '2/5 * * * *'", 'workflow_dispatch:',
+  'contents: read', 'cancel-in-progress: false', 'timeout-minutes: 10',
+  'name: cloudflare-pages-production', 'deployment: false', 'persist-credentials: false',
+  'node-version-file: .node-version',
+  'SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/mercadolibre/reconcile',
+  'SHEKINAH_RECONCILE_SECRET: ${{ secrets.MERCADO_LIBRE_SCHEDULER_SECRET }}',
+  'run: node scripts/run-mercadolibre-reconcile.mjs',
+]) {
+  if (!reconciliationWorkflow.includes(fragment)) {
+    fail(`Falta el fragmento requerido en la reconciliación: ${fragment}`);
+  }
+}
+const reconciliationActions = [
+  ...reconciliationWorkflow.matchAll(/^\s*uses:\s*([^\s#]+).*$/gmu),
+].map((match) => match[1]);
+if (reconciliationActions.length !== 2) fail('La cantidad de acciones del scheduler no coincide.');
+for (const action of reconciliationActions) {
+  if (action === undefined || !allowedActions.has(action)) {
+    fail(`Acción no autorizada o no fijada a SHA en el scheduler: ${action}`);
+  }
+}
+for (const forbidden of [
+  /pull_request_target/iu, /\bcurl\b/iu, /\bwget\b/iu,
+  /\b(?:powershell|pwsh|Invoke-WebRequest)\b/iu, /cloudflare\//iu,
+  /github-script/iu, /repository_dispatch/iu,
+]) {
+  if (forbidden.test(reconciliationWorkflow)) {
+    fail(`Contenido prohibido en el scheduler: ${forbidden}`);
+  }
 }
 
 for (const [relativePath, fragments] of requiredDocuments) {

@@ -134,14 +134,22 @@ export function MercadoLibrePanel({
               <Metric label="Último error" value={textValue(status.latestRun?.error_code, 'Ninguno')} />
               <Metric label="Unidades sincronizadas" value={numberValue(status.counts.unit_count)} />
               <Metric label="Vendibles" value={numberValue(status.counts.sellable_count)} />
+              <Metric label="Elegibles para Checkout" value={numberValue(status.counts.checkout_eligible_count)} />
               <Metric label="Pausadas" value={numberValue(status.latestRun?.paused_count)} />
               <Metric label="Cerradas" value={numberValue(status.latestRun?.closed_count)} />
               <Metric label="Sin stock" value={numberValue(status.counts.out_of_stock_count)} />
               <Metric label="Sin mapeo" value={numberValue(status.counts.unmapped_count)} />
               <Metric label="Ambiguas o duplicadas" value={numberValue(status.counts.ambiguous_count)} />
+              <Metric label="User Products compartidos" value={numberValue(status.counts.shared_user_product_count)} />
+              <Metric label="seller_warehouse versionado" value={numberValue(status.counts.seller_warehouse_count)} />
+              <Metric label="selling_address" value={numberValue(status.counts.selling_address_count)} />
+              <Metric label="Full / meli_facility" value={numberValue(status.counts.meli_facility_count)} />
+              <Metric label="Stock tradicional" value={numberValue(status.counts.legacy_count)} />
+              <Metric label="Modelo desconocido" value={numberValue(status.counts.unknown_model_count)} />
               <Metric label="Errores de sincronización" value={numberValue(status.counts.error_count)} />
               <Metric label="Ausentes desde la última sincronización" value={numberValue(status.counts.absent_count)} />
               <Metric label="Obsoletas" value={numberValue(status.counts.stale_count)} />
+              <Metric label="Stock negativo" value={numberValue(status.counts.negative_stock_count)} />
               <Metric label="Reservas activas" value={numberValue(status.operations.active_reservation_count)} />
               <Metric label="Reservas vencidas" value={numberValue(status.operations.expired_reservation_count)} />
               <Metric label="Operaciones pendientes" value={numberValue(status.operations.pending_count)} />

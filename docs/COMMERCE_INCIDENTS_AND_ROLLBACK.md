@@ -1,6 +1,6 @@
 # Incidentes y rollback
 
-Para incidentes de catálogo, OAuth, stock upstream, operaciones inciertas o notificaciones de Mercado Libre, seguir además `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El rollback no debe reactivar el Link de Pago manual. Mantener webhooks y ledger activos hasta resolver todas las reservas iniciadas.
+Para incidentes de catálogo, OAuth, stock upstream, operaciones inciertas, notificaciones o cron de Mercado Libre, seguir además `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El rollback no debe reactivar el Link de Pago manual. Mantener webhooks, reconciliación y ledger activos hasta resolver todas las reservas iniciadas.
 
 ## Prioridades
 

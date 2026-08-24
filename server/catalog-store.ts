@@ -381,26 +381,40 @@ function projectMercadoLibreUnit(
   detail: CatalogProductDetail,
   unit: Awaited<ReturnType<typeof listMappedCatalogUnits>>[number],
 ): CatalogProductDetail {
-  const available = unit.sellable && unit.checkoutEligible;
+  const protectedStock = unit.stockModel === 'seller_warehouse_versioned' &&
+    unit.upstreamVersion !== null && unit.stockLocations.length > 0;
+  const availabilityState: NonNullable<Product['commerce']>['availabilityState'] = !unit.fresh
+    ? 'updating'
+    : protectedStock && unit.availableQuantity === 0
+      ? 'out_of_stock'
+      : unit.sellable && unit.checkoutEligible
+        ? 'verified'
+        : 'unavailable';
+  const withoutLocalInventory = { ...detail };
+  delete withoutLocalInventory.stockQuantity;
+  delete withoutLocalInventory.reservedQuantity;
+  delete withoutLocalInventory.availableQuantity;
+  delete withoutLocalInventory.salePrice;
+  const exposeVerifiedQuantity = availabilityState === 'verified' || availabilityState === 'out_of_stock';
   const projected: CatalogProductDetail = Object.freeze({
-    ...detail,
+    ...withoutLocalInventory,
     price: Object.freeze({ amount: unit.priceMinor / 100, currency: 'ARS' as const }),
-    availability: available ? 'available' : 'unavailable',
-    stockQuantity: unit.availableQuantity,
-    reservedQuantity: 0,
-    availableQuantity: unit.availableQuantity,
+    variants: Object.freeze([]),
+    availability: availabilityState === 'verified' ? 'available' : 'unavailable',
+    ...(exposeVerifiedQuantity ? {
+      stockQuantity: unit.availableQuantity,
+      reservedQuantity: 0,
+      availableQuantity: unit.availableQuantity,
+    } : {}),
     commerce: Object.freeze({
       source: 'mercadolibre' as const,
       catalogVersion: unit.catalogVersion,
       syncedAt: unit.lastSyncedAt,
-      itemId: unit.itemId,
-      ...(unit.variationId === null ? {} : { variationId: unit.variationId }),
+      availabilityState,
       checkoutEligible: unit.checkoutEligible,
     }),
   });
-  const withoutSale = { ...projected };
-  delete withoutSale.salePrice;
-  return Object.freeze(withoutSale);
+  return projected;
 }
 
 function parseWritableProduct(

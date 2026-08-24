@@ -57,8 +57,7 @@ export type CatalogProductSummary = Readonly<{
     source: 'mercadolibre';
     catalogVersion: string;
     syncedAt: string;
-    itemId: string;
-    variationId?: string;
+    availabilityState: 'verified' | 'out_of_stock' | 'updating' | 'unavailable';
     checkoutEligible: boolean;
   }>;
 }>;
@@ -305,13 +304,11 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
   }
   const catalogVersion = readRequiredText(value, 'catalogVersion');
   const syncedAt = readRequiredText(value, 'syncedAt');
-  const itemId = readRequiredText(value, 'itemId');
-  const variationId = readOptionalText(value, 'variationId');
+  const availabilityState = readRequiredText(value, 'availabilityState');
   if (
     !/^[a-f0-9]{64}$/u.test(catalogVersion) ||
     Number.isNaN(Date.parse(syncedAt)) ||
-    !/^MLA\d{5,30}$/u.test(itemId) ||
-    (variationId !== undefined && !/^\d{1,30}$/u.test(variationId)) ||
+    !['verified', 'out_of_stock', 'updating', 'unavailable'].includes(availabilityState) ||
     typeof value.checkoutEligible !== 'boolean'
   ) {
     throw new InvalidProductError('La referencia comercial del producto no es válida.');
@@ -320,8 +317,7 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
     source: 'mercadolibre',
     catalogVersion,
     syncedAt: new Date(syncedAt).toISOString(),
-    itemId,
-    ...(variationId === undefined ? {} : { variationId }),
+    availabilityState: availabilityState as NonNullable<Product['commerce']>['availabilityState'],
     checkoutEligible: value.checkoutEligible,
   });
 }

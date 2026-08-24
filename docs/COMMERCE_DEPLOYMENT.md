@@ -2,7 +2,7 @@
 
 ## Extensión Mercado Libre
 
-Desde el 2026-08-24, aplicar también la secuencia completa de `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. La integración agrega la migración `0009`, variables y secretos de Mercado Libre, y el flag independiente `MERCADO_LIBRE_CATALOG_ENABLED`. El Link de Pago manual ya no es un mecanismo de rollback: el cierre seguro consiste en ocultar el botón y bloquear nuevas preferencias, manteniendo webhooks y conciliación.
+Desde el 2026-08-24, aplicar también la secuencia completa de `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. La integración agrega la migración `0009`, variables y secretos de Mercado Libre, el flag independiente `MERCADO_LIBRE_CATALOG_ENABLED` y una única reconciliación GitHub Actions cada cinco minutos. `MERCADO_LIBRE_SCHEDULER_SECRET` debe existir cifrado tanto en Pages producción como en el environment GitHub `cloudflare-pages-production`; no se reutiliza una sesión administrativa. El Link de Pago manual ya no es un mecanismo de rollback: el cierre seguro consiste en ocultar el botón y bloquear nuevas preferencias, manteniendo webhooks y conciliación.
 
 ## Regla de activación
 

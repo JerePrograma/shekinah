@@ -1,0 +1,39 @@
+name: Mercado Libre reconciliation
+
+on:
+  schedule:
+    - cron: '2/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mercadolibre-reconciliation-production
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile production inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloudflare-pages-production
+      deployment: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version-file: .node-version
+
+      - name: Reconcile Mercado Libre
+        env:
+          SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/mercadolibre/reconcile
+          SHEKINAH_RECONCILE_SECRET: ${{ secrets.MERCADO_LIBRE_SCHEDULER_SECRET }}
+        run: node scripts/run-mercadolibre-reconcile.mjs

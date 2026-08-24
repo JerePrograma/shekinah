@@ -119,8 +119,14 @@ export function formatProductPrice(price: ProductPrice | undefined): string | nu
 export function formatAvailability(
   value: Product['availability'],
   stockQuantity?: number,
+  runtimeState?: NonNullable<Product['commerce']>['availabilityState'],
 ): string | null {
+  if (runtimeState === 'updating') return 'Actualizando disponibilidad';
+  if (runtimeState === 'unavailable') return 'Disponibilidad temporalmente no verificable';
+  if (runtimeState === 'out_of_stock' || stockQuantity === 0) return 'Agotado';
+  if (runtimeState === 'verified' && stockQuantity !== undefined) {
+    return `${stockQuantity.toLocaleString('es-AR')} ${stockQuantity === 1 ? 'unidad disponible' : 'unidades disponibles'}`;
+  }
   if (value === 'unavailable') return 'No disponible';
-  if (stockQuantity === 0) return 'Sin stock';
   return value === 'available' ? 'Disponible' : null;
 }

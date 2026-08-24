@@ -91,7 +91,7 @@ VITE_COMMERCE_ENABLED=false
 VITE_ANALYTICS_ENABLED=false
 ```
 
-Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET`, `MERCADO_LIBRE_CLIENT_SECRET`, `MERCADO_LIBRE_TOKEN_ENCRYPTION_KEY`, `ANALYTICS_HMAC_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` deben cargarse exclusivamente como secretos de Cloudflare y separarse por entorno. Nunca deben usar el prefijo `VITE_`. La contraseña administrativa se transforma fuera del repositorio mediante PBKDF2-HMAC-SHA-256 con salt aleatoria; no se carga ni se conserva en claro.
+Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET`, `MERCADO_LIBRE_CLIENT_SECRET`, `MERCADO_LIBRE_TOKEN_ENCRYPTION_KEY`, `MERCADO_LIBRE_SCHEDULER_SECRET`, `ANALYTICS_HMAC_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` deben cargarse exclusivamente como secretos de Cloudflare y separarse por entorno. El secreto del scheduler se replica cifrado en el environment GitHub `cloudflare-pages-production`; ningún otro secreto de proveedor sale de Cloudflare. Nunca deben usar el prefijo `VITE_`. La contraseña administrativa se transforma fuera del repositorio mediante PBKDF2-HMAC-SHA-256 con salt aleatoria; no se carga ni se conserva en claro.
 
 `VITE_WHATSAPP_NUMBER` es un dato público autorizado. El Link de Pago fijo y su variable pública fueron retirados del carrito; no existe fallback automático que solicite al comprador ingresar un monto.
 

@@ -581,6 +581,7 @@ function rowToUnit(row: Record<string, unknown>): MercadoLibreCatalogUnit {
     sellable: row.sellable === 1, checkoutEligible: row.checkout_eligible === 1,
     lastSyncStatus: String(row.last_sync_status) as MercadoLibreCatalogUnit['lastSyncStatus'],
     lastSyncErrorCode: nullableString(row.last_sync_error_code), lastSyncedAt: String(row.last_synced_at),
+    fresh: true,
   });
 }
 

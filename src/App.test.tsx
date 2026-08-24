@@ -157,7 +157,7 @@ describe('App', () => {
       level: 1,
       name: reservedProduct.name,
     })).toBeVisible();
-    expect(screen.getByText('Sin stock')).toBeVisible();
+    expect(screen.getByText('Agotado')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
 
     rendered.unmount();

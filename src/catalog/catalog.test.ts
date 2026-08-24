@@ -126,10 +126,37 @@ describe('modelo de producto', () => {
   });
 
   it('explica la causa efectiva de indisponibilidad sin contradicciones', () => {
-    expect(formatAvailability('available', 0)).toBe('Sin stock');
+    expect(formatAvailability('available', 0)).toBe('Agotado');
     expect(formatAvailability('unavailable', 8)).toBe('No disponible');
     expect(formatAvailability('available', 8)).toBe('Disponible');
+    expect(formatAvailability('available', 8, 'verified')).toBe('8 unidades disponibles');
+    expect(formatAvailability('available', 1, 'verified')).toBe('1 unidad disponible');
+    expect(formatAvailability('unavailable', undefined, 'updating')).toBe('Actualizando disponibilidad');
+    expect(formatAvailability('unavailable', undefined, 'unavailable')).toBe('Disponibilidad temporalmente no verificable');
     expect(formatAvailability(undefined)).toBeNull();
+  });
+
+  it('acepta una referencia runtime segura sin exponer IDs del proveedor', () => {
+    const product = parseProduct({
+      ...baseProduct,
+      commerce: {
+        source: 'mercadolibre',
+        catalogVersion: 'a'.repeat(64),
+        syncedAt: '2026-08-24T10:00:00.000Z',
+        availabilityState: 'verified',
+        checkoutEligible: true,
+      },
+    });
+
+    expect(product.commerce).toEqual({
+      source: 'mercadolibre',
+      catalogVersion: 'a'.repeat(64),
+      syncedAt: '2026-08-24T10:00:00.000Z',
+      availabilityState: 'verified',
+      checkoutEligible: true,
+    });
+    expect(product.commerce).not.toHaveProperty('itemId');
+    expect(product.commerce).not.toHaveProperty('variationId');
   });
 
   it('acepta sólo rutas administradas con UUID v4 exacto', () => {

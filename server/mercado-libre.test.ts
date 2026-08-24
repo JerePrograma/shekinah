@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { listCatalogProductDetails } from './catalog-store';
+import { listCatalogProductDetails, listRuntimeCatalogProducts } from './catalog-store';
 import {
   completeMercadoLibreAuthorization,
   createMercadoLibreAuthorization,
   getMercadoLibreAccess,
 } from './mercado-libre';
 import {
+  getMercadoLibreCatalogStatus,
   getMappedCatalogUnit,
   syncMercadoLibreCatalog,
 } from './mercado-libre-catalog';
@@ -104,15 +105,17 @@ describe('Mercado Libre OAuth y catálogo', () => {
       expect(local?.sku).toBeDefined();
       await connect(database);
       let scanPage = 0;
+      let failItemDetails = false;
       const fetchMock = vi.fn((input: RequestInfo | URL) => {
         const url = requestUrl(input);
         if (url.pathname.endsWith('/items/search')) {
           scanPage += 1;
-          return scanPage === 1
-            ? json({ results: ['MLA12345'], scroll_id: 'scroll-next' })
-            : json({ results: [], scroll_id: 'scroll-next' });
+          return url.searchParams.has('scroll_id')
+            ? json({ results: [], scroll_id: 'scroll-next' })
+            : json({ results: ['MLA12345'], scroll_id: 'scroll-next' });
         }
         if (url.pathname === '/items') {
+          if (failItemDetails) return json([{ code: 500, body: { id: 'MLA12345' } }]);
           return json([{ code: 200, body: {
             id: 'MLA12345',
             seller_id: 987654321,
@@ -162,7 +165,131 @@ describe('Mercado Libre OAuth y catálogo', () => {
         checkoutEligible: true,
         mappingStatus: 'mapped',
       });
-      expect(scanPage).toBe(2);
+      const runtimeProduct = (await listRuntimeCatalogProducts(database, env))
+        .find((product) => product.id === local?.id);
+      expect(runtimeProduct).toMatchObject({
+        availableQuantity: 2,
+        commerce: { availabilityState: 'verified', checkoutEligible: true },
+      });
+      expect(runtimeProduct?.commerce).not.toHaveProperty('itemId');
+      expect(runtimeProduct?.commerce).not.toHaveProperty('variationId');
+
+      failItemDetails = true;
+      const failedRefresh = await syncMercadoLibreCatalog(database, env, 'scheduler:test', {
+        kind: 'full',
+        localProducts,
+      });
+      expect(failedRefresh).toMatchObject({ status: 'failed', processed: 0, failed: 1 });
+      const preserved = await database.prepare(
+        `SELECT mapping_status, last_sync_status FROM mercadolibre_catalog_units
+         WHERE item_id = 'MLA12345'`,
+      ).first<Readonly<{ mapping_status: string; last_sync_status: string }>>();
+      expect(preserved).toEqual({ mapping_status: 'mapped', last_sync_status: 'ok' });
+
+      await database.prepare(
+        `UPDATE mercadolibre_catalog_units
+         SET last_synced_at = '2020-01-01T00:00:00.000Z' WHERE item_id = 'MLA12345'`,
+      ).run();
+      const staleProduct = (await listRuntimeCatalogProducts(database, env))
+        .find((product) => product.id === local?.id);
+      expect(staleProduct).toMatchObject({
+        availability: 'unavailable',
+        commerce: { availabilityState: 'updating', checkoutEligible: false },
+      });
+      expect(staleProduct).not.toHaveProperty('stockQuantity');
+      expect(staleProduct).not.toHaveProperty('availableQuantity');
+      expect(scanPage).toBe(4);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('bloquea publicaciones distintas que comparten el mismo User Product físico', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const localProducts = (await listCatalogProductDetails(database))
+        .filter((product) => product.sku !== undefined)
+        .slice(0, 2);
+      expect(localProducts).toHaveLength(2);
+      await connect(database);
+      let scanPage = 0;
+      vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url.pathname.endsWith('/items/search')) {
+          scanPage += 1;
+          return scanPage === 1
+            ? json({ results: ['MLA12345', 'MLA67890'], scroll_id: 'shared-up-next' })
+            : json({ results: [], scroll_id: 'shared-up-next' });
+        }
+        if (url.pathname === '/items') {
+          const requestedIds = new Set((url.searchParams.get('ids') ?? '').split(','));
+          return json(localProducts.flatMap((product, index) => {
+            const itemId = index === 0 ? 'MLA12345' : 'MLA67890';
+            return requestedIds.has(itemId) ? [{ code: 200, body: {
+              id: itemId,
+              seller_id: 987654321,
+              title: `Publicación compartida ${index + 1}`,
+              currency_id: 'ARS',
+              price: 1_000 + index,
+              status: 'active',
+              available_quantity: 4,
+              seller_custom_field: product.sku,
+              user_product_id: 'UP-SHARED',
+              variations: [],
+              last_updated: '2026-08-24T10:00:00.000Z',
+            } }] : [];
+          }));
+        }
+        if (url.pathname === '/user-products/UP-SHARED/stock') {
+          return json(
+            { locations: [{ type: 'seller_warehouse', store_id: 'STORE1', quantity: 4 }] },
+            200,
+            { 'x-version': 'version-shared' },
+          );
+        }
+        return json({}, 404);
+      }));
+
+      const summary = await syncMercadoLibreCatalog(database, env, 'admin@test', {
+        kind: 'initial',
+        localProducts,
+      });
+      expect(summary).toMatchObject({ status: 'succeeded', processed: 2, ambiguous: 2 });
+      const conflicts = await database.prepare(
+        `SELECT mapping_status, sellable, checkout_eligible
+         FROM mercadolibre_catalog_units ORDER BY item_id`,
+      ).all<Readonly<{ mapping_status: string; sellable: number; checkout_eligible: number }>>();
+      expect(conflicts.results).toEqual([
+        { mapping_status: 'duplicate', sellable: 0, checkout_eligible: 0 },
+        { mapping_status: 'duplicate', sellable: 0, checkout_eligible: 0 },
+      ]);
+      await expect(getMappedCatalogUnit(database, env, localProducts[0]?.id ?? 'missing'))
+        .rejects.toMatchObject({ code: 'MERCADO_LIBRE_PRODUCT_UNMAPPED' });
+
+      const status = await getMercadoLibreCatalogStatus(database, env) as {
+        counts: Record<string, unknown>;
+      };
+      expect(status.counts).toMatchObject({
+        shared_user_product_count: 1,
+        seller_warehouse_count: 2,
+        checkout_eligible_count: 0,
+        negative_stock_count: 0,
+      });
+
+      const incremental = await syncMercadoLibreCatalog(database, env, 'notification:test', {
+        kind: 'incremental',
+        itemIds: ['MLA12345'],
+        localProducts,
+      });
+      expect(incremental.ambiguous).toBe(1);
+      const afterIncremental = await database.prepare(
+        `SELECT mapping_status, sellable, checkout_eligible
+         FROM mercadolibre_catalog_units ORDER BY item_id`,
+      ).all<Readonly<{ mapping_status: string; sellable: number; checkout_eligible: number }>>();
+      expect(afterIncremental.results).toEqual([
+        { mapping_status: 'duplicate', sellable: 0, checkout_eligible: 0 },
+        { mapping_status: 'duplicate', sellable: 0, checkout_eligible: 0 },
+      ]);
     } finally {
       database.close();
     }

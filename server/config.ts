@@ -62,7 +62,7 @@ export function readAnalyticsRetentionDays(env: Env): number | null {
 }
 
 export function readMercadoLibreCatalogMaxAgeSeconds(env: Env): number {
-  const raw = env.MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS ?? '300';
+  const raw = env.MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS ?? '900';
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 60 || value > 3_600) {
     throw new HttpError(

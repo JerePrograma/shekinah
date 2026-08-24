@@ -35,7 +35,8 @@ Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 ## Controles de Mercado Libre
 
 - Revisar en **Mercado Libre** la fecha y resultado del último ciclo, seller, obsoletos, errores, ausentes, ambiguos y duplicados.
-- Ejecutar **Sincronizar ahora** antes de abrir comercio y ante una notificación fallida o diferencia observada.
+- Verificar que **Mercado Libre reconciliation** complete cada cinco minutos y que el último ciclo permanezca dentro de los 900 segundos.
+- Ejecutar **Sincronizar ahora** antes de abrir comercio y como recuperación ante una notificación fallida, un cron fallido o una diferencia observada.
 - No habilitar unidades `legacy_available_quantity`, `selling_address`, `meli_facility` o `unknown`; carecen de la reserva versionada exigida.
 - Detener nuevas ventas de una unidad con operaciones `uncertain` o `compensation_pending` hasta conciliarla.
 - No repetir PUT de stock a ciegas. Reconsultar User Product y resolver el delta registrado.

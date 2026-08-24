@@ -20,13 +20,13 @@ La integración falla cerrada. Una unidad sólo puede venderse por Shekinah si:
 - se mapea a exactamente un producto local;
 - la publicación está activa, en ARS, con precio positivo y stock positivo;
 - su lectura de User Products informa exclusivamente `seller_warehouse` y un `x-version` utilizable para control optimista;
-- la última sincronización válida no supera `MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS`, cuyo default es 300 segundos.
+- la última sincronización válida no supera `MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS`, cuyo default es 900 segundos.
 
 Las coincidencias por título están prohibidas. Las modalidades `legacy_available_quantity`, `selling_address`, `meli_facility` y `unknown` se reflejan para diagnóstico, pero quedan fuera de Checkout y WhatsApp porque no ofrecen la garantía intercanal implementada.
 
 ## Identidad y sincronización
 
-La identidad interna de una unidad se deriva criptográficamente de seller, item, variación y User Product. D1 conserva los identificadores originales en `mercadolibre_catalog_units`; el hash no sustituye esos campos ni oculta ambigüedades.
+La identidad interna de una unidad se deriva criptográficamente de seller, item, variación y User Product. D1 conserva los identificadores originales en `mercadolibre_catalog_units`; el hash no sustituye esos campos ni oculta ambigüedades. Dos publicaciones o variaciones que comparten el mismo `user_product_id` representan una sola autoridad física: ambas quedan `duplicate`, sin mapeo y no vendibles aunque sus SKU sean distintos. Los IDs del proveedor no salen en la API pública.
 
 La sincronización completa:
 
@@ -46,7 +46,11 @@ Una unidad inválida no detiene necesariamente el resto del ciclo. Se persiste c
 
 Las notificaciones de `items` y `orders_v2` se aceptan sólo para la aplicación y seller configurados, se deduplican y se usan como disparador. El cuerpo no es autoridad: la Function vuelve a consultar el item o la orden. Un evento fallido puede reintentarse; un evento duplicado procesado no vuelve a aplicar efectos.
 
-Pages Functions no ofrece cron propio y el repositorio no dispone hoy de un programador autenticado. La reconciliación completa se ejecuta mediante la acción protegida **Sincronizar ahora**. No se agregó un Worker ni un workflow con credenciales nuevas sin una necesidad y autorización operativa separadas.
+La reconciliación periódica usa un solo scheduler: `.github/workflows/mercadolibre-reconcile.yml`. GitHub Actions lo ejecuta cada cinco minutos sobre el último commit de `main`, fuera del minuto cero, y llama por `POST` a `/api/internal/mercadolibre/reconcile`. El secreto server-to-server `MERCADO_LIBRE_SCHEDULER_SECRET` viaja únicamente en `Authorization`, pertenece al environment `cloudflare-pages-production`, restringido a la rama `main`, y debe coincidir con el secreto cifrado de Pages. No se incluye en URL, Git, bundle ni logs.
+
+El endpoint tiene timeout externo de ocho minutos, un reintento acotado y el lock único D1 ya usado por la sincronización manual. Una ejecución solapada no inicia otro ciclo. El workflow no despliega, no ejecuta llamadas durante build y sólo imprime estado y contadores resumidos; falla visiblemente si el ciclo queda `partial`/`failed` o si una liberación vence sin compensarse. `900` segundos dejan diez minutos de margen sobre el intervalo nominal para cola, jitter y ejecución; si GitHub retrasa o descarta ciclos hasta superar ese límite, el catálogo falla cerrado. Checkout y WhatsApp revalidan selectivamente aun dentro de la ventana.
+
+**Sincronizar ahora** permanece como operación administrativa de diagnóstico y recuperación, no como única fuente de frescura. Las notificaciones oficiales siguen aportando actualización incremental y la reconciliación completa cura eventos perdidos, duplicados, fuera de orden o fallidos mediante una relectura autoritativa.
 
 ## OAuth y tokens
 
@@ -69,6 +73,7 @@ Secretos backend:
 ```text
 MERCADO_LIBRE_CLIENT_SECRET
 MERCADO_LIBRE_TOKEN_ENCRYPTION_KEY
+MERCADO_LIBRE_SCHEDULER_SECRET
 ```
 
 Ninguna variable de Mercado Libre usa el prefijo `VITE_`.
@@ -86,7 +91,7 @@ Checkout Pro y WhatsApp llaman a `reserveMercadoLibreInventory`. La secuencia po
 
 El descuento upstream ocurre antes de crear la preferencia o abrir WhatsApp. La aprobación no vuelve a descontar: agrega un marcador `consume` idempotente. El rechazo, cancelación o vencimiento libera exactamente el delta reservado sobre el snapshot actual y también usa `x-version`; nunca restaura ciegamente un snapshot viejo.
 
-Una respuesta perdida, versión conflictiva o resultado no demostrable queda `uncertain` o `compensation_pending`. La unidad no se vuelve a mutar a ciegas. El backoffice expone esas operaciones para conciliación.
+Una respuesta perdida, versión conflictiva o resultado no demostrable queda `uncertain` o `compensation_pending`. La unidad no se vuelve a mutar a ciegas. El backoffice expone esas operaciones para conciliación. El catálogo público conserva el producto y el carrito, oculta la cantidad obsoleta y muestra **Actualizando disponibilidad** hasta recuperar una lectura válida.
 
 Un reembolso no repone stock automáticamente. Se agrega una operación de revisión con `REFUND_REQUIRES_MANUAL_STOCK_POLICY` porque la decisión comercial de reponer no puede inferirse.
 
@@ -127,13 +132,13 @@ La sección **Mercado Libre** requiere la sesión administrativa existente y mue
 
 - conexión y seller;
 - último ciclo, fecha, procesados y error;
-- unidades, vendibles, pausadas, cerradas, agotadas, ausentes, sin mapeo, ambiguas, duplicadas, obsoletas y con error;
+- unidades, vendibles, elegibles para Checkout, pausadas, cerradas, agotadas, ausentes, sin mapeo, ambiguas, duplicadas, User Products compartidos, modelos de stock, obsoletas, negativas y con error;
 - reservas activas y vencidas;
 - operaciones pendientes o inciertas;
 - pagos aprobados con conflicto;
 - reembolsos para revisión.
 
-**Autorizar cuenta vendedora** inicia OAuth. **Sincronizar ahora** es autenticada, same-origin, auditada por el wrapper administrativo e idempotente frente a doble ejecución mediante un lock único D1.
+**Autorizar cuenta vendedora** inicia OAuth. **Sincronizar ahora** es autenticada, same-origin, auditada por el wrapper administrativo e idempotente frente a doble ejecución mediante un lock único D1. El cron comparte ese lock y usa una credencial distinta de la sesión administrativa.
 
 ## Migración 0009
 
@@ -172,9 +177,10 @@ Orden obligatorio:
 7. aplicar `0009` y secretos aislados en producción;
 8. repetir OAuth y sincronización de sólo lectura;
 9. confirmar cero negativos, duplicados vendibles y operaciones inciertas;
-10. desplegar el mismo SHA aprobado por CI y ejecutar smoke con Checkout cerrado;
-11. habilitar backend y frontend sólo al final;
-12. pedir confirmación puntual antes de cualquier pago monetario real.
+10. cargar el mismo secreto aleatorio en Pages producción y en el environment GitHub `cloudflare-pages-production`;
+11. desplegar el mismo SHA aprobado por CI y verificar manualmente el workflow de reconciliación con Checkout cerrado;
+12. habilitar backend y frontend sólo al final;
+13. pedir confirmación puntual antes de cualquier pago monetario real.
 
 ## Rollback
 

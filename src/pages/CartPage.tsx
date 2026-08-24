@@ -397,7 +397,9 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                       {availabilityConflict ? (
                         <p className="form-error" role="status">
                           {maximum === 0
-                            ? 'Este producto ya no está disponible. Eliminalo del carrito para continuar.'
+                            ? product.commerce?.availabilityState === 'updating'
+                              ? 'Estamos actualizando la disponibilidad. El producto se conserva en tu carrito, pero no se puede reservar todavía.'
+                              : 'Este producto ya no está disponible. Eliminalo del carrito para continuar.'
                             : `La cantidad disponible cambió a ${maximum}. Elegí una cantidad válida para continuar.`}
                         </p>
                       ) : null}

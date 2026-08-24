@@ -10,6 +10,7 @@ import {
 import type { D1Database, D1PreparedStatement, Env } from './platform';
 
 const ITEM_BATCH_SIZE = 20;
+const MAX_FAILED_ITEM_EXCLUSIONS = 500;
 const MAX_SCAN_PAGES = 250;
 const SCAN_PAGE_SIZE = 100;
 
@@ -47,6 +48,7 @@ export type MercadoLibreCatalogUnit = Readonly<{
   lastSyncStatus: 'ok' | 'error' | 'absent';
   lastSyncErrorCode: string | null;
   lastSyncedAt: string;
+  fresh: boolean;
 }>;
 
 export type MercadoLibreSyncSummary = Readonly<{
@@ -168,11 +170,20 @@ export async function syncMercadoLibreCatalog(
       ? await listSellerItemIds(sellerId, accessToken)
       : normalizeItemIds(options.itemIds);
     const rawUnits: RawUnit[] = [];
+    const failedItemIds = new Set<string>();
     let failed = 0;
     for (const batch of chunk(itemIds, ITEM_BATCH_SIZE)) {
       const details = await fetchItemBatch(batch, accessToken, sellerId);
       failed += details.failed;
       rawUnits.push(...details.units);
+      details.failedItemIds.forEach((itemId) => failedItemIds.add(itemId));
+    }
+    if (failedItemIds.size > MAX_FAILED_ITEM_EXCLUSIONS) {
+      throw new HttpError(
+        502,
+        'MERCADO_LIBRE_PARTIAL_SCAN_UNSAFE',
+        'Mercado Libre no permitió demostrar un ciclo completo seguro.',
+      );
     }
     const stockResults = await mapConcurrent(rawUnits, 5, async (unit) => {
       try {
@@ -201,6 +212,7 @@ export async function syncMercadoLibreCatalog(
     await writeUnits(database, mapped, startedAt);
     let deactivated = 0;
     if (options.itemIds === undefined) {
+      const failedPlaceholders = [...failedItemIds].map(() => '?').join(',');
       const result = await database
         .prepare(
           `UPDATE mercadolibre_catalog_units
@@ -209,9 +221,10 @@ export async function syncMercadoLibreCatalog(
                last_sync_status = 'absent',
                absent_since = COALESCE(absent_since, ?),
                updated_at = ?
-           WHERE seller_id = ? AND last_synced_at <> ? AND last_sync_status <> 'absent'`,
+           WHERE seller_id = ? AND last_synced_at <> ? AND last_sync_status <> 'absent'
+             ${failedItemIds.size === 0 ? '' : `AND item_id NOT IN (${failedPlaceholders})`}`,
         )
-        .bind(startedAt, startedAt, sellerId, startedAt)
+        .bind(startedAt, startedAt, sellerId, startedAt, ...failedItemIds)
         .run();
       deactivated = result.meta.changes ?? 0;
     } else {
@@ -236,7 +249,14 @@ export async function syncMercadoLibreCatalog(
       }
     }
     await markPersistedMappingConflicts(database, sellerId, startedAt);
-    const ambiguous = mapped.filter((unit) => unit.mappingStatus !== 'mapped').length;
+    const ambiguousRow = await database
+      .prepare(
+        `SELECT COUNT(*) AS total FROM mercadolibre_catalog_units
+         WHERE seller_id = ? AND last_synced_at = ? AND mapping_status <> 'mapped'`,
+      )
+      .bind(sellerId, startedAt)
+      .first<Readonly<{ total: number }>>();
+    const ambiguous = ambiguousRow?.total ?? 0;
     const active = mapped.filter((unit) => unit.itemStatus === 'active').length;
     const paused = mapped.filter((unit) => unit.itemStatus === 'paused').length;
     const closed = mapped.filter((unit) => ['closed', 'deleted', 'under_review'].includes(unit.itemStatus)).length;
@@ -335,12 +355,24 @@ export async function getMercadoLibreCatalogStatus(
       `SELECT
         COUNT(*) AS unit_count,
         SUM(CASE WHEN sellable = 1 THEN 1 ELSE 0 END) AS sellable_count,
+        SUM(CASE WHEN checkout_eligible = 1 THEN 1 ELSE 0 END) AS checkout_eligible_count,
         SUM(CASE WHEN mapping_status = 'unmapped' THEN 1 ELSE 0 END) AS unmapped_count,
         SUM(CASE WHEN mapping_status IN ('ambiguous', 'duplicate') THEN 1 ELSE 0 END) AS ambiguous_count,
         SUM(CASE WHEN last_sync_status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
         SUM(CASE WHEN last_sync_status = 'error' THEN 1 ELSE 0 END) AS error_count,
         SUM(CASE WHEN unixepoch(last_synced_at) <= unixepoch('now') - ? THEN 1 ELSE 0 END) AS stale_count,
-        SUM(CASE WHEN available_quantity = 0 THEN 1 ELSE 0 END) AS out_of_stock_count
+        SUM(CASE WHEN available_quantity = 0 THEN 1 ELSE 0 END) AS out_of_stock_count,
+        SUM(CASE WHEN available_quantity < 0 THEN 1 ELSE 0 END) AS negative_stock_count,
+        SUM(CASE WHEN stock_model = 'seller_warehouse_versioned' THEN 1 ELSE 0 END) AS seller_warehouse_count,
+        SUM(CASE WHEN stock_model = 'selling_address' THEN 1 ELSE 0 END) AS selling_address_count,
+        SUM(CASE WHEN stock_model = 'meli_facility' THEN 1 ELSE 0 END) AS meli_facility_count,
+        SUM(CASE WHEN stock_model = 'legacy_available_quantity' THEN 1 ELSE 0 END) AS legacy_count,
+        SUM(CASE WHEN stock_model = 'unknown' THEN 1 ELSE 0 END) AS unknown_model_count,
+        (SELECT COUNT(*) FROM (
+          SELECT user_product_id FROM mercadolibre_catalog_units
+          WHERE user_product_id IS NOT NULL AND last_sync_status <> 'absent'
+          GROUP BY seller_id, user_product_id HAVING COUNT(*) > 1
+        )) AS shared_user_product_count
        FROM mercadolibre_catalog_units`,
     )
     .bind(readMercadoLibreCatalogMaxAgeSeconds(env))
@@ -398,7 +430,7 @@ export async function getCatalogUnitForDisplay(
   const rows = await database
     .prepare(
       `SELECT * FROM mercadolibre_catalog_units
-       WHERE local_product_id = ? AND mapping_status = 'mapped' AND last_sync_status = 'ok'
+       WHERE local_product_id = ? AND mapping_status = 'mapped'
        ORDER BY inventory_key LIMIT 2`,
     )
     .bind(localProductId)
@@ -409,7 +441,7 @@ export async function getCatalogUnitForDisplay(
   const unit = parseCatalogUnit(rows.results?.[0]);
   return isFreshUnit(unit, env)
     ? unit
-    : Object.freeze({ ...unit, sellable: false, checkoutEligible: false });
+    : Object.freeze({ ...unit, sellable: false, checkoutEligible: false, fresh: false });
 }
 
 export async function listMappedCatalogUnits(
@@ -419,7 +451,7 @@ export async function listMappedCatalogUnits(
   const result = await database
     .prepare(
       `SELECT * FROM mercadolibre_catalog_units
-       WHERE mapping_status = 'mapped' AND last_sync_status = 'ok'
+       WHERE mapping_status = 'mapped'
        ORDER BY local_product_id, inventory_key`,
     )
     .all<CatalogUnitRow>();
@@ -427,7 +459,7 @@ export async function listMappedCatalogUnits(
     const unit = parseCatalogUnit(row);
     return isFreshUnit(unit, env)
       ? unit
-      : Object.freeze({ ...unit, sellable: false, checkoutEligible: false });
+      : Object.freeze({ ...unit, sellable: false, checkoutEligible: false, fresh: false });
   }));
 }
 
@@ -439,7 +471,7 @@ export function assertFreshUnit(unit: MercadoLibreCatalogUnit, env: Env): void {
 
 function isFreshUnit(unit: MercadoLibreCatalogUnit, env: Env): boolean {
   const syncedAt = Date.parse(unit.lastSyncedAt);
-  return Number.isFinite(syncedAt) &&
+  return unit.lastSyncStatus === 'ok' && Number.isFinite(syncedAt) &&
     Date.now() - syncedAt <= readMercadoLibreCatalogMaxAgeSeconds(env) * 1_000;
 }
 
@@ -476,14 +508,21 @@ async function fetchItemBatch(
   itemIds: readonly string[],
   accessToken: string,
   expectedSellerId: string,
-): Promise<Readonly<{ units: readonly RawUnit[]; failed: number }>> {
-  if (itemIds.length === 0) return Object.freeze({ units: [], failed: 0 });
+): Promise<Readonly<{
+  units: readonly RawUnit[];
+  failed: number;
+  failedItemIds: readonly string[];
+}>> {
+  if (itemIds.length === 0) {
+    return Object.freeze({ units: [], failed: 0, failedItemIds: [] });
+  }
   const url = new URL('/items', 'https://local.invalid');
   url.searchParams.set('ids', itemIds.join(','));
   url.searchParams.set('include_attributes', 'all');
   const response = await mercadoLibreApiJson(`${url.pathname}${url.search}`, accessToken);
   if (!Array.isArray(response.body)) throw providerShapeError();
   const units: RawUnit[] = [];
+  const successfulItemIds = new Set<string>();
   let failed = 0;
   for (const entry of response.body) {
     if (
@@ -494,12 +533,20 @@ async function fetchItemBatch(
       continue;
     }
     try {
-      units.push(...normalizeItem(entry.body));
+      const normalized = normalizeItem(entry.body);
+      units.push(...normalized);
+      const normalizedItemId = normalized[0]?.itemId;
+      if (normalizedItemId !== undefined) successfulItemIds.add(normalizedItemId);
     } catch {
       failed += 1;
     }
   }
-  return Object.freeze({ units: Object.freeze(units), failed });
+  const failedItemIds = itemIds.filter((itemId) => !successfulItemIds.has(itemId));
+  return Object.freeze({
+    units: Object.freeze(units),
+    failed: Math.max(failed, failedItemIds.length),
+    failedItemIds: Object.freeze(failedItemIds),
+  });
 }
 
 function normalizeItem(item: Record<string, unknown>): readonly RawUnit[] {
@@ -632,9 +679,16 @@ async function mapCatalogUnits(
     localBySku.set(sku, ids);
   }
   const providerSkuCounts = new Map<string, number>();
+  const providerInventoryCounts = new Map<string, number>();
   for (const unit of units) {
     const sku = normalizeSku(unit.sellerSku);
     if (sku !== null) providerSkuCounts.set(sku, (providerSkuCounts.get(sku) ?? 0) + 1);
+    if (unit.userProductId !== null) {
+      providerInventoryCounts.set(
+        unit.userProductId,
+        (providerInventoryCounts.get(unit.userProductId) ?? 0) + 1,
+      );
+    }
   }
   const initial = await Promise.all(units.map(async (unit) => {
     const sku = normalizeSku(unit.sellerSku);
@@ -644,7 +698,8 @@ async function mapCatalogUnits(
         ? 'unmapped'
         : candidates.length > 1
           ? 'ambiguous'
-          : (providerSkuCounts.get(sku) ?? 0) > 1
+          : (providerSkuCounts.get(sku) ?? 0) > 1 ||
+              (unit.userProductId !== null && (providerInventoryCounts.get(unit.userProductId) ?? 0) > 1)
             ? 'duplicate'
             : 'mapped';
     const localProductId = mappingStatus === 'mapped' ? candidates[0] ?? null : null;
@@ -695,6 +750,7 @@ async function mapCatalogUnits(
       lastSyncStatus: unit.stockErrorCode === null ? 'ok' as const : 'error' as const,
       lastSyncErrorCode: unit.stockErrorCode,
       lastSyncedAt: syncedAt,
+      fresh: true,
     });
   }));
   const localCounts = new Map<string, number>();
@@ -781,14 +837,21 @@ async function markPersistedMappingConflicts(
       `UPDATE mercadolibre_catalog_units
        SET mapping_status = 'duplicate', local_product_id = NULL,
            sellable = 0, checkout_eligible = 0, updated_at = ?
-       WHERE seller_id = ? AND last_sync_status = 'ok' AND seller_sku IS NOT NULL
-         AND seller_sku IN (
+       WHERE seller_id = ? AND last_sync_status = 'ok' AND (
+         (seller_sku IS NOT NULL AND seller_sku IN (
            SELECT seller_sku FROM mercadolibre_catalog_units
            WHERE seller_id = ? AND last_sync_status = 'ok' AND seller_sku IS NOT NULL
            GROUP BY seller_sku HAVING COUNT(*) > 1
-         )`,
+         ))
+         OR
+         (user_product_id IS NOT NULL AND user_product_id IN (
+           SELECT user_product_id FROM mercadolibre_catalog_units
+           WHERE seller_id = ? AND last_sync_status = 'ok' AND user_product_id IS NOT NULL
+           GROUP BY user_product_id HAVING COUNT(*) > 1
+         ))
+       )`,
     )
-    .bind(now, sellerId, sellerId)
+    .bind(now, sellerId, sellerId, sellerId)
     .run();
 }
 
@@ -890,6 +953,7 @@ function parseCatalogUnit(row: CatalogUnitRow | undefined): MercadoLibreCatalogU
     lastSyncStatus: row.last_sync_status,
     lastSyncErrorCode: row.last_sync_error_code,
     lastSyncedAt: row.last_synced_at,
+    fresh: true,
   });
 }
 
