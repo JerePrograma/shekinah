@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page, Route } from '@playwright/test';
 
+import { formatOrderNumber } from '../../src/commerce/contracts';
+
 const FIXTURE_USERNAME = 'admin-e2e-ficticio';
 const FIXTURE_PASSWORD = 'Clave-E2E-totalmente-ficticia-2026!';
 const TECHNICAL_PRODUCT_NAME = 'Producto técnico E2E 2026';
@@ -361,7 +363,7 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Detalle de/u })).toHaveCount(0);
   await page.getByRole('button', { name: 'Ver detalle' }).click();
-  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toBeFocused();
+  await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toBeFocused();
   await expect(page.getByRole('table', { name: 'Items del pedido' })).toContainText('Producto E2E');
   await expect(page.getByRole('table', { name: 'Pagos reportados por el proveedor' })).toContainText('Mercado Pago');
   await expect(page.getByText(/Sólo los pedidos de WhatsApp pendientes admiten aprobación o rechazo/u)).toBeVisible();
@@ -370,7 +372,7 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
   await expectNoGlobalHorizontalOverflow(page);
   await expect(page.getByRole('button', { name: 'Cerrar detalle' })).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar detalle' }).click();
-  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeFocused();
 });
 
@@ -426,12 +428,12 @@ test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async (
     name: 'Pedidos del período y pedidos de WhatsApp pendientes',
   });
   const firstOrderRow = table.locator('tbody tr').first();
-  await expect(firstOrderRow).toContainText(orderId);
+  await expect(firstOrderRow).toContainText(formatOrderNumber(orderId));
   await expect(firstOrderRow).toContainText('WhatsApp');
   await expect(firstOrderRow).toContainText('Pendiente');
   await firstOrderRow.getByRole('button', { name: 'Ver detalle' }).click();
 
-  await expect(page.getByRole('heading', { name: `Detalle de ${orderId}` })).toBeFocused();
+  await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toBeFocused();
   const reservedItems = page.getByRole('table', { name: 'Productos y unidades reservadas' });
   await expect(reservedItems).toContainText('Producto reservado E2E');
   await expect(reservedItems).toContainText('2');
@@ -476,7 +478,7 @@ test('confirma el rechazo y restaura el stock disponible', async ({ page }) => {
   await page.getByRole('button', { name: 'Ver detalle' }).click();
   await page.getByRole('button', { name: 'Rechazar' }).click();
 
-  const confirmation = page.getByRole('alertdialog', { name: `Rechazar ${orderId}` });
+  const confirmation = page.getByRole('alertdialog', { name: `Rechazar ${formatOrderNumber(orderId)}` });
   await expect(confirmation).toContainText(
     'todas sus unidades reservadas volverán a estar disponibles',
   );

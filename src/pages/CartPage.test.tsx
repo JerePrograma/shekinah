@@ -106,18 +106,14 @@ describe('CartPage', () => {
     });
   });
 
-  it('no descarta silenciosamente datos de entrega incompletos al abrir WhatsApp', () => {
+  it('mantiene deshabilitado WhatsApp con datos incompletos', () => {
     renderCart();
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
       target: { value: 'Ana' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Completá o corregí todos los datos antes de continuar por WhatsApp.',
-    );
-    expect(screen.getByRole('textbox', { name: /^Celular/u })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
+    expect(screen.getByText(/Completá los datos obligatorios/iu)).toBeVisible();
     expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
@@ -127,12 +123,8 @@ describe('CartPage', () => {
       target: { value: 'correo_argentino' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pedir por WhatsApp' }));
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Completá o corregí todos los datos antes de continuar por WhatsApp.',
-    );
-    expect(screen.getByRole('textbox', { name: /^Nombre completo/u })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Dirección' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
     expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
@@ -216,7 +208,7 @@ describe('CartPage', () => {
     expect(resultTitle).toBeVisible();
     await waitFor(() => expect(resultTitle).toHaveFocus());
     expect(screen.getByText(/quedó pendiente de aprobación/u)).toHaveTextContent(
-      whatsappOrderFixture().orderId,
+      'SHK-WWWWWWWW',
     );
     expect(screen.getByRole('heading', { name: product.name })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
@@ -228,6 +220,7 @@ describe('CartPage', () => {
       expect.any(Array),
       'whatsapp-test-key',
       expect.objectContaining({ fullName: 'Cliente de prueba' }),
+      true,
     );
     expect(refreshRuntimeCatalog).toHaveBeenCalledTimes(1);
     expect(trackAnalyticsEvent).not.toHaveBeenCalledWith('whatsapp_open', expect.anything());
@@ -247,6 +240,8 @@ describe('CartPage', () => {
       name: `Aumentar cantidad de ${product.name}`,
     }));
     expect(screen.queryByRole('heading', { name: 'Pedido registrado' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Acepto compartir/iu }));
     expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
     expect(screen.getByText('2 unidades en el carrito.')).toBeVisible();
   });
@@ -283,14 +278,11 @@ function fillFulfillment() {
   const values: readonly [string, string][] = [
     ['Nombre completo', 'Cliente de prueba'],
     ['Celular', '5491100000000'],
-    ['Dirección', 'Calle de prueba 123'],
-    ['Localidad', 'Mar del Plata'],
-    ['Provincia', 'Buenos Aires'],
-    ['Código postal', 'B7600'],
   ];
   for (const [name, value] of values) {
     fireEvent.change(screen.getByRole('textbox', { name }), { target: { value } });
   }
+  fireEvent.click(screen.getByRole('checkbox', { name: /Acepto compartir/iu }));
 }
 
 function whatsappOrderFixture() {

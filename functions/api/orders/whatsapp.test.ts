@@ -51,6 +51,7 @@ describe('Functions de pedidos WhatsApp', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-function', quantity: 2 }],
+        whatsappConsent: true,
       };
       const first = await whatsappOrder(publicContext(testD1.database, body));
       expect(first.status).toBe(201);
@@ -89,10 +90,21 @@ describe('Functions de pedidos WhatsApp', () => {
     const testD1 = createTestD1(...migrations);
     try {
       await createProduct(testD1.database, 'pedido-validaciones');
+      const withoutConsent = await whatsappOrder(publicContext(testD1.database, {
+        idempotencyKey: crypto.randomUUID(),
+        fulfillment,
+        items: [{ productId: 'pedido-validaciones', quantity: 1 }],
+      }));
+      expect(withoutConsent.status).toBe(400);
+      await expect(withoutConsent.json()).resolves.toMatchObject({
+        error: { code: 'WHATSAPP_CONSENT_REQUIRED' },
+      });
+
       const incomplete = await whatsappOrder(publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
         fulfillment: null,
         items: [{ productId: 'pedido-validaciones', quantity: 1 }],
+        whatsappConsent: true,
       }));
       expect(incomplete.status).toBe(400);
       await expect(incomplete.json()).resolves.toMatchObject({
@@ -103,6 +115,7 @@ describe('Functions de pedidos WhatsApp', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-validaciones', quantity: 1, price: 1 }],
+        whatsappConsent: true,
       }));
       expect(manipulated.status).toBe(400);
       await expect(manipulated.json()).resolves.toMatchObject({
@@ -113,6 +126,7 @@ describe('Functions de pedidos WhatsApp', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-validaciones', quantity: 6 }],
+        whatsappConsent: true,
       }));
       expect(insufficient.status).toBe(409);
       await expect(insufficient.json()).resolves.toMatchObject({
@@ -137,6 +151,7 @@ describe('Functions de pedidos WhatsApp', () => {
             idempotencyKey: crypto.randomUUID(),
             fulfillment,
             items: [{ productId: 'pedido-sin-migracion', quantity: 1 }],
+            whatsappConsent: true,
           },
         ));
         expect(migrationRequired.status).toBe(503);
@@ -159,6 +174,7 @@ describe('Functions de pedidos WhatsApp', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-admin-function', quantity: 2 }],
+        whatsappConsent: true,
       }));
       const { orderId } = await created.json() as Readonly<{ orderId: string }>;
 
@@ -206,6 +222,7 @@ describe('Functions de pedidos WhatsApp', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-rechazo-function', quantity: 1 }],
+        whatsappConsent: true,
       }));
       const { orderId } = await created.json() as Readonly<{ orderId: string }>;
       const crossOriginContext = adminContext(testD1.database, orderId, adminData);

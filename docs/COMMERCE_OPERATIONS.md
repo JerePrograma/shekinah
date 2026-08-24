@@ -7,7 +7,7 @@ Mientras `COMMERCE_ENABLED=false`, el flujo público autorizado usa el Link de P
 Procedimiento operativo mínimo:
 
 1. El comprador arma el carrito y, si el envío tiene total definido, puede copiar el monto y abrir el Link de Pago.
-2. Al solicitar WhatsApp, el cliente y el servidor exigen nombre, celular y domicilio completos; recién entonces el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
+2. Al solicitar WhatsApp, el cliente y el servidor exigen nombre, celular, modalidad y consentimiento explícito; el domicilio completo se exige sólo para Correo Argentino. Recién entonces el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
 3. El comprador ingresa el monto en Mercado Pago y envía el mensaje que incluye el identificador del pedido.
 4. Antes de aprobar, preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
 5. Aprobar desde el backoffice confirma la venta, descuenta el stock físico una vez y consume la reserva. Rechazar conserva el físico y libera la reserva.
@@ -97,11 +97,11 @@ La interfaz `/admin` consume:
 
 El catálogo de productos es editable. Los snapshots, importes y estados de pedidos no se editan; analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
 
-Los pedidos `channel='whatsapp'` en estado `pending` pueden aprobarse o rechazarse. Los pedidos Checkout Pro exponen una conciliación que sólo consulta Mercado Pago y aplica su estado autoritativo mediante la misma transición idempotente del webhook; no permite seleccionar un estado. Los botones quedan inactivos durante la request. Los detalles muestran si cada item tenía stock controlado, la reserva, su vencimiento, el consumo y la política explícita de no reposición automática ante reintegros.
+Los pedidos `channel='whatsapp'` en estado `pending` pueden aprobarse o rechazarse dentro de su ventana de 24 horas. Al vencer, el sistema los marca como rechazados con incidencia `WHATSAPP_RESERVATION_EXPIRED`; el backoffice los presenta como **Vencido** y no permite una aprobación tardía. Los pedidos Checkout Pro exponen una conciliación que sólo consulta Mercado Pago y aplica su estado autoritativo mediante la misma transición idempotente del webhook; no permite seleccionar un estado. Los botones quedan inactivos durante la request. Los detalles muestran un número legible `SHK-…`, el ID interno, si cada item tenía stock controlado, la reserva, su vencimiento, el consumo y la política explícita de no reposición automática ante reintegros.
 
 ## Reservas de stock
 
-El stock reservado se deriva de `order_items`; no existe contador que deba «devolverse». Incluye pedidos WhatsApp `pending` y pedidos Checkout Pro no consumidos mientras su ventana de 30 minutos esté vigente o exista al menos un pago `pending` verificado. Los pendientes WhatsApp no tienen TTL y requieren aprobación o rechazo administrativo. Las preferencias sin pago liberan disponibilidad al vencer; un pago pendiente la conserva hasta una notificación terminal.
+El stock reservado se deriva de `order_items`; no existe contador que deba «devolverse». Incluye pedidos WhatsApp `pending` dentro de 24 horas y pedidos Checkout Pro no consumidos mientras su ventana de 30 minutos esté vigente o exista al menos un pago `pending` verificado. La expiración WhatsApp es idempotente, conserva el stock físico y se materializa antes de cualquier nueva reserva de ambos canales, escritura de catálogo o lectura administrativa; la proyección pública excluye de inmediato una ventana vencida. Las preferencias sin pago liberan disponibilidad al vencer; un pago pendiente la conserva hasta una notificación terminal.
 
 Nunca corregir reservas editando SQL, sumando stock o cambiando items. Para WhatsApp, aprobar o rechazar mediante la API autenticada. Para Checkout Pro, usar la conciliación administrativa protegida: `approved` y `refunded` consumen una sola vez por webhook o conciliación, y cualquier `STOCK_RECONCILIATION_REQUIRED` exige detener fulfillment, conciliar pago e inventario y resolver el incidente sin forzar el estado. Un reintegro no repone stock automáticamente; la devolución física requiere un ajuste manual trazable.
 

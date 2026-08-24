@@ -1,6 +1,6 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-22.
+Fecha de revisión: 2026-08-23.
 
 SHA funcional publicado y validado para conciliación autoritativa de Mercado Pago:
 
@@ -80,7 +80,11 @@ La conciliación autoritativa se publicó en el SHA `0f93d620faad6e93f76a364e9dc
 
 `migrations/0006_analytics_manual_payment_click.sql` está aplicada remotamente en ambas D1. El backoffice queda fuera de la captura mediante defensas en cliente y servidor. Los smokes reales demostraron cero eventos sin consentimiento y tras rechazo, captura consentida de producto/carrito/clic manual/WhatsApp, ausencia de llamadas a preferencias, exclusión de `/admin` y borrado tras revocación. Los datos sintéticos se retiraron después de verificar el contrato y ambas bases terminaron con cero sesiones, eventos y revocaciones de smoke.
 
-El modelo actual mantiene `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. `0008` comparte disponibilidad entre WhatsApp pendiente y Checkout Pro con preferencia vigente o pago pendiente autoritativo. Checkout Pro reserva durante 30 minutos, un pago pendiente prolonga la reserva y `approved` o `refunded` consume el físico exactamente una vez; un reembolso no repone mercadería automáticamente. WhatsApp conserva aprobación para consumir y rechazo para liberar, sin TTL automático.
+El modelo actual mantiene `stockQuantity` opcional: ausencia significa stock no controlado; presencia exige un entero entre `0` y `1.000.000`. `0008` comparte disponibilidad entre WhatsApp pendiente y Checkout Pro con preferencia vigente o pago pendiente autoritativo. Checkout Pro reserva durante 30 minutos, un pago pendiente prolonga la reserva y `approved` o `refunded` consume el físico exactamente una vez; un reembolso no repone mercadería automáticamente. Los pedidos WhatsApp nuevos reservan durante 24 horas, aprobación consume y rechazo o vencimiento libera de forma idempotente; la UI exige consentimiento explícito y sólo pide domicilio para Correo Argentino.
+
+La revisión autenticada de Cloudflare del 2026-08-23 confirmó el deployment base `bc18e32f-2d8d-4008-b185-5e6ac3c7e874` para `9bc6625`, D1 `0001` a `0008` sin pendientes, secretos requeridos presentes como cifrados en production y preview, y separación de flags/bindings. El smoke base verificó apex 200, `www` 301, URL inmutable 200, webhook GET 405/`Allow: POST` y preferencias 503 `COMMERCE_DISABLED`. La auditoría productiva combinada dio 513 productos efectivos: 512 vendibles, 6 con stock numérico, 507 sin control numérico, 1 agotado, 0 inválidos/negativos y 0 deshabilitados.
+
+La reautenticación del titular de Mercado Pago se completó mediante QR sin compartir códigos. El panel confirmó Webhooks de prueba y producción en sus URLs correctas, sólo con el tópico **Pagos** y clave de firma presente en ambos modos. La evaluación vigente continúa en 0/100 y muestra una fecha inválida de 1900, por lo que no aporta evidencia de una prueba productiva real. El panel tampoco expone una fecha útil de rotación. Además, durante la inspección el DOM reveló una credencial sandbox; se la considera comprometida y no debe reutilizarse. Checkout Pro permanece cerrado hasta rotar credenciales, sincronizar el secreto de cada entorno y completar las pruebas de pago exigidas.
 
 El webhook y la conciliación administrativa verifican además el modo `live_mode`, la identidad notificadora frente al `collector_id` consultado y `metadata.order_id` frente a la orden interna. La acción del backoffice busca por `external_reference`, vuelve a consultar cada pago y reutiliza la misma persistencia idempotente; no permite asignar estados manualmente. El detalle administrativo hace visibles la reserva, su vencimiento, el consumo y si cada item estaba o no bajo control numérico.
 

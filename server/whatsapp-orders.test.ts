@@ -63,6 +63,15 @@ describe('pedidos WhatsApp y reservas de stock', () => {
         reservedQuantity: 3,
         availableQuantity: 7,
       });
+      await expect(database.prepare(
+        `SELECT address, locality, province, postal_code
+         FROM order_fulfillment WHERE order_id = ?`,
+      ).bind(created.response.orderId).first()).resolves.toEqual({
+        address: '',
+        locality: '',
+        province: '',
+        postal_code: '',
+      });
 
       const repeated = await createWhatsappOrder(database, request);
       expect(repeated.created).toBe(false);
@@ -80,8 +89,14 @@ describe('pedidos WhatsApp y reservas de stock', () => {
       await createCatalogProduct(database, productInput('datos-obligatorios', 500, 2), 'admin@test');
       await expect(createWhatsappOrder(database, {
         idempotencyKey: crypto.randomUUID(),
+        fulfillment,
+        items: [{ productId: 'datos-obligatorios', quantity: 1 }],
+      })).rejects.toMatchObject({ status: 400, code: 'WHATSAPP_CONSENT_REQUIRED' });
+      await expect(createWhatsappOrder(database, {
+        idempotencyKey: crypto.randomUUID(),
         fulfillment: null,
         items: [{ productId: 'datos-obligatorios', quantity: 1 }],
+        whatsappConsent: true,
       })).rejects.toMatchObject({ status: 400, code: 'INVALID_FULFILLMENT' });
       expect(await count(database, 'orders')).toBe(0);
       expect(await getCatalogProductDetail(database, 'datos-obligatorios')).toMatchObject({
@@ -129,6 +144,7 @@ describe('pedidos WhatsApp y reservas de stock', () => {
       const request = {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
+        whatsappConsent: true,
         items: [
           { productId: 'multi-suficiente', quantity: 2 },
           { productId: 'multi-insuficiente', quantity: 2 },
@@ -272,6 +288,32 @@ describe('pedidos WhatsApp y reservas de stock', () => {
     }
   });
 
+  it('conserva la aprobación de reservas históricas sin vencimiento', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(database, productInput('reserva-historica', 1_000, 2), 'admin@test');
+      const created = await createWhatsappOrder(database, orderRequest('reserva-historica', 1));
+      await database.prepare(
+        'UPDATE orders SET stock_reservation_expires_at = NULL WHERE id = ?',
+      ).bind(created.response.orderId).run();
+
+      const approved = await resolveWhatsappOrder(
+        database,
+        created.response.orderId,
+        'approved',
+        'admin@example.test',
+      );
+      expect(approved.changed).toBe(true);
+      expect(await getCatalogProductDetail(database, 'reserva-historica')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 0,
+        availableQuantity: 1,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it('hace determinista una carrera aprobar/rechazar y protege las mutaciones de catálogo', async () => {
     const database = new SqliteD1(migration);
     try {
@@ -383,6 +425,51 @@ describe('pedidos WhatsApp y reservas de stock', () => {
       database.close();
     }
   });
+
+  it('vence la reserva a las 24 horas, la libera una sola vez y bloquea aprobación tardía', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(database, productInput('reserva-vencida', 1_000, 1), 'admin@test');
+      const first = await createWhatsappOrder(database, orderRequest('reserva-vencida', 1));
+      await database.prepare(
+        `UPDATE orders SET stock_reservation_expires_at = '2020-01-01T00:00:00.000Z'
+         WHERE id = ?`,
+      ).bind(first.response.orderId).run();
+
+      await expect(listCatalogProducts(database)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'reserva-vencida',
+            stockQuantity: 1,
+            reservedQuantity: 0,
+            availableQuantity: 1,
+          }),
+        ]),
+      );
+      await expect(resolveWhatsappOrder(
+        database,
+        first.response.orderId,
+        'approved',
+        'admin@example.test',
+      )).rejects.toMatchObject({ status: 409, code: 'ORDER_STATE_CONFLICT' });
+      await expect(database.prepare(
+        'SELECT status, last_error_code FROM orders WHERE id = ?',
+      ).bind(first.response.orderId).first()).resolves.toEqual({
+        status: 'rejected',
+        last_error_code: 'WHATSAPP_RESERVATION_EXPIRED',
+      });
+
+      const second = await createWhatsappOrder(database, orderRequest('reserva-vencida', 1));
+      expect(second.created).toBe(true);
+      expect(await getCatalogProductDetail(database, 'reserva-vencida')).toMatchObject({
+        stockQuantity: 1,
+        reservedQuantity: 1,
+        availableQuantity: 0,
+      });
+    } finally {
+      database.close();
+    }
+  });
 });
 
 function productInput(id: string, amount: number, stockQuantity: number): Record<string, unknown> {
@@ -407,6 +494,7 @@ function orderRequest(productId: string, quantity: number) {
     idempotencyKey: crypto.randomUUID(),
     fulfillment,
     items: [{ productId, quantity }],
+    whatsappConsent: true,
   };
 }
 

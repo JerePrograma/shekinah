@@ -11,6 +11,7 @@ import {
 import type { CatalogProductDetail, Product } from '../src/catalog/model';
 import { HttpError } from './http';
 import type { D1Database } from './platform';
+import { expireWhatsappReservations } from './stock-reservations';
 
 const baseCategories = parseCategories(categorySource);
 const baseProducts = parseProducts(catalogIndexSource, baseCategories);
@@ -41,7 +42,14 @@ type ReservedQuantityRow = Readonly<{
 }>;
 
 const activeStockReservationSql = `(
-  (reserved_orders.channel = 'whatsapp' AND reserved_orders.status = 'pending')
+  (
+    reserved_orders.channel = 'whatsapp'
+    AND reserved_orders.status = 'pending'
+    AND (
+      reserved_orders.stock_reservation_expires_at IS NULL
+      OR unixepoch(reserved_orders.stock_reservation_expires_at) > unixepoch()
+    )
+  )
   OR (
     reserved_orders.channel = 'checkout_pro'
     AND reserved_orders.stock_reserved_at IS NOT NULL
@@ -402,6 +410,7 @@ function assertNoDirectImageMutation(
 
 async function ensureCatalogStorageReady(database: D1Database): Promise<void> {
   try {
+    await expireWhatsappReservations(database);
     await database.prepare('SELECT 1 FROM catalog_product_mutations LIMIT 1').first();
   } catch (error: unknown) {
     throwCatalogStorageError(error);

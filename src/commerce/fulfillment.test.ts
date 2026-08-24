@@ -28,6 +28,31 @@ describe('fulfillment y envío', () => {
     expect(validateFulfillment({ ...fulfillment, shippingMinor: 1 }).value).toBeNull();
   });
 
+  it('no exige ni conserva domicilio para retiro coordinado', () => {
+    expect(validateFulfillment({ ...fulfillment, method: 'coordinated_pickup' }).value).toEqual({
+      method: 'coordinated_pickup',
+      fullName: 'Ana Pérez',
+      phone: '5491155554444',
+      address: '',
+      locality: '',
+      province: '',
+      postalCode: '',
+    });
+    expect(validateFulfillment({
+      method: 'coordinated_pickup',
+      fullName: 'Ana Pérez',
+      phone: '5491155554444',
+    }).value).toEqual({
+      method: 'coordinated_pickup',
+      fullName: 'Ana Pérez',
+      phone: '5491155554444',
+      address: '',
+      locality: '',
+      province: '',
+      postalCode: '',
+    });
+  });
+
   it('rechaza formas inválidas y controles de texto engañosos', () => {
     for (const value of [null, [], '', { ...fulfillment, phone: 123 }, { ...fulfillment, address: 'Calle\n123' }]) {
       expect(validateFulfillment(value).value).toBeNull();

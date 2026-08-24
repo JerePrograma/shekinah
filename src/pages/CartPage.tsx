@@ -14,8 +14,10 @@ import {
 import {
   calculateShippingQuote,
   deliveryMethodLabel,
+  requiresDeliveryAddress,
   validateFulfillment,
 } from '../commerce/fulfillment';
+import { formatOrderNumber } from '../commerce/contracts';
 import type { WhatsappOrderResponse } from '../commerce/contracts';
 import type {
   CheckoutFulfillment,
@@ -71,6 +73,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const [checkoutError, setCheckoutError] = useState('');
   const [manualPaymentNotice, setManualPaymentNotice] = useState('');
   const [fulfillmentDraft, setFulfillmentDraft] = useState<FulfillmentDraft>(INITIAL_FULFILLMENT);
+  const [whatsappConsent, setWhatsappConsent] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [quantityDrafts, setQuantityDrafts] = useState<Readonly<Record<string, string>>>({});
   const [quantityErrors, setQuantityErrors] = useState<Readonly<Record<string, string>>>({});
@@ -100,6 +103,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
   const cartOperationPending = checkoutPending || whatsappOrderPending;
+  const addressRequired = requiresDeliveryAddress(fulfillmentDraft.method);
+  const whatsappReady = validation.value !== null && whatsappConsent;
   const whatsappUrl = whatsappOrderResult === null || whatsappNumber === null
     ? null
     : buildWhatsappUrl(whatsappNumber, whatsappOrderResult);
@@ -233,7 +238,17 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     value: string,
   ) {
     setWhatsappOrderResult(null);
-    setFulfillmentDraft((current) => Object.freeze({ ...current, [field]: value }));
+    setWhatsappConsent(false);
+    setFulfillmentDraft((current) => field === 'method' && value === 'coordinated_pickup'
+      ? Object.freeze({
+          ...current,
+          method: 'coordinated_pickup',
+          address: '',
+          locality: '',
+          province: '',
+          postalCode: '',
+        })
+      : Object.freeze({ ...current, [field]: value }));
   }
 
   async function registerWhatsappOrder(): Promise<void> {
@@ -242,7 +257,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       items.length === 0 ||
       whatsappOrderResult !== null ||
       whatsappOrderPendingRef.current ||
-      checkoutPending
+      checkoutPending ||
+      !whatsappConsent
     ) return;
 
     if (validation.value === null) {
@@ -262,7 +278,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
         items,
         fulfillment,
       );
-      const order = await createWhatsappOrder(items, idempotencyKey, fulfillment);
+      const order = await createWhatsappOrder(items, idempotencyKey, fulfillment, true);
       setWhatsappOrderResult(Object.freeze({
         order,
         fulfillment,
@@ -283,6 +299,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   function updateQuantity(productId: string, rawValue: string, maximum: number) {
     setWhatsappOrderResult(null);
+    setWhatsappConsent(false);
     setQuantityDrafts((current) => Object.freeze({ ...current, [productId]: rawValue }));
     const nextQuantity = Number(rawValue);
     if (!Number.isInteger(nextQuantity) || nextQuantity < 1 || nextQuantity > maximum) {
@@ -302,6 +319,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   function changeQuantity(productId: string, nextQuantity: number, maximum: number) {
     if (nextQuantity < 1 || nextQuantity > maximum) return;
     setWhatsappOrderResult(null);
+    setWhatsappConsent(false);
     setQuantityErrors((current) => withoutKey(current, productId));
     setQuantityDrafts((current) => Object.freeze({ ...current, [productId]: String(nextQuantity) }));
     setQuantity(productId, nextQuantity);
@@ -312,6 +330,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     const currentIndex = items.findIndex(({ product }) => product.id === productId);
     const focusTargetId = items[currentIndex + 1]?.product.id ?? items[currentIndex - 1]?.product.id;
     setWhatsappOrderResult(null);
+    setWhatsappConsent(false);
     remove(productId);
     setQuantityDrafts((current) => withoutKey(current, productId));
     setQuantityErrors((current) => withoutKey(current, productId));
@@ -338,6 +357,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     setQuantityDrafts({});
     setQuantityErrors({});
     setFulfillmentDraft(INITIAL_FULFILLMENT);
+    setWhatsappConsent(false);
     setShowErrors(false);
     window.requestAnimationFrame(() => emptyStateRef.current?.focus());
   }
@@ -363,7 +383,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             <div>
               <h2 ref={whatsappResultTitleRef} tabIndex={-1}>Pedido registrado</h2>
               <p role="status" aria-live="polite">
-                El pedido {whatsappOrderResult.order.orderId} quedó pendiente de aprobación y sus unidades fueron reservadas.
+                El pedido {formatOrderNumber(whatsappOrderResult.order.orderId)} quedó pendiente de aprobación y sus unidades fueron reservadas por 24 horas.
               </p>
             </div>
             <a
@@ -481,7 +501,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
                 <div>
                   <h2 id="fulfillment-title">Datos de entrega</h2>
-                  <p>Todos los campos son obligatorios para pagar o continuar por WhatsApp. No se guardan en el carrito del navegador; se envían sólo para preparar y coordinar el pedido.</p>
+                  <p>Nombre y celular son obligatorios. El domicilio se solicita sólo para Correo Argentino. Estos datos no se guardan en el carrito del navegador.</p>
                 </div>
                 <label htmlFor="fulfillment-method">
                   Modalidad
@@ -501,7 +521,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   <FieldError id="error-method" message={showErrors ? validation.errors.method : undefined} />
                 </label>
                 <div className="fulfillment-grid">
-                  {fields.map((field) => {
+                  {fields.filter((field) => addressRequired || field.key === 'fullName' || field.key === 'phone').map((field) => {
                     const error = showErrors ? validation.errors[field.key] : undefined;
                     return (
                       <label htmlFor={`fulfillment-${field.key}`} key={field.key}>
@@ -585,14 +605,38 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 </>
               )}
               {whatsappOrderResult === null ? (
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  disabled={cartOperationPending || whatsappNumber === null}
-                  onClick={() => void registerWhatsappOrder()}
-                >
-                  {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
-                </button>
+                <>
+                  <label className="whatsapp-consent" htmlFor="whatsapp-consent">
+                    <input
+                      id="whatsapp-consent"
+                      type="checkbox"
+                      checked={whatsappConsent}
+                      disabled={cartOperationPending}
+                      required
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        setWhatsappConsent(event.currentTarget.checked);
+                        setCheckoutError('');
+                      }}
+                    />
+                    <span>Acepto compartir los datos ingresados mediante WhatsApp para gestionar este pedido.</span>
+                  </label>
+                  <p className="cart-configuration-note" id="whatsapp-readiness" aria-live="polite">
+                    {validation.value === null
+                      ? 'Completá los datos obligatorios para habilitar el pedido por WhatsApp.'
+                      : whatsappConsent
+                        ? 'Los datos están completos y el consentimiento fue aceptado.'
+                        : 'Aceptá compartir los datos para habilitar el pedido por WhatsApp.'}
+                  </p>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    aria-describedby="whatsapp-readiness"
+                    disabled={cartOperationPending || whatsappNumber === null || !whatsappReady}
+                    onClick={() => void registerWhatsappOrder()}
+                  >
+                    {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
+                  </button>
+                </>
               ) : null}
               {whatsappNumber === null ? (
                 <p className="cart-configuration-note">WhatsApp estará disponible cuando se configure un número autorizado.</p>
@@ -704,10 +748,13 @@ function buildWhatsappUrl(
     `Modalidad: ${deliveryMethodLabel(result.fulfillment.method)}`,
     `Nombre: ${result.fulfillment.fullName}`,
     `Celular: ${result.fulfillment.phone}`,
-    `Dirección: ${result.fulfillment.address}, ${result.fulfillment.locality}, ${result.fulfillment.province} (${result.fulfillment.postalCode})`,
+    ...(requiresDeliveryAddress(result.fulfillment.method)
+      ? [`Dirección: ${result.fulfillment.address}, ${result.fulfillment.locality}, ${result.fulfillment.province} (${result.fulfillment.postalCode})`]
+      : []),
   ];
   const message = [
-    `Hola, quiero consultar por el pedido ${result.order.orderId} de Shekinah:`,
+    `Hola, quiero consultar por el pedido ${formatOrderNumber(result.order.orderId)} de Shekinah:`,
+    `ID interno: ${result.order.orderId}`,
     '',
     ...lines,
     ...customerLines,

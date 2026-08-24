@@ -170,3 +170,27 @@ Falta, con confirmación inmediata antes de cada transacción:
 4. revisar la calidad de integración y recién entonces autorizar el cambio de flags públicos.
 
 Un push, una preferencia pendiente o un retorno del navegador no prueban pago, activación ni calidad. No hubo force-push.
+
+## Continuación del 2026-08-23
+
+Esta sección conserva sin reescribir la evidencia anterior y registra la auditoría posterior:
+
+- `main` y `origin/main` partieron limpios y sincronizados en `9bc6625`;
+- la línea base local aprobó 47 archivos y 258 pruebas Vitest, build, verificadores y 25 pruebas Playwright;
+- production y preview continúan con `0001` a `0008` sin migraciones pendientes;
+- Wrangler 4.125.0 confirmó los ocho nombres de secretos requeridos como cifrados en cada entorno, sin leer valores;
+- la configuración remota conserva production en modo `production` con ambos flags de comercio en `false`, y preview en `sandbox` con backend `true` y frontend `false`;
+- el deployment base productivo `bc18e32f-2d8d-4008-b185-5e6ac3c7e874` y el preview `0914fd9f-c763-45e1-bdac-f6287ad5f97c` publican `9bc6625`;
+- el smoke base comprobó `shekinah.ar` 200, `www` 301 al apex, CSP/HSTS, URL inmutable 200, webhook GET 405 con `Allow: POST` y preferencias 503 `COMMERCE_DISABLED`;
+- D1 producción conserva 15 pedidos, cero pagos/eventos, cero reservas WhatsApp pendientes y cero stock negativo; preview conserva su evidencia sandbox aislada;
+- el catálogo productivo efectivo tiene 513 productos, 512 vendibles, 6 con stock numérico, 507 sin control numérico, 1 agotado, 0 inválidos/negativos y 0 deshabilitados;
+- se agregó consentimiento WhatsApp obligatorio en frontend/backend, domicilio condicional para Correo, minimización del domicilio en retiro, número visible `SHK-…` y vencimiento idempotente de reservas manuales a 24 horas;
+- las pruebas dirigidas posteriores aprobaron 7 archivos y 47 casos, incluidos consentimiento, concurrencia, vencimiento, liberación y bloqueo de aprobación tardía;
+- la verificación final aprobó 47 archivos y 261 casos Vitest, los verificadores estáticos, el build y 25 casos Playwright; `build:pages` aprobó por separado con los mismos 261 casos;
+- los intentos dentro del sandbox que requieren procesos hijos fallaron por `spawn EPERM`; las mismas verificaciones ejecutadas fuera de esa restricción aprobaron;
+- una primera ejecución completa detectó que la prueba de vencimiento esperaba una escritura durante una lectura pública; se preservó el GET sin mutaciones y se validó la materialización al resolver administrativamente;
+- una segunda ejecución completa detectó tres expectativas E2E todavía ligadas al ID técnico; se actualizaron al número legible y Playwright aprobó 25/25;
+- la reautenticación del titular se completó mediante QR sin compartir códigos;
+- el panel confirmó el 2026-08-23 las URLs Webhook de prueba y producción, únicamente el evento **Pagos** y una clave de firma configurada en cada entorno;
+- la calidad vigente sigue en 0/100 y muestra una fecha inválida de 1900, sin Payment ID productivo verificable;
+- el panel no ofrece una fecha útil de rotación y el DOM expuso una credencial sandbox durante la inspección. Se la considera comprometida; no se reutilizará ni se activará Checkout hasta rotar, sincronizar cada entorno y volver a validar.

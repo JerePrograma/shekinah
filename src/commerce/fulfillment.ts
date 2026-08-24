@@ -41,10 +41,19 @@ export function validateFulfillment(value: unknown): FulfillmentValidation {
   const method = readMethod(value.method, errors);
   const fullName = readText(value.fullName, 'fullName', 'nombre completo', 3, 120, errors);
   const phone = readPhone(value.phone, errors);
-  const address = readText(value.address, 'address', 'dirección', 5, 180, errors);
-  const locality = readText(value.locality, 'locality', 'localidad', 2, 100, errors);
-  const province = readText(value.province, 'province', 'provincia', 2, 80, errors);
-  const postalCode = readPostalCode(value.postalCode, errors);
+  const addressRequired = method === 'correo_argentino';
+  const address = addressRequired
+    ? readText(value.address, 'address', 'dirección', 5, 180, errors)
+    : discardOptionalText(value.address, 'address', 'dirección', 180, errors);
+  const locality = addressRequired
+    ? readText(value.locality, 'locality', 'localidad', 2, 100, errors)
+    : discardOptionalText(value.locality, 'locality', 'localidad', 100, errors);
+  const province = addressRequired
+    ? readText(value.province, 'province', 'provincia', 2, 80, errors)
+    : discardOptionalText(value.province, 'province', 'provincia', 80, errors);
+  const postalCode = addressRequired
+    ? readPostalCode(value.postalCode, errors)
+    : discardOptionalText(value.postalCode, 'postalCode', 'código postal', 12, errors);
   if (method === null || fullName === null || phone === null || address === null || locality === null || province === null || postalCode === null || Object.keys(errors).length > 0) {
     return Object.freeze({ value: null, errors: Object.freeze(errors) });
   }
@@ -97,6 +106,10 @@ export function deliveryMethodLabel(method: DeliveryMethod): string {
   return method === 'coordinated_pickup' ? 'Retiro o entrega personal coordinada' : 'Correo Argentino';
 }
 
+export function requiresDeliveryAddress(method: DeliveryMethod | ''): boolean {
+  return method === 'correo_argentino';
+}
+
 function manual(tier: 'manual_unknown_weight' | 'manual_over_5kg', totalWeightGrams: number | null): ShippingQuote {
   return Object.freeze({ kind: 'manual', tier, shippingMinor: 0, totalWeightGrams });
 }
@@ -119,6 +132,14 @@ function readText(value: unknown, field: FulfillmentField, label: string, min: n
     return null;
   }
   return normalized;
+}
+function discardOptionalText(value: unknown, field: FulfillmentField, label: string, max: number, errors: Partial<Record<FulfillmentField, string>>): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string' || containsControl(value) || value.normalize('NFKC').trim().length > max) {
+    errors[field] = `El campo ${label} no es válido.`;
+    return null;
+  }
+  return '';
 }
 function readPhone(value: unknown, errors: Partial<Record<FulfillmentField, string>>): string | null {
   if (typeof value !== 'string' || containsControl(value) || !/^\+?[\d\s().-]+$/u.test(value.normalize('NFKC').trim())) {

@@ -11,6 +11,7 @@ import type {
   ReactNode,
 } from 'react';
 
+import { formatOrderNumber } from '../commerce/contracts';
 import {
   refreshRuntimeCatalog,
   useRuntimeCatalogProducts,
@@ -64,6 +65,7 @@ type AdminOrder = Readonly<{
   itemCount: number;
   deliveryMethod: string;
   fullName: string;
+  lastErrorCode: string;
   createdAt: string;
 }>;
 type AnalyticsTrendRow = Readonly<{
@@ -577,9 +579,9 @@ function OrdersView({
       caption="Pedidos del período y pedidos de WhatsApp pendientes"
       columns={['Pedido', 'Canal', 'Estado', 'Fecha', 'Cliente', 'Modalidad', 'Total', 'Acción']}
       rows={orders.map((order) => [
-        order.id,
+        formatOrderNumber(order.id),
         channelLabel(order.channel),
-        humanStatus(order.status),
+        orderStatusLabel(order.status, order.lastErrorCode),
         formatDate(order.createdAt),
         order.fullName,
         deliveryLabel(order.deliveryMethod),
@@ -868,7 +870,7 @@ function OrderDetailPanel({
       <header>
         <div>
           <p className="eyebrow">Gestión de pedido</p>
-          <h3 id="order-detail-title" ref={titleRef} tabIndex={-1}>Detalle de {orderId}</h3>
+          <h3 id="order-detail-title" ref={titleRef} tabIndex={-1}>Detalle de {formatOrderNumber(orderId)}</h3>
         </div>
         <button className="button button-secondary" type="button" disabled={action !== null} onClick={onClose}>
           Cerrar detalle
@@ -899,7 +901,7 @@ function OrderDetailPanel({
                 cancelReject();
               }}
             >
-              <h5 id="reject-order-title">Rechazar {orderId}</h5>
+              <h5 id="reject-order-title">Rechazar {formatOrderNumber(orderId)}</h5>
               <p id="reject-order-description">
                 El pedido quedará rechazado y todas sus unidades reservadas volverán a estar disponibles.
               </p>
@@ -959,7 +961,8 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
       <DetailGroup
         title="Datos generales"
         entries={[
-          ['ID', order.id],
+          ['Número de pedido', formatOrderNumber(order.id)],
+          ['ID interno', order.id],
           ['Canal', channelLabel(order.channel)],
           ['Estado', humanStatus(order.status)],
           ['Creación', formatDate(order.createdAt)],
@@ -969,7 +972,7 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
           ['Resuelto por', order.resolvedBy],
           ['Moneda', order.currency],
           ['Preferencia Mercado Pago', order.preferenceId],
-          ['Error conocido', order.lastErrorCode],
+          ['Incidencia conocida', orderIssueLabel(order.lastErrorCode)],
         ]}
       />
       <DetailGroup
@@ -1289,6 +1292,7 @@ function parseOrders(value: unknown): readonly AdminOrder[] {
       itemCount: readRequiredMetric(candidate, 'item_count'),
       deliveryMethod: readNullableText(candidate.delivery_method),
       fullName: readNullableText(candidate.full_name),
+      lastErrorCode: readNullableText(candidate.last_error_code),
       createdAt: readRequiredText(candidate, 'created_at'),
     });
   }));
@@ -1534,6 +1538,16 @@ function humanStatus(value: string): string {
     failed: 'Fallido',
   };
   return labels[value] ?? value;
+}
+
+function orderStatusLabel(status: string, errorCode: string): string {
+  return errorCode === 'WHATSAPP_RESERVATION_EXPIRED' ? 'Vencido' : humanStatus(status);
+}
+
+function orderIssueLabel(errorCode: string): string {
+  return errorCode === 'WHATSAPP_RESERVATION_EXPIRED'
+    ? 'La reserva venció y las unidades fueron liberadas.'
+    : errorCode;
 }
 
 function percentage(numerator: number, denominator: number): string {

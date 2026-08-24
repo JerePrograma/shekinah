@@ -2,11 +2,11 @@
 
 ## Alcance
 
-El contrato de datos completos aplica tanto a Checkout Pro como a WhatsApp. Antes de abrir WhatsApp, el backend valida nombre, celular y domicilio, recalcula el carrito y persiste `orders` y `order_items`. `order_fulfillment` se persiste cuando la tarifa es determinística. Si Correo requiere una cotización manual, los datos quedan en memoria React y en el mensaje que el comprador decide abrir; D1 conserva sólo una huella SHA-256 para verificar la idempotencia, no la PII en claro. Nunca se guardan en `localStorage` ni analítica.
+El contrato de fulfillment aplica tanto a Checkout Pro como a WhatsApp. Antes de abrir WhatsApp, el backend valida nombre, celular, modalidad y, sólo para Correo Argentino, domicilio completo. También exige consentimiento explícito para compartir esos datos mediante WhatsApp, recalcula el carrito y persiste `orders` y `order_items`. `order_fulfillment` se persiste cuando la tarifa es determinística. Si Correo requiere una cotización manual, los datos quedan en memoria React y en el mensaje que el comprador decide abrir; D1 conserva sólo una huella SHA-256 para verificar la idempotencia, no la PII en claro. Nunca se guardan en `localStorage` ni analítica.
 
 ## Contrato operativo
 
-El checkout y la continuación por WhatsApp solicitan nombre completo, celular, dirección, localidad, provincia y código postal. El cliente y el servidor rechazan solicitudes parciales o vacías antes de crear el pedido o reservar stock. No se solicitan documento, datos de tarjeta ni información ajena a la coordinación. Esos datos no se almacenan en `localStorage`. En Checkout Pro integrado se envían al iniciar el pedido y se persisten en `order_fulfillment`.
+El checkout y la continuación por WhatsApp solicitan siempre nombre completo y celular. Dirección, localidad, provincia y código postal son obligatorios únicamente para `correo_argentino`; `coordinated_pickup` los omite y el servidor normaliza cualquier valor legado a cadenas vacías para no persistir PII innecesaria. El cliente y el servidor rechazan solicitudes parciales o inválidas antes de crear el pedido o reservar stock. El CTA de WhatsApp permanece deshabilitado hasta que el formulario sea válido y se acepte el consentimiento específico. No se solicitan documento, datos de tarjeta ni información ajena a la coordinación.
 
 Modalidades:
 
@@ -30,7 +30,7 @@ En el canal manual, el Link de Pago continúa sin monto predefinido y el cobro d
 
 `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella autoritativa del carrito a `checkout_intents`, backfillea desde pedidos existentes y evita reutilizar una reserva huérfana con otro carrito.
 
-`migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido. La reserva se deriva de los items de pedidos WhatsApp pendientes: no hay contador duplicado ni TTL. Aprobar descuenta el stock físico y consume la reserva en la misma transición D1; rechazar conserva el físico y libera la reserva. Un pedido abandonado permanece pendiente y reserva stock hasta una resolución administrativa.
+`migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido; `0008` aporta las marcas temporales reutilizadas por ambos canales. La reserva se deriva de los items y no tiene contador duplicado. Los pedidos WhatsApp nuevos vencen a las 24 horas: la limpieza idempotente cambia sólo un `pending` vencido a `rejected`, registra `WHATSAPP_RESERVATION_EXPIRED` y libera la disponibilidad sin tocar el stock físico. Se ejecuta antes de nuevas reservas, escrituras de catálogo y lecturas administrativas. Aprobar dentro de la ventana descuenta el stock físico una sola vez; rechazar conserva el físico y libera la reserva. Las filas históricas sin vencimiento conservan el flujo administrativo previo.
 
 `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` agrega la ventana y marca de consumo de stock de Checkout Pro, la fotografía de control de stock por item y la huella de fulfillment de WhatsApp. La reserva de Checkout Pro dura lo mismo que la preferencia o mientras exista un pago `pending` consultado al proveedor. La transición autoritativa a `approved` o `refunded` consume el físico una sola vez; un reembolso no repone stock porque no prueba devolución de mercadería.
 

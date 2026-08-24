@@ -115,7 +115,7 @@ R2 está activo y verificado por API. Production reutiliza `shekinah`; preview u
 9. validar stock legacy sin control, stock cero, stock físico/reservado/disponible, reserva concurrente de la última unidad y consumo exactamente una vez por ambos canales;
 10. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://mp-sandbox.shekinah-7dl.pages.dev` en preview;
 11. comprobar que `manual_payment_click` se persiste sólo tras un clic manual válido y nunca alimenta pedidos, pagos ni revenue;
-12. operar los pedidos WhatsApp pendientes sin TTL: revisar y aprobar o rechazar explícitamente los abandonados para no mantener reservas indefinidas.
+12. operar los pedidos WhatsApp dentro de su ventana de 24 horas; verificar que los vencidos figuren como **Vencido**, con `WHATSAPP_RESERVATION_EXPIRED`, reserva liberada y aprobación tardía rechazada.
 
 ## Prohibiciones
 

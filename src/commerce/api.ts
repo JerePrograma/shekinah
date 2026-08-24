@@ -57,6 +57,7 @@ export async function createWhatsappOrder(
   items: readonly CartItem[],
   idempotencyKey: string,
   fulfillment: CheckoutFulfillment,
+  whatsappConsent: true,
 ): Promise<WhatsappOrderResponse> {
   const request: WhatsappOrderRequest = Object.freeze({
     idempotencyKey,
@@ -65,6 +66,7 @@ export async function createWhatsappOrder(
       quantity,
     }))),
     fulfillment,
+    whatsappConsent,
   });
   const response = await fetch('/api/orders/whatsapp', {
     method: 'POST',

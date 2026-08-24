@@ -5,12 +5,14 @@ import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, req
 import { assertMercadoPagoPreferenceActive, createMercadoPagoPreference, recoverMercadoPagoPreference } from '../../../server/mercado-pago';
 import { claimPreferenceAttempt, getOrderByIdempotencyKey, markOrderFailed, markPreferenceCreated, prepareOrder, resetRetrySafeFailedOrder } from '../../../server/orders';
 import type { PagesFunction } from '../../../server/platform';
+import { expireWhatsappReservations } from '../../../server/stock-reservations';
 import { assertExactKeys, assertSameOrigin, assertUuid, isRecord, readJsonBody } from '../../../server/validation';
 export const onRequest: PagesFunction = async ({ env, request }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   try {
     requireEnabledFlag(env.COMMERCE_ENABLED, 'COMMERCE_DISABLED', 'El checkout todavía no está habilitado.'); assertSameOrigin(request, env);
     const database = requireDatabase(env); const siteUrl = requirePublicSiteUrl(env);
+    await expireWhatsappReservations(database);
     const accessToken = requireSecret(env.MERCADO_PAGO_ACCESS_TOKEN, 'PAYMENT_CREDENTIALS_MISSING', 'Mercado Pago no está configurado.', 20);
     void requireSecret(env.MERCADO_PAGO_WEBHOOK_SECRET, 'WEBHOOK_SECRET_MISSING', 'La firma de webhooks no está configurada.', 32);
     const tokenSecret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de pedidos no está configurada.', 32); const mode = requireCommerceMode(env);

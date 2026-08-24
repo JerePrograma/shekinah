@@ -10,12 +10,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function fillWhatsappFulfillment(page: Page) {
+  await page.getByLabel('Modalidad').selectOption('correo_argentino');
   await page.getByLabel('Nombre completo').fill('Ana Pérez');
   await page.getByLabel('Celular').fill('+54 9 11 5555-4444');
   await page.getByLabel('Dirección').fill('Calle 123');
   await page.getByLabel('Localidad').fill('La Plata');
   await page.getByLabel('Provincia').fill('Buenos Aires');
   await page.getByLabel('Código postal').fill('B1900');
+  await page.getByLabel(/Acepto compartir los datos/iu).check();
 }
 
 test('persiste el carrito y lo sincroniza entre pestañas', async ({ context, page }) => {
@@ -99,6 +101,8 @@ test('habilita el Link de Pago y WhatsApp autorizados sin activar Checkout Pro',
   );
   await expect(paymentLink).toHaveAttribute('target', '_blank');
   await expect(page.getByText(/Cobro temporal manual/iu)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
+  await fillWhatsappFulfillment(page);
   await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
   await expect(page.getByText(/WhatsApp estará disponible/iu)).toHaveCount(0);
 });
@@ -141,9 +145,7 @@ test('registra y reserva una sola vez antes de ofrecer el segundo gesto de Whats
 
   releaseOrder?.();
   await expect(page.getByRole('heading', { name: 'Pedido registrado' })).toBeFocused();
-  await expect(page.getByText(/quedó pendiente de aprobación/u)).toContainText(
-    whatsappOrderFixture().orderId,
-  );
+  await expect(page.getByText(/quedó pendiente de aprobación/u)).toContainText('SHK-WWWWWWWW');
   const whatsappLink = page.getByRole('link', { name: 'Abrir WhatsApp' });
   await expect(whatsappLink).toHaveAttribute('target', '_blank');
   const href = await whatsappLink.getAttribute('href');
@@ -357,6 +359,7 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
   await expect(page.getByRole('textbox', { name: 'Nombre completo' })).toBeFocused();
   expect(events.filter(isManualPaymentClick)).toHaveLength(0);
 
+  await page.getByLabel('Modalidad').selectOption('correo_argentino');
   await page.getByRole('textbox', { name: 'Nombre completo' }).fill('Cliente de prueba');
   await page.getByRole('textbox', { name: 'Celular' }).fill('5491100000000');
   await page.getByRole('textbox', { name: 'Dirección' }).fill('Calle de prueba 123');
@@ -380,6 +383,7 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
   ]);
   expect(checkoutPreferenceCalls).toBe(0);
 
+  await page.getByLabel(/Acepto compartir los datos/iu).check();
   await page.getByRole('button', { name: 'Pedir por WhatsApp' }).click();
   await expect(page.getByRole('heading', { name: 'Pedido registrado' })).toBeFocused();
   expect(orderRequests).toBe(1);

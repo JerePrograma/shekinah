@@ -43,7 +43,7 @@ describe('Backoffice V2', () => {
     const openDetail = screen.getByRole('button', { name: 'Ver detalle' });
     fireEvent.click(openDetail);
 
-    expect(await screen.findByRole('heading', { name: `Detalle de ${ORDER_ID}` })).toHaveFocus();
+    expect(await screen.findByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` })).toHaveFocus();
     expect(detailCalls(fetchMock)).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Fulfillment' })).toBeVisible();
     expect(screen.getByRole('table', { name: 'Items del pedido' })).toHaveTextContent('Producto de prueba');
@@ -51,14 +51,14 @@ describe('Backoffice V2', () => {
     expect(screen.getByText(/sólo los pedidos de WhatsApp pendientes admiten aprobación o rechazo/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).not.toBeInTheDocument();
 
-    fireEvent.keyDown(screen.getByRole('heading', { name: `Detalle de ${ORDER_ID}` }), {
+    fireEvent.keyDown(screen.getByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` }), {
       key: 'Escape',
     });
-    expect(screen.queryByRole('heading', { name: `Detalle de ${ORDER_ID}` })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` })).not.toBeInTheDocument();
     await waitFor(() => expect(openDetail).toHaveFocus());
 
     fireEvent.click(openDetail);
-    const reopenedTitle = await screen.findByRole('heading', { name: `Detalle de ${ORDER_ID}` });
+    const reopenedTitle = await screen.findByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` });
     openDetail.remove();
     fireEvent.keyDown(reopenedTitle, { key: 'Escape' });
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Pedidos' }))
@@ -249,7 +249,7 @@ describe('Backoffice V2', () => {
     render(<AdminPage navigate={vi.fn()} section="orders" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Rechazar' }));
-    const dialog = screen.getByRole('alertdialog', { name: `Rechazar ${ORDER_ID}` });
+    const dialog = screen.getByRole('alertdialog', { name: `Rechazar ${ORDER_NUMBER}` });
     expect(dialog).toHaveTextContent('unidades reservadas volverán a estar disponibles');
     fireEvent.click(screen.getByRole('button', { name: 'Rechazar pedido' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Pedido rechazado');
@@ -257,6 +257,7 @@ describe('Backoffice V2', () => {
 });
 
 const ORDER_ID = 'ord_test_123456789012345678901234';
+const ORDER_NUMBER = 'SHK-78901234';
 
 function summaryFixture(overrides: Readonly<Record<string, unknown>> = {}) {
   return {

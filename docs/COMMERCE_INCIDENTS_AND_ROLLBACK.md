@@ -64,7 +64,7 @@ El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir 
 
 ## Stock inconsistente
 
-Comparar stock físico con la suma derivada de `order_items`: pedidos WhatsApp `pending` y Checkout Pro no consumidos con ventana vigente o pago `pending`. No reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Una reserva WhatsApp atascada se resuelve mediante aprobar o rechazar. Una reserva Checkout Pro se concilia primero con el proveedor; no liberar un pago pendiente por edad. Si físico es menor que reservado, detener ambos canales, conservar evidencia y diagnosticar antes de editar datos.
+Comparar stock físico con la suma derivada de `order_items`: pedidos WhatsApp `pending` con ventana de 24 horas vigente y Checkout Pro no consumidos con ventana vigente o pago `pending`. No reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Una reserva WhatsApp dentro de la ventana se resuelve mediante aprobar o rechazar; una vencida debe quedar `rejected` con `WHATSAPP_RESERVATION_EXPIRED`, nunca aprobarse tarde. Una reserva Checkout Pro se concilia primero con el proveedor; no liberar un pago pendiente por edad. Si físico es menor que reservado, detener ambos canales, conservar evidencia y diagnosticar antes de editar datos.
 
 Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la existencia:
 

@@ -1,5 +1,9 @@
 import { isProductEffectivelyAvailable } from '../src/catalog/model';
-import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../src/commerce/contracts';
+import {
+  MAX_CART_LINES,
+  MAX_CART_QUANTITY,
+  WHATSAPP_RESERVATION_WINDOW_MS,
+} from '../src/commerce/contracts';
 import {
   calculateShippingQuote,
   fulfillmentCanonicalValue,
@@ -17,6 +21,7 @@ import { requireCheckoutFulfillment } from './fulfillment';
 import { HttpError } from './http';
 import { cartFingerprint } from './orders';
 import type { D1Database, D1PreparedStatement } from './platform';
+import { expireWhatsappReservations } from './stock-reservations';
 import {
   assertExactKeys,
   assertUuid,
@@ -106,6 +111,7 @@ export async function createWhatsappOrder(
   value: unknown,
 ): Promise<CreatedWhatsappOrder> {
   const input = parseWhatsappOrderInput(value);
+  await expireWhatsappReservations(database);
   const existing = await replayWhatsappOrder(database, input);
   if (existing !== null) return existing;
 
@@ -127,7 +133,11 @@ export async function createWhatsappOrder(
   );
   const orderId = `ord_${randomToken(18)}`;
   const publicTokenHash = await sha256Hex(randomToken(32));
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const reservationExpiresAt = new Date(
+    nowDate.getTime() + WHATSAPP_RESERVATION_WINDOW_MS,
+  ).toISOString();
 
   const statements: D1PreparedStatement[] = [
     database
@@ -135,8 +145,8 @@ export async function createWhatsappOrder(
         `INSERT OR IGNORE INTO orders (
           id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
           status, currency, total_minor, item_count, created_at, updated_at, channel,
-          whatsapp_fulfillment_fingerprint
-        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', ?, ?, ?, ?, 'whatsapp', ?)`,
+          whatsapp_fulfillment_fingerprint, stock_reserved_at, stock_reservation_expires_at
+        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', ?, ?, ?, ?, 'whatsapp', ?, ?, ?)`,
       )
       .bind(
         orderId,
@@ -148,6 +158,8 @@ export async function createWhatsappOrder(
         now,
         now,
         fulfillmentFingerprint,
+        now,
+        reservationExpiresAt,
       ),
     ...cart.lines.map(({ product, quantity, subtotalMinor }) =>
       database
@@ -239,7 +251,9 @@ export async function resolveWhatsappOrder(
   actor: string,
 ): Promise<AdminOrderDetail & Readonly<{ changed: boolean }>> {
   assertOrderId(orderId);
-  const resolvedAt = new Date().toISOString();
+  const resolvedAtDate = new Date();
+  await expireWhatsappReservations(database, resolvedAtDate);
+  const resolvedAt = resolvedAtDate.toISOString();
   let transitioned: Readonly<{ id: string }> | null;
   try {
     transitioned = await database
@@ -248,6 +262,11 @@ export async function resolveWhatsappOrder(
          SET status = ?, resolved_at = ?, resolved_by = ?, updated_at = ?,
              approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END
          WHERE id = ? AND channel = 'whatsapp' AND status = 'pending'
+           AND (
+             ? <> 'approved'
+             OR stock_reservation_expires_at IS NULL
+             OR unixepoch(stock_reservation_expires_at) > unixepoch(?)
+           )
          RETURNING id`,
       )
       .bind(
@@ -258,6 +277,8 @@ export async function resolveWhatsappOrder(
         targetStatus,
         resolvedAt,
         orderId,
+        targetStatus,
+        resolvedAt,
       )
       .first<Readonly<{ id: string }>>();
   } catch (error: unknown) {
@@ -304,10 +325,17 @@ function parseWhatsappOrderInput(value: unknown): ParsedWhatsappOrderInput {
   }
   assertExactKeys(
     value,
-    ['idempotencyKey', 'items', 'fulfillment'],
+    ['idempotencyKey', 'items', 'fulfillment', 'whatsappConsent'],
     'INVALID_ORDER',
     'La solicitud contiene campos no permitidos.',
   );
+  if (value.whatsappConsent !== true) {
+    throw new HttpError(
+      400,
+      'WHATSAPP_CONSENT_REQUIRED',
+      'Aceptá compartir estos datos por WhatsApp para gestionar el pedido.',
+    );
+  }
   const idempotencyKey = assertUuid(value.idempotencyKey, 'idempotencyKey');
   if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > MAX_CART_LINES) {
     throw new HttpError(400, 'INVALID_CART', 'El carrito no contiene una cantidad válida de productos.');

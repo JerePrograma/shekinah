@@ -2,6 +2,7 @@ import type { AdminRange } from './admin';
 import { toCsv } from './admin';
 import { HttpError } from './http';
 import type { D1Database } from './platform';
+import { expireWhatsappReservations } from './stock-reservations';
 
 const orderColumns = `
   o.id, o.status, o.channel, o.currency, o.total_minor, o.item_count,
@@ -14,7 +15,12 @@ const orderColumns = `
     ) THEN 'not_controlled'
     WHEN o.channel = 'whatsapp' AND o.status = 'approved' THEN 'consumed'
     WHEN o.stock_consumed_at IS NOT NULL THEN 'consumed'
-    WHEN o.channel = 'whatsapp' AND o.status = 'pending' THEN 'reserved'
+    WHEN o.channel = 'whatsapp'
+      AND o.status = 'pending'
+      AND (
+        o.stock_reservation_expires_at IS NULL
+        OR unixepoch(o.stock_reservation_expires_at) > unixepoch()
+      ) THEN 'reserved'
     WHEN o.channel = 'checkout_pro'
       AND o.stock_reserved_at IS NOT NULL
       AND o.stock_consumed_at IS NULL
@@ -44,9 +50,10 @@ export async function listAdminOrdersWithFulfillment(
   database: D1Database,
   range: AdminRange,
 ): Promise<unknown> {
+  await expireWhatsappReservations(database);
   const result = await database
     .prepare(
-      `SELECT ${orderColumns}
+      `SELECT ${orderColumns}, o.last_error_code
        FROM orders o
        LEFT JOIN order_fulfillment f ON f.order_id = o.id
        WHERE (
@@ -72,6 +79,7 @@ export async function getAdminOrderWithFulfillment(
   if (!/^ord_[A-Za-z0-9_-]{20,128}$/u.test(id)) {
     throw new HttpError(400, 'INVALID_ORDER_ID', 'El identificador de pedido no es válido.');
   }
+  await expireWhatsappReservations(database);
   const order = await database
     .prepare(
       `SELECT ${orderColumns}, o.mp_preference_id, o.last_error_code
@@ -109,6 +117,7 @@ export async function exportOrdersWithFulfillmentCsv(
   database: D1Database,
   range: AdminRange,
 ): Promise<string> {
+  await expireWhatsappReservations(database);
   const result = await database
     .prepare(
       `SELECT ${orderColumns}

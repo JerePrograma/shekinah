@@ -3,6 +3,7 @@ import type { CheckoutFulfillment } from './fulfillment';
 export const MAX_CART_LINES = 50;
 export const MAX_CART_QUANTITY = 99;
 export const CHECKOUT_IDEMPOTENCY_WINDOW_MS = 30 * 60 * 1000;
+export const WHATSAPP_RESERVATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const ANALYTICS_CONSENT_VERSION = '1' as const;
 
 export type CheckoutLineRequest = Readonly<{
@@ -25,7 +26,13 @@ export type WhatsappOrderRequest = Readonly<{
   idempotencyKey: string;
   items: readonly CheckoutLineRequest[];
   fulfillment: CheckoutFulfillment;
+  whatsappConsent: true;
 }>;
+
+export function formatOrderNumber(orderId: string): string {
+  const suffix = orderId.startsWith('ord_') ? orderId.slice(4) : orderId;
+  return `SHK-${suffix.slice(-8).toLocaleUpperCase('en')}`;
+}
 
 export type WhatsappOrderItem = Readonly<{
   productId: string;

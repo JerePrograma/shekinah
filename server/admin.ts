@@ -1,5 +1,6 @@
 import { HttpError } from './http';
 import type { AdminIdentity, D1Database } from './platform';
+import { expireWhatsappReservations } from './stock-reservations';
 
 export type AdminOrderStatus =
   | 'preference_pending'
@@ -54,6 +55,7 @@ export function parseAdminRange(request: Request): AdminRange {
 }
 
 export async function getAdminSummary(database: D1Database, range: AdminRange): Promise<unknown> {
+  await expireWhatsappReservations(database);
   const row = await database
     .prepare(
       `WITH requested_range(from_at, to_at) AS (VALUES (?, ?)),

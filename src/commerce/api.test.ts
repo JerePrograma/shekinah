@@ -95,7 +95,7 @@ describe('cliente de comercio', () => {
     }), { status: 201, headers: { 'content-type': 'application/json' } }));
 
     await expect(
-      createWhatsappOrder([item], '00000000-0000-4000-8000-000000000001', fulfillment),
+      createWhatsappOrder([item], '00000000-0000-4000-8000-000000000001', fulfillment, true),
     ).resolves.toMatchObject({ orderId, status: 'pending', totalMinor: 246_800 });
 
     const request = fetchMock.mock.calls[0]?.[1];
@@ -106,6 +106,7 @@ describe('cliente de comercio', () => {
       idempotencyKey: '00000000-0000-4000-8000-000000000001',
       items: [{ productId: product.id, quantity: 2 }],
       fulfillment,
+      whatsappConsent: true,
     });
     expect(request.credentials).toBe('same-origin');
     expect(request.redirect).toBe('error');
@@ -116,7 +117,7 @@ describe('cliente de comercio', () => {
       error: { message: 'Algunos productos ya no tienen la cantidad solicitada.' },
     }), { status: 409, headers: { 'content-type': 'application/json' } }));
     await expect(
-      createWhatsappOrder([item], crypto.randomUUID(), fulfillment),
+      createWhatsappOrder([item], crypto.randomUUID(), fulfillment, true),
     ).rejects.toThrow('Algunos productos ya no tienen la cantidad solicitada.');
 
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({
@@ -135,7 +136,7 @@ describe('cliente de comercio', () => {
       }],
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     await expect(
-      createWhatsappOrder([item], crypto.randomUUID(), fulfillment),
+      createWhatsappOrder([item], crypto.randomUUID(), fulfillment, true),
     ).rejects.toThrow('pedido de WhatsApp inválido');
   });
 });

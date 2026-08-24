@@ -52,6 +52,23 @@
   outline-color: #8e2f2f;
 }
 
+.whatsapp-consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.65rem;
+  color: #243d20;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.whatsapp-consent input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.1rem;
+  accent-color: var(--color-action);
+}
+
 .field-error {
   color: #681f1f;
   font-size: 0.88rem;
