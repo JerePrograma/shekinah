@@ -20,7 +20,8 @@ import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
 
-export type AdminSection = 'summary' | 'products' | 'orders' | 'analytics' | 'audit';
+export type AdminSection = 'summary' | 'products' | 'inventory' | 'orders' | 'analytics' | 'audit';
+type AdminReportSection = Exclude<AdminSection, 'products' | 'inventory'>;
 
 type UnknownRow = Readonly<Record<string, unknown>>;
 type OrderStatusFilter =
@@ -142,7 +143,7 @@ type AdminData = Readonly<{
   audit: readonly UnknownRow[] | null;
 }>;
 type AdminReport = Readonly<{
-  section: Exclude<AdminSection, 'products'>;
+  section: AdminReportSection;
   data: AdminData;
   issues: readonly string[];
 }>;
@@ -210,7 +211,7 @@ export function AdminPage({
   }, [onOperationStateChange, orderAction]);
 
   useEffect(() => {
-    if (section === 'products') return undefined;
+    if (section === 'products' || section === 'inventory') return undefined;
     const controller = new AbortController();
     setLoading(true);
     setReport(null);
@@ -258,7 +259,7 @@ export function AdminPage({
     return () => controller.abort();
   }, [detailRefresh, onUnauthorized, section, selectedOrderId]);
 
-  if (section === 'products') return null;
+  if (section === 'products' || section === 'inventory') return null;
 
   const visibleReport = report?.section === section ? report : null;
   const orderQuery = exportQuery(submittedRange, true);
@@ -462,7 +463,7 @@ function SectionContent({
   data: AdminData;
   onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
   productNames: ReadonlyMap<string, string>;
-  section: Exclude<AdminSection, 'products'>;
+  section: AdminReportSection;
 }>) {
   switch (section) {
     case 'summary':
@@ -513,7 +514,7 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
             note={reachLabel(summary.cartAddSessionCount, summary.consentedSessionCount)}
           />
           <Metric
-            label="Sesiones con clic en Mercado Pago"
+            label="Sesiones históricas con Link de Pago manual"
             value={summary.manualPaymentClickSessionCount}
             note={`${summary.manualPaymentClickCount.toLocaleString('es-AR')} clics válidos`}
           />
@@ -544,9 +545,9 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
           <Metric label="Ticket promedio aprobado" value={formatMoney(summary.averageTicketMinor)} />
         </dl>
         <p className="admin-context-note">
-          Checkout Pro integrado continúa deshabilitado. Los pedidos de WhatsApp pueden aparecer
-          aquí, pero su aprobación manual no se convierte en facturación sin un pago compatible
-          persistido y verificado.
+          La disponibilidad pública de Checkout Pro depende de los flags de despliegue y del
+          catálogo vigente. Los pedidos de WhatsApp pueden aparecer aquí, pero su aprobación
+          manual no se convierte en facturación sin un pago compatible persistido y verificado.
         </p>
       </section>
     </div>
@@ -605,7 +606,7 @@ function AnalyticsView({
   return (
     <div className="admin-dashboard-stack">
       <InteractionNotice />
-      {data.summary === null ? <UnavailableState label="el flujo manual" /> : (
+      {data.summary === null ? <UnavailableState label="el historial del flujo manual" /> : (
         <ManualFlow summary={data.summary} />
       )}
       {data.funnel === null ? <UnavailableState label="el embudo de eventos" /> : (
@@ -632,9 +633,9 @@ function AnalyticsView({
 function InteractionNotice() {
   return (
     <p className="admin-semantic-notice">
-      Los clics en Mercado Pago y las aperturas de WhatsApp son interacciones, no pagos
-      confirmados. El Link de Pago manual no crea una preferencia integrada ni alimenta la
-      facturación aprobada.
+      Los inicios de Checkout Pro y las aperturas de WhatsApp son interacciones, no pagos
+      confirmados. Los eventos del Link de Pago manual corresponden al flujo público retirado
+      y se conservan sólo como historial; no alimentan la facturación aprobada.
     </p>
   );
 }
@@ -644,13 +645,13 @@ function ManualFlow({ summary }: Readonly<{ summary: AdminSummary }>) {
     ['Sesiones consentidas', summary.consentedSessionCount],
     ['Ven productos', summary.productViewSessionCount],
     ['Agregan al carrito', summary.cartAddSessionCount],
-    ['Abren Link de Pago manual', summary.manualPaymentClickSessionCount],
+    ['Histórico: abrieron Link de Pago manual', summary.manualPaymentClickSessionCount],
   ] as const;
   return (
     <section className="admin-flow" aria-labelledby="manual-flow-title">
       <div className="admin-subsection-heading">
-        <h3 id="manual-flow-title">Flujo de compra manual</h3>
-        <p>Cada etapa usa sesiones únicas; el porcentaje indica alcance sobre sesiones consentidas.</p>
+        <h3 id="manual-flow-title">Histórico del flujo manual retirado</h3>
+        <p>El Link de Pago ya no se muestra públicamente. Estos conteos preservan registros anteriores.</p>
       </div>
       <ol>
         {stages.map(([label, count]) => (
@@ -1068,7 +1069,7 @@ function ExportActions({
   analyticsQuery,
   orderQuery,
   section,
-}: Readonly<{ analyticsQuery: string; orderQuery: string; section: Exclude<AdminSection, 'products'> }>) {
+}: Readonly<{ analyticsQuery: string; orderQuery: string; section: AdminReportSection }>) {
   if (section === 'audit') return null;
   return (
     <div className="admin-export-actions" aria-label="Exportaciones">
@@ -1131,7 +1132,7 @@ function AdminTable({
 }
 
 async function loadAdminReport(
-  section: Exclude<AdminSection, 'products'>,
+  section: AdminReportSection,
   range: AdminFilter,
   signal: AbortSignal,
   onUnauthorized?: () => void,
@@ -1191,7 +1192,7 @@ async function loadPart<T>(label: string, request: Promise<T>): Promise<Readonly
 }
 
 function reportFor(
-  section: Exclude<AdminSection, 'products'>,
+  section: AdminReportSection,
   data: AdminData,
   ...issues: readonly (string | null)[]
 ): AdminReport {
@@ -1570,7 +1571,7 @@ function eventLabel(value: string): string {
     page_view: 'Vista de página',
     product_view: 'Vista de producto',
     cart_add: 'Agregado al carrito',
-    manual_payment_click: 'Clic en Link de Pago manual',
+    manual_payment_click: 'Histórico: clic en Link de Pago manual',
     whatsapp_open: 'Apertura de WhatsApp',
     checkout_start: 'Inicio de Checkout Pro integrado',
     checkout_redirect: 'Redirección de Checkout Pro integrado',
@@ -1579,10 +1580,10 @@ function eventLabel(value: string): string {
 }
 
 function eventMeaning(value: string): string {
-  if (value === 'manual_payment_click') return 'Interacción manual; no confirma pago.';
+  if (value === 'manual_payment_click') return 'Interacción histórica del flujo retirado; no confirma pago.';
   if (value === 'whatsapp_open') return 'Canal asistido; no confirma pago.';
   if (value === 'checkout_start' || value === 'checkout_redirect') {
-    return 'Flujo integrado, actualmente deshabilitado.';
+    return 'Interacción del flujo integrado; no confirma pago.';
   }
   return 'Interacción consentida.';
 }
@@ -1594,7 +1595,7 @@ function dimensionLabel(dimension: 'source' | 'device_class', value: string): st
   return labels[value] ?? value;
 }
 
-function sectionHeading(section: Exclude<AdminSection, 'products'>) {
+function sectionHeading(section: AdminReportSection) {
   switch (section) {
     case 'summary':
       return {

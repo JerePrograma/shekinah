@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, MouseEvent } from 'react';
+import type { ChangeEvent } from 'react';
 
 import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
@@ -24,11 +24,7 @@ import type {
   FulfillmentDraft,
   FulfillmentField,
 } from '../commerce/fulfillment';
-import {
-  getAuthorizedMercadoPagoPaymentLink,
-  getAuthorizedWhatsappNumber,
-  isCommerceClientEnabled,
-} from '../commerce/env';
+import { getAuthorizedWhatsappNumber, isCommerceClientEnabled } from '../commerce/env';
 import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { AppLink } from '../routing/AppLink';
 import { appPaths } from '../routing/routes';
@@ -71,7 +67,6 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const [whatsappOrderResult, setWhatsappOrderResult] =
     useState<WhatsappOrderResult | null>(null);
   const [checkoutError, setCheckoutError] = useState('');
-  const [manualPaymentNotice, setManualPaymentNotice] = useState('');
   const [fulfillmentDraft, setFulfillmentDraft] = useState<FulfillmentDraft>(INITIAL_FULFILLMENT);
   const [whatsappConsent, setWhatsappConsent] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -86,7 +81,6 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const whatsappResultTitleRef = useRef<HTMLHeadingElement>(null);
   const whatsappOrderPendingRef = useRef(false);
   const whatsappNumber = getAuthorizedWhatsappNumber();
-  const mercadoPagoPaymentLink = getAuthorizedMercadoPagoPaymentLink();
   const commerceEnabled = isCommerceClientEnabled();
   const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
   const quote = useMemo(
@@ -103,15 +97,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
   const cartOperationPending = checkoutPending || whatsappOrderPending;
+  const cartHasAvailabilityConflict = items.some(({ product, quantity }) =>
+    quantity > getProductCartLimit(product));
   const addressRequired = requiresDeliveryAddress(fulfillmentDraft.method);
   const whatsappReady = validation.value !== null && whatsappConsent;
   const whatsappUrl = whatsappOrderResult === null || whatsappNumber === null
     ? null
     : buildWhatsappUrl(whatsappNumber, whatsappOrderResult);
-
-  useEffect(() => {
-    setManualPaymentNotice('');
-  }, [checkoutTotalMinor]);
 
   useEffect(() => {
     setQuantityDrafts((current) => {
@@ -176,60 +168,25 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       void trackAnalyticsEvent('checkout_redirect', { path: appPaths.cart });
       window.location.assign(result.checkoutUrl);
     } catch (error: unknown) {
+      const errorCode = commerceErrorCode(error);
+      if (
+        errorCode !== null &&
+        [
+          'CATALOG_VERSION_CONFLICT',
+          'CATALOG_VERSION_REQUIRED',
+          'INSUFFICIENT_STOCK',
+          'PRODUCT_UNAVAILABLE',
+          'MERCADO_LIBRE_CATALOG_STALE',
+        ].includes(errorCode)
+      ) {
+        await refreshRuntimeCatalog().catch(() => undefined);
+      }
       setCheckoutError(
-        error instanceof Error ? error.message : 'No se pudo iniciar el pago.',
+        errorCode === 'CATALOG_VERSION_CONFLICT' && error instanceof Error
+          ? `${error.message} Revisá el precio actualizado y volvé a presionar Pagar con Mercado Pago.`
+          : error instanceof Error ? error.message : 'No se pudo iniciar el pago.',
       );
       setCheckoutPending(false);
-    }
-  }
-
-  function prepareManualPayment(event: MouseEvent<HTMLAnchorElement>) {
-    if (
-      whatsappOrderPending ||
-      mercadoPagoPaymentLink === null ||
-      items.length === 0 ||
-      quote.kind === 'manual' ||
-      !Number.isSafeInteger(checkoutTotalMinor) ||
-      checkoutTotalMinor <= 0
-    ) {
-      event.preventDefault();
-      return;
-    }
-
-    setShowErrors(true);
-    setCheckoutError('');
-    if (validation.value === null) {
-      event.preventDefault();
-      focusFirstError(validation.errors);
-      return;
-    }
-
-    void trackAnalyticsEvent('manual_payment_click', { path: appPaths.cart });
-
-    const amount = formatManualPaymentAmount(checkoutTotalMinor);
-    const displayTotal = formatMinor(checkoutTotalMinor);
-    if (navigator.clipboard === undefined) {
-      setManualPaymentNotice(
-        `Ingresá ${displayTotal} en Mercado Pago. El navegador no permitió copiar el monto automáticamente.`,
-      );
-      return;
-    }
-
-    try {
-      void navigator.clipboard.writeText(amount).then(
-        () => {
-          setManualPaymentNotice(`Monto copiado: ${displayTotal}. Pegalo en Mercado Pago.`);
-        },
-        () => {
-          setManualPaymentNotice(
-            `Ingresá ${displayTotal} en Mercado Pago. No se pudo copiar el monto automáticamente.`,
-          );
-        },
-      );
-    } catch {
-      setManualPaymentNotice(
-        `Ingresá ${displayTotal} en Mercado Pago. No se pudo copiar el monto automáticamente.`,
-      );
     }
   }
 
@@ -353,7 +310,6 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     setConfirmingClear(false);
     setCheckoutError('');
     setWhatsappOrderResult(null);
-    setManualPaymentNotice('');
     setQuantityDrafts({});
     setQuantityErrors({});
     setFulfillmentDraft(INITIAL_FULFILLMENT);
@@ -416,6 +372,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               <div className="cart-items" aria-label="Productos del carrito">
                 {items.map(({ product, quantity, unitPrice, subtotal }) => {
                   const maximum = getProductCartLimit(product);
+                  const availabilityConflict = quantity > maximum;
                   const quantityError = quantityErrors[product.id];
                   return (
                   <article
@@ -437,12 +394,19 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                         {formatProductPrice({ amount: unitPrice, currency: 'ARS' })}
                         {product.presentation === undefined ? null : ` · ${product.presentation}`}
                       </p>
+                      {availabilityConflict ? (
+                        <p className="form-error" role="status">
+                          {maximum === 0
+                            ? 'Este producto ya no está disponible. Eliminalo del carrito para continuar.'
+                            : `La cantidad disponible cambió a ${maximum}. Elegí una cantidad válida para continuar.`}
+                        </p>
+                      ) : null}
                       <div className="cart-line-controls">
                         <button
                           className="quantity-button"
                           type="button"
                           aria-label={`Reducir cantidad de ${product.name}`}
-                          disabled={cartOperationPending || quantity <= 1}
+                          disabled={cartOperationPending || quantity <= 1 || maximum === 0}
                           onClick={() => changeQuantity(product.id, quantity - 1, maximum)}
                         >
                           −
@@ -455,7 +419,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                             min="1"
                             max={maximum}
                             inputMode="numeric"
-                            disabled={cartOperationPending}
+                            disabled={cartOperationPending || maximum === 0}
                             aria-label={`Cantidad de ${product.name}`}
                             value={quantityDrafts[product.id] ?? String(quantity)}
                             aria-invalid={quantityError === undefined ? undefined : true}
@@ -568,30 +532,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 <button
                   className="button button-primary"
                   type="button"
-                  disabled={cartOperationPending || quote.kind === 'manual'}
+                  disabled={cartOperationPending || quote.kind === 'manual' || cartHasAvailabilityConflict}
                   onClick={() => void startCheckout()}
                 >
                   {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
                 </button>
-              ) : mercadoPagoPaymentLink !== null && quote.kind === 'online' ? (
-                <>
-                  <a
-                    className="button button-primary"
-                    href={mercadoPagoPaymentLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-disabled={whatsappOrderPending || undefined}
-                    onClick={prepareManualPayment}
-                  >
-                    Copiar {formatMinor(checkoutTotalMinor)} y abrir Mercado Pago
-                  </a>
-                  <p className="cart-configuration-note">
-                    Cobro temporal manual: el enlace autorizado de Mercado Pago está configurado sin monto. El sitio copia el total para que lo pegues al abrir el Link de Pago. Después registrá el pedido y abrí WhatsApp para asociar el pago y coordinar la entrega.
-                  </p>
-                  {manualPaymentNotice === '' ? null : (
-                    <p className="cart-configuration-note" role="status">{manualPaymentNotice}</p>
-                  )}
-                </>
               ) : (
                 <>
                   <button className="button button-primary" type="button" disabled>
@@ -631,7 +576,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     className="button button-secondary"
                     type="button"
                     aria-describedby="whatsapp-readiness"
-                    disabled={cartOperationPending || whatsappNumber === null || !whatsappReady}
+                    disabled={cartOperationPending || whatsappNumber === null || !whatsappReady || cartHasAvailabilityConflict}
                     onClick={() => void registerWhatsappOrder()}
                   >
                     {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
@@ -711,18 +656,18 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }
 }
 
+function commerceErrorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  const code = (error as Readonly<{ code?: unknown }>).code;
+  return typeof code === 'string' ? code : null;
+}
+
 function FieldError({ id, message }: Readonly<{ id: string; message: string | undefined }>) {
   return message === undefined ? null : <span className="field-error" id={id}>{message}</span>;
 }
 
 function formatMinor(value: number): string {
   return formatProductPrice({ amount: value / 100, currency: 'ARS' }) ?? '$ 0';
-}
-
-function formatManualPaymentAmount(valueMinor: number): string {
-  const pesos = Math.trunc(valueMinor / 100);
-  const cents = valueMinor % 100;
-  return cents === 0 ? String(pesos) : `${pesos},${String(cents).padStart(2, '0')}`;
 }
 
 function formatWeight(grams: number): string {

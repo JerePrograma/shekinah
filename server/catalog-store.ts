@@ -10,7 +10,8 @@ import {
 } from '../src/catalog/model';
 import type { CatalogProductDetail, Product } from '../src/catalog/model';
 import { HttpError } from './http';
-import type { D1Database } from './platform';
+import { getCatalogUnitForDisplay, listMappedCatalogUnits } from './mercado-libre-catalog';
+import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
 const baseCategories = parseCategories(categorySource);
@@ -84,6 +85,43 @@ export function getBaseCatalogProductDetail(productId: string): CatalogProductDe
 export async function listCatalogProducts(database: D1Database): Promise<readonly Product[]> {
   const details = await listCatalogProductDetails(database);
   return Object.freeze(details.map(toProductSummary));
+}
+
+export async function listRuntimeCatalogProducts(
+  database: D1Database,
+  env: Env,
+): Promise<readonly Product[]> {
+  if (env.MERCADO_LIBRE_CATALOG_ENABLED !== 'true') {
+    return listCatalogProducts(database);
+  }
+  const [details, units] = await Promise.all([
+    listCatalogProductDetails(database),
+    listMappedCatalogUnits(database, env),
+  ]);
+  const detailById = new Map(details.map((detail) => [detail.id, detail]));
+  return Object.freeze(units.flatMap((unit): readonly Product[] => {
+    if (unit.localProductId === null) return [];
+    const detail = detailById.get(unit.localProductId);
+    if (detail === undefined || unit.currency !== 'ARS' || unit.priceMinor <= 0) return [];
+    return [toProductSummary(projectMercadoLibreUnit(detail, unit))];
+  }));
+}
+
+export async function getRuntimeCatalogProductDetail(
+  database: D1Database,
+  env: Env,
+  productId: string,
+  excludedReservationOrderId: string | null = null,
+): Promise<CatalogProductDetail | null> {
+  if (env.MERCADO_LIBRE_CATALOG_ENABLED !== 'true') {
+    return getCatalogProductDetail(database, productId, excludedReservationOrderId);
+  }
+  const [detail, unit] = await Promise.all([
+    getCatalogProductDetail(database, productId, excludedReservationOrderId),
+    getCatalogUnitForDisplay(database, env, productId),
+  ]);
+  if (detail === null) return null;
+  return unit === null ? null : projectMercadoLibreUnit(detail, unit);
 }
 
 export async function listCatalogProductDetails(
@@ -335,7 +373,34 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
       ? {}
       : { shortDescription: detail.shortDescription }),
     ...(detail.primaryImage === undefined ? {} : { primaryImage: detail.primaryImage }),
+    ...(detail.commerce === undefined ? {} : { commerce: detail.commerce }),
   });
+}
+
+function projectMercadoLibreUnit(
+  detail: CatalogProductDetail,
+  unit: Awaited<ReturnType<typeof listMappedCatalogUnits>>[number],
+): CatalogProductDetail {
+  const available = unit.sellable && unit.checkoutEligible;
+  const projected: CatalogProductDetail = Object.freeze({
+    ...detail,
+    price: Object.freeze({ amount: unit.priceMinor / 100, currency: 'ARS' as const }),
+    availability: available ? 'available' : 'unavailable',
+    stockQuantity: unit.availableQuantity,
+    reservedQuantity: 0,
+    availableQuantity: unit.availableQuantity,
+    commerce: Object.freeze({
+      source: 'mercadolibre' as const,
+      catalogVersion: unit.catalogVersion,
+      syncedAt: unit.lastSyncedAt,
+      itemId: unit.itemId,
+      ...(unit.variationId === null ? {} : { variationId: unit.variationId }),
+      checkoutEligible: unit.checkoutEligible,
+    }),
+  });
+  const withoutSale = { ...projected };
+  delete withoutSale.salePrice;
+  return Object.freeze(withoutSale);
 }
 
 function parseWritableProduct(
@@ -379,6 +444,7 @@ function stripInventoryProjection(value: unknown): unknown {
   const writable = { ...value };
   delete writable.reservedQuantity;
   delete writable.availableQuantity;
+  delete writable.commerce;
   return writable;
 }
 

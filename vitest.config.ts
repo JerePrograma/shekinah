@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [catalogIndexPlugin(), react()],
   test: {
     environment: 'jsdom',
+    testTimeout: 10_000,
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: [

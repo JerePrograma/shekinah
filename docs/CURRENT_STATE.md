@@ -1,12 +1,31 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-23.
+Fecha de revisión: 2026-08-24.
+
+## Actualización Mercado Libre y retiro del importe manual
+
+El código vigente incorpora la arquitectura descrita en `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`: OAuth con tokens rotativos cifrados, seller esperado, paginación y lotes, variaciones, mapeo exacto por SKU, espejo D1, umbral de 300 segundos, notificaciones como disparadores, reservas upstream con `x-version`, compensación idempotente y backoffice de diagnóstico.
+
+El flujo público de Link de Pago, copia del total e ingreso manual de importe fue retirado. El carrito conserva **Pagar con Mercado Pago** como única acción de pago; cuando los flags están cerrados se muestra deshabilitada, sin enlace alternativo. `manual_payment_click` permanece sólo como dato analítico histórico.
+
+La producción continúa cerrada mediante:
+
+```text
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
+COMMERCE_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+```
+
+No se afirma que Mercado Libre esté conectado ni que el catálogo real esté sincronizado: el seller, IDs, cantidades y modalidades sólo podrán documentarse después de completar la vinculación/OAuth humana. Tampoco se afirma rotación final de Mercado Pago: el panel exige verificación alternativa después de alcanzar el límite de intentos. Ningún producto se habilita por defecto y no se ejecutó un pago monetario real.
+
+Las secciones posteriores preservan evidencia operativa e histórica previa. Cuando mencionan el fallback manual como activo describen un deployment anterior y quedan reemplazadas por esta actualización para el estado funcional nuevo.
 
 SHA funcional publicado y validado para conciliación autoritativa de Mercado Pago:
 
 `0f93d620faad6e93f76a364e9dc6794ac5c5f119`
 
-Este documento separa código, validación, publicación y configuración externa. La analítica y el fallback manual están activos; credenciales y Webhooks ya fueron corregidos, pero Checkout Pro continúa expresamente deshabilitado hasta completar pagos controlados y su conciliación.
+Este documento separa código, validación, publicación y configuración externa. La analítica y WhatsApp están activos; el fallback de importe manual fue retirado y Checkout Pro continúa expresamente deshabilitado hasta completar la integración nueva.
 
 ## Producto
 
@@ -20,7 +39,7 @@ Shekinah conserva:
 La aplicación incorpora:
 
 - carrito persistente;
-- fallback manual temporal mediante Link de Pago de Mercado Pago sin monto predefinido;
+- Checkout Pro directo sin importe manual, cerrado por flags;
 - pedido pendiente de WhatsApp persistido antes de abrir el canal, con datos mínimos obligatorios, reserva derivada e idempotencia server-side sin PII en Web Storage;
 - Mercado Pago Checkout Pro por redirección preparado pero todavía deshabilitado;
 - pedidos y consulta pública de estado para Checkout Pro;
@@ -50,12 +69,11 @@ Autorización explícita recibida el 2026-08-10:
 ```text
 PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
-VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
 El origen canónico de producción es `https://shekinah.ar`. Preview conserva `https://shekinah-7dl.pages.dev`; la Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` al apex, preserva path/query y termina en el apex 200.
 
-El canal manual usa esos datos públicos sin secretos. El Link de Pago continúa sin monto predefinido y separado de Checkout Pro. Antes de abrir WhatsApp, el flujo publicado llama a una Pages Function que recalcula carrito y total, persiste un pedido `channel='whatsapp'` en estado `pending`, sus items y, cuando corresponde, fulfillment determinístico, y reserva el stock disponible. Esto no genera una preferencia ni confirma automáticamente un pago.
+WhatsApp usa el dato público autorizado sin secretos. Antes de abrirlo, el flujo llama a una Pages Function que recalcula carrito y total, persiste un pedido `channel='whatsapp'` en estado `pending`, sus items y, cuando corresponde, fulfillment determinístico, y reserva el stock disponible. Esto no genera una preferencia ni confirma automáticamente un pago.
 
 No se requiere VPS para este fallback. La arquitectura automatizada tampoco depende de un VPS: su backend previsto son Cloudflare Pages Functions y D1.
 
@@ -67,7 +85,7 @@ Checkout Pro y analítica continúan separados del backoffice. Al cierre funcion
 
 - Checkout Pro automatizado deshabilitado;
 - analítica first-party habilitada en production y preview, siempre opt-in;
-- fallback manual de Link de Pago autorizado en el código;
+- Link de Pago manual retirado del código público;
 - WhatsApp manual autorizado en el código;
 - D1, binding y migraciones `0001` a `0008` están configurados de forma aislada en production y preview;
 - el SHA funcional `58ff324133cf665baacf946f54e960cd3d519398` tiene CI `32584798635` y check de Cloudflare Pages en `success`; producción lo publicó en `https://6483757c.shekinah-7dl.pages.dev`;
@@ -119,7 +137,7 @@ La evidencia histórica de Backoffice V2 y analítica para el SHA `bcb6ec0956fa4
 
 La evidencia local del cierre 2026-08-22 quedó verificada: `npm run verify` aprobó lint, TypeScript, 46 archivos/251 pruebas Vitest, verificadores, build y 24 pruebas Playwright; `npm run build:pages` también aprobó. CI, migraciones, deployment y smoke remoto no destructivo se comprobaron después de la validación funcional.
 
-El código conserva comportamiento fail-closed ante variables ausentes. Pages habilita analítica explícitamente y mantiene comercio cerrado. Los defaults públicos de WhatsApp y Link de Pago autorizados el 2026-08-10 son independientes de esos flags y no habilitan Checkout Pro.
+El código conserva comportamiento fail-closed ante variables ausentes. Pages habilita analítica explícitamente, mantiene comercio cerrado y conserva únicamente el default público autorizado de WhatsApp.
 
 ## Arquitectura
 
@@ -128,7 +146,7 @@ El código conserva comportamiento fail-closed ante variables ausentes. Pages ha
 - persistencia automatizada: Cloudflare D1;
 - almacenamiento configurado y desplegado para imágenes administradas: Cloudflare R2 mediante `CATALOG_IMAGES`, con `shekinah` en production y `shekinah-preview` en preview; smoke autenticado de imágenes no repetido en esta activación;
 - pagos automatizados: Mercado Pago Checkout Pro;
-- fallback temporal: Link de Pago manual más WhatsApp;
+- canal asistido: pedido WhatsApp reservado, sin Link de Pago;
 - administración: credencial propia y sesión firmada; Cloudflare Access opcional como fallback interno;
 - analítica: first-party basada en consentimiento.
 
@@ -163,7 +181,7 @@ Toda continuidad debe distinguir:
 6. D1 y migraciones;
 7. secretos y bindings;
 8. activación de Checkout Pro productivo;
-9. fallback manual público;
+9. estado público de Checkout Pro y WhatsApp;
 10. pruebas de humo.
 
 Ninguna etapa demuestra automáticamente la siguiente.

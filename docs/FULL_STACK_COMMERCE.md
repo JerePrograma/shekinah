@@ -4,6 +4,8 @@
 
 Este documento describe el código preparado en el repositorio. No certifica por sí solo que D1, Mercado Pago Checkout Pro, Cloudflare Access, Pages o el webhook estén configurados en producción.
 
+Desde el 2026-08-24, `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md` extiende y, ante conflicto, reemplaza este documento para catálogo, stock intercanal y checkout público. El Link de Pago manual fue retirado; sus descripciones posteriores se conservan únicamente para explicar datos y deployments históricos.
+
 La solución conserva el catálogo versionado como base comercial canónica y persiste únicamente altas, overrides y tombstones en D1. En el Checkout Pro integrado el frontend envía únicamente identificadores y cantidades; `server/dynamic-cart.ts` vuelve a localizar los productos en el catálogo efectivo, valida disponibilidad y recalcula el importe en centavos ARS. Ningún precio o total recibido desde el navegador se utiliza como autoridad para crear una preferencia. Los productos con `stockQuantity` participan en una reserva D1 creada atómicamente antes de solicitar la preferencia y consumida sólo por una transición verificada del pago de Mercado Pago.
 
 Checkout Pro recibe items y cantidades en la preferencia, pero no ofrece un inventario comercial que reemplace al stock del negocio. Por eso «stock directo con Mercado Pago» significa que la reserva D1 nace con la intención de preferencia y que sólo el pago consultado autoritativamente al proveedor prolonga o consume esa reserva; D1 continúa siendo la fuente canónica y transaccional. Referencia: [crear preferencia de pago](https://www.mercadopago.com.ar/developers/es/docs/checkout-pro/create-payment-preference).
@@ -17,7 +19,7 @@ Desde el 2026-08-10 existe además un canal manual autorizado mientras Checkout 
 ### Frontend
 
 - `src/cart/`: dominio puro, persistencia defensiva en `localStorage`, reconciliación con el catálogo y sincronización por evento `storage`.
-- `src/pages/CartPage.tsx`: edición de cantidades, eliminación, vaciado, total, Checkout Pro integrado, fallback manual de Link de Pago y WhatsApp.
+- `src/pages/CartPage.tsx`: edición de cantidades, eliminación, vaciado, total, Checkout Pro directo y WhatsApp, sin ingreso manual de importe.
 - `src/pages/PaymentReturnPage.tsx`: los retornos del proveedor sólo consultan el estado persistido del Checkout Pro integrado; no interpretan `status`, `collection_status` ni otros parámetros del navegador como aprobación.
 - `src/analytics/`: consentimiento explícito, sesión aleatoria revocable y eventos first-party mínimos.
 - `src/admin/AdminBackoffice.tsx`: gate de sesión, login, logout y navegación V2; monta `ProductManager` y `AdminPage` únicamente después de autenticación server-side y conserva el editor de productos al cambiar de sección.
@@ -28,10 +30,9 @@ Los datos públicos autorizados actuales son:
 ```text
 PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
-VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-`src/commerce/env.ts` usa esos valores como defaults rastreados porque fueron autorizados expresamente. Una variable de build presente puede sobrescribirlos o deshabilitarlos con una cadena vacía. El número se normaliza a formato internacional de 8 a 15 dígitos y el Link de Pago sólo se acepta como HTTPS del host `link.mercadopago.com.ar`, sin credenciales, puerto, query ni fragmento. Son datos públicos, no secretos.
+`src/commerce/env.ts` conserva únicamente el número autorizado, normalizado a formato internacional de 8 a 15 dígitos. La variable y la validación del Link de Pago fueron eliminadas del bundle público.
 
 El custom domain del apex está activo y responde HTTPS 200; production usa el apex y preview conserva el dominio técnico de Pages. La redirección HTTPS de `www` al apex responde `301`, preserva path/query y termina en 200; el pack Universal cubre el apex y wildcard y negocia TLS 1.3.
 
@@ -42,6 +43,7 @@ El custom domain del apex está activo y responde HTTPS 200; production usa el a
 | `/api/checkout/preferences` | POST | mismo origen, flag de comercio, D1 y secretos |
 | `/api/orders/whatsapp` | POST | mismo origen, D1, carrito autoritativo e idempotencia |
 | `/api/webhooks/mercadopago` | POST | firma HMAC de Mercado Pago, D1 e idempotencia |
+| `/api/webhooks/mercadolibre` | POST | aplicación/seller configurados, D1, refetch autoritativo e idempotencia |
 | `/api/orders/:publicToken/status` | GET | token de capacidad no reversible |
 | `/api/analytics/events` | POST | mismo origen y analítica habilitada |
 | `/api/privacy/delete-session` | POST | mismo origen y hash de sesión |
@@ -50,6 +52,9 @@ El custom domain del apex está activo y responde HTTPS 200; production usa el a
 | `/api/admin/auth/session` | GET/HEAD | sesión propia firmada o fallback Access opcional |
 | `/api/admin/auth/logout` | POST | mismo origen y eliminación inmediata de cookie |
 | `/api/admin/*` restante | según contrato | middleware con identidad unificada y auditoría |
+| `/api/admin/mercadolibre/status` | GET | sesión administrativa y auditoría |
+| `/api/admin/mercadolibre/authorize` | POST | sesión administrativa, mismo origen, OAuth con `state` |
+| `/api/admin/mercadolibre/sync` | POST | sesión administrativa, mismo origen y lock D1 |
 
 El checkout integrado se puede desactivar sin interrumpir webhooks de pagos iniciados previamente: `COMMERCE_ENABLED=false` bloquea únicamente la creación de nuevas preferencias. El webhook continúa operando mientras existan el binding D1 y las credenciales requeridas.
 
@@ -78,6 +83,8 @@ La migración aditiva `migrations/0002_fulfillment_and_retention.sql` agrega `ch
 
 `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` agrega `stock_reserved_at`, `stock_reservation_expires_at` y `stock_consumed_at` a pedidos, `stock_controlled` a cada snapshot y una huella de fulfillment para WhatsApp. Los triggers comparten disponibilidad entre canales, serializan la última unidad y hacen que `approved` o `refunded` observado por webhook consuma una sola vez. La reserva vence con la preferencia salvo que exista un pago `pending`; un reembolso conserva el consumo y exige una reposición manual sólo cuando la mercadería realmente vuelve.
 
+`migrations/0009_mercadolibre_catalog_and_inventory.sql` agrega el espejo Mercado Libre, OAuth cifrado, ciclos de sincronización, notificaciones y un ledger de reserva/compensación. Las unidades Mercado Libre no duplican el contador local `stock_controlled`: la reducción versionada upstream ya representa la exclusión intercanal.
+
 Stock y referencias de imágenes administradas reutilizan el JSON validado de `catalog_product_mutations`; `0001` a `0006` permanecen inmutables y no se rellenan cantidades ficticias para el catálogo base. `0007` se aplicó y verificó por separado, primero en preview y luego en producción, antes del cierre operativo del flujo publicado.
 
 ## Imágenes de catálogo administradas
@@ -88,7 +95,9 @@ El servidor acepta únicamente JPEG, PNG y WebP de hasta 4 MiB, comprueba MIME y
 
 Producción reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`, ambos bajo el binding `CATALOG_IMAGES` de Pages. R2 está activo; los buckets conservan clase Standard/default y `publicR2DevEnabled=false`, de modo que la lectura pública sólo se expone por la ruta first-party. El deployment del SHA funcional preserva ambos bindings. El smoke autenticado de upload/reemplazo/delete no se repitió en la activación analítica por no disponer de la credencial administrativa en claro.
 
-## Fallback manual temporal autorizado
+## Fallback manual retirado
+
+La secuencia siguiente describe el flujo histórico y ya no está disponible en la UI pública. Se conserva para interpretar eventos `manual_payment_click` y evidencia previa; no debe reimplementarse como fallback.
 
 El fallback sólo aparece cuando `VITE_COMMERCE_ENABLED` no vale `true`, existe un Link de Pago autorizado y el total de envío es determinístico.
 

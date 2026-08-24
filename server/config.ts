@@ -60,3 +60,16 @@ export function readAnalyticsRetentionDays(env: Env): number | null {
   }
   return value;
 }
+
+export function readMercadoLibreCatalogMaxAgeSeconds(env: Env): number {
+  const raw = env.MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS ?? '300';
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 60 || value > 3_600) {
+    throw new HttpError(
+      503,
+      'MERCADO_LIBRE_MAX_AGE_INVALID',
+      'El umbral de frescura de Mercado Libre no es válido.',
+    );
+  }
+  return value;
+}

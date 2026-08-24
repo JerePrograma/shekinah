@@ -19,6 +19,10 @@ const checkoutProStockMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0008_checkout_pro_stock_and_whatsapp_identity.sql'),
   'utf8',
 );
+const mercadoLibreCatalogMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0009_mercadolibre_catalog_and_inventory.sql'),
+  'utf8',
+);
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -37,6 +41,7 @@ describe('migraciones D1', () => {
       database.exec(analyticsManualPaymentMigration);
       database.exec(whatsappOrderReservationsMigration);
       database.exec(checkoutProStockMigration);
+      database.exec(mercadoLibreCatalogMigration);
       expect(() => database.exec(`${commerceMigration}\n${fulfillmentMigration}\n${catalogMigration}\n${adminAuthMigration}`)).not.toThrow();
 
       const schema = database.prepare('SELECT name, type FROM sqlite_schema ORDER BY type, name').all();
@@ -60,6 +65,9 @@ describe('migraciones D1', () => {
         expect.objectContaining({ name: 'whatsapp_order_items_delete_immutable', type: 'trigger' }),
         expect.objectContaining({ name: 'whatsapp_orders_consume_reservation', type: 'trigger' }),
         expect.objectContaining({ name: 'checkout_orders_consume_stock', type: 'trigger' }),
+        expect.objectContaining({ name: 'mercadolibre_connections', type: 'table' }),
+        expect.objectContaining({ name: 'mercadolibre_catalog_units', type: 'table' }),
+        expect.objectContaining({ name: 'mercadolibre_inventory_operations', type: 'table' }),
       ]));
       expect(schema).not.toContainEqual(expect.objectContaining({ name: 'analytics_events_v2' }));
       expect(database.prepare(
@@ -363,6 +371,7 @@ function applyAllMigrations(database: DatabaseSync): void {
     analyticsManualPaymentMigration,
     whatsappOrderReservationsMigration,
     checkoutProStockMigration,
+    mercadoLibreCatalogMigration,
   ]) {
     database.exec(migration);
   }

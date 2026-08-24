@@ -11,6 +11,10 @@ import type {
 } from '../../../../../server/platform';
 import { assertSameOrigin } from '../../../../../server/validation';
 import { resolveWhatsappOrder } from '../../../../../server/whatsapp-orders';
+import {
+  hasMercadoLibreInventoryReservation,
+  releaseMercadoLibreInventory,
+} from '../../../../../server/mercado-libre-inventory';
 
 export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
   data,
@@ -30,6 +34,9 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
       assertSameOrigin(request, env);
       if (typeof id !== 'string') {
         throw new HttpError(400, 'INVALID_ORDER_ID', 'El pedido no es válido.');
+      }
+      if (await hasMercadoLibreInventoryReservation(database, id)) {
+        await releaseMercadoLibreInventory(database, env, id);
       }
       return jsonResponse(
         await resolveWhatsappOrder(

@@ -19,11 +19,11 @@ describe('Backoffice V2', () => {
     render(<AdminPage navigate={vi.fn()} section="summary" />);
 
     expect(await screen.findByRole('heading', { name: 'Métricas de interacción' })).toBeVisible();
-    expect(screen.getByText('Sesiones con clic en Mercado Pago')).toBeVisible();
+    expect(screen.getByText('Sesiones históricas con Link de Pago manual')).toBeVisible();
     expect(screen.getByText('2 clics válidos')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Métricas financieras confirmadas' })).toBeVisible();
     expect(screen.getByText(/no pagos confirmados/i)).toBeVisible();
-    expect(screen.getByText(/Checkout Pro integrado continúa deshabilitado/i)).toBeVisible();
+    expect(screen.getByText(/La disponibilidad pública de Checkout Pro depende/i)).toBeVisible();
     expect(document.body).not.toHaveTextContent(/NaN|Infinity/u);
   });
 

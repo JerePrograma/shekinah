@@ -65,7 +65,10 @@ describe('carrito', () => {
         { productId: 'uno', quantity: -1 },
       ],
     }, products);
-    expect(parsed.items).toEqual([{ productId: 'uno', quantity: 5 }]);
+    expect(parsed.items).toEqual([
+      { productId: 'uno', quantity: 5 },
+      { productId: 'agotado', quantity: 1 },
+    ]);
   });
 
   it('impide superar la cantidad de líneas', () => {
@@ -91,7 +94,7 @@ describe('carrito', () => {
     expect(parseStoredCart(stored, []).items).toHaveLength(0);
     expect(parseStoredCart(stored, [product(dynamic.id, 1_000, {
       availability: 'unavailable',
-    })]).items).toHaveLength(0);
+    })]).items).toEqual([{ productId: dynamic.id, quantity: 2 }]);
   });
 
   it('limita y reconcilia cantidades con el stock controlado sin afectar productos legacy', () => {
@@ -109,7 +112,8 @@ describe('carrito', () => {
     }, [tracked, depleted, legacy]);
 
     expect(stored.items).toEqual([
-      { productId: tracked.id, quantity: 3 },
+      { productId: tracked.id, quantity: 9 },
+      { productId: depleted.id, quantity: 1 },
       { productId: legacy.id, quantity: MAX_CART_QUANTITY },
     ]);
     const added = addCartItem(emptyCart(), tracked.id, 3, 3);

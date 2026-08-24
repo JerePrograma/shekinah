@@ -20,6 +20,14 @@ export async function expireWhatsappReservations(
            AND status = 'pending'
            AND stock_consumed_at IS NULL
            AND stock_reservation_expires_at IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM mercadolibre_inventory_operations AS ml_operations
+             WHERE ml_operations.order_id = orders.id
+               AND ml_operations.action = 'reserve'
+               AND ml_operations.status IN (
+                 'pending', 'applied', 'confirmed', 'compensation_pending', 'uncertain'
+               )
+           )
            AND unixepoch(stock_reservation_expires_at) <= unixepoch(?)`,
       )
       .bind(
@@ -31,6 +39,33 @@ export async function expireWhatsappReservations(
       .run();
     return result.meta.changes ?? 0;
   } catch (error: unknown) {
+    if (
+      error instanceof Error &&
+      /no such table:\s*mercadolibre_inventory_operations/iu.test(error.message)
+    ) {
+      const result = await database
+        .prepare(
+          `UPDATE orders
+           SET status = 'rejected',
+               last_error_code = ?,
+               resolved_at = ?,
+               resolved_by = 'system:reservation-expiry',
+               updated_at = ?
+           WHERE channel = 'whatsapp'
+             AND status = 'pending'
+             AND stock_consumed_at IS NULL
+             AND stock_reservation_expires_at IS NOT NULL
+             AND unixepoch(stock_reservation_expires_at) <= unixepoch(?)`,
+        )
+        .bind(
+          WHATSAPP_RESERVATION_EXPIRED_CODE,
+          timestamp,
+          timestamp,
+          timestamp,
+        )
+        .run();
+      return result.meta.changes ?? 0;
+    }
     if (
       error instanceof Error &&
       /no such (?:table|column):\s*(?:orders|(?:\w+\.)?(?:channel|stock_consumed_at|stock_reservation_expires_at|resolved_at|resolved_by))/iu.test(error.message)

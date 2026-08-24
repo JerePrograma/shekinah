@@ -1,5 +1,7 @@
 # Fulfillment, envío y retención
 
+Desde el 2026-08-24, los pedidos vinculados a Mercado Libre usan el mismo fulfillment existente pero reservan mediante el ledger upstream documentado en `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. Tokens OAuth cifrados, ciclos, notificaciones y operaciones de inventario no contienen PII de comprador; su retención operativa no autoriza borrar órdenes o trazabilidad histórica.
+
 ## Alcance
 
 El contrato de fulfillment aplica tanto a Checkout Pro como a WhatsApp. Antes de abrir WhatsApp, el backend valida nombre, celular, modalidad y, sólo para Correo Argentino, domicilio completo. También exige consentimiento explícito para compartir esos datos mediante WhatsApp, recalcula el carrito y persiste `orders` y `order_items`. `order_fulfillment` se persiste cuando la tarifa es determinística. Si Correo requiere una cotización manual, los datos quedan en memoria React y en el mensaje que el comprador decide abrir; D1 conserva sólo una huella SHA-256 para verificar la idempotencia, no la PII en claro. Nunca se guardan en `localStorage` ni analítica.
@@ -18,7 +20,7 @@ Una presentación explícita y válida se usa sólo cuando no contradice un peso
 
 En Checkout Pro integrado, `orders.total_minor` conserva el total autoritativo de productos más envío. Mercado Pago recibe el envío como un ítem separado y el webhook continúa comparando moneda e importe completo contra el pedido.
 
-En el canal manual, el Link de Pago continúa sin monto predefinido y el cobro debe verificarse manualmente. Sin embargo, el pedido de WhatsApp ya conserva en `orders.total_minor` el total recalculado por servidor antes de abrir el mensaje; ese registro y su estado `pending` no prueban pago, venta ni revenue.
+El Link de Pago manual fue retirado. El pedido de WhatsApp conserva en `orders.total_minor` el total recalculado por servidor antes de abrir el mensaje; ese registro y su estado `pending` no prueban pago, venta ni revenue.
 
 ## Migración
 

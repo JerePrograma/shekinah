@@ -14,13 +14,17 @@ import type {
 } from '../src/commerce/fulfillment';
 import { getAdminOrderWithFulfillment } from './admin-fulfillment';
 import type { AdminOrderDetail } from './admin-fulfillment';
-import { getCatalogProductDetail } from './catalog-store';
+import { getRuntimeCatalogProductDetail } from './catalog-store';
 import type { RecalculatedLine, ServerCatalogProduct } from './catalog';
 import { randomToken, sha256Hex } from './crypto';
 import { requireCheckoutFulfillment } from './fulfillment';
 import { HttpError } from './http';
+import {
+  reconcileExpiredMercadoLibreReservations,
+  reserveMercadoLibreInventory,
+} from './mercado-libre-inventory';
 import { cartFingerprint } from './orders';
-import type { D1Database, D1PreparedStatement } from './platform';
+import type { D1Database, D1PreparedStatement, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 import {
   assertExactKeys,
@@ -93,7 +97,7 @@ type WhatsappOrderItemRow = Readonly<{
 type ParsedWhatsappOrderInput = Readonly<{
   idempotencyKey: string;
   fulfillment: CheckoutFulfillment;
-  items: readonly Readonly<{ productId: string; quantity: number }>[];
+  items: readonly Readonly<{ productId: string; quantity: number; catalogVersion?: string }>[];
 }>;
 
 type PersistedFulfillmentRow = Readonly<{
@@ -109,15 +113,34 @@ type PersistedFulfillmentRow = Readonly<{
 export async function createWhatsappOrder(
   database: D1Database,
   value: unknown,
+  env: Env = {},
 ): Promise<CreatedWhatsappOrder> {
   const input = parseWhatsappOrderInput(value);
-  await expireWhatsappReservations(database);
+  if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+    await reconcileExpiredMercadoLibreReservations(database, env);
+  } else {
+    await expireWhatsappReservations(database);
+  }
   const existing = await replayWhatsappOrder(database, input);
-  if (existing !== null) return existing;
+  if (existing !== null) {
+    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+      await reserveMercadoLibreInventory(
+        database,
+        env,
+        existing.response.orderId,
+        input.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          expectedCatalogVersion: item.catalogVersion ?? '',
+        })),
+      );
+    }
+    return existing;
+  }
 
   let cart: WhatsappCart;
   try {
-    cart = await calculateWhatsappCart(input, database);
+    cart = await calculateWhatsappCart(input, database, env);
   } catch (error: unknown) {
     const raced = await replayWhatsappOrder(database, input);
     if (raced !== null) return raced;
@@ -162,16 +185,39 @@ export async function createWhatsappOrder(
         reservationExpiresAt,
       ),
     ...cart.lines.map(({ product, quantity, subtotalMinor }) =>
-      database
-        .prepare(
+      product.providerCatalogVersion === undefined
+        ? database
+          .prepare(
+            `INSERT INTO order_items (
+              order_id, product_id, name, presentation, sku,
+              quantity, unit_price_minor, subtotal_minor, stock_controlled
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
+          )
+          .bind(
+            orderId,
+            product.id,
+            product.name,
+            product.presentation ?? null,
+            product.sku ?? null,
+            quantity,
+            product.unitPriceMinor,
+            subtotalMinor,
+            product.stockControlled === true ? 1 : 0,
+            orderId,
+          )
+        : database
+          .prepare(
           `INSERT INTO order_items (
             order_id, product_id, name, presentation, sku,
-            quantity, unit_price_minor, subtotal_minor, stock_controlled
+            quantity, unit_price_minor, subtotal_minor, stock_controlled,
+            provider_catalog_version
           )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
         )
-        .bind(
+          .bind(
           orderId,
           product.id,
           product.name,
@@ -181,8 +227,9 @@ export async function createWhatsappOrder(
           product.unitPriceMinor,
           subtotalMinor,
           product.stockControlled === true ? 1 : 0,
+          product.providerCatalogVersion ?? null,
           orderId,
-        ),
+          ),
     ),
   ];
   const shippingTier = cart.shippingTier;
@@ -236,6 +283,24 @@ export async function createWhatsappOrder(
       'ORDER_ALREADY_RESOLVED',
       'El pedido asociado a esta solicitud ya fue resuelto.',
     );
+  }
+
+  if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+    try {
+      await reserveMercadoLibreInventory(
+        database,
+        env,
+        order.id,
+        input.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          expectedCatalogVersion: item.catalogVersion ?? '',
+        })),
+      );
+    } catch (error: unknown) {
+      await resolveWhatsappOrder(database, order.id, 'rejected', 'system:mercadolibre-reservation-failed');
+      throw error;
+    }
   }
 
   return Object.freeze({
@@ -311,11 +376,12 @@ export async function resolveWhatsappOrder(
 export async function recalculateWhatsappCart(
   value: unknown,
   database: D1Database,
+  env: Env = {},
 ): Promise<Readonly<{ idempotencyKey: string; cart: WhatsappCart }>> {
   const input = parseWhatsappOrderInput(value);
   return Object.freeze({
     idempotencyKey: input.idempotencyKey,
-    cart: await calculateWhatsappCart(input, database),
+    cart: await calculateWhatsappCart(input, database, env),
   });
 }
 
@@ -348,17 +414,20 @@ function parseWhatsappOrderInput(value: unknown): ParsedWhatsappOrderInput {
     }
     assertExactKeys(
       rawLine,
-      ['productId', 'quantity'],
+      ['productId', 'quantity', 'catalogVersion'],
       'INVALID_CART_LINE',
       'Una línea del carrito contiene campos no permitidos.',
     );
     const productId = readSafeText(rawLine.productId, 'productId', 180);
     const quantity = readInteger(rawLine.quantity, 'quantity', 1, MAX_CART_QUANTITY);
+    const catalogVersion = rawLine.catalogVersion === undefined
+      ? undefined
+      : readSafeText(rawLine.catalogVersion, 'catalogVersion', 64);
     if (seen.has(productId)) {
       throw new HttpError(400, 'DUPLICATE_PRODUCT', 'El carrito contiene un producto duplicado.');
     }
     seen.add(productId);
-    return Object.freeze({ productId, quantity });
+    return Object.freeze({ productId, quantity, ...(catalogVersion === undefined ? {} : { catalogVersion }) });
   });
   return Object.freeze({
     idempotencyKey,
@@ -370,17 +439,33 @@ function parseWhatsappOrderInput(value: unknown): ParsedWhatsappOrderInput {
 async function calculateWhatsappCart(
   input: ParsedWhatsappOrderInput,
   database: D1Database,
+  env: Env,
 ): Promise<WhatsappCart> {
   const lines: RecalculatedLine[] = [];
   let productsTotalMinor = 0;
   let itemCount = 0;
-  for (const { productId, quantity } of input.items) {
-    const detail = await getCatalogProductDetail(database, productId);
+  for (const { productId, quantity, catalogVersion } of input.items) {
+    const detail = await getRuntimeCatalogProductDetail(database, env, productId);
     if (detail === null) {
       throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
     }
     if (!isProductEffectivelyAvailable(detail)) {
       throw new HttpError(409, 'PRODUCT_UNAVAILABLE', `${detail.name} ya no está disponible.`);
+    }
+    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+      if (
+        detail.commerce === undefined ||
+        catalogVersion === undefined ||
+        !/^[a-f0-9]{64}$/u.test(catalogVersion)
+      ) {
+        throw new HttpError(409, 'CATALOG_VERSION_REQUIRED', 'Actualizá el carrito antes de continuar.');
+      }
+      if (catalogVersion !== detail.commerce.catalogVersion) {
+        throw new HttpError(409, 'CATALOG_VERSION_CONFLICT', `${detail.name} cambió desde que se agregó al carrito.`);
+      }
+      if (!detail.commerce.checkoutEligible) {
+        throw new HttpError(409, 'MERCADO_LIBRE_STOCK_UNPROTECTED', `${detail.name} requiere confirmación de disponibilidad.`);
+      }
     }
     const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
     if (availableQuantity !== undefined && quantity > availableQuantity) {
@@ -401,7 +486,8 @@ async function calculateWhatsappCart(
       ...(detail.sku === undefined ? {} : { sku: detail.sku }),
       unitPriceMinor,
       available: true,
-      stockControlled: detail.stockQuantity !== undefined,
+      stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined,
+      ...(detail.commerce === undefined ? {} : { providerCatalogVersion: detail.commerce.catalogVersion }),
     });
     const subtotalMinor = unitPriceMinor * quantity;
     productsTotalMinor += subtotalMinor;
@@ -475,19 +561,36 @@ async function replayWhatsappOrder(
       'La clave de idempotencia ya fue usada para otro pedido.',
     );
   }
-  const persistedItems = await database
-    .prepare(
-      'SELECT product_id, quantity FROM order_items WHERE order_id = ? ORDER BY product_id',
-    )
-    .bind(order.id)
-    .all<Readonly<{ product_id: string; quantity: number }>>();
+  let persistedItems;
+  try {
+    persistedItems = await database
+      .prepare(
+        `SELECT product_id, quantity, provider_catalog_version
+         FROM order_items WHERE order_id = ? ORDER BY product_id`,
+      )
+      .bind(order.id)
+      .all<Readonly<{ product_id: string; quantity: number; provider_catalog_version: string | null }>>();
+  } catch (error: unknown) {
+    if (!(error instanceof Error) || !/no such column:\s*provider_catalog_version/iu.test(error.message)) {
+      throw error;
+    }
+    persistedItems = await database
+      .prepare(
+        `SELECT product_id, quantity, NULL AS provider_catalog_version
+         FROM order_items WHERE order_id = ? ORDER BY product_id`,
+      )
+      .bind(order.id)
+      .all<Readonly<{ product_id: string; quantity: number; provider_catalog_version: string | null }>>();
+  }
   const requestedItems = [...input.items]
     .sort((left, right) => left.productId.localeCompare(right.productId));
   if (
     persistedItems.results?.length !== requestedItems.length ||
     requestedItems.some((item, index) => {
       const persisted = persistedItems.results?.[index];
-      return persisted?.product_id !== item.productId || persisted.quantity !== item.quantity;
+      return persisted?.product_id !== item.productId ||
+        persisted.quantity !== item.quantity ||
+        (item.catalogVersion !== undefined && persisted.provider_catalog_version !== item.catalogVersion);
     }) ||
     !await fulfillmentMatches(database, order, input.fulfillment)
   ) {

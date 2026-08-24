@@ -198,7 +198,13 @@ function isReusableAttempt(
 
 function cartFingerprint(items: readonly CartItem[]): string {
   return cartLineFingerprint(
-    items.map(({ product, quantity }) => ({ productId: product.id, quantity })),
+    items.map(({ product, quantity }) => ({
+      productId: product.id,
+      quantity,
+      ...(product.commerce === undefined
+        ? {}
+        : { catalogVersion: product.commerce.catalogVersion }),
+    })),
   );
 }
 

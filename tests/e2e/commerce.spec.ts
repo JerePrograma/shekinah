@@ -86,21 +86,16 @@ test('mantiene feedback comprensible en móvil con movimiento reducido', async (
   expect(widths.content).toBeLessThanOrEqual(widths.viewport + 1);
 });
 
-test('habilita el Link de Pago y WhatsApp autorizados sin activar Checkout Pro', async ({ page }) => {
+test('mantiene Checkout cerrado sin exponer monto manual y conserva WhatsApp', async ({ page }) => {
   await page.goto('/catalogo');
   await page.locator('[data-product]').first().getByRole('button', {
     name: /Agregar .* al carrito/u,
   }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
 
-  const paymentLink = page.getByRole('link', { name: /Copiar .* y abrir Mercado Pago/u });
-  await expect(paymentLink).toBeVisible();
-  await expect(paymentLink).toHaveAttribute(
-    'href',
-    'https://link.mercadopago.com.ar/shekinahmoreno',
-  );
-  await expect(paymentLink).toHaveAttribute('target', '_blank');
-  await expect(page.getByText(/Cobro temporal manual/iu)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toBeDisabled();
+  await expect(page.getByRole('link', { name: /Mercado Pago/u })).toHaveCount(0);
+  await expect(page.getByText(/copiar|pegalo|ingresá.*monto/iu)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
   await fillWhatsappFulfillment(page);
   await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
@@ -316,7 +311,7 @@ test('respeta ausencia, rechazo, aceptación y revocación del consentimiento', 
   expect(events).toHaveLength(countBeforeWithdrawal + 1);
 });
 
-test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp separados', async ({ context, page }) => {
+test('mide sólo aperturas reales y conserva Checkout cerrado, pedido y WhatsApp separados', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.removeItem('shekinah.analytics-consent.v1');
   });
@@ -329,9 +324,6 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
   await page.route('**/api/checkout/preferences', async (route) => {
     checkoutPreferenceCalls += 1;
     await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
-  });
-  await context.route('https://link.mercadopago.com.ar/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Destino simulado</p>' });
   });
   let orderRequests = 0;
   await page.route('**/api/orders/whatsapp', async (route) => {
@@ -350,13 +342,8 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
   }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
 
-  const paymentLink = page.getByRole('link', { name: /Copiar .* y abrir Mercado Pago/u });
-  await expect(paymentLink).toHaveAttribute(
-    'href',
-    'https://link.mercadopago.com.ar/shekinahmoreno',
-  );
-  await paymentLink.click();
-  await expect(page.getByRole('textbox', { name: 'Nombre completo' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toBeDisabled();
+  await expect(page.getByRole('link', { name: /Mercado Pago/u })).toHaveCount(0);
   expect(events.filter(isManualPaymentClick)).toHaveLength(0);
 
   await page.getByLabel('Modalidad').selectOption('correo_argentino');
@@ -367,20 +354,6 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
   await page.getByRole('textbox', { name: 'Provincia' }).fill('Buenos Aires');
   await page.getByRole('textbox', { name: 'Código postal' }).fill('B7600');
 
-  const paymentPopupPromise = page.waitForEvent('popup');
-  await paymentLink.click();
-  const paymentPopup = await paymentPopupPromise;
-  await paymentPopup.close();
-  await expect.poll(() => events.filter(isManualPaymentClick).length).toBe(1);
-
-  const manualEvent = events.find(isManualPaymentClick);
-  expect(manualEvent).toEqual(expect.objectContaining({
-    eventName: 'manual_payment_click',
-    path: '/carrito',
-  }));
-  expect(Object.keys(manualEvent ?? {}).sort()).toEqual([
-    'consentVersion', 'deviceClass', 'eventId', 'eventName', 'path', 'sessionId', 'source',
-  ]);
   expect(checkoutPreferenceCalls).toBe(0);
 
   await page.getByLabel(/Acepto compartir los datos/iu).check();
@@ -396,7 +369,7 @@ test('mide sólo aperturas reales y conserva Mercado Pago, pedido y WhatsApp sep
     link.click();
   });
   await expect.poll(() => events.filter(isWhatsappOpen).length).toBe(1);
-  expect(events.filter(isManualPaymentClick)).toHaveLength(1);
+  expect(events.filter(isManualPaymentClick)).toHaveLength(0);
   expect(checkoutPreferenceCalls).toBe(0);
 });
 

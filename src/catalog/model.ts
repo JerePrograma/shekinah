@@ -53,6 +53,14 @@ export type CatalogProductSummary = Readonly<{
   availableQuantity?: number;
   shortDescription?: string;
   primaryImage?: ProductImage;
+  commerce?: Readonly<{
+    source: 'mercadolibre';
+    catalogVersion: string;
+    syncedAt: string;
+    itemId: string;
+    variationId?: string;
+    checkoutEligible: boolean;
+  }>;
 }>;
 
 export type Product = CatalogProductSummary;
@@ -266,6 +274,9 @@ export function parseProduct(value: unknown): Product {
     throw new InvalidProductError('La proyección de stock disponible no es válida.');
   }
   const shortDescription = readOptionalText(value, 'shortDescription');
+  const commerce = Object.hasOwn(value, 'commerce')
+    ? parseCommerceSnapshot(value.commerce)
+    : undefined;
 
   return Object.freeze({
     id,
@@ -284,6 +295,34 @@ export function parseProduct(value: unknown): Product {
     ...(availableQuantity === undefined ? {} : { availableQuantity }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
+    ...(commerce === undefined ? {} : { commerce }),
+  });
+}
+
+function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']> {
+  if (!isRecord(value) || value.source !== 'mercadolibre') {
+    throw new InvalidProductError('La referencia comercial del producto no es válida.');
+  }
+  const catalogVersion = readRequiredText(value, 'catalogVersion');
+  const syncedAt = readRequiredText(value, 'syncedAt');
+  const itemId = readRequiredText(value, 'itemId');
+  const variationId = readOptionalText(value, 'variationId');
+  if (
+    !/^[a-f0-9]{64}$/u.test(catalogVersion) ||
+    Number.isNaN(Date.parse(syncedAt)) ||
+    !/^MLA\d{5,30}$/u.test(itemId) ||
+    (variationId !== undefined && !/^\d{1,30}$/u.test(variationId)) ||
+    typeof value.checkoutEligible !== 'boolean'
+  ) {
+    throw new InvalidProductError('La referencia comercial del producto no es válida.');
+  }
+  return Object.freeze({
+    source: 'mercadolibre',
+    catalogVersion,
+    syncedAt: new Date(syncedAt).toISOString(),
+    itemId,
+    ...(variationId === undefined ? {} : { variationId }),
+    checkoutEligible: value.checkoutEligible,
   });
 }
 

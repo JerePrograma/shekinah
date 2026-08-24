@@ -1,5 +1,9 @@
 # Activos autorizados
 
+## Imágenes de Mercado Libre
+
+La sincronización puede almacenar en D1 la URL comercial principal como dato de proveedor y trazabilidad. Esa URL no autoriza por sí sola a incorporar un binario remoto al inventario visual público. Mientras no exista autorización documental adicional, la UI continúa usando únicamente los activos locales/R2 ya autorizados; no descarga imágenes de Mercado Libre durante build ni runtime del navegador.
+
 ## Logo de Shekinah
 
 - archivo: `public/assets/logo-shekinah.png`;

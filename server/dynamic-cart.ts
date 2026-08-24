@@ -1,16 +1,17 @@
 import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../src/commerce/contracts';
 import { isProductEffectivelyAvailable } from '../src/catalog/model';
 import { calculateShippingQuote } from '../src/commerce/fulfillment';
-import { getCatalogProductDetail } from './catalog-store';
+import { getRuntimeCatalogProductDetail } from './catalog-store';
 import type { RecalculatedCart, RecalculatedLine, ServerCatalogProduct } from './catalog';
 import { requireCheckoutFulfillment } from './fulfillment';
 import { HttpError } from './http';
-import type { D1Database } from './platform';
+import type { D1Database, Env } from './platform';
 import { assertExactKeys, isRecord, readInteger, readSafeText } from './validation';
 
 export async function recalculateDynamicCart(
   value: unknown,
   database: D1Database,
+  env: Env = {},
   excludedReservationOrderId: string | null = null,
 ): Promise<RecalculatedCart> {
   if (!isRecord(value)) throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
@@ -20,13 +21,14 @@ export async function recalculateDynamicCart(
   const seen = new Set<string>(); const lines: RecalculatedLine[] = []; let productsTotalMinor = 0; let itemCount = 0;
   for (const rawLine of value.items) {
     if (!isRecord(rawLine)) throw new HttpError(400, 'INVALID_CART_LINE', 'Una línea del carrito no es válida.');
-    assertExactKeys(rawLine, ['productId', 'quantity'], 'INVALID_CART_LINE', 'Una línea del carrito contiene campos no permitidos.');
+    assertExactKeys(rawLine, ['productId', 'quantity', 'catalogVersion'], 'INVALID_CART_LINE', 'Una línea del carrito contiene campos no permitidos.');
     const productId = readSafeText(rawLine.productId, 'productId', 180);
     const quantity = readInteger(rawLine.quantity, 'quantity', 1, MAX_CART_QUANTITY);
     if (seen.has(productId)) throw new HttpError(400, 'DUPLICATE_PRODUCT', 'El carrito contiene un producto duplicado.');
     seen.add(productId);
-    const detail = await getCatalogProductDetail(
+    const detail = await getRuntimeCatalogProductDetail(
       database,
+      env,
       productId,
       excludedReservationOrderId,
     );
@@ -35,9 +37,27 @@ export async function recalculateDynamicCart(
     const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
     if (availableQuantity !== undefined && quantity > availableQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
     const available = isProductEffectivelyAvailable(detail);
+    const expectedCatalogVersion = rawLine.catalogVersion === undefined
+      ? null
+      : readSafeText(rawLine.catalogVersion, 'catalogVersion', 64);
+    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+      if (
+        detail.commerce === undefined ||
+        expectedCatalogVersion === null ||
+        !/^[a-f0-9]{64}$/u.test(expectedCatalogVersion)
+      ) {
+        throw new HttpError(409, 'CATALOG_VERSION_REQUIRED', 'Actualizá el carrito antes de continuar.');
+      }
+      if (expectedCatalogVersion !== detail.commerce.catalogVersion) {
+        throw new HttpError(409, 'CATALOG_VERSION_CONFLICT', `${detail.name} cambió desde que se agregó al carrito.`);
+      }
+      if (!detail.commerce.checkoutEligible) {
+        throw new HttpError(409, 'MERCADO_LIBRE_STOCK_UNPROTECTED', `${detail.name} requiere confirmación de disponibilidad.`);
+      }
+    }
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
-    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available, stockControlled: detail.stockQuantity !== undefined });
+    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available, stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined, ...(detail.commerce === undefined ? {} : { providerCatalogVersion: detail.commerce.catalogVersion }) });
     const subtotalMinor = unitPriceMinor * quantity;
     if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
     productsTotalMinor += subtotalMinor; itemCount += quantity;

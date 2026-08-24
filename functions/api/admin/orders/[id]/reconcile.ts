@@ -45,6 +45,7 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
           id,
           accessToken,
           requireCommerceMode(env),
+          env,
         ),
       );
     },

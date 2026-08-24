@@ -15,6 +15,12 @@ import {
   verifyMercadoPagoWebhook,
 } from '../../../server/mercado-pago';
 import { getOrderById, updateOrderFromPayment } from '../../../server/orders';
+import {
+  consumeMercadoLibreInventoryReservation,
+  hasMercadoLibreInventoryReservation,
+  markRefundForInventoryReview,
+  releaseMercadoLibreInventory,
+} from '../../../server/mercado-libre-inventory';
 import { finishPaymentEvent, registerPaymentEvent } from '../../../server/payment-events';
 import type { D1Database, PagesFunction } from '../../../server/platform';
 import { isRecord, readJsonBody } from '../../../server/validation';
@@ -126,13 +132,23 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       });
       return noContentResponse(200);
     }
+    const mappedStatus = mapPaymentStatus(payment.status);
     await updateOrderFromPayment(
       database,
       order,
       payment,
-      mapPaymentStatus(payment.status),
+      mappedStatus,
       eventKey,
     );
+    if (await hasMercadoLibreInventoryReservation(database, order.id)) {
+      if (mappedStatus === 'approved') {
+        await consumeMercadoLibreInventoryReservation(database, order.id, env);
+      } else if (mappedStatus === 'rejected' || mappedStatus === 'cancelled') {
+        await releaseMercadoLibreInventory(database, env, order.id);
+      } else if (mappedStatus === 'refunded') {
+        await markRefundForInventoryReview(database, order.id);
+      }
+    }
     await finishPaymentEvent(database, eventKey, eventOwner, {
       status: 'processed',
       responseCode: 200,

@@ -1,5 +1,11 @@
 # Continuación
 
+## Prioridad vigente desde 2026-08-24
+
+Continuar con `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El Link de Pago y el ingreso manual de importe ya no forman parte del flujo público. Checkout Pro y Mercado Libre permanecen cerrados hasta completar OAuth del seller correcto, rotaciones de Mercado Pago, migración `0009`, sincronización real, sandbox, CI, deployment y smoke del mismo SHA.
+
+No reactivar `VITE_MERCADO_PAGO_PAYMENT_LINK` ni usar `manual_payment_click` como capacidad vigente. El evento se conserva únicamente por compatibilidad histórica de analítica.
+
 ## Fuente de verdad
 
 Trabajar exclusivamente sobre el estado real de `main` y `origin/main`.
@@ -20,13 +26,14 @@ El repositorio contiene una evolución full-stack basada en:
 - React, TypeScript estricto y Vite;
 - Cloudflare Pages Functions;
 - Cloudflare D1;
-- Mercado Pago Checkout Pro con reserva de stock D1 ligada a preferencia y pago, preparado pero no activado públicamente;
-- Link de Pago manual y pedido pendiente de WhatsApp con datos obligatorios y reserva de stock en D1;
+- Mercado Pago Checkout Pro directo, preparado pero no activado públicamente;
+- Mercado Libre como autoridad runtime opcional y fail-closed, con espejo D1 y reserva upstream versionada;
+- pedido pendiente de WhatsApp con datos obligatorios y la misma capa de reserva que Checkout Pro;
 - autenticación administrativa propia y Cloudflare Access opcional;
 - backoffice visual de catálogo con stock opcional e imágenes administradas preparadas para R2;
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
 - detalle de pedidos, resolución administrativa limitada a aprobar/rechazar pendientes de WhatsApp y conciliación de Checkout Pro exclusivamente contra Mercado Pago;
-- analítica first-party opcional con `manual_payment_click` para el fallback manual.
+- analítica first-party opcional; `manual_payment_click` conserva únicamente eventos históricos.
 - feedback de interacción contextual y accesible en catálogo, carrito, retorno de pago y ABM administrativo;
 - protección de cambios sin guardar y operaciones administrativas activas frente a navegación o cierre de sesión.
 
@@ -68,9 +75,9 @@ WhatsApp: +549 2236 21-6559
 Link de Pago: https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-El código puede usar el WhatsApp normalizado `5492236216559` y el Link de Pago como fallback manual mientras `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. La analítica se activó de forma separada siguiendo la secuencia validación → `0006` → secretos independientes → deployment del SHA exacto → smoke preview → production. Esta autorización y activación no habilitan Checkout Pro ni webhooks.
+El código puede usar el WhatsApp normalizado `5492236216559`. La autorización histórica del Link de Pago no lo mantiene activo: el fallback fue retirado y no debe restaurarse. La analítica se activó de forma separada siguiendo la secuencia validación → `0006` → secretos independientes → deployment del SHA exacto → smoke preview → production. Esta autorización y activación no habilitan Checkout Pro ni webhooks.
 
-El canal manual no requiere VPS. El flujo publicado registra el pedido y reserva stock mediante Pages Functions y D1 antes de abrir WhatsApp; el Link de Pago continúa separado y no confirma el cobro.
+El canal WhatsApp no requiere VPS. El flujo registra el pedido y reserva stock mediante Pages Functions y D1 antes de abrir WhatsApp; no existe pago manual automático asociado.
 
 ## Identidad externa verificada
 

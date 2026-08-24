@@ -1,21 +1,22 @@
 # Operación del comercio
 
-## Fallback manual temporal
+## Operación vigente desde 2026-08-24
 
-Mientras `COMMERCE_ENABLED=false`, el flujo público autorizado usa el Link de Pago `https://link.mercadopago.com.ar/shekinahmoreno` y WhatsApp `5492236216559`.
+Mientras `COMMERCE_ENABLED=false`, **Pagar con Mercado Pago** permanece deshabilitado y no existe Link de Pago ni campo de importe. WhatsApp `5492236216559` continúa disponible sólo después de crear el pedido y reservar inventario.
 
 Procedimiento operativo mínimo:
 
-1. El comprador arma el carrito y, si el envío tiene total definido, puede copiar el monto y abrir el Link de Pago.
-2. Al solicitar WhatsApp, el cliente y el servidor exigen nombre, celular, modalidad y consentimiento explícito; el domicilio completo se exige sólo para Correo Argentino. Recién entonces el servidor recalcula el carrito, crea un pedido pendiente y reserva stock antes de abrir el mensaje.
-3. El comprador ingresa el monto en Mercado Pago y envía el mensaje que incluye el identificador del pedido.
-4. Antes de aprobar, preparar o entregar, el comercio debe verificar el cobro directamente en su cuenta de Mercado Pago. No aceptar capturas, texto de WhatsApp ni el retorno del navegador como prueba suficiente.
-5. Aprobar desde el backoffice confirma la venta, descuenta el stock físico una vez y consume la reserva. Rechazar conserva el físico y libera la reserva.
-6. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; el Link de Pago continúa bloqueado mientras el total sea indeterminado.
+1. Al solicitar WhatsApp, cliente y servidor exigen nombre, celular, modalidad y consentimiento explícito; el domicilio completo se exige sólo para Correo Argentino.
+2. El servidor sincroniza selectivamente Mercado Libre cuando el flag está activo, recalcula el carrito, crea el pedido y aplica la reserva versionada antes de abrir el mensaje.
+3. Antes de aprobar, preparar o entregar, el comercio verifica el acuerdo/cobro por el procedimiento operativo vigente; una captura o texto de WhatsApp no es evidencia financiera autoritativa.
+4. Aprobar consume la reserva exactamente una vez. Rechazar o vencer libera upstream exactamente una vez.
+5. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; Checkout Pro permanece bloqueado mientras el total sea indeterminado.
 
-Este flujo siempre escribe `orders` y `order_items`; escribe `order_fulfillment` sólo para datos completos con tarifa determinística. No escribe `payments` ni `payment_events` y no recibe webhooks del Link de Pago generado en el panel. `pending` significa reserva vigente, no pago. Sólo la verificación manual seguida de aprobación administrativa confirma la venta.
+Este flujo escribe `orders` y `order_items`; escribe `order_fulfillment` sólo para datos completos con tarifa determinística. `pending` significa reserva vigente, no pago. La aprobación administrativa de WhatsApp no se convierte en revenue de Mercado Pago.
 
-Con consentimiento y analítica habilitada, un clic válido en el enlace registra `manual_payment_click`; la apertura del canal asistido registra `whatsapp_open`. Ambos son interacciones first-party sin monto, carrito ni PII. No sumarlos a pedidos, pagos aprobados, revenue ni «ventas».
+Con consentimiento y analítica habilitada, la apertura del canal asistido registra `whatsapp_open`. `manual_payment_click` sólo existe en datos históricos. Ninguno se suma a pagos aprobados, revenue ni ventas.
+
+La operación de sincronización, conciliación, OAuth y rollback se detalla en `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`.
 
 ## Controles diarios de Checkout Pro
 
@@ -30,6 +31,16 @@ Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
 - No reponer stock por `refunded` o `charged_back`: la devolución financiera no demuestra que la mercadería haya vuelto.
 - Comparar `approved_payment_count` con la cantidad de pedidos con pago aprobado confirmado: el primer valor cuenta pagos exactos individuales y, si es mayor, conserva la señal de un posible cobro duplicado.
 - Controlar errores de Functions sin registrar cuerpos, access tokens, firmas ni secretos.
+
+## Controles de Mercado Libre
+
+- Revisar en **Mercado Libre** la fecha y resultado del último ciclo, seller, obsoletos, errores, ausentes, ambiguos y duplicados.
+- Ejecutar **Sincronizar ahora** antes de abrir comercio y ante una notificación fallida o diferencia observada.
+- No habilitar unidades `legacy_available_quantity`, `selling_address`, `meli_facility` o `unknown`; carecen de la reserva versionada exigida.
+- Detener nuevas ventas de una unidad con operaciones `uncertain` o `compensation_pending` hasta conciliarla.
+- No repetir PUT de stock a ciegas. Reconsultar User Product y resolver el delta registrado.
+- Tratar `REFUND_REQUIRES_MANUAL_STOCK_POLICY` como decisión pendiente; no reponer automáticamente.
+- Mantener `MERCADO_LIBRE_CATALOG_ENABLED=true` durante un rollback si existen reservas que todavía deban consumirse o liberarse.
 
 Consultas de diagnóstico de sólo lectura:
 
@@ -91,6 +102,9 @@ La interfaz `/admin` consume:
 - `/api/admin/summary`;
 - `/api/admin/orders?limit=25`;
 - `/api/admin/orders/:id` para el detalle y `/api/admin/orders/:id/reconcile` para conciliación autoritativa de Checkout Pro;
+- `/api/admin/mercadolibre/status` para estado y contadores;
+- `/api/admin/mercadolibre/authorize` para iniciar OAuth;
+- `/api/admin/mercadolibre/sync` para reconciliación completa y liberación de reservas vencidas;
 - `/api/admin/exports/orders.csv`;
 - `/api/admin/exports/analytics.csv`;
 - `/api/admin/audit`.

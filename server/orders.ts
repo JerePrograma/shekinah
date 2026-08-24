@@ -84,16 +84,39 @@ export async function prepareOrder({
         stockReservationExpiresAt,
       ),
     ...cart.lines.map(({ product, quantity, subtotalMinor }) =>
-      database
-        .prepare(
+      product.providerCatalogVersion === undefined
+        ? database
+          .prepare(
+            `INSERT INTO order_items (
+              order_id, product_id, name, presentation, sku,
+              quantity, unit_price_minor, subtotal_minor, stock_controlled
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
+          )
+          .bind(
+            orderId,
+            product.id,
+            product.name,
+            product.presentation ?? null,
+            product.sku ?? null,
+            quantity,
+            product.unitPriceMinor,
+            subtotalMinor,
+            product.stockControlled === true ? 1 : 0,
+            orderId,
+          )
+        : database
+          .prepare(
           `INSERT INTO order_items (
             order_id, product_id, name, presentation, sku,
-            quantity, unit_price_minor, subtotal_minor, stock_controlled
+            quantity, unit_price_minor, subtotal_minor, stock_controlled,
+            provider_catalog_version
           )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM orders WHERE id = ?)`,
         )
-        .bind(
+          .bind(
           orderId,
           product.id,
           product.name,
@@ -103,8 +126,9 @@ export async function prepareOrder({
           product.unitPriceMinor,
           subtotalMinor,
           product.stockControlled === true ? 1 : 0,
+          product.providerCatalogVersion ?? null,
           orderId,
-        ),
+          ),
     ),
   ];
   try {
@@ -250,6 +274,25 @@ export async function markOrderFailed(
          AND status IN ('preference_pending', 'failed')`,
     )
     .bind(errorCode, retrySafe ? 1 : 0, retrySafe ? 1 : 0, now, orderId, attemptToken)
+    .run();
+}
+
+export async function failOrderBeforePreference(
+  database: D1Database,
+  orderId: string,
+  errorCode: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await database
+    .prepare(
+      `UPDATE orders
+       SET status = 'failed', last_error_code = ?, updated_at = ?,
+           stock_reservation_expires_at = ?
+       WHERE id = ? AND channel = 'checkout_pro'
+         AND mp_preference_id IS NULL
+         AND status IN ('preference_pending', 'failed')`,
+    )
+    .bind(errorCode, now, now, orderId)
     .run();
 }
 

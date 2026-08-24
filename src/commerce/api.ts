@@ -9,6 +9,16 @@ import type {
 import { MAX_CART_LINES, MAX_CART_QUANTITY } from './contracts';
 import type { CheckoutFulfillment } from './fulfillment';
 
+export class CommerceApiError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'CommerceApiError';
+    this.code = code;
+  }
+}
+
 export async function createCheckoutPreference(
   items: readonly CartItem[],
   idempotencyKey: string,
@@ -24,6 +34,9 @@ export async function createCheckoutPreference(
       items: items.map(({ product, quantity }) => ({
         productId: product.id,
         quantity,
+        ...(product.commerce === undefined
+          ? {}
+          : { catalogVersion: product.commerce.catalogVersion }),
       })),
       fulfillment,
     }),
@@ -64,6 +77,9 @@ export async function createWhatsappOrder(
     items: Object.freeze(items.map(({ product, quantity }) => Object.freeze({
       productId: product.id,
       quantity,
+      ...(product.commerce === undefined
+        ? {}
+        : { catalogVersion: product.commerce.catalogVersion }),
     }))),
     fulfillment,
     whatsappConsent,
@@ -158,7 +174,10 @@ function apiError(payload: unknown, fallback: string): Error {
     typeof payload.error.message === 'string' &&
     payload.error.message.trim() !== ''
   ) {
-    return new Error(payload.error.message);
+    return new CommerceApiError(
+      typeof payload.error.code === 'string' ? payload.error.code : 'COMMERCE_REQUEST_FAILED',
+      payload.error.message,
+    );
   }
   return new Error(fallback);
 }

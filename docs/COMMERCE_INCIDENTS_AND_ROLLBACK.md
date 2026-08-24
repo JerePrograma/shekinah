@@ -1,5 +1,7 @@
 # Incidentes y rollback
 
+Para incidentes de catálogo, OAuth, stock upstream, operaciones inciertas o notificaciones de Mercado Libre, seguir además `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El rollback no debe reactivar el Link de Pago manual. Mantener webhooks y ledger activos hasta resolver todas las reservas iniciadas.
+
 ## Prioridades
 
 1. Evitar nuevos cobros incorrectos.
@@ -21,23 +23,15 @@ VITE_COMMERCE_ENABLED=false
 
 Esto bloquea nuevas preferencias y conserva activo el webhook para pagos ya iniciados. No borrar la base, no deshabilitar D1 y no retirar las credenciales del webhook salvo que estén comprometidas.
 
-### Fallback manual de Link de Pago
+### Sin fallback de Link de Pago
 
-`COMMERCE_ENABLED=false` no bloquea el Link de Pago manual autorizado. Si también deben detenerse nuevos cobros manuales, deshabilitar explícitamente el enlace público en el build:
-
-```text
-VITE_MERCADO_PAGO_PAYMENT_LINK=
-```
-
-y desplegar ese cambio. Si también debe cerrarse el canal de carrito por WhatsApp:
+El Link de Pago ya no existe en el bundle público. `COMMERCE_ENABLED=false` bloquea nuevas preferencias y el build con `VITE_COMMERCE_ENABLED=false` oculta la acción activa. Si también debe cerrarse WhatsApp:
 
 ```text
 VITE_WHATSAPP_NUMBER=
 ```
 
-Los valores vacíos anulan los defaults públicos autorizados. Verificar después del deployment que el carrito muestre el pago deshabilitado y, si corresponde, WhatsApp deshabilitado. Si no es posible cambiar la configuración de build con seguridad, publicar un commit de reversión/corte; no hacer force-push.
-
-Un pago efectuado antes del corte manual debe verificarse directamente en la cuenta de Mercado Pago. El pedido WhatsApp puede existir en D1, pero no hay webhook asociado al Link de Pago del panel: aprobar o rechazar sólo después de la verificación operativa.
+Verificar después del deployment que el carrito muestre el pago deshabilitado y, si corresponde, WhatsApp deshabilitado. Si no es posible cambiar la configuración con seguridad, publicar un commit de reversión/corte; no hacer force-push.
 
 ## Firma o credencial de Mercado Pago comprometida
 
@@ -49,7 +43,7 @@ Un pago efectuado antes del corte manual debe verificarse directamente en la cue
 - validar cada pago afectado contra la API del proveedor;
 - documentar IDs, SHA, ventanas temporales y acciones.
 
-La rotación de credenciales de la aplicación de Checkout Pro no sustituye el corte del Link de Pago manual: son flujos distintos.
+La rotación de credenciales no sustituye el corte de nuevas preferencias ni la conciliación de pagos ya iniciados.
 
 ## D1 no disponible
 
@@ -60,7 +54,7 @@ El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe red
 - restaurar desde backup sólo con autorización y evidencia;
 - al recuperar servicio, revisar eventos `failed` y estados pendientes.
 
-El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir WhatsApp como si el pedido se hubiera registrado. El Link de Pago es una capacidad separada: decidir explícitamente si también debe cortarse durante el incidente.
+El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir WhatsApp como si el pedido se hubiera registrado.
 
 ## Stock inconsistente
 
@@ -140,7 +134,7 @@ No hacer `DROP TABLE` como parte de un rollback inmediato. Para revertir esquema
 
 - detener nuevas ventas integradas;
 - detener nuevas creaciones WhatsApp y resolver sus pedidos pendientes;
-- decidir por separado si se mantiene o corta el Link de Pago manual;
+- confirmar que el Link de Pago manual no reapareció;
 - exportar/respaldar D1;
 - definir SQL de reversión revisado;
 - probarlo sobre una copia local;

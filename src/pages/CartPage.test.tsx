@@ -39,7 +39,6 @@ vi.mock('../data/runtime-catalog', () => ({
   useRuntimeCatalogProducts: () => [product],
 }));
 vi.mock('../commerce/env', () => ({
-  getAuthorizedMercadoPagoPaymentLink: () => null,
   getAuthorizedWhatsappNumber: () => '5492236216559',
   isCommerceClientEnabled: () => commerceState.enabled,
 }));

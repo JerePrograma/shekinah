@@ -11,6 +11,7 @@ import { AdminPage } from '../pages/AdminPage';
 import type { AdminSection } from '../pages/AdminPage';
 import type { Navigate } from '../routing/routes';
 import { ProductManager } from './ProductManager';
+import { MercadoLibrePanel } from './MercadoLibrePanel';
 import type { ProductInteractionState } from './ProductManager';
 
 type AdminIdentity = Readonly<{
@@ -310,6 +311,12 @@ export function AdminBackoffice({
           onUnauthorized={handleUnauthorized}
         />
       </div>
+      <div hidden={section !== 'inventory'}>
+        <MercadoLibrePanel
+          onOperationStateChange={handleOrderInteractionChange}
+          onUnauthorized={handleUnauthorized}
+        />
+      </div>
       <AdminPage
         navigate={navigate}
         onOperationStateChange={handleOrderInteractionChange}
@@ -323,6 +330,7 @@ export function AdminBackoffice({
 const ADMIN_SECTIONS: readonly Readonly<{ id: AdminSection; label: string }>[] = [
   { id: 'summary', label: 'Resumen' },
   { id: 'products', label: 'Productos' },
+  { id: 'inventory', label: 'Mercado Libre' },
   { id: 'orders', label: 'Pedidos' },
   { id: 'analytics', label: 'Analítica' },
   { id: 'audit', label: 'Auditoría' },

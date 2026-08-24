@@ -4,9 +4,9 @@
 
 Shekinah es una aplicación full-stack liviana construida con React, TypeScript estricto y Vite, desplegada mediante Cloudflare Pages.
 
-La interfaz pública continúa siendo una SPA. Las capacidades de servidor se implementan con Cloudflare Pages Functions y Cloudflare D1. Mercado Pago Checkout Pro se integra por redirección y webhook. Mientras esa integración permanezca cerrada, existe un fallback manual autorizado de Link de Pago más WhatsApp.
+La interfaz pública continúa siendo una SPA. Las capacidades de servidor se implementan con Cloudflare Pages Functions y Cloudflare D1. Mercado Libre aporta catálogo y stock autoritativos cuando su flag está habilitado; Mercado Pago Checkout Pro se integra por redirección y webhook. Con Checkout cerrado no existe fallback público de importe manual; WhatsApp permanece como canal de pedido reservado.
 
-La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md`.
+La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md` y `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`.
 
 ## Frontend
 
@@ -15,7 +15,7 @@ La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md
 - `src/App.tsx`: layout, navegación y selección de vista;
 - `src/pages/`: inicio, catálogo, producto, carrito, retornos de pago, privacidad, administración y 404;
 - `src/cart/`: estado persistente del carrito;
-- `src/commerce/`: contratos, API, sesión de checkout y configuración pública autorizada de fallback;
+- `src/commerce/`: contratos, API y sesión de checkout;
 - `src/analytics/`: consentimiento y cliente first-party;
 - `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo;
 - `src/styles.css`, `src/catalog.css`, `src/routing.css` y `src/commerce.css`: estilos locales.
@@ -29,6 +29,8 @@ El router propio conserva History API y enlaces HTML reales.
 ## Catálogo
 
 La fuente canónica conserva 510 productos y 16 categorías. `server/catalog-store.ts` construye el catálogo efectivo como base canónica más altas y overrides D1, menos tombstones D1. Si D1 o la tabla nueva no están disponibles, las lecturas públicas conservan el catálogo base; las escrituras administrativas fallan de forma explícita.
+
+Con `MERCADO_LIBRE_CATALOG_ENABLED=true`, esa base pasa a ser editorial: sólo se proyectan las unidades Mercado Libre mapeadas de forma exacta y el proveedor sustituye precio, estado y stock runtime. El frontend nunca consulta Mercado Libre directamente. Un catálogo obsoleto, ambiguo o con modalidad no versionada queda no comprable.
 
 El modelo actual agrega `stockQuantity` como atributo opcional dentro del mismo payload de mutación: ausencia significa stock no controlado y conserva el comportamiento de los 510 productos legacy. Si está presente debe ser un entero entre 0 y 1.000.000. El stock reservado no se duplica en un contador: se deriva de `order_items` para WhatsApp `pending` y Checkout Pro con ventana vigente o pago pendiente autoritativo. D1 impide reservar por encima del disponible y bajar o retirar el control de stock por debajo de reservas vigentes. WhatsApp consume al aprobar; Checkout Pro consume una sola vez al observar `approved` o `refunded` por webhook. Rechazar WhatsApp o vencer una preferencia sin pago libera por derivación, sin sumar stock.
 
@@ -49,15 +51,16 @@ El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor res
 - `migrations/0006_analytics_manual_payment_click.sql`: amplía de forma aditiva el CHECK cerrado de eventos para medir el clic manual sin perder eventos ni índices existentes;
 - `migrations/0007_whatsapp_order_reservations.sql`: canal de pedido, resolución administrativa, índices y triggers de reserva derivada, stock e invariantes de la máquina de estados WhatsApp;
 - `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql`: ventana y consumo de stock de Checkout Pro, snapshot de control por item y huella idempotente de los datos WhatsApp;
+- `migrations/0009_mercadolibre_catalog_and_inventory.sql`: OAuth cifrado, sincronización, unidades, notificaciones y ledger de reservas upstream;
 - `wrangler.example.jsonc`: configuración de referencia sin secretos.
 
 No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
 
 ## Pagos
 
-### Fallback manual vigente
+### Link de Pago retirado
 
-Cuando `VITE_COMMERCE_ENABLED` no vale `true`, el Link de Pago autorizado continúa separado y sin monto. Al solicitar por WhatsApp, la UI y la Function exigen los datos mínimos completos, recalculan productos, precios, total y stock disponible, crean de forma idempotente un pedido `pending` y sus items en D1 y sólo entonces permiten abrir el mensaje. El flujo no usa webhook ni confirma pagos automáticamente: el administrador debe aprobar para consumir la reserva o rechazar para liberarla.
+Cuando `VITE_COMMERCE_ENABLED` no vale `true`, **Pagar con Mercado Pago** aparece deshabilitado. No se ofrece Link de Pago, copia de total ni ingreso manual de importe. WhatsApp continúa exigiendo datos completos, pedido persistido y reserva antes de abrir el mensaje.
 
 ### Checkout Pro preparado
 
@@ -105,9 +108,9 @@ La analítica es first-party, opcional y condicionada al consentimiento. La rete
 - aplicar idempotencia;
 - proteger administración mediante sesión propia server-side y middleware fail-closed; Access es sólo un fallback opcional;
 - mantener Checkout Pro y analítica deshabilitados por defecto;
-- permitir el fallback manual sólo con datos públicos expresamente autorizados y una allowlist exacta del Link de Pago;
-- no tratar el fallback manual como confirmación de pago;
-- conservar una CSP compatible únicamente con conexiones al mismo origen; la salida hacia el Link de Pago es navegación HTTPS, no una conexión API desde la SPA.
+- mantener retirado el fallback de Link de Pago y no aceptar importes autoritativos del navegador;
+- cifrar tokens OAuth rotativos y bloquear unidades sin stock versionado protegible;
+- conservar una CSP compatible únicamente con conexiones al mismo origen; Mercado Libre y Mercado Pago se consultan desde Functions.
 
 ## Build
 

@@ -69,21 +69,18 @@ export function parseStoredCart(
   if (!isRecord(value) || value.version !== CART_VERSION || !Array.isArray(value.items)) {
     return emptyCart(now);
   }
-  const availableProducts = new Map(
-    products.filter(isProductAvailable).map((product) => [product.id, product]),
-  );
+  const knownProducts = new Map(products.map((product) => [product.id, product]));
   const quantities = new Map<string, number>();
   for (const candidate of value.items) {
     if (quantities.size >= MAX_CART_LINES) break;
     if (!isRecord(candidate) || typeof candidate.productId !== 'string') continue;
-    const product = availableProducts.get(candidate.productId);
+    const product = knownProducts.get(candidate.productId);
     if (product === undefined) continue;
-    const maximum = getProductCartLimit(product);
     const quantity = normalizeQuantity(candidate.quantity, MAX_CART_QUANTITY);
     if (quantity === null) continue;
     quantities.set(
       candidate.productId,
-      Math.min((quantities.get(candidate.productId) ?? 0) + quantity, maximum),
+      Math.min((quantities.get(candidate.productId) ?? 0) + quantity, MAX_CART_QUANTITY),
     );
   }
   return Object.freeze({
@@ -200,7 +197,7 @@ export function summarizeCart(
   const productById = new Map(products.map((product) => [product.id, product]));
   const items = cart.items.flatMap((line): readonly CartItem[] => {
     const product = productById.get(line.productId);
-    if (product === undefined || !isProductAvailable(product)) return [];
+    if (product === undefined) return [];
     const unitPrice = (product.salePrice ?? product.price).amount;
     return [
       Object.freeze({
@@ -219,10 +216,11 @@ export function summarizeCart(
 }
 
 export function cartLineFingerprint(
-  lines: readonly Readonly<{ productId: string; quantity: number }>[],
+  lines: readonly Readonly<{ productId: string; quantity: number; catalogVersion?: string }>[],
 ): string {
   return lines
-    .map(({ productId, quantity }) => `${productId}:${quantity}`)
+    .map(({ productId, quantity, catalogVersion }) =>
+      `${productId}:${quantity}${catalogVersion === undefined ? '' : `:${catalogVersion}`}`)
     .sort()
     .join('|');
 }

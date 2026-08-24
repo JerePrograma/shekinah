@@ -7,13 +7,20 @@ import {
   searchMercadoPagoPayments,
 } from './mercado-pago';
 import { getOrderById, updateOrderFromPayment } from './orders';
-import type { CommerceMode, D1Database } from './platform';
+import {
+  consumeMercadoLibreInventoryReservation,
+  hasMercadoLibreInventoryReservation,
+  markRefundForInventoryReview,
+  releaseMercadoLibreInventory,
+} from './mercado-libre-inventory';
+import type { CommerceMode, D1Database, Env } from './platform';
 
 export async function reconcileMercadoPagoOrder(
   database: D1Database,
   orderId: string,
   accessToken: string,
   mode: CommerceMode,
+  env?: Env,
 ): Promise<unknown> {
   if (!/^ord_[A-Za-z0-9_-]{20,128}$/u.test(orderId)) {
     throw new HttpError(400, 'INVALID_ORDER_ID', 'El identificador de pedido no es válido.');
@@ -57,13 +64,23 @@ export async function reconcileMercadoPagoOrder(
       payment.status,
       payment.updatedAt ?? '',
     ].join('|'));
+    const mappedStatus = mapPaymentStatus(payment.status);
     await updateOrderFromPayment(
       database,
       current,
       payment,
-      mapPaymentStatus(payment.status),
+      mappedStatus,
       eventKey,
     );
+    if (await hasMercadoLibreInventoryReservation(database, orderId)) {
+      if (mappedStatus === 'approved') {
+        await consumeMercadoLibreInventoryReservation(database, orderId, env);
+      } else if ((mappedStatus === 'rejected' || mappedStatus === 'cancelled') && env !== undefined) {
+        await releaseMercadoLibreInventory(database, env, orderId);
+      } else if (mappedStatus === 'refunded') {
+        await markRefundForInventoryReview(database, orderId);
+      }
+    }
   }
 
   const detail = await getAdminOrderWithFulfillment(database, orderId);

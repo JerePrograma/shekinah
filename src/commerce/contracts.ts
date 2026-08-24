@@ -9,6 +9,7 @@ export const ANALYTICS_CONSENT_VERSION = '1' as const;
 export type CheckoutLineRequest = Readonly<{
   productId: string;
   quantity: number;
+  catalogVersion?: string;
 }>;
 
 export type CheckoutRequest = Readonly<{

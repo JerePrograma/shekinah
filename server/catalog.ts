@@ -19,6 +19,8 @@ export type ServerCatalogProduct = Readonly<{
   unitPriceMinor: number;
   available: boolean;
   stockControlled?: boolean;
+  providerInventoryKey?: string;
+  providerCatalogVersion?: string;
 }>;
 
 export type RecalculatedLine = Readonly<{

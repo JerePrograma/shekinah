@@ -1,5 +1,9 @@
 # Despliegue del comercio
 
+## Extensión Mercado Libre
+
+Desde el 2026-08-24, aplicar también la secuencia completa de `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. La integración agrega la migración `0009`, variables y secretos de Mercado Libre, y el flag independiente `MERCADO_LIBRE_CATALOG_ENABLED`. El Link de Pago manual ya no es un mecanismo de rollback: el cierre seguro consiste en ocultar el botón y bloquear nuevas preferencias, manteniendo webhooks y conciliación.
+
 ## Regla de activación
 
 La presencia del código no habilita capacidades por sí sola. Los defaults de código permanecen cerrados, pero el estado externo verificado desde el 2026-08-11 es:
@@ -13,11 +17,11 @@ VITE_ANALYTICS_ENABLED=true
 
 No cambiar los flags de comercio hasta completar el checklist de sandbox, webhooks, D1 y aprobación comercial. La analítica es una capacidad separada, opt-in y ya activada después de migración, secretos independientes, preview y smoke productivo. La autenticación administrativa tampoco habilita Checkout Pro.
 
-Existe un canal manual separado y expresamente autorizado: Link de Pago de Mercado Pago sin monto predefinido más pedido por WhatsApp. No equivale a `COMMERCE_ENABLED=true` ni habilita el webhook, pero el flujo WhatsApp publicado sí requiere Pages Functions, D1 y `0007` para persistir el pedido pendiente y reservar stock antes de abrir WhatsApp.
+WhatsApp permanece como canal separado y no equivale a `COMMERCE_ENABLED=true`; requiere Pages Functions, D1 y las migraciones vigentes para persistir y reservar antes de abrir el mensaje. El Link de Pago manual fue retirado.
 
 El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio técnico y de preview, mientras que `https://shekinah.ar` es el origen público canónico de producción. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
 
-No se necesita VPS. Tanto el pedido WhatsApp publicado como Checkout Pro usan Pages Functions y D1; el Link de Pago continúa siendo una navegación externa separada.
+No se necesita VPS. Tanto el pedido WhatsApp como Checkout Pro usan Pages Functions y D1.
 
 La zona `shekinah.ar` figura `active` en Cloudflare y está delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC permanece deshabilitado y `.ar` no publica un DS, estado válido para esta etapa. El custom domain del apex, su verificación y validación figuran `active`; el CNAME proxied apunta al dominio técnico de Pages y `https://shekinah.ar` responde 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` hacia el apex preservando path y query y termina en 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no una IP de origen ni un destino de Pages. El pack Universal está activo con Google Trust Services WE1, SAN para `shekinah.ar` y `*.shekinah.ar`, y TLS 1.3 verificado.
 
@@ -47,24 +51,20 @@ Valores reales autorizados el 2026-08-10:
 ```text
 PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
-VITE_MERCADO_PAGO_PAYMENT_LINK=https://link.mercadopago.com.ar/shekinahmoreno
 ```
 
-`src/commerce/env.ts` contiene únicamente los dos defaults públicos de cliente necesarios para que el fallback manual funcione aunque Pages no tenga variables de build: WhatsApp y Link de Pago. Una variable `VITE_*` presente puede sobrescribir el default; una cadena vacía lo deshabilita. No colocar credenciales en esos valores.
+`src/commerce/env.ts` contiene únicamente el número público autorizado. Una cadena vacía lo deshabilita. No colocar credenciales en valores `VITE_*`.
 
 `PUBLIC_SITE_URL` es configuración server-side y debe cargarse explícitamente antes de habilitar Checkout Pro. Debe conservar exactamente el origen HTTPS, sin path ni barra final adicional.
 
-### Funcionamiento del fallback manual
+### Comportamiento con Checkout cerrado
 
-- el Link de Pago autorizado está configurado sin monto predefinido;
-- para un envío con total determinístico, el carrito intenta copiar el total y abre el enlace en otra pestaña;
-- el comprador ingresa el monto en Mercado Pago;
+- **Pagar con Mercado Pago** aparece deshabilitado;
+- no existe enlace fijo, copia del total ni campo de importe;
 - antes de abrir WhatsApp, la Function recalcula el carrito, crea un pedido pendiente idempotente y reserva stock;
-- después envía el mensaje con el identificador para que el comercio pueda asociar el pago y coordinar la entrega;
-- si Correo Argentino requiere cotización manual, el Link de Pago queda bloqueado y se deriva a WhatsApp;
-- este flujo crea `orders` con `channel='whatsapp'` e items; agrega fulfillment sólo cuando fue completado y tiene una tarifa determinística. No genera preferencia ni `external_reference`, no recibe webhook y no marca el pedido como aprobado automáticamente.
-
-No agregar parámetros no documentados al Link de Pago para intentar precargar el monto.
+- después envía el mensaje con el identificador para coordinar la entrega;
+- si Correo Argentino requiere cotización manual, Checkout Pro queda bloqueado y se deriva a WhatsApp;
+- este flujo crea `orders` con `channel='whatsapp'` e items; no genera una preferencia ni marca el pedido como pago aprobado.
 
 ## 3. Crear, migrar y vincular D1
 
@@ -265,14 +265,13 @@ Con D1 de preview y sandbox:
 - imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;
 - R2: `shekinah` y `shekinah-preview` aislados, `CATALOG_IMAGES` visible en el deployment y `publicR2DevEnabled=false`, sin confundir infraestructura con persistencia ya probada.
 
-Validar por separado el fallback manual:
+Validar por separado el retiro del fallback manual:
 
-- botón/link visible sólo con total de envío definido;
-- `href` exacto `https://link.mercadopago.com.ar/shekinahmoreno`;
-- WhatsApp habilitado al número `5492236216559`;
-- mensaje incluye carrito y total de referencia;
-- se crea exactamente una solicitud al endpoint de pedido WhatsApp y ninguna a `/api/checkout/preferences` al usar ese canal;
-- la interfaz informa que la asociación y confirmación de pago son manuales.
+- no existe botón, enlace ni campo público para ingresar o copiar un importe;
+- no existe una URL fija de Mercado Pago en el bundle público;
+- Checkout Pro cerrado se presenta como no disponible, sin desviar al comprador a otro cobro;
+- WhatsApp continúa habilitado al número `5492236216559` como canal de pedido, no como confirmación de pago;
+- se crea exactamente una solicitud al endpoint de pedido WhatsApp y ninguna a `/api/checkout/preferences` al usar ese canal.
 
 ## 9. Activar Checkout Pro de forma escalonada
 
@@ -282,7 +281,7 @@ Validar por separado el fallback manual:
 4. Rotar cualquier credencial expuesta, actualizar el secreto cifrado de Pages y dejar en Webhooks únicamente el tópico de pagos.
 5. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de una compra controlada con comprador distinto del vendedor, webhook procesado, stock consumido y aprobación del titular de Mercado Pago.
 6. Supervisar webhooks, estados, importes y reservas durante la ventana inicial.
-7. Resolver explícitamente la coexistencia o retiro del fallback manual.
+7. Confirmar que el fallback manual continúa retirado y que el bundle no contiene una URL fija de pago.
 
 ## Estados que deben informarse por separado
 
@@ -292,7 +291,7 @@ Validar por separado el fallback manual:
 | Validación local | comandos ejecutados y resultados |
 | CI aprobado | workflow exitoso sobre SHA exacto |
 | Pages desplegado | deployment asociado al SHA |
-| Fallback manual público | Link de Pago y WhatsApp visibles y probados |
+| Canales públicos | Sin Link de Pago manual; Checkout Pro directo o cerrado y WhatsApp reservado |
 | D1 vinculado | binding `DB` visible y consulta correcta |
 | Migración aplicada | tabla de migraciones/consultas remotas |
 | R2 habilitado | inventario autenticado de buckets sin error `10042` |

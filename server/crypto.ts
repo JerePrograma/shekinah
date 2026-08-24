@@ -89,6 +89,58 @@ export function decodeBase64Url(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+export type EncryptedSecret = Readonly<{
+  ciphertext: string;
+  iv: string;
+}>;
+
+export async function encryptSecret(
+  plaintext: string,
+  base64UrlKey: string,
+): Promise<EncryptedSecret> {
+  const key = await importAesKey(base64UrlKey, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+    key,
+    new TextEncoder().encode(plaintext),
+  ));
+  return Object.freeze({
+    ciphertext: encodeBase64Url(ciphertext),
+    iv: encodeBase64Url(iv),
+  });
+}
+
+export async function decryptSecret(
+  encrypted: EncryptedSecret,
+  base64UrlKey: string,
+): Promise<string> {
+  const key = await importAesKey(base64UrlKey, ['decrypt']);
+  const iv = decodeBase64Url(encrypted.iv);
+  if (iv.byteLength !== 12) throw new Error('IV cifrado inválido.');
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+    key,
+    toArrayBuffer(decodeBase64Url(encrypted.ciphertext)),
+  );
+  return new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+}
+
+async function importAesKey(
+  base64UrlKey: string,
+  usages: readonly KeyUsage[],
+): Promise<CryptoKey> {
+  const bytes = decodeBase64Url(base64UrlKey);
+  if (bytes.byteLength !== 32) throw new Error('Clave de cifrado inválida.');
+  return crypto.subtle.importKey(
+    'raw',
+    toArrayBuffer(bytes),
+    { name: 'AES-GCM' },
+    false,
+    [...usages],
+  );
+}
+
 function hexToBytes(value: string): Uint8Array {
   const bytes = new Uint8Array(value.length / 2);
   for (let index = 0; index < value.length; index += 2) {
