@@ -44,7 +44,9 @@ Las consultas GET al proveedor tienen timeout, hasta tres intentos y backoff aco
 
 Una unidad inválida no detiene necesariamente el resto del ciclo. Se persiste con error y no vendible; el ciclo queda `partial`. Sólo una falla global —OAuth, conexión, paginación o contrato estructural de la cuenta— falla el ciclo completo.
 
-Las notificaciones de `items` y `orders_v2` se aceptan sólo para la aplicación y seller configurados, se deduplican y se usan como disparador. El cuerpo no es autoridad: la Function vuelve a consultar el item o la orden. Un evento fallido puede reintentarse; un evento duplicado procesado no vuelve a aplicar efectos.
+Las notificaciones de `items`, `stock-location` y `orders_v2` se aceptan sólo para la aplicación y seller configurados, se deduplican y se usan como disparador. El cuerpo no es autoridad: la Function vuelve a consultar el item o la orden. Para `stock-location`, busca autoritativamente los ítems vigentes del User Product y luego relee cada ítem y `/user-products/{id}/stock`; un evento fuera de orden nunca repone una cantidad tomada del payload. Un evento fallido puede reintentarse; un evento duplicado procesado no vuelve a aplicar efectos.
+
+En DevCenter deben habilitarse los topics `items`, `stock-locations` y `orders_v2`. La interfaz denomina `stock-locations` al topic de suscripción, mientras el payload oficial usa `stock-location` y el recurso `/user-products/{id}/stock`.
 
 La reconciliación periódica usa un solo scheduler: `.github/workflows/mercadolibre-reconcile.yml`. GitHub Actions lo ejecuta cada cinco minutos sobre el último commit de `main`, fuera del minuto cero, y llama por `POST` a `/api/internal/mercadolibre/reconcile`. El secreto server-to-server `MERCADO_LIBRE_SCHEDULER_SECRET` viaja únicamente en `Authorization`, pertenece al environment `cloudflare-pages-production`, restringido a la rama `main`, y debe coincidir con el secreto cifrado de Pages. No se incluye en URL, Git, bundle ni logs.
 

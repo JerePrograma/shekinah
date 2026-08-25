@@ -16,6 +16,9 @@ import {
 import type { D1Database, Env, PagesFunction } from '../../../server/platform';
 import { isRecord, readJsonBody } from '../../../server/validation';
 
+const USER_PRODUCT_SEARCH_PAGE_SIZE = 50;
+const MAX_USER_PRODUCT_SEARCH_PAGES = 20;
+
 export const onRequest: PagesFunction = async ({ env, request, waitUntil }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   try {
@@ -111,6 +114,10 @@ async function notificationItemIds(
   if (notification.topic === 'items' && itemMatch?.[1] !== undefined) {
     return Object.freeze([itemMatch[1]]);
   }
+  const stockLocationMatch = /^\/user-products\/(MLAU\d{5,30})\/stock$/u.exec(notification.resource);
+  if (notification.topic === 'stock-location' && stockLocationMatch?.[1] !== undefined) {
+    return itemIdsForUserProduct(database, env, notification.sellerId, stockLocationMatch[1]);
+  }
   const orderMatch = /^\/orders\/(\d{1,30})$/u.exec(notification.resource);
   if (notification.topic !== 'orders_v2' || orderMatch?.[1] === undefined) return [];
   const { accessToken } = await getMercadoLibreAccess(database, env);
@@ -124,6 +131,51 @@ async function notificationItemIds(
     return typeof id === 'string' && /^MLA\d{5,30}$/u.test(id) ? [id] : [];
   });
   return Object.freeze([...new Set(ids)]);
+}
+
+async function itemIdsForUserProduct(
+  database: D1Database,
+  env: Env,
+  sellerId: string,
+  userProductId: string,
+): Promise<readonly string[]> {
+  const { accessToken } = await getMercadoLibreAccess(database, env);
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  for (let page = 0; page < MAX_USER_PRODUCT_SEARCH_PAGES; page += 1) {
+    const url = new URL(`/users/${sellerId}/items/search`, 'https://local.invalid');
+    url.searchParams.set('user_product_id', userProductId);
+    url.searchParams.set('limit', String(USER_PRODUCT_SEARCH_PAGE_SIZE));
+    url.searchParams.set('offset', String(offset));
+    const response = await mercadoLibreApiJson(`${url.pathname}${url.search}`, accessToken);
+    if (
+      !isRecord(response.body) || identifier(response.body.seller_id) !== sellerId ||
+      !Array.isArray(response.body.results) || !isRecord(response.body.paging) ||
+      typeof response.body.paging.total !== 'number' ||
+      !Number.isSafeInteger(response.body.paging.total) || response.body.paging.total < 0
+    ) {
+      throw providerResponseError();
+    }
+    const pageIds = response.body.results.map((candidate) =>
+      typeof candidate === 'string' && /^MLA\d{5,30}$/u.test(candidate) ? candidate : null);
+    if (pageIds.some((candidate) => candidate === null)) throw providerResponseError();
+    for (const itemId of pageIds as string[]) {
+      if (!seen.has(itemId)) {
+        seen.add(itemId);
+        ids.push(itemId);
+      }
+    }
+    offset += pageIds.length;
+    if (pageIds.length === 0 || offset >= response.body.paging.total) {
+      return Object.freeze(ids);
+    }
+  }
+  throw new HttpError(
+    502,
+    'MERCADO_LIBRE_PAGINATION_LIMIT',
+    'Mercado Libre excedió el límite operativo de la notificación.',
+  );
 }
 
 async function finishNotification(
@@ -152,7 +204,8 @@ function parseNotification(value: unknown): Notification {
     : '';
   if (
     applicationId === null || sellerId === null || topic === null ||
-    !/^\/(?:items\/MLA\d{5,30}|orders\/\d{1,30})$/u.test(resource) || sent === ''
+    !/^\/(?:items\/MLA\d{5,30}|orders\/\d{1,30}|user-products\/MLAU\d{5,30}\/stock)$/u.test(resource) ||
+    sent === ''
   ) throw invalidNotification();
   return Object.freeze({ applicationId, sellerId, topic, resource, sent });
 }
@@ -167,7 +220,11 @@ function identifier(value: unknown): string | null {
 }
 
 function safeLabel(value: unknown): string | null {
-  return typeof value === 'string' && /^[a-z0-9_]{1,40}$/u.test(value) ? value : null;
+  return typeof value === 'string' && /^[a-z0-9_-]{1,40}$/u.test(value) ? value : null;
+}
+
+function providerResponseError(): HttpError {
+  return new HttpError(502, 'MERCADO_LIBRE_RESPONSE_INVALID', 'Mercado Libre devolvió una respuesta no válida.');
 }
 
 function invalidNotification(): HttpError {
