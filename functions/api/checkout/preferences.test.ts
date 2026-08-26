@@ -1,22 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
-import { createCatalogProduct } from '../../../server/catalog-store';
 import type { PagesFunctionContext } from '../../../server/platform';
-import { createTestD1 } from '../../../src/test/d1';
 import { onRequest } from './preferences';
 
-const migrations = [
-  '0001_commerce.sql',
-  '0002_fulfillment_and_retention.sql',
-  '0003_checkout_intent_cart_fingerprint.sql',
-  '0004_catalog_admin.sql',
-  '0005_admin_auth.sql',
-  '0006_analytics_manual_payment_click.sql',
-  '0007_whatsapp_order_reservations.sql',
-  '0008_checkout_pro_stock_and_whatsapp_identity.sql',
-]
-  .map((file) => readFileSync(resolve(process.cwd(), 'migrations', file), 'utf8'));
 const originalFetch = globalThis.fetch;
 
 function context(request: Request): PagesFunctionContext {
@@ -31,7 +15,30 @@ function context(request: Request): PagesFunctionContext {
   };
 }
 
-describe('endpoint de checkout', () => {
+function checkoutRequest(): Request {
+  return new Request('https://example.test/api/checkout/preferences', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: 'https://example.test',
+    },
+    body: JSON.stringify({
+      idempotencyKey: crypto.randomUUID(),
+      items: [{ productId: 'producto-prueba', quantity: 1 }],
+      fulfillment: {
+        method: 'coordinated_pickup',
+        fullName: 'Ana Pérez',
+        phone: '5491155554444',
+        address: 'Calle 123',
+        locality: 'CABA',
+        province: 'Buenos Aires',
+        postalCode: 'C1234ABC',
+      },
+    }),
+  });
+}
+
+describe('endpoint de checkout con Dux autoritativo', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
@@ -45,190 +52,64 @@ describe('endpoint de checkout', () => {
     expect(getResponse.status).toBe(405);
     expect(getResponse.headers.get('allow')).toBe('POST');
 
-    const postResponse = await onRequest(context(new Request(
-      'https://example.test/api/checkout/preferences',
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'https://example.test',
-        },
-        body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), items: [] }),
-      },
-    )));
+    const postResponse = await onRequest(context(checkoutRequest()));
     expect(postResponse.status).toBe(503);
     await expect(postResponse.json()).resolves.toMatchObject({
       error: { code: 'COMMERCE_DISABLED' },
     });
   });
 
-  it('falla cerrado si falta el secreto de firma del webhook', async () => {
-    const testD1 = createTestD1(...migrations);
-    try {
-      const response = await onRequest({
-        ...context(new Request('https://example.test/api/checkout/preferences', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            origin: 'https://example.test',
-          },
-          body: JSON.stringify({}),
-        })),
-        env: {
-          DB: testD1.database,
-          COMMERCE_ENABLED: 'true',
-          PUBLIC_SITE_URL: 'https://example.test',
-          ALLOWED_SITE_ORIGINS: 'https://example.test',
-          MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
-          MERCADO_PAGO_ACCESS_TOKEN: 'test-token-without-real-credentials',
-          ORDER_TOKEN_SECRET: 's'.repeat(40),
-        },
-      });
-      expect(response.status).toBe(503);
-      await expect(response.json()).resolves.toMatchObject({
-        error: { code: 'WEBHOOK_SECRET_MISSING' },
-      });
-    } finally {
-      testD1.close();
-    }
+  it('no usa stock local ni crea una preferencia si Dux está deshabilitado', async () => {
+    globalThis.fetch = vi.fn<typeof fetch>();
+    const response = await onRequest({
+      ...context(checkoutRequest()),
+      env: {
+        COMMERCE_ENABLED: 'true',
+        ALLOWED_SITE_ORIGINS: 'https://example.test',
+      },
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'DUX_API_DISABLED' },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('persiste el precio dinámico vigente y no acepta el precio del navegador', async () => {
-    const testD1 = createTestD1(...migrations);
-    try {
-      await createCatalogProduct(testD1.database, {
-        id: 'producto-preferencia',
-        slug: 'producto-preferencia',
-        path: '/producto-preferencia/',
-        name: 'Producto preferencia',
-        categorySlugs: ['agroecologicos'],
-        categoryNames: ['Agroecologicos'],
-        presentation: '100 g',
-        price: { amount: 2_345.67, currency: 'ARS' },
-        availability: 'available',
-        stockQuantity: 2,
-        images: [],
-        variants: [],
-      }, 'admin@example.test');
-      globalThis.fetch = vi.fn<typeof fetch>((_input, init) => {
-        if (typeof init?.body !== 'string') throw new Error('Mercado Pago no recibió JSON.');
-        const preferenceBody = JSON.parse(init.body) as Record<string, unknown>;
-        return Promise.resolve(new Response(JSON.stringify({
-          id: 'preference_dynamic_123',
-          sandbox_init_point: 'https://sandbox.mercadopago.com.ar/checkout/v1/redirect',
-          expiration_date_from: preferenceBody.expiration_date_from,
-          expiration_date_to: preferenceBody.expiration_date_to,
-          preference_expired: false,
-        }), {
-          status: 201,
-          headers: { 'content-type': 'application/json' },
-        }));
-      });
+  it('no crea Mercado Pago ni pedidos Dux mientras no exista liberación/finalización oficial', async () => {
+    globalThis.fetch = vi.fn<typeof fetch>();
+    const response = await onRequest({
+      ...context(checkoutRequest()),
+      env: {
+        COMMERCE_ENABLED: 'true',
+        DUX_API_ENABLED: 'true',
+        ALLOWED_SITE_ORIGINS: 'https://example.test',
+      },
+    });
 
-      const checkoutBody = {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment: {
-          method: 'coordinated_pickup',
-          fullName: 'Ana Pérez',
-          phone: '5491155554444',
-          address: 'Calle 123',
-          locality: 'CABA',
-          province: 'Buenos Aires',
-          postalCode: 'C1234ABC',
-        },
-      };
-      const request = new Request('https://example.test/api/checkout/preferences', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'https://example.test',
-        },
-        body: JSON.stringify({
-          ...checkoutBody,
-          items: [{ productId: 'producto-preferencia', quantity: 2, price: 1 }],
-        }),
-      });
-      const manipulatedResponse = await onRequest({
-        ...context(request),
-        env: checkoutEnv(testD1.database),
-      });
-      expect(manipulatedResponse.status).toBe(400);
-      await expect(manipulatedResponse.json()).resolves.toMatchObject({
-        error: { code: 'INVALID_CART_LINE' },
-      });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE' },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 
-      const validIdempotencyKey = crypto.randomUUID();
-      const validCheckoutBody = {
-        ...checkoutBody,
-        idempotencyKey: validIdempotencyKey,
-        items: [{ productId: 'producto-preferencia', quantity: 2 }],
-      };
-      const validResponse = await onRequest({
-        ...context(new Request(request.url, {
-          method: 'POST',
-          headers: request.headers,
-          body: JSON.stringify(validCheckoutBody),
-        })),
-        env: checkoutEnv(testD1.database),
-      });
-      expect(validResponse.status).toBe(201);
-      expect(testD1.sqlite.prepare(
-        "SELECT product_id, quantity, unit_price_minor, subtotal_minor, stock_controlled FROM order_items WHERE product_id = 'producto-preferencia'",
-      ).get()).toEqual({
-        product_id: 'producto-preferencia',
-        quantity: 2,
-        unit_price_minor: 234_567,
-        subtotal_minor: 469_134,
-        stock_controlled: 1,
-      });
-      expect(testD1.sqlite.prepare(`SELECT
-        stock_reserved_at IS NOT NULL AS reserved,
-        stock_reservation_expires_at IS NOT NULL AS expires
-        FROM orders WHERE checkout_idempotency_key = ?`).get(validIdempotencyKey))
-        .toEqual({ reserved: 1, expires: 1 });
+  it('rechaza la autoridad directa de Mercado Libre antes de cualquier llamada externa', async () => {
+    globalThis.fetch = vi.fn<typeof fetch>();
+    const response = await onRequest({
+      ...context(checkoutRequest()),
+      env: {
+        COMMERCE_ENABLED: 'true',
+        DUX_API_ENABLED: 'true',
+        MERCADO_LIBRE_CATALOG_ENABLED: 'true',
+        ALLOWED_SITE_ORIGINS: 'https://example.test',
+      },
+    });
 
-      const replayResponse = await onRequest({
-        ...context(new Request(request.url, {
-          method: 'POST',
-          headers: request.headers,
-          body: JSON.stringify(validCheckoutBody),
-        })),
-        env: checkoutEnv(testD1.database),
-      });
-      expect(replayResponse.status).toBe(200);
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
-      testD1.sqlite.prepare(
-        "UPDATE orders SET created_at = '2000-01-01T00:00:00.000Z' WHERE checkout_idempotency_key = ?",
-      ).run(validIdempotencyKey);
-      const expiredResponse = await onRequest({
-        ...context(new Request(request.url, {
-          method: 'POST',
-          headers: request.headers,
-          body: JSON.stringify(validCheckoutBody),
-        })),
-        env: checkoutEnv(testD1.database),
-      });
-      expect(expiredResponse.status).toBe(409);
-      await expect(expiredResponse.json()).resolves.toMatchObject({
-        error: { code: 'CHECKOUT_INTENT_EXPIRED' },
-      });
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    } finally {
-      testD1.close();
-    }
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'MERCADO_LIBRE_INVENTORY_DISABLED' },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
-
-function checkoutEnv(database: ReturnType<typeof createTestD1>['database']) {
-  return {
-    DB: database,
-    COMMERCE_ENABLED: 'true',
-    PUBLIC_SITE_URL: 'https://example.test',
-    ALLOWED_SITE_ORIGINS: 'https://example.test',
-    MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
-    MERCADO_PAGO_ACCESS_TOKEN: 'test-token-without-real-credentials',
-    MERCADO_PAGO_WEBHOOK_SECRET: 'w'.repeat(40),
-    ORDER_TOKEN_SECRET: 's'.repeat(40),
-  } as const;
-}

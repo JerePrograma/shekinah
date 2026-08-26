@@ -140,6 +140,10 @@ describe('autenticación del backoffice', () => {
     ).toBeVisible();
     expect(await screen.findByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('button', { name: 'Dux' }));
+    expect(screen.getByRole('heading', { level: 2, name: 'Dux Software' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Dux' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByText('Autorizar cuenta vendedora')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
@@ -209,6 +213,7 @@ function authenticatedSession(): Response {
 
 function protectedAdminResponse(path: string): Response {
   if (path === '/api/admin/products') return json({ products: [], imageStorageConfigured: false });
+  if (path === '/api/admin/dux/status') return json(duxStatus());
   if (path === '/api/admin/orders' || path === '/api/admin/audit') return json({ rows: [] });
   if (path.startsWith('/api/admin/orders?') || path.startsWith('/api/admin/audit?')) {
     return json({ rows: [] });
@@ -216,6 +221,28 @@ function protectedAdminResponse(path: string): Response {
   if (path.startsWith('/api/admin/analytics/')) return json([]);
   if (path.startsWith('/api/admin/summary?')) return json(adminSummary());
   return json({ error: { message: 'No encontrado.' } }, 404);
+}
+
+function duxStatus() {
+  return {
+    enabled: false,
+    lifecycleReady: false,
+    unitSemanticsReady: false,
+    tenant: null,
+    latestRun: null,
+    counts: {
+      inventoryCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      ambiguousCount: 0,
+      staleCount: 0,
+      errorCount: 0,
+      absentCount: 0,
+      checkoutEligibleCount: 0,
+    },
+    maxAgeSeconds: 900,
+    blockers: ['Upgrade Dux a PRO/FULL + token API requerido'],
+  };
 }
 
 function adminSummary() {

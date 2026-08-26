@@ -1,304 +1,286 @@
 # Despliegue del comercio
 
-## Extensión Mercado Libre
-
-Desde el 2026-08-24, aplicar también la secuencia completa de `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. La integración agrega la migración `0009`, variables y secretos de Mercado Libre, el flag independiente `MERCADO_LIBRE_CATALOG_ENABLED` y una única reconciliación GitHub Actions cada cinco minutos. `MERCADO_LIBRE_SCHEDULER_SECRET` debe existir cifrado tanto en Pages producción como en el environment GitHub `cloudflare-pages-production`; no se reutiliza una sesión administrativa. El Link de Pago manual ya no es un mecanismo de rollback: el cierre seguro consiste en ocultar el botón y bloquear nuevas preferencias, manteniendo webhooks y conciliación.
-
 ## Regla de activación
 
-La presencia del código no habilita capacidades por sí sola. Los defaults de código permanecen cerrados, pero el estado externo verificado desde el 2026-08-11 es:
+Este documento distingue código, migraciones, configuración, deployment y pruebas externas. Ninguna etapa demuestra automáticamente la siguiente.
+
+El estado seguro esperado al desplegar este cambio es:
 
 ```text
+DUX_API_ENABLED=false
+DUX_RECONCILIATION_ENABLED=false
 COMMERCE_ENABLED=false
 VITE_COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=true
-VITE_ANALYTICS_ENABLED=true
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 ```
 
-No cambiar los flags de comercio hasta completar el checklist de sandbox, webhooks, D1 y aprobación comercial. La analítica es una capacidad separada, opt-in y ya activada después de migración, secretos independientes, preview y smoke productivo. La autenticación administrativa tampoco habilita Checkout Pro.
+No activar comercio mientras falte cualquiera de estos requisitos:
 
-WhatsApp permanece como canal separado y no equivale a `COMMERCE_ENABLED=true`; requiere Pages Functions, D1 y las migraciones vigentes para persistir y reservar antes de abrir el mensaje. El Link de Pago manual fue retirado.
+- cuenta Dux PRO o FULL;
+- token API válido;
+- empresa, sucursal y depósito obtenidos de endpoints oficiales;
+- migración `0012_dux_authoritative_inventory.sql` aplicada y verificada;
+- snapshot real y mappings auditados;
+- unidad, pesabilidad, divisibilidad y granularidad comercial verificadas;
+- creación y consulta de pedido Dux probadas;
+- cancelación/liberación y finalización Dux documentadas y probadas;
+- sandbox Mercado Pago y webhook aprobados;
+- CI, deployment y smoke del mismo SHA.
 
-El nombre remoto del proyecto Pages es `shekinah`; `shekinah-7dl.pages.dev` es su dominio técnico y de preview, mientras que `https://shekinah.ar` es el origen público canónico de producción. Existe además un Worker independiente llamado `shekinah`: no configurar bindings ni variables en ese Worker.
-
-No se necesita VPS. Tanto el pedido WhatsApp como Checkout Pro usan Pages Functions y D1.
-
-La zona `shekinah.ar` figura `active` en Cloudflare y está delegada a `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC permanece deshabilitado y `.ar` no publica un DS, estado válido para esta etapa. El custom domain del apex, su verificación y validación figuran `active`; el CNAME proxied apunta al dominio técnico de Pages y `https://shekinah.ar` responde 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www.shekinah.ar` responde `301` hacia el apex preservando path y query y termina en 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no una IP de origen ni un destino de Pages. El pack Universal está activo con Google Trust Services WE1, SAN para `shekinah.ar` y `*.shekinah.ar`, y TLS 1.3 verificado.
+La cuenta aportada muestra Plan ESTÁNDAR y la API pública revisada no documenta el lifecycle de compensación. Por eso el resultado de este despliegue es código preparado y fail-closed, no comercio activo.
 
 ## 1. Validar el commit exacto
 
-Desde un checkout limpio de `main`:
+Desde `main` sincronizado:
 
 ```powershell
-npm ci --no-audit --no-fund
+git status
+git switch main
+git fetch origin
+git pull --ff-only origin main
+git status
+npm ci
 npm run install:browsers
 npm run verify
 npm run build:pages
+git diff --check
 ```
 
-Comprobar además:
+Registrar SHA completo, resultados y cualquier prueba no ejecutada. No desplegar un commit con fallos conocidos ni usar otro SHA para la evidencia.
+
+## 2. Aplicar la migración D1
+
+`migrations/0012_dux_authoritative_inventory.sql` es aditiva. Agrega contexto Dux, ciclos de sync, snapshot/mapping, vínculo futuro de pedidos y ledger de operaciones. No borra catálogo, stock local histórico, Mercado Libre, pedidos, pagos, auditoría o imágenes.
+
+Antes de tocar una D1 remota:
+
+1. confirmar que se opera el proyecto Pages `shekinah`, no el Worker homónimo;
+2. confirmar que preview y production siguen usando bases distintas;
+3. obtener bookmark Time Travel o backup verificable;
+4. ejecutar primero preview;
+5. inspeccionar tablas, índices, checks, `PRAGMA foreign_key_check` y los triggers `dux_order_link_requires_empty_order`, `dux_order_items_lifecycle_blocked`, `dux_order_items_update_blocked`, `dux_order_items_delete_blocked`, `dux_order_status_lifecycle_blocked` y `dux_mapped_order_status_lifecycle_blocked`;
+6. recién entonces aplicar production.
+
+Con una configuración Wrangler local correcta y no versionada:
 
 ```powershell
-Get-ChildItem .\dist -Recurse -File -Filter *.map
-```
-
-El último comando no debe devolver archivos. Registrar el SHA con `git rev-parse HEAD` y verificar que GitHub Actions aprobó ese mismo SHA, no solamente la rama.
-
-## 2. Configuración pública autorizada
-
-Valores reales autorizados el 2026-08-10:
-
-```text
-PUBLIC_SITE_URL=https://shekinah.ar
-VITE_WHATSAPP_NUMBER=5492236216559
-```
-
-`src/commerce/env.ts` contiene únicamente el número público autorizado. Una cadena vacía lo deshabilita. No colocar credenciales en valores `VITE_*`.
-
-`PUBLIC_SITE_URL` es configuración server-side y debe cargarse explícitamente antes de habilitar Checkout Pro. Debe conservar exactamente el origen HTTPS, sin path ni barra final adicional.
-
-### Comportamiento con Checkout cerrado
-
-- **Pagar con Mercado Pago** aparece deshabilitado;
-- no existe enlace fijo, copia del total ni campo de importe;
-- antes de abrir WhatsApp, la Function recalcula el carrito, crea un pedido pendiente idempotente y reserva stock;
-- después envía el mensaje con el identificador para coordinar la entrega;
-- si Correo Argentino requiere cotización manual, Checkout Pro queda bloqueado y se deriva a WhatsApp;
-- este flujo crea `orders` con `channel='whatsapp'` e items; no genera una preferencia ni marca el pedido como pago aprobado.
-
-## 3. Crear, migrar y vincular D1
-
-Estado verificado el 2026-08-10: la cuenta partía de cero bases y se crearon exactamente `shekinah-commerce` para producción y `shekinah-commerce-preview` para preview. Ambas estaban vacías, se obtuvieron bookmarks de Time Travel antes del primer cambio y quedaron vinculadas por separado al binding `DB`. No compartir una base entre entornos.
-
-Para reconstruir esa configuración sólo si las bases no existen y el inventario de cuenta lo confirma inequívocamente:
-
-```powershell
-npx wrangler d1 create shekinah-commerce-preview
-npx wrangler d1 create shekinah-commerce
-npx wrangler d1 info shekinah-commerce
-```
-
-Copiar `wrangler.example.jsonc` a `wrangler.jsonc` únicamente cuando se conozcan los IDs reales. Reemplazar `database_id` y `preview_database_id`; no dejar marcadores en una configuración activa ni rastrear el archivo.
-
-El binding debe llamarse exactamente `DB`. Producción refiere `shekinah-commerce`; preview usa exclusivamente `shekinah-commerce-preview`.
-
-Validar la migración local:
-
-```powershell
-npx wrangler d1 migrations apply shekinah-commerce --local
-npx wrangler d1 execute shekinah-commerce --local --command "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
-```
-
-Antes de una migración remota sobre una base que ya contenga datos, conservar una exportación o bookmark verificable y documentar el punto de reversión. Con la configuración completa de Pages —preview en el nivel superior y production en `env.production`— aplicar primero preview y después producción:
-
-```powershell
-npx wrangler d1 time-travel info shekinah-commerce-preview --json
+npx wrangler d1 migrations apply DB --local
 npx wrangler d1 migrations apply DB --remote --preview
 npx wrangler d1 migrations list DB --remote --preview
-npx wrangler d1 time-travel info shekinah-commerce --json
 npx wrangler d1 migrations apply DB --remote --env production
 npx wrangler d1 migrations list DB --remote --env production
 ```
 
-No aplicar SQL manual distinto de las migraciones versionadas.
+No modificar migraciones ya aplicadas ni ejecutar SQL alternativo. En este cierre no se afirma que `0012` esté aplicada en ningún entorno remoto: debe comprobarse por nombre y esquema.
 
-El flujo versionado aplica en orden `0001` a `0008`. `0004` crea la persistencia del ABM, `0005` el rate limiting, `0006` amplía el CHECK analítico, `0007` agrega canal/resolución de pedidos y reservas WhatsApp, y `0008` incorpora la reserva/consumo de Checkout Pro y la huella de datos WhatsApp. `0007` quedó aplicada y verificada el 2026-08-12 primero en preview y luego en producción. `0008` debe repetir el orden preview → verificación → producción antes de desplegar Functions dependientes: confirmar columnas, índice, triggers, conteos, `PRAGMA foreign_key_check` y migración registrada.
+Los seis triggers son parte del estado fail-closed. Retirarlos requiere una migración aditiva posterior y evidencia del lifecycle oficial de reserva, liberación y finalización Dux.
 
-`0007` ni `0008` deben revertirse editando o borrando una migración aplicada. Ante rollback de código, primero cortar nuevas preferencias, conciliar pagos y resolver de forma controlada todas las reservas activas; sólo entonces volver a una versión anterior, dejando el esquema aditivo sin uso. Mantener código anterior con reservas Checkout Pro activas haría que el catálogo ignore unidades comprometidas y que un webhook deje de consumirlas.
+## 3. Confirmar acceso oficial Dux
 
-### 3.1. R2 para imágenes administrativas
+No intentar bypass si la cuenta continúa en ESTÁNDAR. El procedimiento válido es:
 
-El candidato usa un binding Pages llamado exactamente `CATALOG_IMAGES`:
+1. cambiar el plan a PRO o FULL;
+2. generar un token desde el mecanismo oficial Dux;
+3. cargarlo como `DUX_API_TOKEN` cifrado en Pages;
+4. comprobar una lectura con Bearer sin registrar el token;
+5. consultar empresa, sucursal y depósito mediante la API;
+6. no deducir IDs desde Mercado Libre ni desde la pantalla del ERP.
 
-| Entorno | Bucket requerido |
-| --- | --- |
-| production | `shekinah` (existente, reutilizado) |
-| preview | `shekinah-preview` (aislado, creado para este entorno) |
+API oficial implementada:
 
-No compartir bucket entre entornos y no configurar estos bindings en el Worker homónimo. Antes de cualquier cambio futuro, inventariar la cuenta y confirmar que los nombres siguen siendo inequívocamente de Shekinah. Después de modificar un binding, redeployar y releer el deployment para comprobar que quedó materializado.
+```text
+Base: https://erp.duxsoftware.com.ar/WSERP/rest/services
+GET /v2/empresas
+GET /v2/sucursales?id_empresa=...
+GET /v2/depositos
+GET /v2/items
+```
 
-Estado externo verificado el 2026-08-10: R2 está activo, production reutiliza `shekinah`, preview usa `shekinah-preview` y Pages tiene `CATALOG_IMAGES` correctamente separado por entorno. Ambos buckets conservan clase Standard/default y `publicR2DevEnabled=false`; la lectura pública debe pasar exclusivamente por `/api/catalog-images/*` en Pages, sin dominio `r2.dev`. La relectura de Pages confirmó además que `DB`, variables, los cuatro nombres de secretos administrativos y `fail_open=false` permanecen sin cambios. No se leyeron ni registraron valores secretos.
+Los IDs aportados `445638367` (seller Mercado Libre) y `3851` (usuario Dux mostrado) no equivalen de forma demostrada a empresa, sucursal, depósito o personal.
 
-Clasificación: infraestructura `VERIFICADA`, capacidad del candidato `PENDIENTE_DEPLOYMENT_Y_SMOKE`. No afirmar que el upload está desplegado aunque el código, una preview local o los tests sean correctos. No usar base64 en D1, Git, almacenamiento local del navegador u otro proveedor como sustituto.
+## 4. Configurar Dux en Pages
 
-Antes de publicar o modificar esta integración:
+Variables server-side por entorno:
 
-1. listar buckets y detenerse ante candidatos ambiguos;
-2. comprobar `shekinah` para production y `shekinah-preview` para preview sin recrearlos ni reemplazarlos;
-3. releer `CATALOG_IMAGES`, clase Standard/default y `publicR2DevEnabled=false` en ambos entornos;
-4. desplegar el SHA definitivo;
-5. probar lectura pública first-party y escritura/reemplazo/delete sólo con sesión administrativa;
-6. comprobar que assets legacy y objetos compartidos no se eliminen.
+```text
+DUX_API_ENABLED=false
+DUX_COMPANY_ID=<id confirmado por GET /v2/empresas>
+DUX_BRANCH_ID=<id confirmado por GET /v2/sucursales>
+DUX_DEPOSIT_ID=<id confirmado por GET /v2/depositos>
+DUX_SNAPSHOT_MAX_AGE_SECONDS=900
+```
 
-## 4. Configurar variables no secretas del Checkout Pro
+Secretos server-side:
 
-En producción:
+```text
+DUX_API_TOKEN
+DUX_SCHEDULER_SECRET
+```
+
+No crear `VITE_DUX_API_TOKEN`. Verificar sólo nombre, tipo y entorno; nunca leer o imprimir valores. Mantener valores distintos por preview/production si la cuenta o permisos difieren.
+
+Después de configurar, dejar `DUX_API_ENABLED=false` hasta que `0012` esté aplicada y el smoke read-only sea seguro. Activar read-only Dux no habilita comercio: el guard de lifecycle debe seguir bloqueando ventas.
+
+## 5. Configurar reconciliación read-only
+
+El único scheduler de inventario permitido es `.github/workflows/dux-reconcile.yml`. Llama a:
+
+```text
+POST https://shekinah.ar/api/internal/dux/reconcile
+Authorization: Bearer <DUX_SCHEDULER_SECRET>
+```
+
+El job requiere:
+
+- variable GitHub `DUX_RECONCILIATION_ENABLED=true`;
+- secreto GitHub environment `DUX_SCHEDULER_SECRET`;
+- el mismo secreto cifrado en Pages production;
+- endpoint desplegado y `DUX_API_ENABLED=true`;
+- migración `0012` y token Dux válidos.
+
+Por defecto la variable debe faltar o valer `false`; así el workflow queda desactivado. Habilitarlo sólo después de un sync manual read-only y revisar que el intervalo respete una petición cada cinco segundos. No ejecutar llamadas Dux durante build.
+
+No restaurar el scheduler Mercado Libre. Dux sincroniza ese canal fuera de Shekinah.
+
+## 6. Ejecutar smoke Dux read-only
+
+Con cuenta, token y IDs confirmados:
+
+1. `GET /v2/empresas`: la empresa configurada existe una sola vez;
+2. `GET /v2/sucursales`: la sucursal pertenece a esa empresa;
+3. `GET /v2/depositos`: el depósito pertenece a la empresa y está habilitado;
+4. `GET /v2/items`: paginación completa, cantidades finitas y depósito correcto;
+5. sincronización: un solo ciclo, sin thundering herd ni `429` repetidos;
+6. D1: conteos de `mapped`, `unmapped` y `ambiguous` consistentes;
+7. backoffice: cantidad y timestamp visibles, sin IDs/tokens en el frontend;
+8. catálogo: ausentes o ambiguos preservados y no vendibles.
+
+No mutar stock real ni crear pedidos como smoke. No afirmar una unidad o divisibilidad que `GET /v2/items` no entrega.
+
+## 7. Resolver el hard blocker de pedidos
+
+La documentación pública revisada expone `POST /v2/pedidos` y `GET /v2/pedidos`, pero no demuestra cómo:
+
+- anular/cancelar un pedido por API;
+- liberar una reserva;
+- finalizar/confirmar sin operación fiscal incorrecta;
+- tratar preferencia abandonada o reserva vencida;
+- resolver con certeza un timeout del POST;
+- garantizar rechazo atómico por stock insuficiente.
+
+Antes de implementar o habilitar mutaciones, obtener de soporte Dux documentación oficial para cada caso. Si existe endpoint, confirmar método, path, campos, estados, idempotencia y efectos de stock. Si sólo puede hacerse desde la UI del ERP, la arquitectura no es activable de forma segura.
+
+También se debe obtener una fuente oficial para unidad, pesabilidad, divisibilidad y paso de venta. Está prohibido inferirlos por nombres o presentaciones locales.
+
+## 8. Configurar Mercado Pago
+
+La aplicación autorizada es:
+
+```text
+Aplicación: Shekinah
+Application ID: 7373984348988262
+```
+
+Secretos:
+
+```text
+MERCADO_PAGO_ACCESS_TOKEN
+MERCADO_PAGO_WEBHOOK_SECRET
+ORDER_TOKEN_SECRET
+```
+
+Variables:
 
 ```text
 PUBLIC_SITE_URL=https://shekinah.ar
 ALLOWED_SITE_ORIGINS=https://shekinah.ar
+MERCADO_PAGO_CHECKOUT_MODE=production
 COMMERCE_ENABLED=false
 VITE_COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=true
-VITE_ANALYTICS_ENABLED=true
-ANALYTICS_RETENTION_DAYS=730
 ```
 
-En preview:
+El webhook productivo esperado es `https://shekinah.ar/api/webhooks/mercadopago`. Debe exigir firma y reconsultar el pago. La presencia del nombre de un secreto no demuestra que sea vigente ni que pertenezca a la cuenta correcta.
+
+Probar primero sandbox y estados approved/pending/rejected/cancelled, duplicados y fuera de orden. Sin un lifecycle Dux completo no iniciar siquiera la preferencia: una prueba aislada de Mercado Pago no habilita comercio.
+
+## 9. Mercado Libre
+
+Mantener:
 
 ```text
-PUBLIC_SITE_URL=https://mp-sandbox.shekinah-7dl.pages.dev
-ALLOWED_SITE_ORIGINS=https://mp-sandbox.shekinah-7dl.pages.dev
-COMMERCE_ENABLED=true
-VITE_COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=true
-VITE_ANALYTICS_ENABLED=true
-ANALYTICS_RETENTION_DAYS=730
-MERCADO_PAGO_CHECKOUT_MODE=sandbox
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 ```
 
-`PUBLIC_SITE_URL` construye las URLs de retorno y webhook. Production debe usar el apex canónico y preview el dominio técnico de Pages; no intercambiar ambos entornos.
+No configurar OAuth, scheduler, webhooks o stock directo. Los endpoints históricos responden como retirados. No borrar tablas ni secretos existentes sólo por este cambio; pueden conservarse hasta una limpieza futura explícita y respaldada.
 
-Los valores anteriores se releyeron el 2026-08-22. Preview permite llamadas backend controladas en sandbox pero mantiene oculto el botón público; producción conserva ambos flags en `false` y `MERCADO_PAGO_CHECKOUT_MODE=production`. `VITE_*` exige un build nuevo porque se incorpora al bundle. Si se habilita el fallback opcional de Access, agregar recién entonces `CLOUDFLARE_ACCESS_TEAM_DOMAIN` y `CLOUDFLARE_ACCESS_AUD` reales.
+El cliente continúa usando la integración Dux ↔ Mercado Libre de la tienda `HERBOLARIOMDP`. Shekinah no debe competir con ella.
 
-## 5. Configurar secretos
+## 10. Validar preview
 
-### Autenticación administrativa
+Con todos los flags de venta cerrados:
 
-Crear por entorno, sin reutilizar valores:
+- sitio y catálogo responden;
+- Dux deshabilitado produce `DUX_API_DISABLED`;
+- Dux habilitado en entorno controlado pero sin lifecycle produce `DUX_ORDER_LIFECYCLE_UNAVAILABLE`;
+- no se emite request a Mercado Pago después de esos errores;
+- WhatsApp no se abre;
+- ningún endpoint Mercado Libre se consulta o muta;
+- productos sin mapping o ambiguos se preservan y quedan no vendibles;
+- decimales como `738.5`, `36.4` y `2.44` atraviesan parser, D1 y proyección sin redondeo;
+- snapshot obsoleto o Dux caído no habilita venta;
+- doble sync usa lock y no duplica ciclos;
+- `429` espera y reintenta de forma limitada;
+- backoffice no permite editar stock Dux.
 
-- `ADMIN_USERNAME`: cuenta server-side; no se incorpora al frontend;
-- `ADMIN_PASSWORD_HASH`: `pbkdf2-sha256$iteraciones$salt-base64url$derivado-base64url`, generado con salt criptográfica aleatoria y PBKDF2-HMAC-SHA-256. El valor operativo usa 100.000 iteraciones: 300.000 y 600.000 excedieron el límite CPU efectivo del runtime Bundled, mientras que 100.000 completó una verificación remota negativa con credencial ficticia en 32 ms de CPU; no reducir el costo sin repetir benchmark y smoke productivo;
-- `ADMIN_SESSION_SECRET`: al menos 32 bytes aleatorios codificados en base64url;
-- `ADMIN_RATE_LIMIT_SECRET`: al menos 32 bytes aleatorios independientes, codificados en base64url.
+Validar además el login administrativo, D1, R2, privacidad, build sin source maps y APIs first-party existentes.
 
-La contraseña sólo se ingresa mediante prompt protegido en el proceso que genera el derivado. No se escribe en scripts versionados, argumentos, archivos temporales ni salida. Cargar los cuatro valores como `secret_text` independientes en production y preview mediante el selector de entorno de Pages o la API autenticada. La versión de Wrangler verificada no expone un selector de entorno en `pages secret put`; no asumir que un comando sin selector escribe ambos. Comprobar después únicamente presencia, nombre y tipo, nunca valores.
+## 11. Activación futura escalonada
 
-Para rotar contraseña: generar un hash nuevo con salt nueva y 100.000 iteraciones, actualizar `ADMIN_PASSWORD_HASH` en ambos entornos y desplegar para materializar el nuevo snapshot. Si se requiere cierre global de sesiones, rotar además `ADMIN_SESSION_SECRET`; no basta con cambiar el hash porque las cookies ya emitidas siguen firmadas hasta vencer.
+Sólo después de resolver el hard blocker:
 
-### Comercio y analítica
+1. probar mutaciones en un entorno Dux de prueba, si existe;
+2. demostrar pedido con carrito completo y reserva correcta;
+3. demostrar consulta posterior;
+4. demostrar liberación/cancelación idempotente;
+5. demostrar finalización idempotente;
+6. probar error Dux → no preferencia;
+7. probar reserva Dux → error MP → compensación;
+8. probar timeout incierto → consulta antes de reintento;
+9. probar WhatsApp aprobado/rechazado/vencido;
+10. verificar que Dux refleja disponibilidad y sincroniza Mercado Libre;
+11. aplicar y verificar secrets/configuración en production;
+12. desplegar el SHA aprobado;
+13. activar `DUX_API_ENABLED=true` y reconciliación read-only;
+14. habilitar backend y frontend de comercio sólo al final;
+15. realizar una compra productiva de bajo importe únicamente con autorización expresa.
 
-Crear valores aleatorios independientes, de al menos 32 bytes, para `ORDER_TOKEN_SECRET` y `ANALYTICS_HMAC_SECRET`. No pegarlos en archivos, documentación, argumentos de línea de comandos ni logs.
+No habilitar `COMMERCE_ENABLED` o `VITE_COMMERCE_ENABLED` porque compile.
 
-Cargar cada valor como `secret_text` en el entorno exacto desde Pages o mediante la API autenticada. Confirmar después únicamente nombres y tipos; nunca leer, copiar ni registrar valores.
+## 12. R2 y autenticación administrativa
 
-Los cuatro secretos administrativos quedaron presentes y cifrados en ambos entornos el 2026-08-10; sus valores no se registran. `ANALYTICS_HMAC_SECRET` quedó presente con valores independientes en ambos entornos el 2026-08-11. El 2026-08-22 se verificó por nombre —sin leer valores— que producción también contiene `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` y `ORDER_TOKEN_SECRET`. La presencia no certifica vigencia: una credencial expuesta debe rotarse en el proveedor y actualizarse en Pages antes de cualquier activación.
+El cambio Dux no altera los bindings existentes:
 
-### Precaución con deployments directos
+- `DB`: D1 aislada por entorno;
+- `CATALOG_IMAGES`: R2 aislado por entorno;
+- sesión administrativa propia y secretos `ADMIN_*`;
+- Cloudflare Access como fallback opcional.
 
-Si un `wrangler.jsonc` local contiene `pages_build_output_dir`, Cloudflare lo trata como fuente de verdad del deployment y puede reemplazar variables o bindings configurados en el dashboard. El archivo operativo real está ignorado por Git y contiene IDs; no publicarlo. Para un upload manual, mantener preview completo en el nivel superior y production completo en `env.production`: variables, D1 y R2 deben figurar en ambos. En particular, el `database_id` del nivel superior debe ser la D1 preview; `preview_database_id` no sustituye ese valor al publicar Pages. Releer después por API los destinos reales de `DB` y `CATALOG_IMAGES`, los flags, secretos por nombre y `fail_open=false` antes de ejecutar smoke.
-
-## 6. Configurar Mercado Pago Checkout Pro
-
-1. Usar primero credenciales de prueba y `MERCADO_PAGO_CHECKOUT_MODE=sandbox`.
-2. Registrar la URL de notificación exacta: `https://shekinah.ar/api/webhooks/mercadopago`. Al crear cada preferencia, el backend agrega `source_news=webhooks` para solicitar ese formato de notificación sin cambiar el endpoint público.
-3. Habilitar únicamente el tópico de pagos usado por Checkout Pro. No suscribir eventos que el endpoint no procesa.
-4. Copiar el secreto de firma de Webhooks en `MERCADO_PAGO_WEBHOOK_SECRET`.
-5. Confirmar que el proveedor envía `x-signature`; validar `x-request-id` dentro del manifiesto cuando el header esté presente, sin inventarlo cuando el proveedor lo omita.
-6. Realizar pagos de prueba aprobados, pendientes y rechazados.
-7. Verificar en D1 que cada pago coincida individualmente en `external_reference`, `metadata.order_id`, importe total y moneda; que `live_mode` corresponda al entorno; que el `user_id` de la notificación coincida con el `collector_id` consultado; y que un webhook duplicado no duplique pagos ni efectos. El endpoint rechaza bodies que excedan 64.000 bytes durante la lectura del stream.
-8. Probar la conciliación desde el backoffice: debe consultar por `external_reference`, validar nuevamente pago y entorno, registrar `admin.order.reconcile` y conservar exactamente un consumo de stock ante repeticiones.
-
-La creación de preferencias no depende de un encabezado de idempotencia no documentado por Checkout Pro. D1 reclama un único intento por pedido y la preferencia vence al concluir la misma ventana de 30 minutos, calculada desde `orders.created_at`. Si la respuesta del proveedor es incierta, las solicitudes siguientes recuperan por `external_reference` y permanecen cerradas si no pueden demostrar un resultado único con carrito y vigencia exactos.
-
-Los productos con `stockQuantity` son elegibles sólo con `0008` aplicada. D1 reserva antes de llamar al proveedor, comparte disponibilidad con WhatsApp y serializa la última unidad. La reserva vence con la preferencia salvo que exista un pago `pending`; `approved` o `refunded` consume el físico una vez. No activar Functions nuevas contra un esquema anterior ni tratar un reembolso como reposición de mercadería.
-
-Cada `provider_payment_id` aceptado debe cubrir por sí solo el total exacto en ARS y referenciar el pedido; no se suman pagos parciales. Ante varios pagos compatibles, el pedido se deriva del conjunto persistido con prioridad `approved` → `refunded` → `pending` → `rejected` → `cancelled`. La facturación administrativa cuenta el pedido una vez, pero `Pagos aprobados` conserva el conteo de IDs exactos para evidenciar un posible doble cobro.
-
-Los parámetros de retorno nunca constituyen prueba de pago. La prueba válida es el estado recuperado con el access token después de un webhook firmado.
-
-Antes de pasar a producción, cambiar el access token y `MERCADO_PAGO_CHECKOUT_MODE=production`, volver a desplegar y repetir una compra controlada de bajo importe. No reutilizar credenciales de sandbox.
-
-Cuando Checkout Pro productivo quede validado, decidir explícitamente si se retira el fallback manual o si ambos flujos deben coexistir. No habilitarlos silenciosamente como equivalentes porque tienen garantías operativas distintas.
-
-## 7. Configurar autenticación administrativa y Access opcional
-
-La autenticación propia es el mecanismo primario y funciona sin Zero Trust:
-
-1. `/admin` debe poder servir la SPA para mostrar el login.
-2. `POST /api/admin/auth/login` verifica credenciales, origen, tamaño y rate limiting D1.
-3. `GET /api/admin/auth/session` confirma la cookie `__Host-`.
-4. `POST /api/admin/auth/logout` la elimina.
-5. El middleware exige identidad en todo el resto de `/api/admin/*`.
-
-No crear una política externa de Access que intercepte obligatoriamente `/admin*` o `/api/admin/*`: impediría llegar al login y no reconoce la cookie propia. Zero Trust permanecía ausente en el inventario del 2026-08-10 y no es un bloqueo para este flujo.
-
-`server/access.ts` se conserva como fallback interno. Si se habilita en el futuro, configurar Team Domain y AUD reales y diseñar la política de borde de modo que no bloquee los tres endpoints propios. Una cookie propia presente pero inválida nunca cae a Access.
-
-Pruebas obligatorias:
-
-- `/admin` sin sesión muestra el formulario;
-- API administrativa sin sesión responde 401;
-- usuario o contraseña incorrectos reciben el mismo 401;
-- cookie alterada o vencida recibe 401;
-- sesión válida permite una operación y logout vuelve a cerrar la API;
-- JWT Access válido funciona sólo como fallback, si se configuró.
-
-Producción y preview deben usar `Fail closed`. Este valor quedó verificado en ambos el 2026-08-10; `public/_routes.json` incluye `/api/*`, `/admin` y `/admin/*` y no debe caer a activos estáticos si se agota la cuota de Pages Functions.
-
-## 8. Validar preview
-
-Con D1 de preview y sandbox:
-
-- usar únicamente la D1 y los secretos aislados de preview; si se restringe el entorno con Access, no confundir esa barrera adicional con la prueba del login propio en producción;
-- catálogo: exactamente 510 productos y 16 categorías, salvo cambio comercial autorizado en el repositorio;
-- `/enfoque`: 404 de aplicación;
-- `/privacidad`: disponible;
-- persistencia y sincronización del carrito entre pestañas;
-- modificación manual del total en el navegador: sin efecto en el importe del servidor para Checkout Pro;
-- repetición, recarga o segunda pestaña con el mismo carrito dentro de 30 minutos: misma UUID, pedido y preferencia con vigencia coincidente; vencida la ventana, la URL anterior no se devuelve;
-- misma UUID con otro carrito: `409 IDEMPOTENCY_CONFLICT`;
-- firma de webhook inválida: `401` y pedido sin aprobar;
-- `live_mode`, cuenta notificadora o `metadata.order_id` ajenos: evento ignorado, sin mutar pedido, pago ni stock;
-- retorno `?status=approved` sin webhook: pedido no aprobado;
-- evento duplicado: una sola actualización lógica; varios IDs de pago exactos para un pedido conservan filas separadas y disparan conciliación operativa;
-- analítica rechazada o sin decidir: cero POST a `/api/analytics/events`;
-- retiro de consentimiento: borrado de sesión y eventos en D1, con HMAC revocado para bloquear solicitudes en vuelo;
-- exportaciones CSV: sin fórmulas ejecutables;
-- artefacto `dist`: sin secretos ni `.map`.
-- inventario legacy: ausencia de `stockQuantity` conserva Checkout Pro sin control; stock 0 controlado queda no disponible;
-- cantidades: cliente limita a `min(99, disponible)`; el servidor y los triggers rechazan carreras y sobre-reservas entre Checkout Pro y WhatsApp;
-- Checkout Pro con stock: reserva antes de preferencia, replay de la misma UUID sin auto-bloqueo, vencimiento a 30 minutos, extensión por pago pendiente, aprobación exactamente una vez y reembolso sin reposición automática;
-- conciliación administrativa: sesión y origen requeridos, búsqueda autoritativa, repetición idempotente y auditoría por solicitud;
-- WhatsApp: datos completos obligatorios, creación anterior a la navegación externa, precio autoritativo, idempotencia, reserva de última unidad y operación multi-item todo-o-nada;
-- administración: aprobar descuenta físico exactamente una vez; rechazar libera por derivación; estados cruzados y clicks repetidos no duplican efectos;
-- imágenes: JPEG/PNG/WebP hasta 4 MiB, magic bytes, auth, ruta first-party y cleanup seguro;
-- R2: `shekinah` y `shekinah-preview` aislados, `CATALOG_IMAGES` visible en el deployment y `publicR2DevEnabled=false`, sin confundir infraestructura con persistencia ya probada.
-
-Validar por separado el retiro del fallback manual:
-
-- no existe botón, enlace ni campo público para ingresar o copiar un importe;
-- no existe una URL fija de Mercado Pago en el bundle público;
-- Checkout Pro cerrado se presenta como no disponible, sin desviar al comprador a otro cobro;
-- WhatsApp continúa habilitado al número `5492236216559` como canal de pedido, no como confirmación de pago;
-- se crea exactamente una solicitud al endpoint de pedido WhatsApp y ninguna a `/api/checkout/preferences` al usar ese canal.
-
-## 9. Activar Checkout Pro de forma escalonada
-
-1. Mantener `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`; la analítica opt-in puede permanecer activa de forma independiente.
-2. Confirmar Functions, binding, `0008` en preview y producción, reservas/consumo y autenticación administrativa; Access es opcional.
-3. Conservar `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true`, retención 730 y secretos independientes; no mezclar eventos manuales con métricas financieras.
-4. Rotar cualquier credencial expuesta, actualizar el secreto cifrado de Pages y dejar en Webhooks únicamente el tópico de pagos.
-5. Habilitar `COMMERCE_ENABLED=true` y `VITE_COMMERCE_ENABLED=true` sólo después de una compra controlada con comprador distinto del vendedor, webhook procesado, stock consumido y aprobación del titular de Mercado Pago.
-6. Supervisar webhooks, estados, importes y reservas durante la ventana inicial.
-7. Confirmar que el fallback manual continúa retirado y que el bundle no contiene una URL fija de pago.
+Al modificar variables o bindings, distinguir siempre el proyecto Pages del Worker homónimo. No reemplazar una configuración activa con `wrangler.example.jsonc`: contiene marcadores, no IDs reales.
 
 ## Estados que deben informarse por separado
 
 | Estado | Evidencia mínima |
 | --- | --- |
-| Código preparado | archivos y pruebas locales |
-| Validación local | comandos ejecutados y resultados |
+| Código preparado | diff y pruebas locales |
 | CI aprobado | workflow exitoso sobre SHA exacto |
 | Pages desplegado | deployment asociado al SHA |
-| Canales públicos | Sin Link de Pago manual; Checkout Pro directo o cerrado y WhatsApp reservado |
-| D1 vinculado | binding `DB` visible y consulta correcta |
-| Migración aplicada | tabla de migraciones/consultas remotas |
-| R2 habilitado | inventario autenticado de buckets sin error `10042` |
-| Imágenes administrativas vinculadas | `CATALOG_IMAGES` separado en production/preview y deployment exacto |
-| Mercado Pago Checkout Pro configurado | sandbox y webhook verificados |
-| Login administrativo configurado | cookie segura, API 401/200, logout y rate limit |
-| Access opcional | JWT permitido/denegado sin bloquear el login propio |
-| Checkout Pro productivo | flags, credenciales productivas y compra controlada |
+| Migración `0012` aplicada | lista remota y esquema verificado |
+| Dux API habilitada | PRO/FULL, token e IDs confirmados |
+| Snapshot Dux | sync real y conteos auditados |
+| Lifecycle Dux | reserva, consulta, liberación y finalización demostradas |
+| Mercado Pago sandbox | preferencia, firma y estados verificados |
+| Comercio productivo | flags, deployment, webhook y prueba autorizada |
 
 No declarar una fila como cumplida usando evidencia de otra.

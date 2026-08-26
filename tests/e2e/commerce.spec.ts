@@ -1,11 +1,62 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-test.beforeEach(async ({ page }) => {
+import catalogIndexSource from '../../catalog/internal/catalog-index.json' with { type: 'json' };
+import catalogDetailSource from '../../src/catalog-data/catalog-details.json' with { type: 'json' };
+
+const duxCatalogProducts: readonly Record<string, unknown>[] = catalogIndexSource.map(
+  (product) => Object.freeze({
+    ...product,
+    availability: 'available',
+    commerce: Object.freeze({
+      source: 'dux',
+      catalogVersion: 'd'.repeat(64),
+      syncedAt: '2026-08-26T12:00:00.000Z',
+      availabilityState: 'verified',
+      checkoutEligible: true,
+      mappingStatus: 'mapped',
+      quantitySemanticsStatus: 'verified',
+      observedStock: Object.freeze({ real: 100, reserved: 0, available: 100 }),
+      unit: Object.freeze({ name: 'unidad de prueba Dux', symbol: 'u' }),
+      depositName: 'Depósito E2E Dux',
+    }),
+  }),
+);
+
+test.beforeEach(async ({ context, page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.localStorage.setItem('shekinah.analytics-consent.v1', 'rejected');
+  });
+  await context.route('**/api/catalog**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/catalog') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ products: duxCatalogProducts }),
+      });
+      return;
+    }
+    const slug = pathname.startsWith('/api/catalog/')
+      ? decodeURIComponent(pathname.slice('/api/catalog/'.length))
+      : '';
+    const summary = duxCatalogProducts.find((product) => product.slug === slug);
+    const detail = catalogDetailSource[slug as keyof typeof catalogDetailSource];
+    if (summary === undefined || detail === undefined) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'PRODUCT_NOT_FOUND' } }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ product: { ...summary, ...detail } }),
+    });
   });
 });
 

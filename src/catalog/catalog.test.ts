@@ -159,6 +159,78 @@ describe('modelo de producto', () => {
     expect(product.commerce).not.toHaveProperty('variationId');
   });
 
+  it('conserva exactamente el stock decimal y negativo observado en Dux', () => {
+    const product = parseProduct({
+      ...baseProduct,
+      availability: 'unavailable',
+      commerce: {
+        source: 'dux',
+        catalogVersion: 'b'.repeat(64),
+        syncedAt: '2026-08-26T12:30:45.000Z',
+        availabilityState: 'unavailable',
+        checkoutEligible: false,
+        mappingStatus: 'mapped',
+        quantitySemanticsStatus: 'unavailable_from_v2_items',
+        observedStock: {
+          real: 738.5,
+          reserved: 36.4,
+          available: -2.44,
+        },
+        unit: { id: '7', name: 'Kilogramo', symbol: 'kg' },
+        depositName: 'Casa central',
+      },
+    });
+
+    expect(product.commerce).toMatchObject({
+      source: 'dux',
+      observedStock: { real: 738.5, reserved: 36.4, available: -2.44 },
+      unit: { id: '7', name: 'Kilogramo', symbol: 'kg' },
+    });
+    expect(product.stockQuantity).toBeUndefined();
+    expect(isProductEffectivelyAvailable(product)).toBe(false);
+    expect(Object.isFrozen(product.commerce)).toBe(true);
+    expect(Object.isFrozen(product.commerce?.source === 'dux'
+      ? product.commerce.observedStock
+      : undefined)).toBe(true);
+  });
+
+  it('rechaza números Dux no finitos, estados incoherentes y doble autoridad de stock', () => {
+    const duxCommerce = {
+      source: 'dux',
+      catalogVersion: 'c'.repeat(64),
+      syncedAt: '2026-08-26T12:30:45.000Z',
+      availabilityState: 'verified',
+      checkoutEligible: false,
+      mappingStatus: 'mapped',
+      quantitySemanticsStatus: 'verified',
+      observedStock: { real: 10.5, reserved: 1.25, available: 9.25 },
+    } as const;
+
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => parseProduct({
+        ...baseProduct,
+        commerce: {
+          ...duxCommerce,
+          observedStock: { ...duxCommerce.observedStock, available: invalid },
+        },
+      })).toThrow(/números finitos/u);
+    }
+
+    expect(() => parseProduct({
+      ...baseProduct,
+      stockQuantity: 10,
+      commerce: duxCommerce,
+    })).toThrow(/stock local/u);
+    expect(() => parseProduct({
+      ...baseProduct,
+      commerce: {
+        ...duxCommerce,
+        checkoutEligible: true,
+        mappingStatus: 'unmapped',
+      },
+    })).toThrow(/no confirmó/u);
+  });
+
   it('acepta sólo rutas administradas con UUID v4 exacto', () => {
     const source = '/api/catalog-images/123e4567-e89b-42d3-a456-426614174000.webp';
     expect(isManagedCatalogImagePath(source)).toBe(true);

@@ -1,8 +1,12 @@
 import {
-  getBaseCatalogProductDetail,
   getRuntimeCatalogProductDetail,
 } from '../../../server/catalog-store';
-import { jsonResponse, methodNotAllowedResponse, responseFromError } from '../../../server/http';
+import {
+  jsonResponse,
+  methodNotAllowedResponse,
+  requireDatabase,
+  responseFromError,
+} from '../../../server/http';
 import { projectCatalogProductDetailForSale } from '../../../server/local-inventory';
 import type { PagesFunction } from '../../../server/platform';
 
@@ -10,9 +14,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
   if (request.method !== 'GET') return methodNotAllowedResponse(['GET']);
   try {
     const id = typeof params.id === 'string' ? params.id : '';
-    const product = env.DB === undefined
-      ? getBaseCatalogProductDetail(id)
-      : await getRuntimeCatalogProductDetail(env.DB, env, id);
+    const product = await getRuntimeCatalogProductDetail(requireDatabase(env), env, id);
     return product === null
       ? jsonResponse({
           error: {

@@ -235,6 +235,9 @@ export function ProductList({
           {visibleProducts.map((product) => {
             const availabilityStatus = productAvailabilityLabel(product);
             const stockStatus = productStockLabel(product);
+            const duxInventory = product.commerce?.source === 'dux'
+              ? product.commerce
+              : undefined;
             const selected = editingId === product.id;
             const rowBusy = operation.kind !== 'idle' &&
               'productId' in operation && operation.productId === product.id;
@@ -269,6 +272,20 @@ export function ProductList({
                         {stockStatus.label}
                       </span>
                     </div>
+                    {duxInventory === undefined ? null : (
+                      <div className="admin-context-note">
+                        <strong>Inventario: Dux</strong>
+                        <span>Vínculo: {duxMappingLabel(duxInventory.mappingStatus)}</span>
+                        <span>{duxObservedStockLabel(duxInventory.observedStock)}</span>
+                        {duxInventory.unit === undefined ? null : (
+                          <span>Unidad: {duxUnitLabel(duxInventory.unit)}</span>
+                        )}
+                        <span>Última actualización: {formatDuxSyncedAt(duxInventory.syncedAt)}</span>
+                        {duxInventory.depositName === undefined ? null : (
+                          <span>Depósito: {duxInventory.depositName}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="admin-product-row-actions">
                     <button
@@ -293,15 +310,17 @@ export function ProductList({
                           ? 'Reactivar'
                           : 'Pausar'}
                     </button>
-                    <button
-                      className="button button-secondary admin-compact-button"
-                      type="button"
-                      disabled={remoteBusy || (selected && isDirty)}
-                      aria-label={`Ajustar stock de ${product.name}`}
-                      onClick={() => onBeginQuickStock(product)}
-                    >
-                      Ajustar stock
-                    </button>
+                    {duxInventory === undefined ? (
+                      <button
+                        className="button button-secondary admin-compact-button"
+                        type="button"
+                        disabled={remoteBusy || (selected && isDirty)}
+                        aria-label={`Ajustar stock de ${product.name}`}
+                        onClick={() => onBeginQuickStock(product)}
+                      >
+                        Ajustar stock
+                      </button>
+                    ) : null}
                     <button
                       ref={(element) => {
                         if (element === null) deleteTriggerRefs.current.delete(product.id);
@@ -317,7 +336,7 @@ export function ProductList({
                     </button>
                   </div>
 
-                  {quickStockId === product.id ? (
+                  {quickStockId === product.id && duxInventory === undefined ? (
                     <form
                       className="admin-inline-editor"
                       onSubmit={(event) => onSubmitQuickStock(event, product)}
@@ -430,6 +449,25 @@ function productAvailabilityLabel(product: CatalogProductDetail) {
 }
 
 function productStockLabel(product: CatalogProductDetail) {
+  if (product.commerce?.source === 'dux') {
+    if (product.commerce.mappingStatus !== 'mapped') {
+      return {
+        label: product.commerce.mappingStatus === 'ambiguous'
+          ? 'Vínculo Dux ambiguo · venta bloqueada'
+          : 'Sin vincular a Dux · venta bloqueada',
+        tone: 'out',
+      } as const;
+    }
+    if (product.commerce.observedStock === undefined) {
+      return { label: 'Stock Dux no verificable · venta bloqueada', tone: 'out' } as const;
+    }
+    return {
+      label: product.commerce.observedStock.available > 0 && product.commerce.checkoutEligible
+        ? `Disponible Dux: ${formatExactQuantity(product.commerce.observedStock.available)}`
+        : `Disponible Dux: ${formatExactQuantity(product.commerce.observedStock.available)} · venta bloqueada`,
+      tone: product.commerce.checkoutEligible ? 'available' : 'out',
+    } as const;
+  }
   if (product.stockQuantity === undefined) {
     return { label: 'Stock sin configurar · venta bloqueada', tone: 'out' } as const;
   }
@@ -445,4 +483,35 @@ function productStockLabel(product: CatalogProductDetail) {
     label: `Físico: ${product.stockQuantity.toLocaleString('es-AR')} · reservado: ${reserved.toLocaleString('es-AR')} · disponible: ${available.toLocaleString('es-AR')}`,
     tone: 'available',
   } as const;
+}
+
+function duxMappingLabel(mappingStatus: 'mapped' | 'unmapped' | 'ambiguous'): string {
+  if (mappingStatus === 'mapped') return 'Vinculado';
+  if (mappingStatus === 'ambiguous') return 'Ambiguo';
+  return 'Sin vincular a Dux';
+}
+
+function duxObservedStockLabel(
+  observedStock: Readonly<{ real: number; reserved: number; available: number }> | undefined,
+): string {
+  if (observedStock === undefined) return 'Stock observado: no disponible';
+  return `Stock observado: real ${formatExactQuantity(observedStock.real)} · reservado ${formatExactQuantity(observedStock.reserved)} · disponible ${formatExactQuantity(observedStock.available)}`;
+}
+
+function duxUnitLabel(unit: Readonly<{ id?: string; name?: string; symbol?: string }>): string {
+  const publicParts = [unit.name, unit.symbol].filter(
+    (value): value is string => value !== undefined,
+  );
+  return publicParts.length === 0 ? 'No informada por Dux' : publicParts.join(' · ');
+}
+
+function formatDuxSyncedAt(syncedAt: string): string {
+  return new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(new Date(syncedAt));
+}
+
+function formatExactQuantity(quantity: number): string {
+  return String(quantity);
 }

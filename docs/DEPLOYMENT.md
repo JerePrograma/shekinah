@@ -1,6 +1,6 @@
 # Despliegue
 
-La configuración y activación de Mercado Libre, la migración `0009` y el rollback del stock upstream se rigen por `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`.
+La activación vigente se rige por `docs/COMMERCE_DEPLOYMENT.md`. Dux es la autoridad de inventario y la integración directa Mercado Libre está retirada; `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md` es referencia histórica, no un procedimiento de activación.
 
 ## Configuración de Cloudflare Pages
 
@@ -58,7 +58,7 @@ PUBLIC_SITE_URL=https://shekinah.ar
 VITE_WHATSAPP_NUMBER=5492236216559
 ```
 
-`VITE_WHATSAPP_NUMBER` es el único dato público de canal incluido como default autorizado. La variable de Link de Pago fue retirada. La API confirmó `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` en `https://shekinah.ar` para production y en `https://shekinah-7dl.pages.dev` para preview. `PUBLIC_SITE_URL` debe permanecer explícito antes de habilitar Checkout Pro u OAuth de Mercado Libre.
+`VITE_WHATSAPP_NUMBER` es el único dato público de canal incluido como default autorizado. La variable de Link de Pago fue retirada. La API confirmó `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` en `https://shekinah.ar` para production y en `https://shekinah-7dl.pages.dev` para preview. `PUBLIC_SITE_URL` debe permanecer explícito antes de habilitar Dux o Checkout Pro; no debe reactivarse OAuth de Mercado Libre.
 
 El apex fue agregado mediante Custom Domains del proyecto Pages, sin usar IPs circunstanciales ni registros A/AAAA inventados. Conservar el CNAME proxied administrado y no reemplazar el placeholder de `www` por una supuesta IP de origen. Apex, `www`, TLS y redirección quedaron verificados por separado.
 
@@ -98,7 +98,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `migrations/0001_commerce.sql`, `migrations/0002_fulfillment_and_retention.sql`, `migrations/0003_checkout_intent_cart_fingerprint.sql`, `migrations/0004_catalog_admin.sql`, `migrations/0005_admin_auth.sql`, `migrations/0006_analytics_manual_payment_click.sql`, `migrations/0007_whatsapp_order_reservations.sql` y `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql`; deben aplicarse en ese orden. La evidencia remota del 2026-08-22 cubre `0001` a `0008` en preview y producción, con bookmarks previos, esquema, triggers, conteos y claves foráneas verificados.
+Las migraciones versionadas son `0001` a `0012` y deben aplicarse en orden sin modificar las ya publicadas. `0009` incorpora el legado Mercado Libre, `0010` la liberación terminal legacy, `0011` el control local legacy y `0012_dux_authoritative_inventory.sql` la proyección y los guards Dux. La evidencia histórica del 2026-08-22 cubre sólo `0001` a `0008`; no se debe asumir que `0009` a `0012` estén aplicadas sin verificarlas en cada D1 remota.
 
 El endpoint `/query` de D1 devolvió `7500 incomplete input` al intentar `0008` con triggers y revirtió todo. El cierre usó `wrangler d1 execute --file`, que invoca el import oficial, con el SQL versionado y la inserción exacta de su nombre en `d1_migrations`; producción sólo se migró después de la verificación funcional y limpieza de preview.
 
@@ -147,8 +147,8 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 
 ## Activación
 
-- WhatsApp: número autorizado y pedido server-side; Link de Pago manual retirado;
-- Checkout Pro automatizado: código, D1, credenciales renovadas y Webhooks listos; activación productiva bloqueada por pagos controlados, conciliación y calidad de integración;
+- WhatsApp: número autorizado, pero creación de pedidos bloqueada hasta demostrar el lifecycle Dux; Link de Pago manual retirado;
+- Checkout Pro automatizado: integración financiera conservada; activación productiva bloqueada por plan/token, semántica y lifecycle Dux, migraciones remotas y pago sandbox;
 - analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 
@@ -162,11 +162,11 @@ Después del despliegue:
 - comprobar que no exista enlace, monto manual ni navegación fija de Mercado Pago;
 - comprobar que los endpoints server-side deshabilitados fallen de forma segura;
 - comprobar administración protegida;
-- comprobar creación idempotente de pedidos WhatsApp aun con Checkout Pro cerrado, y comprobar pedidos Checkout Pro sólo cuando ese canal esté configurado;
+- comprobar que Checkout Pro y WhatsApp fallen cerrados mientras el lifecycle Dux no esté demostrado;
 - comprobar webhook con eventos controlados antes de activar Checkout Pro;
 - comprobar que ningún secreto aparezca en respuestas o bundles.
-- comprobar semántica legacy de stock no controlado, stock cero y disponibilidad manual;
-- comprobar que cliente y servidor rechacen cantidades superiores a `min(99, stock)`;
+- comprobar mapping Dux, snapshot fresco y cantidades decimales exactas sin fallback local;
+- comprobar que unidad y paso comprable provengan sólo de un contrato oficial verificado;
 - comprobar formato/tamaño/firma, rutas first-party y cleanup en R2 sin tocar assets legacy ni habilitar `r2.dev`.
 
 La configuración de Pages, D1, migraciones `0001` a `0006`, bindings `DB`/`CATALOG_IMAGES`, nombres de secretos administrativos y analíticos, `Fail closed` y aislamiento R2 quedó verificada el 2026-08-11. Zero Trust/Access continúa ausente por diseño opcional y Mercado Pago Checkout Pro permanece deshabilitado. El SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8`, CI `31452548845`, deployments y smokes analíticos quedaron comprobados; el smoke autenticado de administración no se repitió por ausencia de credencial en claro.

@@ -1,84 +1,104 @@
-# Cierre productivo de Checkout Pro y stock local
+# Cierre productivo de Checkout Pro con inventario Dux
 
 ## Decisión operativa
 
-Shekinah es la fuente de verdad del catálogo, los precios y el inventario. Mercado Pago se usa
-exclusivamente para crear la preferencia de Checkout Pro, cobrar, notificar estados y verificar el
-resultado financiero. La pantalla **Tus productos** de Mercado Pago no participa del stock.
+Dux Software es la única autoridad del inventario físico, identidad externa, depósito, unidad/medida y pedidos o reservas. Shekinah conserva el catálogo editorial, carrito, orden local y coordinación. Mercado Pago procesa y verifica Checkout Pro. Dux sincroniza Mercado Libre sin que Shekinah intervenga.
 
-La integración productiva autorizada corresponde a:
+La integración Mercado Pago autorizada es:
 
 ```text
 Aplicación: Shekinah
 Application ID: 7373984348988262
 ```
 
-El Access Token y el secreto de Webhooks permanecen únicamente como secretos cifrados de
-Cloudflare Pages. El repositorio no contiene ni debe contener sus valores.
+El token Dux, Access Token Mercado Pago y secretos de webhook permanecen exclusivamente como secretos cifrados de Cloudflare Pages.
 
-La integración opcional con Mercado Libre queda deshabilitada para este modelo operativo:
+## Estado actual: bloqueo seguro
+
+La salida no está activa:
 
 ```text
+DUX_API_ENABLED=false
+COMMERCE_ENABLED=false
+VITE_COMMERCE_ENABLED=false
 MERCADO_LIBRE_CATALOG_ENABLED=false
 VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 ```
 
+Bloqueos:
+
+1. la cuenta muestra Plan ESTÁNDAR; se requiere PRO/FULL y token;
+2. `GET /v2/items` no publica unidad/pesabilidad/divisibilidad o paso decimal suficiente;
+3. la API pública no documenta cancelación/liberación/finalización/expiración segura de reservas de pedidos.
+
+Por diseño, Checkout responde antes de crear una preferencia. WhatsApp se bloquea antes de abrir el canal. No se crean pedidos Dux reales ni se usa stock local o Mercado Libre como fallback.
+
 ## Regla de inventario
 
-Un producto sin `stockQuantity` sigue visible y editable en el backoffice, pero no es vendible por
-Checkout Pro ni por WhatsApp. El administrador debe cargar un entero real antes de habilitarlo:
+El snapshot D1 es sólo la última observación. No se transforma en stock físico ni se combina con `stockQuantity` local. Un producto Dux:
 
-- `stockQuantity` ausente: inventario todavía no configurado;
-- `stockQuantity = 0`: agotado;
-- `stockQuantity > 0`: stock físico administrado por Shekinah;
-- `availableQuantity = stockQuantity - reservedQuantity`: disponibilidad pública.
+- mapeado y con semántica verificada: podrá ser vendible según las reglas Dux;
+- stock cero o negativo: agotado;
+- no mapeado o ambiguo: preservado, no vendible;
+- semántica de unidad no verificada: no vendible;
+- snapshot obsoleto o Dux caído: no vendible temporalmente.
 
-Ningún flujo interpreta la ausencia de stock como cantidad ilimitada.
+No se redondean decimales, no se infieren gramos/kilos desde el nombre y no se importa Excel.
 
-## Ciclo de reserva
+## Ciclo obligatorio antes de activar
 
-Checkout Pro reserva de forma atómica al crear el pedido. La reserva dura 30 minutos mientras no
-exista evidencia de pago pendiente. Un pago pendiente verificado conserva la reserva aunque venza
-esa ventana. `approved` consume el stock exactamente una vez. `rejected` y `cancelled` acortan la
-ventana al instante; `failed` recuperable conserva la reserva para permitir la recuperación segura
-de la preferencia y la libera por vencimiento si el intento se abandona.
+1. backend valida producto, mapping y cantidad solicitada;
+2. Dux reserva el carrito completo mediante pedido;
+3. Shekinah persiste pedido local ↔ pedido Dux;
+4. Mercado Pago crea o recupera una única preferencia;
+5. webhook firmado verifica el pago por API;
+6. `approved` finaliza Dux exactamente una vez;
+7. `rejected`/`cancelled` libera Dux exactamente una vez;
+8. abandono o vencimiento también libera por un mecanismo oficial;
+9. un timeout mutante se consulta antes de cualquier retry.
 
-WhatsApp usa el mismo inventario: crea una reserva pendiente por 24 horas, la aprobación
-administrativa consume una sola vez y el rechazo libera sin modificar el stock físico.
+No se implementa el paso 2 hasta disponer de los pasos 6 a 9. Crear una reserva sin poder liberarla no es una degradación aceptable.
 
-La migración `0010_checkout_terminal_reservation_release.sql` corrige pedidos terminales históricos
-y materializa la liberación inmediata para futuras transiciones. La migración
-`0011_local_order_stock_required.sql` impide que Checkout Pro o WhatsApp persistan líneas locales
-sin inventario controlado, incluso ante una invocación interna o una carrera con el backoffice.
+## Migración y configuración
 
-## Activación externa obligatoria
+Aplicar y verificar `migrations/0012_dux_authoritative_inventory.sql` primero en preview y luego en production. No se afirma que esté aplicada remotamente.
 
-Aplicar primero las migraciones pendientes en preview y luego en producción. Antes de abrir ventas,
-cargar stock real para los productos que se ofrecerán y comprobar que no existan reservas
-inconsistentes.
-
-En Cloudflare Pages **production**, verificar por nombre y entorno, sin leer ni registrar valores:
+Configurar por nombre y entorno:
 
 ```text
 DB
+DUX_API_TOKEN
+DUX_SCHEDULER_SECRET
+DUX_COMPANY_ID
+DUX_BRANCH_ID
+DUX_DEPOSIT_ID
+DUX_SNAPSHOT_MAX_AGE_SECONDS
 MERCADO_PAGO_ACCESS_TOKEN
 MERCADO_PAGO_WEBHOOK_SECRET
 ORDER_TOKEN_SECRET
 PUBLIC_SITE_URL=https://shekinah.ar
 ALLOWED_SITE_ORIGINS=https://shekinah.ar
 MERCADO_PAGO_CHECKOUT_MODE=production
-COMMERCE_ENABLED=true
-VITE_COMMERCE_ENABLED=true
-MERCADO_LIBRE_CATALOG_ENABLED=false
-VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 ```
 
-`VITE_COMMERCE_ENABLED` es build-time: requiere un deployment nuevo. `COMMERCE_ENABLED` es
-runtime server-side. Ambos deben coincidir. En modo `production`, el backend rechaza cualquier
-Access Token cuyo identificador embebido no corresponda a la aplicación Shekinah
-`7373984348988262`. El panel de Mercado Pago sigue siendo la autoridad para confirmar que la
-credencial está activa y pertenece a la cuenta autorizada.
+Los IDs Dux deben provenir de `GET /v2/empresas`, `GET /v2/sucursales` y `GET /v2/depositos`; no del seller Mercado Libre o de una pantalla del ERP.
 
-No ejecutar un cobro real como smoke automático. El cierre productivo se valida con build, pruebas,
-migraciones, configuración por nombre, endpoint de Webhook y una prueba financiera manual
-expresamente autorizada.
+## Gate de activación
+
+No cambiar `DUX_API_ENABLED`, `COMMERCE_ENABLED` o `VITE_COMMERCE_ENABLED` hasta demostrar:
+
+- PRO/FULL y token válidos;
+- lectura real sin exponer secretos;
+- mapping y cantidades auditados;
+- unidad/divisibilidad oficiales;
+- reserva, consulta, cancelación/liberación y finalización Dux;
+- idempotencia y timeout incierto;
+- compensación cuando Mercado Pago falla;
+- WhatsApp aprobado/rechazado/vencido;
+- sandbox Mercado Pago y webhook;
+- migración, CI y deployment del mismo SHA;
+- smoke público no destructivo.
+
+`VITE_COMMERCE_ENABLED` es build-time; requiere deployment nuevo. `COMMERCE_ENABLED` y `DUX_API_ENABLED` son runtime server-side. Los tres deben representar el mismo estado autorizado.
+
+No ejecutar un cobro real ni reservar stock productivo como smoke automático. La prueba financiera final requiere autorización expresa.

@@ -25,6 +25,7 @@ const migration = [
   '0006_analytics_manual_payment_click.sql',
   '0007_whatsapp_order_reservations.sql',
   '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+  '0012_dux_authoritative_inventory.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
 
 function cart(quantity = 1): RecalculatedCart {
@@ -87,6 +88,42 @@ function controlledCart(
 }
 
 describe('pedidos e idempotencia D1', () => {
+  it.each([
+    ['dux', 'DUX_ORDER_LIFECYCLE_UNAVAILABLE'],
+    ['mercadolibre', 'MERCADO_LIBRE_DIRECT_INTEGRATION_RETIRED'],
+  ] as const)('no materializa pedidos del proveedor %s por fuera del coordinador autorizado', async (
+    inventoryProvider,
+    code,
+  ) => {
+    const database = new SqliteD1(migration);
+    try {
+      const base = cart();
+      const line = base.lines[0];
+      if (line === undefined) throw new Error('Falta la línea de prueba.');
+      const providerCart = Object.freeze({
+        ...base,
+        lines: Object.freeze([Object.freeze({
+          ...line,
+          product: Object.freeze({
+            ...line.product,
+            inventoryProvider,
+            providerCatalogVersion: 'a'.repeat(64),
+          }),
+        })]),
+      });
+      await expect(prepareOrder({
+        cart: providerCart,
+        database,
+        idempotencyKey: crypto.randomUUID(),
+        tokenSecret: 'o'.repeat(40),
+      })).rejects.toMatchObject({ code });
+      await expect(database.prepare('SELECT COUNT(*) AS count FROM orders').first())
+        .resolves.toEqual({ count: 0 });
+    } finally {
+      database.close();
+    }
+  });
+
   it('reserva stock al crear Checkout Pro y lo consume exactamente una vez por webhook', async () => {
     const database = new SqliteD1(migration);
     try {
@@ -618,6 +655,141 @@ describe('pedidos e idempotencia D1', () => {
         'approved',
         'conflicting-payment-event',
       )).rejects.toMatchObject({ code: 'PAYMENT_IDENTITY_CONFLICT' });
+    } finally {
+      database.close();
+    }
+  });
+
+  it.each(['approved', 'rejected', 'refunded'] as const)(
+    'bloquea la transición de pago %s para un pedido vinculado a Dux',
+    async (mappedStatus) => {
+      const database = new SqliteD1(migration);
+      try {
+        const orderId = `ord_dux_payment_${mappedStatus}_1234567890`;
+        const now = '2026-08-26T12:00:00.000Z';
+        await database.prepare(`INSERT INTO orders (
+          id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
+          status, currency, total_minor, item_count, created_at, updated_at,
+          channel, stock_reserved_at, stock_reservation_expires_at
+        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', 75000, 1, ?, ?,
+          'checkout_pro', ?, ?)`)
+          .bind(
+            orderId,
+            `${orderId}-token`,
+            crypto.randomUUID(),
+            `${orderId}-fingerprint`,
+            now,
+            now,
+            now,
+            '2026-08-26T12:30:00.000Z',
+          )
+          .run();
+        await database.prepare(`INSERT INTO dux_order_links (
+          order_id, dux_reference, company_id, branch_id, deposit_id,
+          reservation_state, request_fingerprint, created_at, updated_at
+        ) VALUES (?, ?, '1', '2', '3', 'blocked', ?, ?, ?)`)
+          .bind(orderId, `shekinah:${orderId}`, 'f'.repeat(64), now, now)
+          .run();
+        const order = await getOrderById(database, orderId);
+        if (order === null) throw new Error('Falta el pedido Dux de prueba.');
+
+        await expect(updateOrderFromPayment(
+          database,
+          order,
+          {
+            id: `payment-${mappedStatus}`,
+            status: mappedStatus,
+            statusDetail: null,
+            amountMinor: 75_000,
+            currency: 'ARS',
+            externalReference: orderId,
+            approvedAt: mappedStatus === 'approved' ? now : null,
+            updatedAt: now,
+          },
+          mappedStatus,
+          `event-${mappedStatus}`,
+        )).rejects.toMatchObject({
+          status: 503,
+          code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
+        });
+        await expect(database.prepare(
+          'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+        ).bind(orderId).first()).resolves.toEqual({ count: 0 });
+        expect((await getOrderById(database, orderId))?.status).toBe('pending');
+      } finally {
+        database.close();
+      }
+    },
+  );
+
+  it('pone en cuarentena una preferencia histórica si su producto ahora pertenece a Dux', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const orderId = 'ord_historic_dux_payment_1234567890';
+      const now = '2026-08-26T12:00:00.000Z';
+      await database.prepare(`INSERT INTO orders (
+        id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
+        status, currency, total_minor, item_count, created_at, updated_at,
+        channel, stock_reserved_at, stock_reservation_expires_at
+      ) VALUES (?, ?, ?, ?, 'preference_pending', 'ARS', 75000, 1, ?, ?,
+        'checkout_pro', ?, ?)`)
+        .bind(
+          orderId,
+          `${orderId}-token`,
+          crypto.randomUUID(),
+          `${orderId}-fingerprint`,
+          now,
+          now,
+          now,
+          '2026-08-26T12:30:00.000Z',
+        )
+        .run();
+      await database.prepare(`INSERT INTO order_items (
+        order_id, product_id, name, quantity, unit_price_minor, subtotal_minor,
+        stock_controlled
+      ) VALUES (?, 'producto-prueba', 'Producto de prueba', 1, 75000, 75000, 0)`)
+        .bind(orderId)
+        .run();
+      await database.prepare(`INSERT INTO dux_inventory_items (
+        inventory_key, cod_item, item_name, local_product_id, mapping_status,
+        mapping_source, mapping_candidates_json, deposit_id, deposit_name,
+        stock_real, stock_reservado, stock_disponible, quantity_semantics_status,
+        checkout_eligible, catalog_version, raw_snapshot_json, last_sync_status,
+        last_synced_at, created_at, updated_at
+      ) VALUES (
+        'dux:v2:1:3:HISTORICO:base', 'HISTORICO', 'Producto histórico',
+        'producto-prueba', 'mapped', 'persisted', '["producto-prueba"]',
+        '3', 'Principal', 10, 0, 10, 'unavailable_from_v2_items', 0,
+        ?, '{}', 'ok', ?, ?, ?
+      )`)
+        .bind('e'.repeat(64), now, now, now)
+        .run();
+      const order = await getOrderById(database, orderId);
+      if (order === null) throw new Error('Falta el pedido histórico de prueba.');
+
+      await expect(updateOrderFromPayment(
+        database,
+        order,
+        {
+          id: 'payment-historic-dux',
+          status: 'approved',
+          statusDetail: 'accredited',
+          amountMinor: 75_000,
+          currency: 'ARS',
+          externalReference: orderId,
+          approvedAt: now,
+          updatedAt: now,
+        },
+        'approved',
+        'event-historic-dux',
+      )).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_ORDER_RECONCILIATION_REQUIRED',
+      });
+      await expect(database.prepare(
+        'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+      ).bind(orderId).first()).resolves.toEqual({ count: 0 });
+      expect((await getOrderById(database, orderId))?.status).toBe('preference_pending');
     } finally {
       database.close();
     }

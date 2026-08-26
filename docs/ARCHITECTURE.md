@@ -2,11 +2,31 @@
 
 ## Resumen
 
-Shekinah es una aplicación full-stack liviana construida con React, TypeScript estricto y Vite, desplegada mediante Cloudflare Pages.
+Shekinah es una SPA React/TypeScript/Vite con backend en Cloudflare Pages Functions, persistencia Cloudflare D1 e imágenes administradas en R2.
 
-La interfaz pública continúa siendo una SPA. Las capacidades de servidor se implementan con Cloudflare Pages Functions y Cloudflare D1. Mercado Libre aporta catálogo y stock autoritativos cuando su flag está habilitado; Mercado Pago Checkout Pro se integra por redirección y webhook. Con Checkout cerrado no existe fallback público de importe manual; WhatsApp permanece como canal de pedido reservado.
+La topología normativa de comercio es:
 
-La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md` y `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`.
+```text
+Dux Software ──lectura de inventario / pedidos-reservas──> Shekinah ──Checkout Pro──> Mercado Pago
+      │
+      └──────────────────sincronización propia──────────────────────> Mercado Libre
+```
+
+- Dux es la única autoridad de identidad externa de inventario, stock, depósito, unidad, divisibilidad y semántica de cantidad.
+- Shekinah es autoridad editorial y coordinadora: slugs, imágenes, descripciones, categorías, SEO, carrito y orden local.
+- Mercado Pago es autoridad financiera del pago.
+- Mercado Libre es sincronizado por Dux y queda fuera del flujo de inventario de Shekinah.
+
+El código conserva componentes históricos de stock local y de Mercado Libre para compatibilidad y trazabilidad, pero no deben volver a activarse como autoridad. No existe fallback a Excel, scraping, cookies del ERP ni inferencia de unidad mediante el nombre del producto.
+
+## Estado de activación
+
+La integración Dux implementada es de lectura y diagnóstico. La cuenta indicada por el cliente muestra Plan ESTÁNDAR y necesita PRO/FULL más token. Además, la API pública revisada no demuestra:
+
+- unidad, pesabilidad, divisibilidad o granularidad comercial en `GET /v2/items`;
+- cancelación, liberación, finalización o expiración segura de una reserva creada con la API de pedidos.
+
+Hasta resolver ambos puntos, `DUX_API_ENABLED`, `COMMERCE_ENABLED` y `VITE_COMMERCE_ENABLED` permanecen en `false`. Checkout Pro y WhatsApp fallan cerrados antes de crear una preferencia, abrir el canal o mutar Dux.
 
 ## Frontend
 
@@ -17,100 +37,92 @@ La arquitectura comercial detallada se encuentra en `docs/FULL_STACK_COMMERCE.md
 - `src/cart/`: estado persistente del carrito;
 - `src/commerce/`: contratos, API y sesión de checkout;
 - `src/analytics/`: consentimiento y cliente first-party;
-- `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo;
-- `src/styles.css`, `src/catalog.css`, `src/routing.css` y `src/commerce.css`: estilos locales.
+- `src/data/authorized-commercial-data.ts`: acceso tipado al catálogo editorial;
+- `src/data/runtime-catalog.ts`: proyección runtime recibida de APIs first-party;
+- `src/admin/DuxPanel.tsx`: diagnóstico read-only de la proyección Dux.
+
+El frontend no llama a Dux ni a Mercado Libre, no recibe tokens y no decide disponibilidad crítica. Una cantidad observada puede mostrarse sólo como información de snapshot; una venta requiere un ciclo Dux autoritativo que hoy está bloqueado.
 
 ## Navegación
 
-El router propio conserva History API y enlaces HTML reales.
+El router propio conserva History API y enlaces HTML reales. `src/routing/routes.ts` resuelve rutas públicas, comerciales y administrativas; las desconocidas muestran la vista 404.
 
-`src/routing/routes.ts` resuelve las rutas públicas, comerciales y administrativas. Las rutas desconocidas continúan mostrando la vista 404.
+## Catálogo y mapping
 
-## Catálogo
+El catálogo versionado y `catalog_product_mutations` conservan los datos editoriales locales. Dux no reemplaza slugs, imágenes, descripción, categorías ni precios como efecto colateral de la sincronización de inventario.
 
-La fuente canónica conserva 510 productos y 16 categorías. `server/catalog-store.ts` construye el catálogo efectivo como base canónica más altas y overrides D1, menos tombstones D1. Si D1 o la tabla nueva no están disponibles, las lecturas públicas conservan el catálogo base; las escrituras administrativas fallan de forma explícita.
+El mapping sigue este orden, sin coincidencia difusa:
 
-Con `MERCADO_LIBRE_CATALOG_ENABLED=true`, esa base pasa a ser editorial: sólo se proyectan las unidades Mercado Libre mapeadas de forma exacta y el proveedor sustituye precio, estado y stock runtime. El frontend nunca consulta Mercado Libre directamente. Un catálogo obsoleto, ambiguo o con modalidad no versionada queda no comprable.
+1. vínculo Dux persistido;
+2. identificador externo exacto;
+3. SKU exacto cuando coincide con un código Dux;
+4. código de barras exacto e inequívoco;
+5. sólo para bootstrap, nombre normalizado exacto y único.
 
-El modelo actual agrega `stockQuantity` como atributo opcional dentro del mismo payload de mutación: ausencia significa stock no controlado y conserva el comportamiento de los 510 productos legacy. Si está presente debe ser un entero entre 0 y 1.000.000. El stock reservado no se duplica en un contador: se deriva de `order_items` para WhatsApp `pending` y Checkout Pro con ventana vigente o pago pendiente autoritativo. D1 impide reservar por encima del disponible y bajar o retirar el control de stock por debajo de reservas vigentes. WhatsApp consume al aprobar; Checkout Pro consume una sola vez al observar `approved` o `refunded` por webhook. Rechazar WhatsApp o vencer una preferencia sin pago libera por derivación, sin sumar stock.
+El resultado es `mapped`, `unmapped` o `ambiguous`. Cero o varios candidatos no alteran el producto local y lo mantienen no vendible. Un producto ausente en Dux tampoco se borra.
 
-La compatibilidad de categorías también es deliberada: los 75 productos legacy sin categoría continúan editables y aparecen bajo el filtro administrativo «Sin categoría». Sólo el alta de un producto nuevo exige al menos una de las categorías canónicas; no se fuerza una clasificación ficticia sobre el catálogo base.
+El snapshot D1 conserva cantidades `REAL` y metadatos observados sin `floor`, `ceil`, `round`, conversiones de gramos/kilos ni escalas inferidas. Dux sigue siendo la autoridad; D1 sólo reduce llamadas y permite diagnóstico.
 
-El índice se mantiene en `catalog/internal/catalog-index.json`. El servidor resuelve productos, disponibilidad y precios desde el catálogo efectivo; no acepta nombres, precios ni totales enviados por el cliente como autoridad para Checkout Pro.
+## Integración Dux
 
-## Backend
+`server/dux-api.ts` centraliza la API oficial Dux v2:
 
-- `functions/api/`: endpoints públicos y administrativos;
-- `functions/admin.ts` y `functions/admin/[[path]].ts`: superficie administrativa;
-- `server/`: dominio, persistencia, Mercado Pago, validación, analítica y autenticación/autorización administrativa;
-- `migrations/0001_commerce.sql`: esquema inicial de D1;
-- `migrations/0002_fulfillment_and_retention.sql`: intención de entrega, fulfillment y mantenimiento de retención;
-- `migrations/0003_checkout_intent_cart_fingerprint.sql`: huella autoritativa del carrito en intenciones, con backfill desde pedidos existentes;
-- `migrations/0004_catalog_admin.sql`: altas, overrides y tombstones del catálogo administrativo;
-- `migrations/0005_admin_auth.sql`: contadores opacos y persistentes para limitar intentos de login;
-- `migrations/0006_analytics_manual_payment_click.sql`: amplía de forma aditiva el CHECK cerrado de eventos para medir el clic manual sin perder eventos ni índices existentes;
-- `migrations/0007_whatsapp_order_reservations.sql`: canal de pedido, resolución administrativa, índices y triggers de reserva derivada, stock e invariantes de la máquina de estados WhatsApp;
-- `migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql`: ventana y consumo de stock de Checkout Pro, snapshot de control por item y huella idempotente de los datos WhatsApp;
-- `migrations/0009_mercadolibre_catalog_and_inventory.sql`: OAuth cifrado, sincronización, unidades, notificaciones y ledger de reservas upstream;
-- `wrangler.example.jsonc`: configuración de referencia sin secretos.
+- base `https://erp.duxsoftware.com.ar/WSERP/rest/services`;
+- autenticación `Authorization: Bearer <token>`;
+- `GET /v2/empresas`;
+- `GET /v2/sucursales?id_empresa=...`;
+- `GET /v2/depositos`;
+- `GET /v2/items` paginado y filtrado por depósito.
 
-No se requiere VPS: Pages Functions cubre el backend serverless previsto y D1 la persistencia.
+El cliente valida respuestas explícitamente, preserva decimales y valores negativos observados, aplica timeout, serializa a una solicitud cada cinco segundos, respeta `Retry-After` cuando existe y limita retries a lecturas seguras. D1 impide corridas solapadas, renueva el lease antes de cada request y conserva un cooldown global entre corridas; el listado se limita a 100 páginas de 50 items. Superar 5.000 items falla cerrado en vez de abrir otra corrida concurrente. Una respuesta inválida, `401`, `403`, `429`, `5xx` o timeout nunca habilita una venta.
 
-## Pagos
+`server/dux-inventory.ts` valida empresa, sucursal y depósito contra esas lecturas, ejecuta el mapeo exacto y persiste la proyección. El scheduler `dux-reconcile.yml` llama a `/api/internal/dux/reconcile`, pero su job sólo corre con `DUX_RECONCILIATION_ENABLED=true`; ese flag no debe activarse sin plan, token, IDs y migración verificados.
 
-### Link de Pago retirado
+## Persistencia
 
-Cuando `VITE_COMMERCE_ENABLED` no vale `true`, **Pagar con Mercado Pago** aparece deshabilitado. No se ofrece Link de Pago, copia de total ni ingreso manual de importe. WhatsApp continúa exigiendo datos completos, pedido persistido y reserva antes de abrir el mensaje.
+Las migraciones publicadas permanecen inmutables. `migrations/0012_dux_authoritative_inventory.sql` agrega de forma aditiva:
 
-### Checkout Pro preparado
+- contexto de tenant Dux;
+- ciclos de sincronización;
+- snapshot, identidad y mapping de items;
+- relación futura entre pedido local y pedido Dux;
+- ledger de operaciones Dux para idempotencia y resultados inciertos.
 
-La creación de preferencias ocurre en servidor. El navegador es redirigido a Checkout Pro y los retornos no prueban un pago.
+`0012` agrega además los guards `dux_order_link_requires_empty_order`, `dux_order_items_lifecycle_blocked`, `dux_order_items_update_blocked`, `dux_order_items_delete_blocked`, `dux_order_status_lifecycle_blocked` y `dux_mapped_order_status_lifecycle_blocked`. Hasta que una migración aditiva posterior implemente el lifecycle oficial, un pedido Dux no puede materializar líneas ni cambiar de estado. El último guard también pone en cuarentena preferencias o pedidos anteriores al corte cuando alguna línea ya coincide con una identidad Dux, evitando que alcancen los triggers legacy de stock local.
 
-El webhook valida la firma y consulta el estado autoritativo en Mercado Pago. Las transiciones se registran con idempotencia; un pago pendiente mantiene la reserva de stock y una aprobación o reembolso la consume exactamente una vez, sin reposición automática.
+Las tablas locales de stock y las tablas Mercado Libre anteriores se conservan como legado. Para productos Dux no representan stock físico ni reservas válidas.
+
+## Pedidos y pagos
+
+El orden seguro requerido es:
+
+1. validar el carrito y el vínculo Dux;
+2. crear o reservar todo el pedido en Dux de forma idempotente;
+3. persistir la relación pedido Shekinah ↔ pedido Dux;
+4. crear la preferencia Mercado Pago;
+5. verificar el pago por webhook y consulta autoritativa;
+6. finalizar o liberar en Dux exactamente una vez.
+
+La documentación pública Dux expone `POST /v2/pedidos` y `GET /v2/pedidos`, pero no documenta la compensación necesaria. Por ello el paso 2 no se ejecuta y todos los pasos posteriores permanecen bloqueados. Pagos, conciliación y expiración detectan `dux_order_links` o líneas asociadas a una identidad/candidata Dux y se detienen; el webhook conserva el evento como fallido/reintentable. Sólo los pedidos legacy sin relación Dux mantienen su comportamiento histórico.
 
 ## Administración
 
-`/admin` sirve la SPA sin asumir que el HTML autoriza al usuario. `src/admin/AdminBackoffice.tsx` consulta la sesión y muestra el login o monta el backoffice. La credencial se verifica en servidor con PBKDF2-HMAC-SHA-256; el helper operativo genera 100.000 iteraciones, costo comprobado dentro del límite CPU efectivo del runtime Bundled (32 ms en un smoke remoto negativo con credencial ficticia). La sesión se transporta en una cookie `__Host-` firmada con HMAC, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` y vencimiento de ocho horas. La contraseña, su derivado y los secretos nunca llegan al bundle ni a Web Storage.
+`/admin` exige una sesión server-side. La cookie propia es `HttpOnly`, `Secure`, `SameSite=Strict` y está firmada; Cloudflare Access es un fallback opcional, no un reemplazo del middleware.
 
-`src/admin/ProductManager.tsx` coordina la experiencia de catálogo y delega la presentación en `ProductList`, `ProductEditor` y `ProductImageField`: resumen operativo, búsqueda normalizada, filtros y orden local, listado con miniatura y estados, editor agrupado, slug automático con opción avanzada, categorías del catálogo real, cambios rápidos de stock/disponibilidad, feedback accesible y protección ante cambios sin guardar. Los IDs existentes permanecen estables. Las variantes existentes se conservan en el contrato de producto sin exponer JSON como interfaz cotidiana. El upload sólo se ofrece cuando la API informa `imageStorageConfigured`.
+El backoffice conserva el ABM editorial. Para Dux muestra vínculo, cantidad observada, depósito, última sincronización y error. La cantidad Dux es read-only. Si la semántica de unidad no está disponible se muestra como no verificada y el producto queda no vendible; nunca se habilita un control local para escribir stock sobre el mismo inventario.
 
-El Backoffice V2 mantiene una única instancia de `ProductManager` montada y alterna su visibilidad desde una navegación nativa por Resumen, Productos, Pedidos, Analítica y Auditoría. `AdminPage` carga cada sección por separado y solicita el detalle bajo demanda. Los pedidos pendientes de WhatsApp admiten las únicas transiciones administrativas nuevas: aprobar o rechazar; los pedidos de Checkout Pro y los estados terminales no exponen esas acciones.
-
-La analítica pública acepta `manual_payment_click` exclusivamente para un clic válido en `/carrito`, sin producto, importe, fulfillment ni PII. `/admin` queda bloqueado en cliente y servidor. El resumen separa interacciones de métricas financieras confirmadas; la tendencia diaria se agrega en D1 y se presenta con barras nativas y una tabla accesible.
-
-`functions/api/admin/_middleware.ts` valida en cada operación protegida una sesión propia. Sólo cuando no existe cookie propia intenta el JWT RS256 de Cloudflare Access como fallback compatible; una cookie propia presente pero inválida siempre se rechaza. Los tres endpoints de autenticación son la única exclusión exacta del middleware. El login y logout exigen mismo origen, y las mutaciones conservan ese control. `server/admin-login-rate-limit.ts` aplica límites persistentes por IP y usuario mediante claves HMAC opacas en D1; no almacena ninguno de esos valores en claro.
-
-Los productos admiten alta, modificación y baja lógica; los pedidos de WhatsApp admiten aprobación o rechazo autenticados y auditados; analítica, exportaciones y los demás estados de pedido continúan sin mutaciones operativas. La identidad propia usa un actor sintético para no persistir el nombre de usuario en la cookie ni en auditoría.
-
-### Imágenes administradas
-
-El candidato mantiene dos orígenes deliberadamente distintos:
-
-- assets legacy versionados bajo `/images/original/catalog/`, inmutables desde administración;
-- objetos administrados en R2, servidos por rutas first-party `/api/catalog-images/*` y escritos únicamente mediante la API autenticada.
-
-El binding configurado es `CATALOG_IMAGES`: production reutiliza el bucket existente `shekinah` y preview usa el bucket aislado `shekinah-preview`. Ambos conservan clase Standard/default y `publicR2DevEnabled=false`; la única lectura pública prevista es la ruta first-party de Pages. La carga acepta JPEG, PNG y WebP de hasta 4 MiB, valida magic bytes y genera keys UUID controladas por servidor. Un alta común nace sin imagen y el `PUT` común sólo puede conservar los mismos `src`; cualquier alta, reemplazo o eliminación de una referencia de imagen pasa por `/api/admin/products/:id/image`. La ruta pública admite únicamente `GET` y `HEAD`, sin listado de objetos.
-
-En reemplazo se carga el objeto nuevo, se persiste la referencia D1 y recién después se intenta limpiar el objeto anterior si pertenece al almacenamiento administrado y ya no está referenciado. Si falla D1 se intenta retirar sólo el objeto recién creado. La baja lógica exige el binding cuando el producto referencia una imagen administrada, persiste primero el tombstone y luego intenta limpiar sólo objetos propios que hayan quedado sin referencias. Este cleanup es best-effort: un fallo externo de `R2.delete` puede dejar un objeto huérfano que debe auditarse y reintentarse sin tocar referencias activas ni assets legacy.
-
-La infraestructura R2 y los bindings de production/preview quedaron verificados por API. La configuración de R2 no alteró `DB`, variables, nombres de secretos administrativos ni `fail_open=false` en Pages. El código del candidato todavía no tiene commit, CI, deployment ni smoke remoto final; una preview local o la mera presencia del binding no prueban persistencia productiva.
-
-## Analítica y privacidad
-
-La analítica es first-party, opcional y condicionada al consentimiento. La retención debe configurarse sólo después de su autorización.
+Mercado Libre ya no tiene controles operativos activos. Sus endpoints administrativos y webhooks históricos responden como integración retirada y no sincronizan ni reservan stock.
 
 ## Seguridad
 
-- no exponer secretos mediante variables `VITE_*`;
-- validar entradas en el límite HTTP;
-- recalcular totales en servidor para Checkout Pro;
-- usar consultas parametrizadas;
-- aplicar idempotencia;
-- proteger administración mediante sesión propia server-side y middleware fail-closed; Access es sólo un fallback opcional;
-- mantener Checkout Pro y analítica deshabilitados por defecto;
-- mantener retirado el fallback de Link de Pago y no aceptar importes autoritativos del navegador;
-- cifrar tokens OAuth rotativos y bloquear unidades sin stock versionado protegible;
-- conservar una CSP compatible únicamente con conexiones al mismo origen; Mercado Libre y Mercado Pago se consultan desde Functions.
+- los secretos no usan prefijo `VITE_`;
+- el token Dux no se guarda en D1, logs ni respuestas;
+- las entradas y respuestas externas se validan en el límite;
+- las mutaciones usan idempotencia local y no se repiten ciegamente tras timeout;
+- los totales se recalculan en servidor;
+- las consultas D1 son parametrizadas;
+- Checkout Pro, Dux y el scheduler permanecen deshabilitados por defecto;
+- no hay fallback silencioso a stock local, Mercado Libre, Excel o una cantidad obsoleta.
 
 ## Build
 
@@ -121,4 +133,4 @@ npm run verify
 npm run build:pages
 ```
 
-La salida pública se genera en `dist`. Las Pages Functions se publican desde `functions/`.
+El build es reproducible sin red Dux. La salida pública se genera en `dist`; las Pages Functions se publican desde `functions/`.

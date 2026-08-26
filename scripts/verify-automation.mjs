@@ -61,9 +61,15 @@ for (const [name, value] of Object.entries(expectedScripts)) {
 const workflowFiles = listFiles(workflowRoot);
 if (JSON.stringify(workflowFiles) !== JSON.stringify([
   '.github/workflows/ci.yml',
-  '.github/workflows/mercadolibre-reconcile.yml',
+  '.github/workflows/dux-reconcile.yml',
 ])) {
-  fail('Sólo están autorizados CI y la reconciliación de Mercado Libre.');
+  fail('Sólo están autorizados CI y la reconciliación read-only de Dux.');
+}
+for (const workflowFile of workflowFiles) {
+  const content = read(join(root, workflowFile));
+  if (/run-mercadolibre-reconcile|\/mercadolibre\/reconcile|MERCADO_LIBRE_SCHEDULER_SECRET/iu.test(content)) {
+    fail(`El workflow ${workflowFile} no puede ejecutar la reconciliación directa de Mercado Libre.`);
+  }
 }
 const workflow = read(join(root, '.github', 'workflows', 'ci.yml'));
 for (const fragment of [
@@ -87,19 +93,23 @@ for (const forbidden of [
   if (forbidden.test(workflow)) fail(`Contenido prohibido en CI: ${forbidden}`);
 }
 
-const reconciliationWorkflow = read(join(root, '.github', 'workflows', 'mercadolibre-reconcile.yml'));
+const reconciliationWorkflow = read(join(root, '.github', 'workflows', 'dux-reconcile.yml'));
 for (const fragment of [
-  'name: Mercado Libre reconciliation', "cron: '2/5 * * * *'", 'workflow_dispatch:',
-  'contents: read', 'cancel-in-progress: false', 'timeout-minutes: 10',
+  'name: Dux inventory reconciliation', "cron: '7,22,37,52 * * * *'", 'workflow_dispatch:',
+  'contents: read', 'cancel-in-progress: false', 'timeout-minutes: 20',
+  "if: ${{ vars.DUX_RECONCILIATION_ENABLED == 'true' }}",
   'name: cloudflare-pages-production', 'deployment: false', 'persist-credentials: false',
   'node-version-file: .node-version',
-  'SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/mercadolibre/reconcile',
-  'SHEKINAH_RECONCILE_SECRET: ${{ secrets.MERCADO_LIBRE_SCHEDULER_SECRET }}',
-  'run: node scripts/run-mercadolibre-reconcile.mjs',
+  'SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile',
+  'SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}',
+  'run: node scripts/run-dux-reconcile.mjs',
 ]) {
   if (!reconciliationWorkflow.includes(fragment)) {
     fail(`Falta el fragmento requerido en la reconciliación: ${fragment}`);
   }
+}
+if (/mercado\s*libre|mercadolibre|MERCADO_LIBRE/iu.test(reconciliationWorkflow)) {
+  fail('El scheduler de producción no puede invocar ni configurar Mercado Libre.');
 }
 const reconciliationActions = [
   ...reconciliationWorkflow.matchAll(/^\s*uses:\s*([^\s#]+).*$/gmu),
@@ -109,6 +119,17 @@ for (const action of reconciliationActions) {
   if (action === undefined || !allowedActions.has(action)) {
     fail(`Acción no autorizada o no fijada a SHA en el scheduler: ${action}`);
   }
+}
+
+const duxRunner = read(join(root, 'scripts', 'run-dux-reconcile.mjs'));
+for (const fragment of [
+  "const expectedPath = '/api/internal/dux/reconcile'",
+  "errorCode(payload) === 'DUX_SYNC_IN_PROGRESS'",
+  "errorCode(payload) === 'DUX_SYNC_COOLDOWN'",
+  "value.status === 'disabled'",
+  "value.status !== 'completed'",
+]) {
+  if (!duxRunner.includes(fragment)) fail(`Falta el contrato requerido en el runner Dux: ${fragment}`);
 }
 for (const forbidden of [
   /pull_request_target/iu, /\bcurl\b/iu, /\bwget\b/iu,

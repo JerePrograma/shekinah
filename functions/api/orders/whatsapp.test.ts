@@ -21,6 +21,7 @@ const migrations = [
   '0006_analytics_manual_payment_click.sql',
   '0007_whatsapp_order_reservations.sql',
   '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+  '0012_dux_authoritative_inventory.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8'));
 
 const adminData: AdminContextData = {
@@ -43,7 +44,7 @@ const fulfillment = Object.freeze({
 });
 
 describe('Functions de pedidos WhatsApp', () => {
-  it('crea antes de responder, reusa la clave y exige origen autorizado', async () => {
+  it('falla cerrado sin Dux y exige origen autorizado antes de procesar', async () => {
     const testD1 = createTestD1(...migrations);
     try {
       await createProduct(testD1.database, 'pedido-function');
@@ -54,23 +55,12 @@ describe('Functions de pedidos WhatsApp', () => {
         whatsappConsent: true,
       };
       const first = await whatsappOrder(publicContext(testD1.database, body));
-      expect(first.status).toBe(201);
-      const payload = await first.json() as Readonly<{ orderId: string }>;
-      expect(payload.orderId).toMatch(/^ord_[A-Za-z0-9_-]{20,128}$/u);
-      expect(payload).toMatchObject({
-        status: 'pending',
-        itemCount: 2,
-        totalMinor: 200_000,
+      expect(first.status).toBe(503);
+      await expect(first.json()).resolves.toMatchObject({
+        error: { code: 'DUX_API_DISABLED' },
       });
-      expect(testD1.sqlite.prepare(
-        `SELECT orders.status, orders.channel, order_items.quantity
-         FROM orders JOIN order_items ON order_items.order_id = orders.id
-         WHERE orders.id = ?`,
-      ).get(payload.orderId)).toEqual({ status: 'pending', channel: 'whatsapp', quantity: 2 });
-
-      const replay = await whatsappOrder(publicContext(testD1.database, body));
-      expect(replay.status).toBe(200);
-      await expect(replay.json()).resolves.toMatchObject({ orderId: payload.orderId });
+      expect(testD1.sqlite.prepare('SELECT COUNT(*) AS count FROM orders').get())
+        .toEqual({ count: 0 });
 
       const crossOrigin = await whatsappOrder(publicContext(
         testD1.database,
@@ -86,145 +76,56 @@ describe('Functions de pedidos WhatsApp', () => {
     }
   });
 
-  it('rechaza datos incompletos, precio del navegador y stock insuficiente, y falla cerrado sin D1 o 0008', async () => {
+  it('no abre WhatsApp ni usa Mercado Libre sin lifecycle público de Dux', async () => {
     const testD1 = createTestD1(...migrations);
     try {
-      await createProduct(testD1.database, 'pedido-validaciones');
-      const withoutConsent = await whatsappOrder(publicContext(testD1.database, {
+      const baseContext = publicContext(testD1.database, {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: 'pedido-validaciones', quantity: 1 }],
-      }));
-      expect(withoutConsent.status).toBe(400);
-      await expect(withoutConsent.json()).resolves.toMatchObject({
-        error: { code: 'WHATSAPP_CONSENT_REQUIRED' },
-      });
-
-      const incomplete = await whatsappOrder(publicContext(testD1.database, {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment: null,
-        items: [{ productId: 'pedido-validaciones', quantity: 1 }],
         whatsappConsent: true,
-      }));
-      expect(incomplete.status).toBe(400);
-      await expect(incomplete.json()).resolves.toMatchObject({
-        error: { code: 'INVALID_FULFILLMENT' },
       });
-
-      const manipulated = await whatsappOrder(publicContext(testD1.database, {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: 'pedido-validaciones', quantity: 1, price: 1 }],
-        whatsappConsent: true,
-      }));
-      expect(manipulated.status).toBe(400);
-      await expect(manipulated.json()).resolves.toMatchObject({
-        error: { code: 'INVALID_CART_LINE' },
+      const blocked = await whatsappOrder({
+        ...baseContext,
+        env: { ...baseContext.env, DUX_API_ENABLED: 'true' },
       });
-
-      const insufficient = await whatsappOrder(publicContext(testD1.database, {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: 'pedido-validaciones', quantity: 6 }],
-        whatsappConsent: true,
-      }));
-      expect(insufficient.status).toBe(409);
-      await expect(insufficient.json()).resolves.toMatchObject({
-        error: { code: 'INSUFFICIENT_STOCK' },
+      expect(blocked.status).toBe(503);
+      await expect(blocked.json()).resolves.toMatchObject({
+        error: { code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE' },
       });
-
-      const withoutDatabase = await whatsappOrder({
-        ...publicContext(testD1.database, {}),
-        env: { PUBLIC_SITE_URL: 'https://example.test' },
-      });
-      expect(withoutDatabase.status).toBe(503);
-      await expect(withoutDatabase.json()).resolves.toMatchObject({
-        error: { code: 'DATABASE_UNAVAILABLE' },
-      });
-
-      const beforeWhatsappMigration = createTestD1(...migrations.slice(0, -1));
-      try {
-        await createProduct(beforeWhatsappMigration.database, 'pedido-sin-migracion', false);
-        const migrationRequired = await whatsappOrder(publicContext(
-          beforeWhatsappMigration.database,
-          {
-            idempotencyKey: crypto.randomUUID(),
-            fulfillment,
-            items: [{ productId: 'pedido-sin-migracion', quantity: 1 }],
-            whatsappConsent: true,
-          },
-        ));
-        expect(migrationRequired.status).toBe(503);
-        await expect(migrationRequired.json()).resolves.toMatchObject({
-          error: { code: 'WHATSAPP_MIGRATION_REQUIRED' },
-        });
-      } finally {
-        beforeWhatsappMigration.close();
-      }
+      expect(testD1.sqlite.prepare('SELECT COUNT(*) AS count FROM orders').get())
+        .toEqual({ count: 0 });
     } finally {
       testD1.close();
     }
   });
 
-  it('protege y audita aprobación/rechazo, retorna detalle e idempotencia de la misma acción', async () => {
+  it('bloquea la aprobación administrativa mientras Dux no tenga lifecycle público', async () => {
     const testD1 = createTestD1(...migrations);
     try {
-      await createProduct(testD1.database, 'pedido-admin-function');
-      const created = await whatsappOrder(publicContext(testD1.database, {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: 'pedido-admin-function', quantity: 2 }],
-        whatsappConsent: true,
-      }));
-      const { orderId } = await created.json() as Readonly<{ orderId: string }>;
-
+      const orderId = 'ord_blocked_dux_1234567890';
+      await createBlockedDuxOrder(testD1.database, orderId);
       const approved = await approveOrder(adminContext(testD1.database, orderId, adminData));
-      expect(approved.status).toBe(200);
+      expect(approved.status).toBe(503);
       await expect(approved.json()).resolves.toMatchObject({
-        changed: true,
-        order: {
-          id: orderId,
-          channel: 'whatsapp',
-          status: 'approved',
-          resolved_by: 'admin@example.test',
-        },
-        items: [{ product_id: 'pedido-admin-function', quantity: 2 }],
-        payments: [],
-      });
-
-      const replay = await approveOrder(adminContext(testD1.database, orderId, adminData));
-      expect(replay.status).toBe(200);
-      await expect(replay.json()).resolves.toMatchObject({ changed: false });
-
-      const rejected = await rejectOrder(adminContext(testD1.database, orderId, adminData));
-      expect(rejected.status).toBe(409);
-      await expect(rejected.json()).resolves.toMatchObject({
-        error: { code: 'ORDER_STATE_CONFLICT' },
+        error: { code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE' },
       });
       expect(testD1.sqlite.prepare(
         `SELECT action, outcome_status FROM admin_audit
          WHERE target_id = ? ORDER BY rowid`,
       ).all(orderId)).toEqual([
-        { action: 'admin.order.approve', outcome_status: 200 },
-        { action: 'admin.order.approve', outcome_status: 200 },
-        { action: 'admin.order.reject', outcome_status: 409 },
+        { action: 'admin.order.approve', outcome_status: 503 },
       ]);
     } finally {
       testD1.close();
     }
   });
 
-  it('rechaza origen cruzado en administración y permite rechazo idempotente', async () => {
+  it('rechaza origen cruzado y no libera una reserva sin lifecycle Dux', async () => {
     const testD1 = createTestD1(...migrations);
     try {
-      await createProduct(testD1.database, 'pedido-rechazo-function');
-      const created = await whatsappOrder(publicContext(testD1.database, {
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: 'pedido-rechazo-function', quantity: 1 }],
-        whatsappConsent: true,
-      }));
-      const { orderId } = await created.json() as Readonly<{ orderId: string }>;
+      const orderId = 'ord_reject_blocked_dux_1234567890';
+      await createBlockedDuxOrder(testD1.database, orderId);
       const crossOriginContext = adminContext(testD1.database, orderId, adminData);
       const crossOrigin = await rejectOrder({
         ...crossOriginContext,
@@ -239,19 +140,41 @@ describe('Functions de pedidos WhatsApp', () => {
       });
 
       const rejected = await rejectOrder(adminContext(testD1.database, orderId, adminData));
-      expect(rejected.status).toBe(200);
+      expect(rejected.status).toBe(503);
       await expect(rejected.json()).resolves.toMatchObject({
-        changed: true,
-        order: { status: 'rejected' },
+        error: { code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE' },
       });
-      const replay = await rejectOrder(adminContext(testD1.database, orderId, adminData));
-      expect(replay.status).toBe(200);
-      await expect(replay.json()).resolves.toMatchObject({ changed: false });
     } finally {
       testD1.close();
     }
   });
 });
+
+async function createBlockedDuxOrder(
+  database: NonNullable<Env['DB']>,
+  orderId: string,
+): Promise<void> {
+  const now = '2026-08-26T12:00:00.000Z';
+  await database.prepare(
+    `INSERT INTO orders (
+      id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
+      status, currency, total_minor, item_count, created_at, updated_at, channel
+    ) VALUES (?, ?, ?, ?, 'pending', 'ARS', 1000, 1, ?, ?, 'whatsapp')`,
+  ).bind(
+    orderId,
+    `${orderId}-token`,
+    crypto.randomUUID(),
+    `${orderId}-fingerprint`,
+    now,
+    now,
+  ).run();
+  await database.prepare(
+    `INSERT INTO dux_order_links (
+      order_id, dux_reference, company_id, branch_id, deposit_id,
+      reservation_state, request_fingerprint, created_at, updated_at
+    ) VALUES (?, ?, '1', '2', '3', 'blocked', ?, ?, ?)`,
+  ).bind(orderId, `shekinah:${orderId}`, `${orderId}-request`, now, now).run();
+}
 
 function publicContext(
   database: NonNullable<Env['DB']>,

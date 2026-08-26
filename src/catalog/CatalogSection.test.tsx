@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
 import { CartProvider } from '../cart/CartContext';
 import { authorizedProducts } from '../data/authorized-commercial-data';
+import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { catalogProductFixtures } from '../test/fixtures/catalog-products';
 import { CatalogSection } from './CatalogSection';
 
@@ -122,8 +123,14 @@ describe('CatalogSection', () => {
     expect(screen.queryByRole('button', { name: /Limpiar/u })).not.toBeInTheDocument();
   });
 
-  it('muestra en la tarjeta la cantidad agregada al carrito', () => {
+  it('muestra en la tarjeta la cantidad agregada tras confirmar el catálogo runtime', async () => {
     const product = authorizedProducts[0]!;
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+      products: authorizedProducts,
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    await act(async () => {
+      await refreshRuntimeCatalog();
+    });
     renderCatalog(<CatalogSection navigate={vi.fn()} products={[product]} />);
 
     const card = document.querySelector<HTMLElement>(`[data-product="${product.slug}"]`);
@@ -138,5 +145,6 @@ describe('CatalogSection', () => {
     expect(within(card).getByRole('button', {
       name: `Agregar otra unidad de ${product.name} al carrito`,
     })).toBeEnabled();
+    vi.unstubAllGlobals();
   });
 });

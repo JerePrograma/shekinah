@@ -21,6 +21,7 @@ const migration = [
   '0006_analytics_manual_payment_click.sql',
   '0007_whatsapp_order_reservations.sql',
   '0008_checkout_pro_stock_and_whatsapp_identity.sql',
+  '0012_dux_authoritative_inventory.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
 
 describe('conciliación administrativa de Mercado Pago', () => {

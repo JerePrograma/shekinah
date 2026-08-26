@@ -11,10 +11,6 @@ import type {
 } from '../../../../../server/platform';
 import { assertSameOrigin } from '../../../../../server/validation';
 import { resolveWhatsappOrder } from '../../../../../server/whatsapp-orders';
-import {
-  consumeMercadoLibreInventoryReservation,
-  hasMercadoLibreInventoryReservation,
-} from '../../../../../server/mercado-libre-inventory';
 
 export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
   data,
@@ -41,9 +37,6 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
           'approved',
           data.adminIdentity?.actor ?? 'unknown',
         );
-      if (await hasMercadoLibreInventoryReservation(database, id)) {
-        await consumeMercadoLibreInventoryReservation(database, id, env);
-      }
       return jsonResponse(result);
     },
     typeof id === 'string' ? { type: 'order', id } : { type: 'order' },

@@ -31,8 +31,8 @@ const fulfillment = Object.freeze({
   postalCode: 'C1234ABC',
 });
 
-describe('stock local obligatorio en pedidos WhatsApp', () => {
-  it('rechaza por la API un producto visible sin stock configurado', async () => {
+describe('retiro del stock local en pedidos WhatsApp', () => {
+  it('la API falla cerrada en Dux antes de consultar el stock local', async () => {
     const testD1 = createTestD1(...migrations);
     try {
       await createUnconfiguredProduct(testD1.database, 'whatsapp-sin-stock-api');
@@ -41,9 +41,9 @@ describe('stock local obligatorio en pedidos WhatsApp', () => {
         orderRequest('whatsapp-sin-stock-api'),
       ));
 
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(503);
       await expect(response.json()).resolves.toMatchObject({
-        error: { code: 'STOCK_NOT_CONFIGURED' },
+        error: { code: 'DUX_API_DISABLED' },
       });
       await expect(testD1.database.prepare(
         'SELECT COUNT(*) AS value FROM orders',
@@ -53,7 +53,7 @@ describe('stock local obligatorio en pedidos WhatsApp', () => {
     }
   });
 
-  it('mantiene el bloqueo en D1 aunque se invoque el servicio sin pasar por la API', async () => {
+  it('falla cerrado antes del stock local aunque se invoque el servicio directamente', async () => {
     const testD1 = createTestD1(...migrations);
     try {
       await createUnconfiguredProduct(testD1.database, 'whatsapp-sin-stock-directo');
@@ -62,8 +62,8 @@ describe('stock local obligatorio en pedidos WhatsApp', () => {
         testD1.database,
         orderRequest('whatsapp-sin-stock-directo'),
       )).rejects.toMatchObject({
-        status: 409,
-        code: 'PRODUCT_UNAVAILABLE',
+        status: 503,
+        code: 'DUX_API_DISABLED',
       });
       await expect(testD1.database.prepare(
         'SELECT COUNT(*) AS value FROM orders',

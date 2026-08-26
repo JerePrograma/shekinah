@@ -19,6 +19,7 @@ export type ServerCatalogProduct = Readonly<{
   unitPriceMinor: number;
   available: boolean;
   stockControlled?: boolean;
+  inventoryProvider?: 'mercadolibre' | 'dux';
   providerInventoryKey?: string;
   providerCatalogVersion?: string;
 }>;

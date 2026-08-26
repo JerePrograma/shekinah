@@ -1,186 +1,171 @@
 # Operación del comercio
 
-## Operación vigente desde 2026-08-24
+## Estado operativo vigente
 
-Mientras `COMMERCE_ENABLED=false`, **Pagar con Mercado Pago** permanece deshabilitado y no existe Link de Pago ni campo de importe. WhatsApp `5492236216559` continúa disponible sólo después de crear el pedido y reservar inventario.
+Dux Software es la autoridad de inventario, pero la integración productiva todavía está bloqueada por configuración y contrato externo. La cuenta aportada muestra Plan ESTÁNDAR; Dux exige PRO/FULL y token para la API. La API pública revisada tampoco documenta cómo liberar, cancelar, finalizar o vencer en forma segura la reserva de un pedido, ni expone en `GET /v2/items` la semántica de unidad necesaria para vender.
 
-Procedimiento operativo mínimo:
+Mantener:
 
-1. Al solicitar WhatsApp, cliente y servidor exigen nombre, celular, modalidad y consentimiento explícito; el domicilio completo se exige sólo para Correo Argentino.
-2. El servidor sincroniza selectivamente Mercado Libre cuando el flag está activo, recalcula el carrito, crea el pedido y aplica la reserva versionada antes de abrir el mensaje.
-3. Antes de aprobar, preparar o entregar, el comercio verifica el acuerdo/cobro por el procedimiento operativo vigente; una captura o texto de WhatsApp no es evidencia financiera autoritativa.
-4. Aprobar consume la reserva exactamente una vez. Rechazar o vencer libera upstream exactamente una vez.
-5. Para Correo con peso desconocido o superior a 5 kg, cotizar primero por WhatsApp; Checkout Pro permanece bloqueado mientras el total sea indeterminado.
+```text
+DUX_API_ENABLED=false
+COMMERCE_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
+DUX_RECONCILIATION_ENABLED=false
+```
 
-Este flujo escribe `orders` y `order_items`; escribe `order_fulfillment` sólo para datos completos con tarifa determinística. `pending` significa reserva vigente, no pago. La aprobación administrativa de WhatsApp no se convierte en revenue de Mercado Pago.
+Con esta configuración no se crean pedidos Dux, preferencias Mercado Pago ni pedidos WhatsApp nuevos. Tampoco se consulta o modifica Mercado Libre. El catálogo y el carrito se conservan, pero una disponibilidad no confirmable no autoriza una venta.
 
-Con consentimiento y analítica habilitada, la apertura del canal asistido registra `whatsapp_open`. `manual_payment_click` sólo existe en datos históricos. Ninguno se suma a pagos aprobados, revenue ni ventas.
+## Responsabilidades
 
-La operación de sincronización, conciliación, OAuth y rollback se detalla en `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`.
+- Operar el stock físico, unidades, depósitos y sincronización con Mercado Libre en Dux.
+- Mantener en Shekinah sólo contenido editorial y precios autorizados.
+- No cargar stock manual en Shekinah para productos vinculados a Dux.
+- No importar Excel ni usar una planilla como fuente de mapping o stock.
+- No deducir gramos, kilos, divisibilidad o pasos de venta desde nombres de productos.
+- No corregir cantidades Dux con redondeo, truncamiento, multiplicación o división.
 
-## Controles diarios de Checkout Pro
+## Lectura y reconciliación Dux
 
-Los controles siguientes aplican cuando Checkout Pro integrado esté habilitado:
+El código read-only usa:
 
-- Revisar pedidos `pending` antiguos y contrastarlos con Mercado Pago antes de cualquier acción manual.
-- Usar **Conciliar con Mercado Pago** ante un webhook demorado o un estado dudoso; la acción consulta al proveedor, valida el entorno, la referencia, la metadata, el importe y la moneda, y queda registrada en auditoría.
-- Verificar eventos de webhook en `failed`; el proveedor debe reintentarlos y el registro permite reclamar nuevamente sólo eventos fallidos.
-- Comparar `payments.amount_minor` y `orders.total_minor` para detectar inconsistencias.
-- Revisar que no haya pedidos aprobados sin pago asociado.
-- Comparar stock físico, reservado y consumido; un pago `pending` autoritativo puede mantener una reserva después del vencimiento de la preferencia.
-- No reponer stock por `refunded` o `charged_back`: la devolución financiera no demuestra que la mercadería haya vuelto.
-- Comparar `approved_payment_count` con la cantidad de pedidos con pago aprobado confirmado: el primer valor cuenta pagos exactos individuales y, si es mayor, conserva la señal de un posible cobro duplicado.
-- Controlar errores de Functions sin registrar cuerpos, access tokens, firmas ni secretos.
+```text
+https://erp.duxsoftware.com.ar/WSERP/rest/services
+GET /v2/empresas
+GET /v2/sucursales?id_empresa=...
+GET /v2/depositos
+GET /v2/items
+Authorization: Bearer <token>
+```
 
-## Controles de Mercado Libre
+La reconciliación obtiene el inventario paginado y escribe un snapshot D1. El cliente serializa las solicitudes con al menos cinco segundos entre inicios; D1 bloquea solapamientos, renueva el lease antes de cada request y aplica un cooldown global entre corridas. No existe un GET por producto y los retries se limitan a lecturas seguras. El máximo operativo es 100 páginas de 50 items; excederlo falla cerrado. Un `429` respeta `Retry-After` cuando está disponible.
 
-- Revisar en **Mercado Libre** la fecha y resultado del último ciclo, seller, obsoletos, errores, ausentes, ambiguos y duplicados.
-- Verificar que **Mercado Libre reconciliation** complete cada cinco minutos y que el último ciclo permanezca dentro de los 900 segundos.
-- Ejecutar **Sincronizar ahora** antes de abrir comercio y como recuperación ante una notificación fallida, un cron fallido o una diferencia observada.
-- No habilitar unidades `legacy_available_quantity`, `selling_address`, `meli_facility` o `unknown`; carecen de la reserva versionada exigida.
-- Detener nuevas ventas de una unidad con operaciones `uncertain` o `compensation_pending` hasta conciliarla.
-- No repetir PUT de stock a ciegas. Reconsultar User Product y resolver el delta registrado.
-- Tratar `REFUND_REQUIRES_MANUAL_STOCK_POLICY` como decisión pendiente; no reponer automáticamente.
-- Mantener `MERCADO_LIBRE_CATALOG_ENABLED=true` durante un rollback si existen reservas que todavía deban consumirse o liberarse.
+El workflow `.github/workflows/dux-reconcile.yml` ejecuta `/api/internal/dux/reconcile` únicamente si la variable de GitHub `DUX_RECONCILIATION_ENABLED` vale `true`. No habilitarla antes de verificar plan, token, IDs, migración y deployment. `DUX_SCHEDULER_SECRET` debe existir con valores coincidentes en Pages production y en el environment GitHub `cloudflare-pages-production`, sin imprimirlos.
 
-Consultas de diagnóstico de sólo lectura:
+## Controles del backoffice
+
+La vista Dux es de diagnóstico y debe mostrar:
+
+- si la API está habilitada;
+- estado y hora del último ciclo;
+- empresa, sucursal y depósito validados;
+- items procesados;
+- mappings `mapped`, `unmapped` y `ambiguous`;
+- cantidad observada sin redondeo;
+- estado de unidad/semántica;
+- snapshot fresco, obsoleto o ausente;
+- errores sanitizados.
+
+Un producto Dux muestra el inventario como sólo lectura. Si el mapping no es único o la unidad no está verificada, no se habilita la venta ni aparece un control alternativo de stock local. El operador puede conservar o corregir slug, imágenes, descripción, categorías y contenido comercial sin modificar la identidad Dux.
+
+## Diagnóstico D1 de sólo lectura
+
+Después de aplicar `0012` en el entorno correcto, estas consultas ayudan a diagnosticar sin mutar datos:
 
 ```sql
-SELECT status, COUNT(*) AS cantidad
-FROM orders
-GROUP BY status
-ORDER BY status;
+SELECT last_sync_status, COUNT(*) AS cantidad
+FROM dux_inventory_items
+GROUP BY last_sync_status
+ORDER BY last_sync_status;
 ```
 
 ```sql
-SELECT o.id, o.status, o.total_minor, o.created_at
-FROM orders o
-LEFT JOIN payments p ON p.order_id = o.id
-WHERE o.status = 'approved' AND p.provider_payment_id IS NULL;
+SELECT mapping_status, COUNT(*) AS cantidad
+FROM dux_inventory_items
+GROUP BY mapping_status
+ORDER BY mapping_status;
 ```
 
 ```sql
-SELECT provider_event_key, status, attempt_count, error_code, received_at
-FROM payment_events
-WHERE status = 'failed'
-ORDER BY received_at DESC;
-```
-
-```sql
-SELECT p.order_id, COUNT(*) AS approved_payments
-FROM payments p
-JOIN orders o ON o.id = p.order_id
-WHERE p.mapped_status = 'approved'
-  AND p.amount_minor = o.total_minor
-  AND p.currency = o.currency
-  AND p.external_reference = o.id
-GROUP BY p.order_id
-HAVING COUNT(*) > 1
-ORDER BY approved_payments DESC, p.order_id;
-```
-
-Cada fila devuelta por esta última consulta requiere conciliación en Mercado Pago: el pedido cuenta una sola vez para facturación y ticket, pero la métrica de pagos conserva todos los IDs aprobados exactos para no ocultar un posible doble cobro.
-
-```sql
-SELECT id, status, mp_preference_attempted_at, last_error_code, updated_at
-FROM orders
-WHERE mp_preference_attempted_at IS NOT NULL
-  AND mp_preference_id IS NULL
+SELECT cod_item, local_product_id, mapping_status,
+       stock_real, stock_reservado, stock_disponible,
+       last_synced_at, last_sync_error_code
+FROM dux_inventory_items
+WHERE mapping_status <> 'mapped'
+   OR last_sync_status <> 'ok'
 ORDER BY updated_at DESC;
 ```
 
-Un pedido en este último estado no debe liberarse ni reintentarse manualmente sin confirmar primero en Mercado Pago que no existe una preferencia para su `external_reference`. Una intención con más de 30 minutos debe iniciar un checkout nuevo; no extender ni reutilizar manualmente su preferencia vencida.
+```sql
+SELECT id, kind, status, processed_count, mapped_count,
+       unmapped_count, ambiguous_count, error_code,
+       started_at, completed_at
+FROM dux_sync_runs
+ORDER BY started_at DESC
+LIMIT 20;
+```
 
-## Backoffice
+No editar estas tablas para “arreglar” stock. Una corrección de mapping debe seguir el contrato administrativo y nunca reescribir el item Dux ni el producto editorial por coincidencia difusa.
 
-`/admin` comprueba primero `/api/admin/auth/session`. Sin sesión muestra el formulario; un login válido emite una cookie `__Host-` de ocho horas y recién entonces monta las consultas administrativas. Cerrar sesión elimina la cookie. Ninguna contraseña se guarda en `localStorage`, `sessionStorage`, IndexedDB, auditoría o logs.
+## Checkout Pro
 
-`POST /api/admin/auth/logout` invalida inmediatamente la cookie propia. Si en el futuro se habilita el fallback de Access, su sesión externa conserva el ciclo de vida definido por Cloudflare y debe cerrarse también en ese proveedor; el logout propio no revoca un JWT emitido por Access.
+Cuando la integración pueda activarse, el control diario deberá verificar:
 
-La interfaz `/admin` consume:
+1. pedido/reserva Dux confirmado antes de la preferencia;
+2. una sola relación entre pedido local, pedido Dux y `external_reference`;
+3. webhooks firmados y pagos reconsultados a Mercado Pago;
+4. importe, moneda, entorno, collector y metadata exactos;
+5. finalización Dux exactamente una vez en `approved`;
+6. liberación Dux exactamente una vez en `rejected` o `cancelled`;
+7. operaciones inciertas reconciliadas antes de reintentar;
+8. ningún acceso a Mercado Libre desde el flujo.
 
-- `/api/admin/products` y `/api/admin/products/:id` para el ABM del catálogo;
-- `/api/admin/summary`;
-- `/api/admin/orders?limit=25`;
-- `/api/admin/orders/:id` para el detalle y `/api/admin/orders/:id/reconcile` para conciliación autoritativa de Checkout Pro;
-- `/api/admin/mercadolibre/status` para estado y contadores;
-- `/api/admin/mercadolibre/authorize` para iniciar OAuth;
-- `/api/admin/mercadolibre/sync` para reconciliación completa y liberación de reservas vencidas;
-- `/api/admin/exports/orders.csv`;
-- `/api/admin/exports/analytics.csv`;
-- `/api/admin/audit`.
+Hoy esos puntos no pueden demostrarse porque Dux no publica el lifecycle de compensación. `DUX_ORDER_LIFECYCLE_UNAVAILABLE` es el comportamiento correcto; no debe “resolverse” relajando el guard ni creando la preferencia primero.
 
-El catálogo de productos es editable. Los snapshots, importes y estados de pedidos no se editan; analítica, exportaciones y auditoría permanecen de sólo lectura. Los endpoints de reportes aceptan opcionalmente `from=AAAA-MM-DD` y `to=AAAA-MM-DD` donde corresponda; el rango máximo es 366 días.
+Un pedido presente en `dux_order_links`, o un pedido histórico cuya línea ya corresponda a una identidad/candidata Dux, no se concilia, aprueba, rechaza ni vence localmente. El webhook conserva el evento como fallido/reintentable y la expiración automática lo omite. No forzar estados, insertar líneas ni borrar los triggers de `0012`.
 
-Los pedidos `channel='whatsapp'` en estado `pending` pueden aprobarse o rechazarse dentro de su ventana de 24 horas. Al vencer, el sistema los marca como rechazados con incidencia `WHATSAPP_RESERVATION_EXPIRED`; el backoffice los presenta como **Vencido** y no permite una aprobación tardía. Los pedidos Checkout Pro exponen una conciliación que sólo consulta Mercado Pago y aplica su estado autoritativo mediante la misma transición idempotente del webhook; no permite seleccionar un estado. Los botones quedan inactivos durante la request. Los detalles muestran un número legible `SHK-…`, el ID interno, si cada item tenía stock controlado, la reserva, su vencimiento, el consumo y la política explícita de no reposición automática ante reintegros.
+El webhook Mercado Pago continúa disponible para pedidos históricos. Nunca se usa un retorno de navegador como prueba de pago y un reintegro no repone stock automáticamente.
 
-## Reservas de stock
+## WhatsApp
 
-El stock reservado se deriva de `order_items`; no existe contador que deba «devolverse». Incluye pedidos WhatsApp `pending` dentro de 24 horas y pedidos Checkout Pro no consumidos mientras su ventana de 30 minutos esté vigente o exista al menos un pago `pending` verificado. La expiración WhatsApp es idempotente, conserva el stock físico y se materializa antes de cualquier nueva reserva de ambos canales, escritura de catálogo o lectura administrativa; la proyección pública excluye de inmediato una ventana vencida. Las preferencias sin pago liberan disponibilidad al vencer; un pago pendiente la conserva hasta una notificación terminal.
+El orden futuro es reserva Dux → pedido local → apertura de WhatsApp. Aprobar no descuenta otra vez; rechazar libera por el mecanismo oficial Dux. Mientras ese mecanismo no exista o no se demuestre, el backend bloquea el pedido antes de abrir WhatsApp.
 
-Nunca corregir reservas editando SQL, sumando stock o cambiando items. Para WhatsApp, aprobar o rechazar mediante la API autenticada. Para Checkout Pro, usar la conciliación administrativa protegida: `approved` y `refunded` consumen una sola vez por webhook o conciliación, y cualquier `STOCK_RECONCILIATION_REQUIRED` exige detener fulfillment, conciliar pago e inventario y resolver el incidente sin forzar el estado. Un reintegro no repone stock automáticamente; la devolución física requiere un ajuste manual trazable.
+No abrir manualmente el canal desde la aplicación como bypass. Si el comercio acuerda una venta fuera del sistema, debe administrarla enteramente en Dux y no presentarla como pedido reservado por Shekinah.
 
-### Operación cotidiana del catálogo candidato
+## Mercado Libre retirado
 
-- localizar productos por nombre, identificador o categoría y combinar filtros de categoría, disponibilidad y stock;
-- usar la edición rápida sólo para stock y disponibilidad, esperando la confirmación del servidor;
-- dejar `stockQuantity` ausente cuando el stock no se controla; usar un entero de 0 a 1.000.000 cuando sí se controla;
-- interpretar stock controlado en cero como no disponible efectivo, aunque la disponibilidad manual esté activa;
-- usar la disponibilidad manual para retirar un producto de venta aunque tenga stock;
-- recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada.
+Shekinah no opera OAuth, sync, webhooks ni reservas Mercado Libre para inventario. No se debe:
 
-El carrito nunca acepta más de `min(99, disponible)` por línea. Checkout Pro vuelve a validar el catálogo, reserva de forma atómica antes de crear la preferencia y comparte disponibilidad con WhatsApp. Una repetición con la misma UUID excluye únicamente su propia reserva para poder reproducir el mismo pedido; no recupera unidades reservadas por terceros.
+- reactivar `.github/workflows/mercadolibre-reconcile.yml`;
+- configurar `MERCADO_LIBRE_CATALOG_ENABLED=true`;
+- usar el mirror histórico para autorizar Checkout o WhatsApp;
+- ejecutar PUT de stock o publicaciones;
+- copiar el seller ID `445638367` a un campo de empresa/sucursal/depósito Dux.
 
-### Imágenes administrativas
+Dux continúa siendo responsable de sincronizar la tienda `HERBOLARIOMDP` con Mercado Libre.
 
-La carga admite JPEG, PNG y WebP de hasta 4 MiB. El preview local no confirma persistencia. El servidor valida magic bytes, genera la key y sólo escribe mediante la API administrativa autenticada. En reemplazo debe conservarse la imagen anterior hasta que la nueva referencia quede persistida; sólo se limpian objetos administrados no referenciados. Nunca eliminar archivos de `/images/original/catalog/`.
+## Rate limit e indisponibilidad
 
-R2 y `CATALOG_IMAGES` están configurados y desplegados con `shekinah` para production y `shekinah-preview` para preview. Ambos buckets usan clase Standard/default y mantienen `publicR2DevEnabled=false`; la lectura comercial pasa exclusivamente por Pages. El smoke autenticado de upload/reemplazo/delete sigue no disponible por ausencia de credencial administrativa en claro. Un fallo de infraestructura nunca debe resolverse desactivando validaciones ni guardando imágenes en D1/Git.
+- `401`: token inválido o ausente; cerrar y revisar configuración.
+- `403`: permisos o plan insuficiente; confirmar PRO/FULL con Dux.
+- `429`: respetar la espera indicada; no multiplicar workers ni retries.
+- `5xx`: indisponibilidad temporal; snapshot como diagnóstico, venta cerrada.
+- timeout de GET: retry acotado.
+- timeout de futura mutación: resultado incierto; consultar antes de repetir.
+- payload inválido: contrato incompatible; cerrar y conservar error sanitizado.
 
-La auditoría registra:
+Un snapshot obsoleto puede ayudar al operador, pero no autoriza una venta.
 
-- subject y actor normalizados por sesión propia o por Access;
-- acción administrativa de lectura, mutación de catálogo, resolución WhatsApp o conciliación Checkout Pro;
-- tipo e identificador de destino cuando corresponda;
-- resultado HTTP;
-- request ID técnico;
-- fecha del servidor.
+## Secretos
 
-No registrar tokens JWT, cookies, cuerpos de petición, firmas de webhook ni parámetros completos de consulta.
+Rotar ante sospecha de exposición y cargar sólo como secretos cifrados de Pages:
 
-Los intentos de login se limitan en D1 por IP y por usuario mediante scopes HMAC. Ocho intentos por IP o veinte por usuario dentro de quince minutos activan un bloqueo de quince minutos al intento siguiente. `CF-Connecting-IP` es la fuente de IP en Pages; si falta, todas esas solicitudes comparten un scope cerrado. No borrar la tabla ni desactivar el control para recuperar acceso.
+- `DUX_API_TOKEN`;
+- `DUX_SCHEDULER_SECRET`;
+- `MERCADO_PAGO_ACCESS_TOKEN`;
+- `MERCADO_PAGO_WEBHOOK_SECRET`;
+- `ORDER_TOKEN_SECRET`;
+- secretos administrativos y analíticos ya existentes.
 
-## Reportes
+No imprimir valores, colocarlos en Git, usar prefijo `VITE_` ni persistir el token Dux en claro en D1.
 
-- `summary`: separa sesiones e interacciones consentidas de pedidos, pagos aprobados individuales, pedidos con pago aprobado, facturación confirmada y ticket promedio; un click manual nunca alimenta revenue. La facturación cuenta cada pedido una vez, mientras `Pagos aprobados` puede ser mayor para alertar sobre múltiples IDs exactos asociados al mismo pedido.
-- `analytics/funnel`: sesiones únicas con page view, product view, agregado, clic manual, WhatsApp e hitos del checkout integrado.
-- `analytics/products`: eventos y sesiones de vistas/agregados por producto, con conversión segura y sin divisiones inválidas.
-- `analytics/sources`: fuente agrupada.
-- `analytics/devices`: clase de dispositivo agrupada.
-- `analytics/trend`: serie diaria agregada en D1 para sesiones y eventos relevantes.
-- CSV de pedidos: hasta 1.000 filas por rango.
-- CSV de analítica: hasta 1.000 filas por rango.
+## Retención, privacidad e imágenes
 
-Las celdas CSV que comienzan con caracteres interpretables como fórmula se prefijan con apóstrofo. Aun así, los archivos deben abrirse como datos y no habilitar macros.
+La política existente de pedidos, pagos, auditoría y analítica se conserva. No registrar DNI, CUIT, dirección, teléfono o email en logs técnicos. Cuando Dux habilite pedidos, enviar únicamente los campos obligatorios del contrato.
 
-## Retención
+Las imágenes administradas continúan en R2 mediante `CATALOG_IMAGES`; el cambio de autoridad de inventario no altera assets legacy ni contenido editorial. No usar D1, Git o base64 como reemplazo de R2.
 
-El código no elimina pedidos, pagos, webhooks ni auditorías automáticamente. Para analítica, `purgeAnalyticsIfDue` reclama como máximo una ejecución por mes y elimina eventos, sesiones huérfanas y revocaciones con fecha estrictamente anterior al corte. Si la purga falla, libera el reclamo para permitir un reintento.
+## Criterio de apertura
 
-La política autorizada y configurada es de 730 días. `ANALYTICS_ENABLED=true`, `ANALYTICS_RETENTION_DAYS=730`, las D1 aisladas y los HMAC independientes quedaron verificados el 2026-08-11. Las revocaciones conservan sólo el HMAC de la sesión hasta alcanzar ese mismo corte.
-
-No ejecutar borrados masivos sin backup y plan de reversión.
-
-## Rotación de secretos
-
-- Rotar de inmediato ante sospecha de exposición.
-- `MERCADO_PAGO_ACCESS_TOKEN`: rotar en Mercado Pago y actualizar Pages antes de revocar el anterior, cuando el proveedor lo permita.
-- `MERCADO_PAGO_WEBHOOK_SECRET`: coordinar el cambio para no rechazar notificaciones legítimas durante la transición.
-- `ORDER_TOKEN_SECRET`: su rotación invalida los tokens públicos de pedidos existentes; planificar compatibilidad o conservar el valor mientras existan pedidos consultables.
-- `ANALYTICS_HMAC_SECRET`: su rotación cambia el hash de sesión y dificulta eliminar sesiones históricas con el identificador local anterior.
-- `ADMIN_PASSWORD_HASH`: generar fuera del repositorio un nuevo formato PBKDF2-HMAC-SHA-256 con salt aleatoria y 100.000 iteraciones, actualizar el secreto cifrado de production y preview y desplegar. Ese costo quedó comprobado dentro del límite CPU efectivo del runtime Bundled (32 ms en un smoke remoto negativo con credencial ficticia); no bajarlo sin una nueva validación. Nunca cargar la contraseña en claro ni guardar el hash en documentación.
-- `ADMIN_USERNAME`: actualizarlo como secreto server-side junto con el hash si cambia la cuenta; no requiere modificar frontend ni código.
-- `ADMIN_SESSION_SECRET`: rotarlo con al menos 32 bytes aleatorios para invalidar globalmente todas las sesiones administrativas existentes. Debe ser independiente de la contraseña y de otros secretos.
-- `ADMIN_RATE_LIMIT_SECRET`: mantenerlo independiente. Rotarlo sólo de forma deliberada porque crea scopes HMAC nuevos; las filas anteriores quedan inertes y vencen por retención.
-
-`ORDER_TOKEN_SECRET`, `ANALYTICS_HMAC_SECRET`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` tienen impacto funcional y no deben rotarse como mantenimiento rutinario sin un plan específico. Después de una rotación administrativa, comprobar login, API protegida y logout sin imprimir valores.
+No habilitar comercio hasta completar todos los requisitos de `docs/COMMERCE_DEPLOYMENT.md`, incluidas prueba de reserva, consulta, cancelación/liberación y finalización Dux, sandbox Mercado Pago, webhook, migración, CI y deployment del mismo SHA. Un pago productivo o una reserva real requieren autorización humana puntual.

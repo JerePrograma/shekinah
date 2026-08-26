@@ -1,4 +1,5 @@
 import { listCatalogProductDetails } from '../../../server/catalog-store';
+import { isDirectMercadoLibreIntegrationRetired } from '../../../server/config';
 import { sha256Hex } from '../../../server/crypto';
 import {
   getMercadoLibreAccess,
@@ -21,6 +22,7 @@ const MAX_USER_PRODUCT_SEARCH_PAGES = 20;
 
 export const onRequest: PagesFunction = async ({ env, request, waitUntil }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
+  if (isDirectMercadoLibreIntegrationRetired()) return noContentResponse(200);
   try {
     const database = requireDatabase(env);
     const payload = await readJsonBody(request, 64_000);

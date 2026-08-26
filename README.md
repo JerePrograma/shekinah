@@ -1,41 +1,62 @@
 # Shekinah
 
-Aplicación comercial de hierbas, especias, alimentos y productos naturales construida con React, TypeScript estricto, Vite y Cloudflare Pages Functions.
+Aplicación comercial de hierbas, especias, alimentos y productos naturales construida con React, TypeScript estricto, Vite, Cloudflare Pages Functions y Cloudflare D1.
+
+## Autoridades del sistema
+
+La arquitectura objetivo separa responsabilidades sin superponer inventarios:
+
+- **Dux Software** es la única autoridad de identidad externa de inventario, stock físico, depósito, unidad y semántica de cantidad, y debe administrar los pedidos o reservas que afecten existencias.
+- **Shekinah** conserva el catálogo editorial —slug, imágenes, descripción, categorías, SEO y texto comercial—, el carrito, la orden local y la coordinación entre proveedores.
+- **Mercado Pago** procesa Checkout Pro y aporta el estado financiero autoritativo mediante su API y webhook firmado.
+- **Mercado Libre** recibe la sincronización de stock desde Dux. Shekinah no consulta ni modifica Mercado Libre para decidir o reservar inventario.
+
+No se usa Excel para importar stock o construir el mapeo. Tampoco se deducen gramos, kilos, divisibilidad ni presentación a partir de nombres como `50GR`, `100GR` o `1KG`. Las cantidades Dux se conservan como números finitos tal como llegan: no se redondean, truncan ni reinterpretan.
+
+## Estado seguro actual
+
+El repositorio contiene una integración **read-only** con la API oficial Dux v2:
+
+- cliente server-side con `Authorization: Bearer <token>`;
+- base `https://erp.duxsoftware.com.ar/WSERP/rest/services`;
+- lecturas `GET /v2/empresas`, `GET /v2/sucursales`, `GET /v2/depositos` y `GET /v2/items`;
+- paginación del listado, validación defensiva, timeout, serialización mínima de una solicitud cada cinco segundos y tratamiento acotado de `429`/errores transitorios;
+- snapshot y mapeo exacto en D1 mediante `migrations/0012_dux_authoritative_inventory.sql`;
+- reconciliación programable por `/api/internal/dux/reconcile`, desactivada hasta contar con acceso y configuración verificados;
+- diagnóstico Dux en el backoffice, con el inventario observado como sólo lectura.
+
+D1 guarda una observación, el vínculo y auditoría; nunca se convierte en autoridad de stock. Un producto sin vínculo único queda preservado editorialmente, pero no puede venderse con stock desconocido.
+
+La salida comercial permanece cerrada:
+
+```text
+DUX_API_ENABLED=false
+COMMERCE_ENABLED=false
+VITE_COMMERCE_ENABLED=false
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
+```
+
+Hay dos bloqueos externos deliberados:
+
+1. la cuenta aportada muestra **Plan ESTÁNDAR** y la documentación Dux exige PRO o FULL para usar la API; se necesita upgrade y token;
+2. la API pública revisada no documenta un ciclo seguro para cancelar/liberar/finalizar o vencer una reserva creada por pedido. Además, `GET /v2/items` no publica unidad, pesabilidad, divisibilidad ni una regla de decimales suficiente para habilitar venta.
+
+Por esas razones el backend bloquea Checkout Pro y WhatsApp antes de crear una preferencia, abrir el canal o mutar inventario. No se crean pedidos Dux reales mientras soporte Dux no confirme oficialmente el lifecycle completo. Un build correcto no habilita el comercio.
 
 ## Funcionalidad
 
-- 510 productos y 16 categorías según la fuente canónica vigente;
-- búsqueda, filtro, paginación y fichas individuales;
+- catálogo editorial, búsqueda, filtros, paginación y fichas individuales;
 - carrito persistente y sincronizado entre pestañas;
 - datos de entrega sin PII en `localStorage`;
-- retiro o entrega personal coordinada y Correo Argentino con cálculo autoritativo;
-- integración fail-closed de Mercado Libre como catálogo y stock runtime, con mapeo exacto por SKU, OAuth cifrado y reserva upstream versionada;
-- Checkout Pro de Mercado Pago por redirección con reserva atómica de stock ligada a la preferencia y consumo autoritativo por webhook;
-- registro server-side del pedido pendiente, datos completos y reserva de stock antes de abrir WhatsApp al número expresamente autorizado;
-- pedidos, pagos, webhooks y analítica first-party consentida preparados sobre Cloudflare D1; `manual_payment_click` se conserva únicamente como interacción histórica;
-- Backoffice V2 con Resumen, Productos, Pedidos, Mercado Libre, Analítica y Auditoría; conserva el ABM editorial, sincroniza el catálogo autoritativo y permite aprobar o rechazar únicamente los pedidos pendientes de WhatsApp;
+- retiro, entrega coordinada y cálculo autoritativo de Correo Argentino donde el catálogo dispone de metadatos válidos;
+- Mercado Pago Checkout Pro preparado por redirección y webhook, actualmente cerrado por la dependencia Dux;
+- pedidos y backoffice sobre D1;
+- gestión de imágenes administrativas first-party mediante R2;
+- analítica first-party consentida;
 - política de privacidad, accesibilidad y vista 404.
 
-El navegador no decide precios, disponibilidad, peso, envío, moneda ni totales. Cuando la integración nueva está activada, el backend vuelve a consultar Mercado Libre, recalcula el carrito desde el espejo D1, reserva el stock versionado antes de crear Checkout Pro o WhatsApp y falla cerrado ante datos obsoletos o modalidades no protegibles. El canal WhatsApp persiste primero el pedido y reserva stock; después el comercio aprueba o rechaza manualmente desde el backoffice.
-
-En el modelo actual, `stockQuantity` es opcional: si está ausente, el producto conserva el comportamiento legacy sin control de stock. Si existe, debe ser un entero entre 0 y 1.000.000; cero disponible lo vuelve no comprable aunque la disponibilidad manual esté activa. El disponible resta las reservas WhatsApp pendientes y las reservas Checkout Pro vigentes. Checkout Pro reserva antes de crear la preferencia durante la misma ventana de 30 minutos; un pago pendiente verificado mantiene la reserva y un pago aprobado —o un reembolso observado sin aprobación previa— descuenta el físico exactamente una vez. Un reembolso no repone mercadería automáticamente. WhatsApp conserva su resolución administrativa: aprobar consume y rechazar libera.
-
-## Estado productivo actual
-
-Configuración pública vigente:
-
-```text
-PUBLIC_SITE_URL=https://shekinah.ar
-VITE_WHATSAPP_NUMBER=5492236216559
-```
-
-`https://shekinah.ar` es el dominio público canónico de producción: el custom domain de Pages está activo, usa un CNAME proxied al dominio técnico y responde 200 con TLS confiable emitido por Google. `https://shekinah-7dl.pages.dev` se conserva para Pages y preview. El alias `www` tiene una Bulk Redirect HTTPS `301` al apex que preserva path y query; al seguirla se obtiene el apex 200. Su A proxied `192.0.2.1` es el placeholder oficial para que la regla reciba tráfico, no un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre `shekinah.ar` y `*.shekinah.ar`, y el handshake negociado usa TLS 1.3.
-
-El flujo de WhatsApp usa Pages Functions y D1 sin requerir VPS. El 2026-08-12 se aplicó y verificó `0007` primero en preview y luego en producción; el SHA funcional `c19d88dc03f9d98c0c615256bda374769bd2b7a7` obtuvo CI verde, deployment Pages exitoso y smoke público no destructivo. La migración `0008` extiende esa garantía a Checkout Pro y hace obligatorios los datos mínimos de coordinación antes de reservar por WhatsApp. La activación pública de Checkout Pro continúa separada: producción conserva `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false` hasta completar rotación de credenciales, webhook, compra controlada y calidad de integración.
-
-La migración aditiva `0009` y el código de Mercado Libre incorporan OAuth, catálogo espejo, variaciones, frescura, notificaciones y ledger upstream. `MERCADO_LIBRE_CATALOG_ENABLED=false` y `VITE_MERCADO_LIBRE_CATALOG_ENABLED=false` siguen siendo los defaults seguros: no deben activarse hasta verificar el seller, aplicar la migración, completar la sincronización real y demostrar que las unidades vendibles usan stock `seller_warehouse` versionado.
-
-La analítica first-party quedó activada de forma independiente de Checkout Pro el 2026-08-11 en preview y producción. Requiere consentimiento explícito, excluye `/admin`, usa secretos HMAC server-side distintos por entorno y retención verificada de 730 días. `whatsapp_open` continúa como interacción; `manual_payment_click` sólo conserva la semántica de los datos históricos y ninguno representa pagos confirmados.
+El navegador nunca decide precios, stock, unidad, peso, envío, moneda ni totales. Dux se consulta exclusivamente desde Pages Functions; el token no llega al bundle.
 
 ## Rutas públicas
 
@@ -43,18 +64,12 @@ La analítica first-party quedó activada de forma independiente de Checkout Pro
 - `/catalogo`: catálogo;
 - `/carrito`: carrito y datos de entrega;
 - `/privacidad`: política y controles de analítica;
-- `/pago/exito`, `/pago/pendiente`, `/pago/error`: retorno y consulta autoritativa del pedido cuando Checkout Pro está habilitado;
+- `/pago/exito`, `/pago/pendiente`, `/pago/error`: retornos que consultan el estado persistido y nunca prueban por sí solos un pago;
 - `/<slug>/`: ficha de producto;
 - `/tienda/categoria/<slug>/`: categoría;
 - cualquier otra dirección, incluida `/enfoque`: vista 404.
 
-`/admin` no aparece en la navegación y sirve únicamente la pantalla de acceso hasta que el servidor confirma una sesión. `/api/admin/auth/login`, `/api/admin/auth/session` y `/api/admin/auth/logout` administran la sesión; todas las demás rutas `/api/admin/*` exigen en cada solicitud una cookie propia válida o, como compatibilidad opcional, un JWT válido de Cloudflare Access.
-
-Tras autenticarse, la navegación administrativa separa Resumen, Productos, Pedidos, Analítica y Auditoría. `ProductManager` permanece montado al cambiar de sección para conservar ediciones sin guardar. El detalle de pedido se consulta bajo demanda mediante `GET /api/admin/orders/[id]` y no expone mutaciones de estados, importes ni timestamps financieros.
-
-La gestión visual de imágenes del candidato admite JPEG, PNG y WebP de hasta 4 MiB, con preview local y validación server-side de tipo y firma binaria. Los binarios administrados requieren un bucket R2 mediante el binding `CATALOG_IMAGES`; las imágenes públicas se sirven por una ruta first-party. Los 484 assets legacy versionados nunca se borran desde el backoffice.
-
-R2 quedó habilitado y vinculado en Pages: producción reutiliza el bucket existente `shekinah`, preview usa el bucket aislado `shekinah-preview` y ambos se exponen a Functions como `CATALOG_IMAGES`. Los dos buckets conservan la clase Standard/default y `publicR2DevEnabled=false`; la lectura pública se realiza exclusivamente por la ruta first-party de Pages, sin dominio `r2.dev`. El deployment actual preserva ambos bindings. En esta activación no se repitió un smoke autenticado de upload/reemplazo/delete porque no se dispuso de la credencial administrativa en claro.
+`/admin` no aparece en la navegación y exige una sesión validada por el servidor. El backoffice mantiene el ABM editorial y presenta el estado Dux sin permitir editar el stock de un producto gobernado por Dux.
 
 ## Desarrollo
 
@@ -69,6 +84,8 @@ npm run install:browsers
 npm run dev
 ```
 
+No se ejecutan llamadas a Dux durante el build. Los tests usan contratos y dobles controlados.
+
 ## Validación
 
 ```bash
@@ -78,24 +95,32 @@ git diff --check
 git diff --cached --check
 ```
 
-`npm run verify` ejecuta ESLint, TypeScript, Vitest, verificadores de catálogo, pesos, comercio, activos, seguridad y automatización, build de producción y Playwright.
+`npm run verify` ejecuta ESLint, TypeScript, Vitest, verificadores del repositorio, build y Playwright.
 
 ## Configuración segura
 
-Los defaults de código permanecen cerrados. La configuración externa verificada habilita únicamente analítica en preview y producción; no copiar estos defaults sobre Pages sin revisar el estado operativo:
+Los defaults continúan cerrados. El token Dux y los secretos de Mercado Pago se cargan sólo como secretos cifrados de Cloudflare Pages y nunca con prefijo `VITE_`.
+
+Variables Dux server-side previstas:
 
 ```text
-COMMERCE_ENABLED=false
-ANALYTICS_ENABLED=false
-VITE_COMMERCE_ENABLED=false
-VITE_ANALYTICS_ENABLED=false
+DUX_API_ENABLED=false
+DUX_COMPANY_ID=<obtenido de GET /v2/empresas>
+DUX_BRANCH_ID=<obtenido de GET /v2/sucursales>
+DUX_DEPOSIT_ID=<obtenido de GET /v2/depositos>
+DUX_SNAPSHOT_MAX_AGE_SECONDS=900
 ```
 
-Los secretos `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `ORDER_TOKEN_SECRET`, `MERCADO_LIBRE_CLIENT_SECRET`, `MERCADO_LIBRE_TOKEN_ENCRYPTION_KEY`, `MERCADO_LIBRE_SCHEDULER_SECRET`, `ANALYTICS_HMAC_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET` y `ADMIN_RATE_LIMIT_SECRET` deben cargarse exclusivamente como secretos de Cloudflare y separarse por entorno. El secreto del scheduler se replica cifrado en el environment GitHub `cloudflare-pages-production`; ningún otro secreto de proveedor sale de Cloudflare. Nunca deben usar el prefijo `VITE_`. La contraseña administrativa se transforma fuera del repositorio mediante PBKDF2-HMAC-SHA-256 con salt aleatoria; no se carga ni se conserva en claro.
+Secretos Dux:
 
-`VITE_WHATSAPP_NUMBER` es un dato público autorizado. El Link de Pago fijo y su variable pública fueron retirados del carrito; no existe fallback automático que solicite al comprador ingresar un monto.
+```text
+DUX_API_TOKEN
+DUX_SCHEDULER_SECRET
+```
 
-La configuración externa, D1, Mercado Libre, Mercado Pago Checkout Pro, webhooks y autenticación administrativa deben operarse siguiendo `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md` y `docs/COMMERCE_DEPLOYMENT.md`. Tener el código en `main` o un CI verde no implica que esas integraciones estén vinculadas o activas.
+El ID de vendedor Mercado Libre `445638367` y el ID de usuario Dux `3851` aportados por el cliente no se reutilizan como empresa, sucursal, depósito o personal. Esos identificadores deben resolverse mediante los endpoints oficiales y validarse contra la cuenta autorizada.
+
+Consultar `docs/FULL_STACK_COMMERCE.md`, `docs/COMMERCE_DEPLOYMENT.md` y `docs/COMMERCE_OPERATIONS.md` antes de configurar un entorno. Tener código en `main`, CI verde o un deployment Pages no demuestra que Dux, la migración ni los secretos estén operativos.
 
 ## Producción
 
@@ -105,10 +130,7 @@ Cloudflare Pages debe conservar:
 - rama: `main`;
 - comando: `npm run build:pages`;
 - salida: `dist`;
-- directorio raíz: raíz del repositorio;
 - Node.js: `24.18.0`;
-- dominio público canónico de producción: `https://shekinah.ar`;
-- dominio técnico de Pages y origen documentado para preview: `https://shekinah-7dl.pages.dev`;
-- alias `www`: redirección permanente `301` a `https://shekinah.ar`.
+- dominio público canónico: `https://shekinah.ar`.
 
-La CSP permite conexiones únicamente al mismo origen mediante `connect-src 'self'`. El login, el catálogo runtime y el backoffice usan APIs first-party y una cookie `HttpOnly`; las conexiones con Mercado Libre y Mercado Pago ocurren exclusivamente desde Pages Functions.
+La CSP mantiene `connect-src 'self'`: el frontend usa APIs first-party y las conexiones con Dux y Mercado Pago ocurren exclusivamente desde Pages Functions. La integración directa de inventario Mercado Libre queda retirada y sus tablas históricas se conservan sin participar del flujo productivo.

@@ -2,8 +2,7 @@ import {
   createWhatsappOrder,
   recalculateWhatsappCart,
 } from '../../../server/whatsapp-orders';
-import { listCatalogProductDetails } from '../../../server/catalog-store';
-import { revalidateMercadoLibreCart } from '../../../server/mercado-libre-catalog';
+import { assertDuxCommerceLifecycleAvailable } from '../../../server/config';
 import { expireWhatsappReservations } from '../../../server/stock-reservations';
 import {
   HttpError,
@@ -19,17 +18,10 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   try {
     assertSameOrigin(request, env);
+    assertDuxCommerceLifecycleAvailable(env);
     const database = requireDatabase(env);
     const body = await readJsonBody(request, 32_768);
-    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
-      await revalidateMercadoLibreCart(
-        database,
-        env,
-        body,
-        await listCatalogProductDetails(database),
-        'whatsapp',
-      );
-    } else if (await hasLocalStockReservationSchema(database)) {
+    if (await hasLocalStockReservationSchema(database)) {
       await expireWhatsappReservations(database);
       const { cart } = await recalculateWhatsappCart(body, database, env);
       const unconfiguredLine = cart.lines.find(({ product }) => (

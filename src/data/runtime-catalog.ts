@@ -3,10 +3,6 @@ import { useEffect, useState } from 'react';
 import { parseProductDetail, parseProducts } from '../catalog/model';
 import type { CatalogProductDetail, Product } from '../catalog/model';
 import {
-  isCommerceClientEnabled,
-  isMercadoLibreCatalogClientEnabled,
-} from '../commerce/env';
-import {
   authorizedCategories,
   authorizedProducts,
   loadAuthorizedProductDetail,
@@ -71,8 +67,8 @@ export async function loadRuntimeProductDetail(slug: string): Promise<CatalogPro
     return parseProductDetail(summary, payload.product);
   } catch {
     const fallback = await loadAuthorizedProductDetail(slug);
-    return fallback === null || !shouldFailClosed()
-      ? fallback
+    return fallback === null
+      ? null
       : Object.freeze({ ...fallback, availability: 'unavailable' as const });
   }
 }
@@ -95,16 +91,11 @@ async function loadProducts(): Promise<readonly Product[]> {
 }
 
 function failClosedProducts(products: readonly Product[]): readonly Product[] {
-  if (!shouldFailClosed()) return products;
   catalogResolved = false;
   return Object.freeze(products.map((product) => Object.freeze({
     ...product,
     availability: 'unavailable' as const,
   })));
-}
-
-function shouldFailClosed(): boolean {
-  return isCommerceClientEnabled() || isMercadoLibreCatalogClientEnabled();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

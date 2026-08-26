@@ -20,7 +20,7 @@ const fulfillment = Object.freeze({
 });
 
 describe('carrito autoritativo con catálogo dinámico', () => {
-  it('acepta altas y usa el precio vigente del servidor', async () => {
+  it('preserva el precio local pero bloquea productos sin vínculo autoritativo Dux', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
       const created = await createCatalogProduct(
@@ -35,20 +35,13 @@ describe('carrito autoritativo con catálogo dinámico', () => {
         'admin@example.test',
       );
 
-      const cart = await recalculateDynamicCart({
+      await expect(recalculateDynamicCart({
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: created.id, quantity: 2 }],
-      }, testD1.database);
-      expect(cart).toMatchObject({
-        itemCount: 2,
-        productsTotalMinor: 469_134,
-        shippingMinor: 0,
-        totalMinor: 469_134,
-      });
-      expect(cart.lines[0]?.product).toMatchObject({
-        id: created.id,
-        unitPriceMinor: 234_567,
+      }, testD1.database)).rejects.toMatchObject({
+        code: 'PRODUCT_UNAVAILABLE',
+        status: 409,
       });
     } finally {
       testD1.close();
@@ -89,7 +82,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
     }
   });
 
-  it('admite stock controlado y rechaza productos sin inventario configurado', async () => {
+  it('no usa stock local configurado ni lo trata como fallback de Dux', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
       const tracked = await createCatalogProduct(
@@ -101,13 +94,16 @@ describe('carrito autoritativo con catálogo dinámico', () => {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: tracked.id, quantity: 2 }],
-      }, testD1.database)).resolves.toMatchObject({ itemCount: 2 });
+      }, testD1.database)).rejects.toMatchObject({
+        code: 'PRODUCT_UNAVAILABLE',
+        status: 409,
+      });
       await expect(recalculateDynamicCart({
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
         items: [{ productId: tracked.id, quantity: 3 }],
       }, testD1.database)).rejects.toMatchObject({
-        code: 'INSUFFICIENT_STOCK',
+        code: 'PRODUCT_UNAVAILABLE',
         status: 409,
       });
 
@@ -121,7 +117,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
         fulfillment,
         items: [{ productId: unconfigured.id, quantity: 1 }],
       }, testD1.database)).rejects.toMatchObject({
-        code: 'STOCK_NOT_CONFIGURED',
+        code: 'PRODUCT_UNAVAILABLE',
         status: 409,
       });
     } finally {

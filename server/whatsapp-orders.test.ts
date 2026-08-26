@@ -25,6 +25,10 @@ const migration = [
   '0007_whatsapp_order_reservations.sql',
   '0008_checkout_pro_stock_and_whatsapp_identity.sql',
 ].map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
+const duxMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0012_dux_authoritative_inventory.sql'),
+  'utf8',
+);
 
 const fulfillment = Object.freeze({
   method: 'coordinated_pickup' as const,
@@ -36,7 +40,9 @@ const fulfillment = Object.freeze({
   postalCode: 'C1234ABC',
 });
 
-describe('pedidos WhatsApp y reservas de stock', () => {
+// Conservamos estos casos como documentación ejecutable del mecanismo local
+// retirado. No deben reactivarse mientras Dux sea la autoridad de inventario.
+describe.skip('reservas locales históricas de WhatsApp (fuera del flujo productivo)', () => {
   it('crea un snapshot pendiente con precio canónico y proyecta la reserva sin tocar stock físico', async () => {
     const database = new SqliteD1(migration);
     try {
@@ -466,6 +472,104 @@ describe('pedidos WhatsApp y reservas de stock', () => {
         reservedQuantity: 1,
         availableQuantity: 0,
       });
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describe('pedidos WhatsApp con inventario autoritativo Dux', () => {
+  it('bloquea un producto local sin vínculo Dux y no crea una reserva local', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      await createCatalogProduct(
+        database,
+        productInput('whatsapp-sin-dux', 1_000, 10),
+        'admin@test',
+      );
+      await expect(createWhatsappOrder(
+        database,
+        orderRequest('whatsapp-sin-dux', 1),
+      )).rejects.toMatchObject({ status: 503, code: 'DUX_API_DISABLED' });
+      expect(await count(database, 'orders')).toBe(0);
+      await expect(getCatalogProductDetail(database, 'whatsapp-sin-dux')).resolves.toMatchObject({
+        stockQuantity: 10,
+        reservedQuantity: 0,
+        availableQuantity: 10,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('rechaza la reactivación de Mercado Libre antes de consultar o reservar stock', async () => {
+    const database = new SqliteD1(migration);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await createCatalogProduct(
+        database,
+        productInput('whatsapp-sin-mercadolibre', 1_000, 10),
+        'admin@test',
+      );
+      await expect(createWhatsappOrder(
+        database,
+        orderRequest('whatsapp-sin-mercadolibre', 1),
+        { MERCADO_LIBRE_CATALOG_ENABLED: 'true' },
+      )).rejects.toMatchObject({
+        status: 503,
+        code: 'MERCADO_LIBRE_INVENTORY_DISABLED',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await count(database, 'orders')).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      database.close();
+    }
+  });
+
+  it('bloquea la resolución directa de una orden vinculada a Dux', async () => {
+    const database = new SqliteD1(`${migration}\n${duxMigration}`);
+    try {
+      const now = '2026-08-26T12:00:00.000Z';
+      await database.prepare(
+        `INSERT INTO orders (
+          id, public_token_hash, checkout_idempotency_key, cart_fingerprint,
+          status, currency, total_minor, item_count, created_at, updated_at, channel
+        ) VALUES (?, ?, ?, ?, 'pending', 'ARS', 1000, 1, ?, ?, 'whatsapp')`,
+      ).bind(
+        'ord_dux_whatsapp_00000000',
+        'token_hash_dux_whatsapp',
+        'checkout_key_dux_whatsapp',
+        'cart_hash_dux_whatsapp',
+        now,
+        now,
+      ).run();
+      await database.prepare(
+        `INSERT INTO dux_order_links (
+          order_id, dux_reference, company_id, branch_id, deposit_id,
+          reservation_state, request_fingerprint, created_at, updated_at
+        ) VALUES (?, ?, '1', '2', '3', 'blocked', ?, ?, ?)`,
+      ).bind(
+        'ord_dux_whatsapp_00000000',
+        'shekinah:ord_dux_whatsapp_00000000',
+        'request_hash_dux_whatsapp',
+        now,
+        now,
+      ).run();
+
+      await expect(resolveWhatsappOrder(
+        database,
+        'ord_dux_whatsapp_00000000',
+        'rejected',
+        'admin@test',
+      )).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
+      });
+      await expect(database.prepare(
+        'SELECT status FROM orders WHERE id = ?',
+      ).bind('ord_dux_whatsapp_00000000').first()).resolves.toEqual({ status: 'pending' });
     } finally {
       database.close();
     }

@@ -36,6 +36,45 @@ export type CatalogCategory = Readonly<{
   productCount: number;
 }>;
 
+export type CommerceAvailabilityState =
+  | 'verified'
+  | 'out_of_stock'
+  | 'updating'
+  | 'unavailable';
+
+export type MercadoLibreCommerceSnapshot = Readonly<{
+  source: 'mercadolibre';
+  catalogVersion: string;
+  syncedAt: string;
+  availabilityState: CommerceAvailabilityState;
+  checkoutEligible: boolean;
+}>;
+
+export type DuxCommerceSnapshot = Readonly<{
+  source: 'dux';
+  catalogVersion: string;
+  syncedAt: string;
+  availabilityState: CommerceAvailabilityState;
+  checkoutEligible: boolean;
+  mappingStatus: 'mapped' | 'unmapped' | 'ambiguous';
+  quantitySemanticsStatus: 'unavailable_from_v2_items' | 'verified' | 'unsupported';
+  observedStock?: Readonly<{
+    real: number;
+    reserved: number;
+    available: number;
+  }>;
+  unit?: Readonly<{
+    id?: string;
+    name?: string;
+    symbol?: string;
+  }>;
+  depositName?: string;
+}>;
+
+export type ProductCommerceSnapshot =
+  | MercadoLibreCommerceSnapshot
+  | DuxCommerceSnapshot;
+
 export type CatalogProductSummary = Readonly<{
   id: string;
   slug: string;
@@ -53,13 +92,7 @@ export type CatalogProductSummary = Readonly<{
   availableQuantity?: number;
   shortDescription?: string;
   primaryImage?: ProductImage;
-  commerce?: Readonly<{
-    source: 'mercadolibre';
-    catalogVersion: string;
-    syncedAt: string;
-    availabilityState: 'verified' | 'out_of_stock' | 'updating' | 'unavailable';
-    checkoutEligible: boolean;
-  }>;
+  commerce?: ProductCommerceSnapshot;
 }>;
 
 export type Product = CatalogProductSummary;
@@ -148,9 +181,15 @@ export function isManagedCatalogImagePath(value: string): boolean {
 export function isProductEffectivelyAvailable(
   product: Pick<
     CatalogProductSummary,
-    'availability' | 'stockQuantity' | 'availableQuantity'
+    'availability' | 'stockQuantity' | 'availableQuantity' | 'commerce'
   >,
 ): boolean {
+  if (
+    product.commerce !== undefined &&
+    (!product.commerce.checkoutEligible || product.commerce.availabilityState !== 'verified')
+  ) {
+    return false;
+  }
   const availableQuantity = product.availableQuantity ?? product.stockQuantity;
   return (
     product.availability !== 'unavailable' &&
@@ -276,6 +315,14 @@ export function parseProduct(value: unknown): Product {
   const commerce = Object.hasOwn(value, 'commerce')
     ? parseCommerceSnapshot(value.commerce)
     : undefined;
+  if (
+    commerce?.source === 'dux' &&
+    (stockQuantity !== undefined || reservedQuantity !== undefined || availableQuantity !== undefined)
+  ) {
+    throw new InvalidProductError(
+      'Un producto gobernado por Dux no puede exponer la proyección de stock local.',
+    );
+  }
 
   return Object.freeze({
     id,
@@ -299,7 +346,7 @@ export function parseProduct(value: unknown): Product {
 }
 
 function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']> {
-  if (!isRecord(value) || value.source !== 'mercadolibre') {
+  if (!isRecord(value) || (value.source !== 'mercadolibre' && value.source !== 'dux')) {
     throw new InvalidProductError('La referencia comercial del producto no es válida.');
   }
   const catalogVersion = readRequiredText(value, 'catalogVersion');
@@ -313,12 +360,95 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
   ) {
     throw new InvalidProductError('La referencia comercial del producto no es válida.');
   }
-  return Object.freeze({
-    source: 'mercadolibre',
+
+  const normalizedBase = {
     catalogVersion,
     syncedAt: new Date(syncedAt).toISOString(),
-    availabilityState: availabilityState as NonNullable<Product['commerce']>['availabilityState'],
+    availabilityState: availabilityState as CommerceAvailabilityState,
     checkoutEligible: value.checkoutEligible,
+  };
+
+  if (value.source === 'mercadolibre') {
+    return Object.freeze({
+      source: 'mercadolibre',
+      ...normalizedBase,
+    });
+  }
+
+  const mappingStatus = readRequiredText(value, 'mappingStatus');
+  const quantitySemanticsStatus = readRequiredText(value, 'quantitySemanticsStatus');
+  if (
+    !['mapped', 'unmapped', 'ambiguous'].includes(mappingStatus) ||
+    !['unavailable_from_v2_items', 'verified', 'unsupported'].includes(
+      quantitySemanticsStatus,
+    )
+  ) {
+    throw new InvalidProductError('La referencia de inventario Dux no es válida.');
+  }
+
+  const observedStock = Object.hasOwn(value, 'observedStock')
+    ? parseDuxObservedStock(value.observedStock)
+    : undefined;
+  const unit = Object.hasOwn(value, 'unit') ? parseDuxUnit(value.unit) : undefined;
+  const depositName = readOptionalText(value, 'depositName');
+
+  if (
+    value.checkoutEligible &&
+    (mappingStatus !== 'mapped' ||
+      quantitySemanticsStatus !== 'verified' ||
+      availabilityState !== 'verified' ||
+      observedStock === undefined ||
+      observedStock.available <= 0)
+  ) {
+    throw new InvalidProductError(
+      'Dux no confirmó todos los datos necesarios para habilitar el checkout.',
+    );
+  }
+
+  return Object.freeze({
+    source: 'dux',
+    ...normalizedBase,
+    mappingStatus: mappingStatus as DuxCommerceSnapshot['mappingStatus'],
+    quantitySemanticsStatus:
+      quantitySemanticsStatus as DuxCommerceSnapshot['quantitySemanticsStatus'],
+    ...(observedStock === undefined ? {} : { observedStock }),
+    ...(unit === undefined ? {} : { unit }),
+    ...(depositName === undefined ? {} : { depositName }),
+  });
+}
+
+function parseDuxObservedStock(value: unknown): NonNullable<DuxCommerceSnapshot['observedStock']> {
+  if (
+    !isRecord(value) ||
+    typeof value.real !== 'number' ||
+    !Number.isFinite(value.real) ||
+    typeof value.reserved !== 'number' ||
+    !Number.isFinite(value.reserved) ||
+    typeof value.available !== 'number' ||
+    !Number.isFinite(value.available)
+  ) {
+    throw new InvalidProductError('El stock observado en Dux debe contener números finitos.');
+  }
+
+  return Object.freeze({
+    real: value.real,
+    reserved: value.reserved,
+    available: value.available,
+  });
+}
+
+function parseDuxUnit(value: unknown): NonNullable<DuxCommerceSnapshot['unit']> {
+  if (!isRecord(value)) {
+    throw new InvalidProductError('La unidad de inventario Dux no es válida.');
+  }
+
+  const id = readOptionalText(value, 'id');
+  const name = readOptionalText(value, 'name');
+  const symbol = readOptionalText(value, 'symbol');
+  return Object.freeze({
+    ...(id === undefined ? {} : { id }),
+    ...(name === undefined ? {} : { name }),
+    ...(symbol === undefined ? {} : { symbol }),
   });
 }
 

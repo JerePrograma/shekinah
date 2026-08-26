@@ -1,22 +1,23 @@
-name: Mercado Libre reconciliation
+name: Dux inventory reconciliation
 
 on:
   schedule:
-    - cron: '2/5 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: mercadolibre-reconciliation-production
+  group: dux-inventory-reconciliation-production
   cancel-in-progress: false
 
 jobs:
   reconcile:
-    name: Reconcile production inventory
+    name: Refresh production Dux snapshot
+    if: ${{ vars.DUX_RECONCILIATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment:
       name: cloudflare-pages-production
       deployment: false
@@ -32,8 +33,8 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Reconcile Mercado Libre
+      - name: Refresh Dux inventory snapshot
         env:
-          SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/mercadolibre/reconcile
-          SHEKINAH_RECONCILE_SECRET: ${{ secrets.MERCADO_LIBRE_SCHEDULER_SECRET }}
-        run: node scripts/run-mercadolibre-reconcile.mjs
+          SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile
+          SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}
+        run: node scripts/run-dux-reconcile.mjs

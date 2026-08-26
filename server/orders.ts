@@ -53,6 +53,20 @@ export async function prepareOrder({
   idempotencyKey: string;
   tokenSecret: string;
 }>): Promise<PreparedOrder> {
+  if (cart.lines.some(({ product }) => product.inventoryProvider === 'mercadolibre')) {
+    throw new HttpError(
+      410,
+      'MERCADO_LIBRE_DIRECT_INTEGRATION_RETIRED',
+      'La integración directa con Mercado Libre fue retirada; Dux administra esa sincronización.',
+    );
+  }
+  if (cart.lines.some(({ product }) => product.inventoryProvider === 'dux')) {
+    throw new HttpError(
+      503,
+      'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
+      'Dux no documenta todavía un ciclo público verificable para liberar y finalizar reservas.',
+    );
+  }
   const publicToken = await derivePublicToken(tokenSecret, idempotencyKey);
   const publicTokenHash = await sha256Hex(publicToken);
   const fingerprint = await cartFingerprint(cart);
@@ -342,6 +356,8 @@ export async function updateOrderFromPayment(
     );
   }
 
+  await assertDuxOrderLifecycleUnlinked(database, order.id);
+
   const now = new Date().toISOString();
   try {
     await database.batch([
@@ -506,6 +522,63 @@ export async function updateOrderFromPayment(
       'PAYMENT_IDENTITY_CONFLICT',
       'El identificador del pago ya está asociado a otro pedido.',
     );
+  }
+}
+
+export async function assertDuxOrderLifecycleUnlinked(
+  database: D1Database,
+  orderId: string,
+): Promise<void> {
+  try {
+    const link = await database
+      .prepare('SELECT reservation_state FROM dux_order_links WHERE order_id = ? LIMIT 1')
+      .bind(orderId)
+      .first<Readonly<{ reservation_state: string }>>();
+    if (link !== null) {
+      throw new HttpError(
+        503,
+        'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
+        'El pago fue verificado, pero el pedido Dux no puede transicionar hasta disponer de liberación y finalización oficiales.',
+      );
+    }
+    const mappedItem = await database
+      .prepare(
+        `SELECT 1 AS matched
+         FROM order_items AS order_line
+         WHERE order_line.order_id = ?
+           AND EXISTS (
+             SELECT 1
+             FROM dux_inventory_items AS dux_item
+             WHERE dux_item.local_product_id = order_line.product_id
+                OR EXISTS (
+                  SELECT 1
+                  FROM json_each(dux_item.mapping_candidates_json) AS candidate
+                  WHERE candidate.value = order_line.product_id
+                )
+           )
+         LIMIT 1`,
+      )
+      .bind(orderId)
+      .first<Readonly<{ matched: number }>>();
+    if (mappedItem !== null) {
+      throw new HttpError(
+        503,
+        'DUX_ORDER_RECONCILIATION_REQUIRED',
+        'El pedido anterior al corte contiene inventario Dux y requiere conciliación manual antes de cambiar de estado.',
+      );
+    }
+  } catch (error: unknown) {
+    if (
+      error instanceof Error &&
+      /no such table:\s*dux_(?:order_links|inventory_items)/iu.test(error.message)
+    ) {
+      throw new HttpError(
+        503,
+        'DUX_INVENTORY_MIGRATION_REQUIRED',
+        'La migración de inventario Dux debe aplicarse antes de transicionar pedidos.',
+      );
+    }
+    throw error;
   }
 }
 

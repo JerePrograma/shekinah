@@ -29,22 +29,14 @@ describe('API pública del catálogo', () => {
     }
   });
 
-  it('sirve fichas base y 404 reales aun cuando D1 no está configurado', async () => {
-    const existing = await getCatalogProduct(detailContext('guayaba'));
-    expect(existing.status).toBe(200);
-    await expect(existing.json()).resolves.toMatchObject({ product: { id: 'guayaba' } });
+  it('falla cerrado si D1 no está configurado y no expone stock compilado', async () => {
+    const list = await listCatalog(context('/api/catalog'));
+    expect(list.status).toBe(503);
+    await expect(list.json()).resolves.toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
 
-    const missing = await getCatalogProduct(detailContext('producto-inexistente'));
-    expect(missing.status).toBe(404);
-    await expect(missing.json()).resolves.toMatchObject({
-      error: { code: 'PRODUCT_NOT_FOUND' },
-    });
-
-    const invalid = await getCatalogProduct(detailContext('ID INVALIDO'));
-    expect(invalid.status).toBe(400);
-    await expect(invalid.json()).resolves.toMatchObject({
-      error: { code: 'INVALID_PRODUCT_ID' },
-    });
+    const detail = await getCatalogProduct(detailContext('guayaba'));
+    expect(detail.status).toBe(503);
+    await expect(detail.json()).resolves.toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
   });
 
   it('conserva los 510 productos base si todavía falta la tabla 0004', async () => {

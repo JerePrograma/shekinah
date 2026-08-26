@@ -1,6 +1,6 @@
 # Fulfillment, envío y retención
 
-Desde el 2026-08-24, los pedidos vinculados a Mercado Libre usan el mismo fulfillment existente pero reservan mediante el ledger upstream documentado en `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. Tokens OAuth cifrados, ciclos, notificaciones y operaciones de inventario no contienen PII de comprador; su retención operativa no autoriza borrar órdenes o trazabilidad histórica.
+Desde el 2026-08-26, Dux es la única autoridad de inventario. Las reglas Mercado Libre y de stock local de este documento se conservan sólo como comportamiento histórico de pedidos legacy sin vínculo Dux. Los pedidos Dux nuevos están bloqueados hasta demostrar reserva, liberación, finalización y expiración mediante la API oficial.
 
 ## Alcance
 
@@ -16,7 +16,7 @@ Modalidades:
 - `correo_argentino`: hasta 1 kg inclusive `ARS 19.000`; más de 1 kg y hasta 5 kg inclusive `ARS 25.000`;
 - para Correo, peso desconocido o superior a 5 kg: cotización manual por WhatsApp y cobro online bloqueado; el retiro coordinado continúa disponible por ARS 0.
 
-Una presentación explícita y válida se usa sólo cuando no contradice un peso único derivable del nombre. Si ambos valores difieren, el peso se clasifica como desconocido y Correo queda en cotización manual. El nombre se usa como respaldo únicamente cuando no existe presentación y contiene una sola expresión inequívoca. No existe peso por defecto.
+Para un producto Dux no se deriva peso de envío, unidad ni granularidad desde el nombre o la presentación editorial. Hasta disponer de un campo oficial verificado, Correo Argentino queda en cotización manual y el checkout online falla cerrado. El clasificador histórico de presentaciones/nombres sólo aplica a productos legacy sin vínculo Dux y no define semántica de inventario.
 
 En Checkout Pro integrado, `orders.total_minor` conserva el total autoritativo de productos más envío. Mercado Pago recibe el envío como un ítem separado y el webhook continúa comparando moneda e importe completo contra el pedido.
 
@@ -32,9 +32,9 @@ El Link de Pago manual fue retirado. El pedido de WhatsApp conserva en `orders.t
 
 `migrations/0003_checkout_intent_cart_fingerprint.sql` agrega la huella autoritativa del carrito a `checkout_intents`, backfillea desde pedidos existentes y evita reutilizar una reserva huérfana con otro carrito.
 
-`migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido; `0008` aporta las marcas temporales reutilizadas por ambos canales. La reserva se deriva de los items y no tiene contador duplicado. Los pedidos WhatsApp nuevos vencen a las 24 horas: la limpieza idempotente cambia sólo un `pending` vencido a `rejected`, registra `WHATSAPP_RESERVATION_EXPIRED` y libera la disponibilidad sin tocar el stock físico. Se ejecuta antes de nuevas reservas, escrituras de catálogo y lecturas administrativas. Aprobar dentro de la ventana descuenta el stock físico una sola vez; rechazar conserva el físico y libera la reserva. Las filas históricas sin vencimiento conservan el flujo administrativo previo.
+`migrations/0007_whatsapp_order_reservations.sql` agrega canal y resolución al pedido; `0008` aporta marcas temporales reutilizadas por ambos canales. Su reserva, vencimiento, aprobación y rechazo locales sólo permanecen para pedidos legacy sin vínculo ni identidad/candidata Dux. La expiración automática excluye expresamente pedidos Dux y nunca sustituye una liberación upstream.
 
-`migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` agrega la ventana y marca de consumo de stock de Checkout Pro, la fotografía de control de stock por item y la huella de fulfillment de WhatsApp. La reserva de Checkout Pro dura lo mismo que la preferencia o mientras exista un pago `pending` consultado al proveedor. La transición autoritativa a `approved` o `refunded` consume el físico una sola vez; un reembolso no repone stock porque no prueba devolución de mercadería.
+`migrations/0008_checkout_pro_stock_and_whatsapp_identity.sql` conserva la ventana y marca histórica de consumo local. Sólo aplica a pedidos legacy. Para cualquier pedido presente en `dux_order_links`, `0012` bloquea líneas y cambios de estado; pagos, conciliación y expiración quedan fuera hasta que una migración posterior implemente el lifecycle Dux demostrado. Un reembolso no repone inventario automáticamente porque no prueba devolución de mercadería.
 
 `migrations/0001_commerce.sql` permanece intacta.
 

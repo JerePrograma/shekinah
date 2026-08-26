@@ -391,6 +391,38 @@ describe('gestión visual de productos', () => {
     expect(row).toHaveTextContent('Sin stock');
   });
 
+  it('muestra el inventario Dux sin redondear y oculta el ajuste manual de stock', async () => {
+    installCatalogApi([
+      product('dux-vinculado', 'Producto Dux', {
+        commerce: {
+          source: 'dux',
+          catalogVersion: 'd'.repeat(64),
+          syncedAt: '2026-08-26T12:30:45.000Z',
+          availabilityState: 'unavailable',
+          checkoutEligible: false,
+          mappingStatus: 'mapped',
+          quantitySemanticsStatus: 'unavailable_from_v2_items',
+          observedStock: { real: 738.5, reserved: 36.4, available: 702.1 },
+          unit: { name: 'Kilogramo', symbol: 'kg' },
+          depositName: 'Casa central',
+        },
+      }),
+    ]);
+    render(<ProductManager />);
+
+    const row = await screen.findByRole('article', { name: 'Producto Dux' });
+    expect(row).toHaveTextContent('Inventario: Dux');
+    expect(row).toHaveTextContent('Vínculo: Vinculado');
+    expect(row).toHaveTextContent(
+      'Stock observado: real 738.5 · reservado 36.4 · disponible 702.1',
+    );
+    expect(row).toHaveTextContent('Unidad: Kilogramo · kg');
+    expect(row).toHaveTextContent('Depósito: Casa central');
+    expect(row).toHaveTextContent('Última actualización:');
+    expect(screen.queryByRole('button', { name: 'Ajustar stock de Producto Dux' }))
+      .not.toBeInTheDocument();
+  });
+
   it('maneja la confirmación de baja con foco seguro, Escape y retorno de foco', async () => {
     installCatalogApi([product('para-quitar', 'Producto para quitar')]);
     render(<ProductManager />);
@@ -443,6 +475,7 @@ function product(
     image?: boolean;
     sku?: string;
     stockQuantity?: number;
+    commerce?: CatalogProductDetail['commerce'];
   }> = {},
 ): CatalogProductDetail {
   const selectedCategory = category();
@@ -462,6 +495,7 @@ function product(
     ...(options.sku === undefined ? {} : { sku: options.sku }),
     availability: options.availability ?? 'available',
     ...(options.stockQuantity === undefined ? {} : { stockQuantity: options.stockQuantity }),
+    ...(options.commerce === undefined ? {} : { commerce: options.commerce }),
     ...(images[0] === undefined ? {} : { primaryImage: images[0] }),
     images,
     variants: Object.freeze([]),

@@ -1,5 +1,5 @@
 import { listCatalogProductDetails } from '../../../../server/catalog-store';
-import { isEnabledFlag } from '../../../../server/config';
+import { isEnabledFlag, rejectDirectMercadoLibreIntegration } from '../../../../server/config';
 import { constantTimeEqual } from '../../../../server/crypto';
 import {
   HttpError,
@@ -18,6 +18,7 @@ const AUTHORIZATION_PREFIX = 'Bearer ';
 export const onRequest: PagesFunction = async ({ env, request }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   try {
+    rejectDirectMercadoLibreIntegration();
     const configuredSecret = requireSecret(
       env.MERCADO_LIBRE_SCHEDULER_SECRET,
       'MERCADO_LIBRE_SCHEDULER_SECRET_MISSING',

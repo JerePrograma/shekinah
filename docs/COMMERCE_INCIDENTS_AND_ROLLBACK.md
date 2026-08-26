@@ -1,114 +1,158 @@
 # Incidentes y rollback
 
-Para incidentes de catálogo, OAuth, stock upstream, operaciones inciertas, notificaciones o cron de Mercado Libre, seguir además `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El rollback no debe reactivar el Link de Pago manual. Mantener webhooks, reconciliación y ledger activos hasta resolver todas las reservas iniciadas.
-
 ## Prioridades
 
-1. Evitar nuevos cobros incorrectos.
-2. No perder notificaciones de pagos de Checkout Pro ya iniciados.
-3. Preservar evidencia en D1, Mercado Pago, Cloudflare y Git.
-4. No exponer secretos ni datos administrativos.
-5. Restaurar servicio mediante cambios reversibles y versionados.
+1. Cortar nuevas ventas antes de crear cobros o reservas incorrectas.
+2. No perder webhooks de Mercado Pago asociados a operaciones históricas.
+3. No repetir una mutación Dux cuyo resultado sea incierto.
+4. Preservar evidencia en D1, Dux, Mercado Pago, Cloudflare y Git.
+5. No exponer secretos ni PII.
+6. Recuperar mediante cambios versionados y reversibles.
 
-## Corte seguro de nuevas ventas
+## Corte seguro
 
-### Checkout Pro integrado
-
-Ante importes incorrectos, catálogo inconsistente o comportamiento anómalo:
+Ante cualquier incidente de inventario, cantidad, mapping, Dux o Mercado Pago:
 
 ```text
 COMMERCE_ENABLED=false
 VITE_COMMERCE_ENABLED=false
+DUX_RECONCILIATION_ENABLED=false
 ```
 
-Esto bloquea nuevas preferencias y conserva activo el webhook para pagos ya iniciados. No borrar la base, no deshabilitar D1 y no retirar las credenciales del webhook salvo que estén comprometidas.
-
-### Sin fallback de Link de Pago
-
-El Link de Pago ya no existe en el bundle público. `COMMERCE_ENABLED=false` bloquea nuevas preferencias y el build con `VITE_COMMERCE_ENABLED=false` oculta la acción activa. Si también debe cerrarse WhatsApp:
+Si el problema es de configuración o contrato Dux, además:
 
 ```text
-VITE_WHATSAPP_NUMBER=
+DUX_API_ENABLED=false
 ```
 
-Verificar después del deployment que el carrito muestre el pago deshabilitado y, si corresponde, WhatsApp deshabilitado. Si no es posible cambiar la configuración con seguridad, publicar un commit de reversión/corte; no hacer force-push.
+Mantener siempre:
 
-## Firma o credencial de Mercado Pago comprometida
+```text
+MERCADO_LIBRE_CATALOG_ENABLED=false
+VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
+```
 
-- desactivar nuevas ventas integradas;
-- rotar la credencial en el proveedor;
+El corte bloquea nuevas preferencias y pedidos WhatsApp. No elimina D1, no borra snapshots, no reactiva stock local y no deshabilita el webhook Mercado Pago si existen pagos iniciados previamente.
+
+## Dux no disponible
+
+### `401`
+
+Tratar como token inválido, vencido o mal configurado. Cerrar Dux y comercio, verificar únicamente el nombre/tipo del secreto en el entorno correcto y generar o rotar token mediante Dux. No registrar el valor.
+
+### `403`
+
+Tratar como permisos o plan insuficiente. Confirmar PRO/FULL y alcance del token con Dux. No usar cookies del ERP, scraping, JSF ni endpoints internos.
+
+### `429`
+
+El cliente debe conservar la serialización de una solicitud cada cinco segundos y respetar `Retry-After` cuando exista. No aumentar concurrencia, lanzar varios schedulers ni reintentar sin límite.
+
+### `5xx`, timeout o payload inválido
+
+Detener ventas. Un timeout de GET admite retry acotado. Un timeout de una futura mutación es resultado incierto: registrar la operación, consultar por referencia y no repetirla ciegamente. Un snapshot obsoleto puede mostrarse como diagnóstico, nunca autorizar una venta.
+
+## Lifecycle Dux no disponible
+
+`DUX_ORDER_LIFECYCLE_UNAVAILABLE` es un bloqueo deliberado. Significa que no se pudo demostrar por la API pública cómo cancelar/liberar/finalizar/expirar una reserva. No eliminar el guard ni crear primero la preferencia Mercado Pago.
+
+Escalar a soporte Dux con estas preguntas exactas:
+
+- endpoint oficial para anular o cancelar un pedido creado por API;
+- efecto exacto sobre la reserva del depósito;
+- endpoint/estado para finalizar sin doble descuento;
+- expiración automática, si existe, y garantía temporal;
+- consulta por referencia ante timeout;
+- idempotencia o clave externa admitida;
+- garantía de rechazo atómico por stock insuficiente.
+
+Si Dux no ofrece un mecanismo público verificable, el comercio debe permanecer cerrado.
+
+Un `503` del webhook o de la conciliación para un pedido con `dux_order_links` es el comportamiento esperado: conserva evidencia y evita una transición local sin compensación Dux. No resolverlo venciendo el pedido, actualizando su estado manualmente o deshabilitando los triggers de `0012`.
+
+## Unidad o cantidad inconsistente
+
+`GET /v2/items` revisado no expone unidad, pesabilidad, divisibilidad o regla de decimales suficiente. Si esos campos siguen ausentes:
+
+- no inferirlos del nombre, SKU, presentación o categoría;
+- no convertir gramos/kilos;
+- no redondear, truncar ni escalar stock;
+- preservar la cantidad observada en D1;
+- marcar semántica no verificada y bloquear venta;
+- solicitar a Dux el endpoint o campo oficial.
+
+Valores negativos o decimales son observaciones válidas del proveedor. Una cantidad `<= 0` no habilita venta; un decimal positivo tampoco define por sí mismo la cantidad que el comprador puede solicitar.
+
+## Mapping incorrecto
+
+- detener venta de los items afectados;
+- revisar vínculo persistido, código externo, SKU y código de barras exactos;
+- no hacer fuzzy matching;
+- no elegir automáticamente entre dos candidatos;
+- no modificar ni borrar el producto editorial local;
+- no copiar un ID Mercado Libre a empresa, sucursal o depósito Dux;
+- registrar corrección mediante la operación administrativa auditada.
+
+## Snapshot obsoleto o sync fallido
+
+La proyección D1 no es autoridad. Si excede `DUX_SNAPSHOT_MAX_AGE_SECONDS`, la disponibilidad queda desconocida. Revisar el último `dux_sync_runs`, credenciales, IDs y rate limit. Una sincronización solapada debe reutilizar el lock y no iniciar una tormenta de requests.
+
+No “recuperar” copiando stock local, desde Excel o desde Mercado Libre.
+
+## Dux reservó y Mercado Pago falló
+
+Este flujo no está activado actualmente. Cuando exista el lifecycle oficial:
+
+1. si se demuestra que no existe preferencia, liberar/cancelar Dux con la operación idempotente;
+2. si Mercado Pago tuvo resultado incierto, recuperar por `external_reference` antes de compensar;
+3. no liberar si podría existir una preferencia cobrable;
+4. persistir `compensation_pending` ante cualquier duda;
+5. exigir intervención operativa si no se puede reconciliar.
+
+Nunca arreglarlo con `GET stock`, resta local y `PUT item`.
+
+## Firma o credencial Mercado Pago comprometida
+
+- cortar nuevas ventas;
+- rotar la credencial en Mercado Pago;
 - actualizar el secreto cifrado de Pages;
-- revisar `payment_events`, pagos y pedidos desde la primera fecha posible de exposición;
-- no aprobar manualmente pedidos basándose sólo en retornos o mensajes del comprador;
-- validar cada pago afectado contra la API del proveedor;
-- documentar IDs, SHA, ventanas temporales y acciones.
+- revisar eventos, pagos y pedidos desde el inicio de la posible exposición;
+- validar cada pago contra la API;
+- no aprobar por retorno del navegador, captura o mensaje del comprador;
+- documentar IDs, SHA, ventana temporal y acciones sin guardar secretos.
 
-La rotación de credenciales no sustituye el corte de nuevas preferencias ni la conciliación de pagos ya iniciados.
+La rotación no sustituye la conciliación de pagos ya iniciados.
+
+## Mercado Libre directo detectado
+
+Si logs, configuración o tráfico muestran consultas o mutaciones directas de inventario Mercado Libre:
+
+1. mantener los flags Mercado Libre en `false`;
+2. desactivar cualquier scheduler directo;
+3. confirmar que Checkout y WhatsApp fallan antes de invocarlo;
+4. preservar tablas y operaciones históricas para auditoría;
+5. revisar si Dux y Shekinah compitieron por el mismo stock;
+6. conciliar la existencia exclusivamente en Dux.
+
+No borrar evidencia ni ejecutar un PUT compensatorio a Mercado Libre. Dux es quien sincroniza ese canal.
 
 ## D1 no disponible
 
-El Checkout Pro integrado debe responder `503 DATABASE_UNAVAILABLE`; no debe redirigir a Mercado Pago. Los webhooks responderán error y el proveedor podrá reintentarlos.
+Las APIs comerciales deben responder `503` y no redirigir a Mercado Pago ni abrir WhatsApp.
 
-- no crear una base vacía con el mismo binding para “resolver” el incidente;
-- verificar binding, entorno preview/production y estado de migraciones;
-- restaurar desde backup sólo con autorización y evidencia;
-- al recuperar servicio, revisar eventos `failed` y estados pendientes.
+- no crear una base vacía con el mismo binding;
+- comprobar proyecto Pages, entorno y migraciones;
+- restaurar sólo con backup/autorización;
+- al recuperar, revisar ciclos Dux y pagos pendientes;
+- no autorizar stock desde una copia obsoleta.
 
-El nuevo pedido WhatsApp depende de D1 y debe fallar cerrado sin ella; no abrir WhatsApp como si el pedido se hubiera registrado.
+## R2 o administración no disponibles
 
-## Stock inconsistente
-
-Comparar stock físico con la suma derivada de `order_items`: pedidos WhatsApp `pending` con ventana de 24 horas vigente y Checkout Pro no consumidos con ventana vigente o pago `pending`. No reconstruir un contador reservado ni «devolver» unidades sumándolas al físico. Una reserva WhatsApp dentro de la ventana se resuelve mediante aprobar o rechazar; una vencida debe quedar `rejected` con `WHATSAPP_RESERVATION_EXPIRED`, nunca aprobarse tarde. Una reserva Checkout Pro se concilia primero con el proveedor; no liberar un pago pendiente por edad. Si físico es menor que reservado, detener ambos canales, conservar evidencia y diagnosticar antes de editar datos.
-
-Ante stock negativo, decimal, superior a 1.000.000 o una compra que exceda la existencia:
-
-- mantener el rechazo server-side y no editar D1 manualmente para saltearlo;
-- retirar temporalmente el producto mediante disponibilidad manual si la existencia real es incierta;
-- comprobar el payload efectivo en `catalog_product_mutations` y la auditoría;
-- recordar que el cobro manual no modifica inventario: el pedido WhatsApp reserva al crearse, la aprobación descuenta el físico y el rechazo libera la reserva derivada;
-- recordar que `refunded` o `charged_back` no demuestra devolución física: no reponer automáticamente;
-- no asignar cantidades ficticias a los productos legacy sin control de stock.
-
-## R2 o imágenes administrativas no disponibles
-
-Si falta `CATALOG_IMAGES`, R2 responde `10042`, falla el upload o falla D1 después de cargar:
-
-- conservar la referencia e imagen anterior; una preview local no acredita guardado;
-- si se creó un objeto nuevo y D1 no persistió, intentar eliminar sólo ese objeto;
-- no eliminar assets legacy ni objetos desconocidos;
-- no reemplazar R2 con base64 en D1, Git o almacenamiento del navegador;
-- verificar proyecto Pages, entorno y binding sin tocar el Worker homónimo;
-- mantener la gestión textual/stock disponible y comunicar que el upload está temporalmente bloqueado.
-
-Si se habilita accidentalmente el dominio público `r2.dev`, deshabilitarlo y verificar nuevamente `publicR2DevEnabled=false` en ambos buckets. La lectura comercial autorizada pasa sólo por `/api/catalog-images/*` en Pages; no exponer el bucket directamente como atajo operativo.
-
-Para rollback de una referencia ya persistida, restaurar mediante una nueva mutación administrativa auditada. Eliminar el objeto nuevo únicamente después de confirmar que ninguna mutación efectiva lo referencia.
-
-## Autenticación administrativa no disponible o mal configurada
-
-La administración debe permanecer cerrada. `/admin` puede seguir sirviendo el formulario, pero ninguna API protegida debe aceptar operaciones sin identidad. No eliminar el middleware, la firma de cookie, el control de origen ni el rate limiting para recuperar acceso.
-
-- confirmar sólo los nombres y tipos cifrados de los cuatro secretos `ADMIN_*`, nunca sus valores;
-- verificar binding `DB` y migración `0005_admin_auth.sql`;
-- si la contraseña se perdió o comprometió, generar un hash nuevo fuera del repositorio y actualizarlo en Pages;
-- rotar `ADMIN_SESSION_SECRET` para cierre global de sesiones cuando exista riesgo de cookie comprometida;
-- revisar los resultados HTTP de `admin_audit` y los contadores opacos sin intentar reconstruir IP o usuario;
-- si se usa el fallback de Cloudflare Access, confirmar Team Domain, AUD, expiración, issuer y claves públicas sin convertirlo en un gate externo que bloquee `/api/admin/auth/login`.
-
-## Analítica enviada sin consentimiento
-
-- establecer `ANALYTICS_ENABLED=false`;
-- identificar la ventana y sesiones afectadas;
-- preservar evidencia mínima;
-- ejecutar el procedimiento de eliminación aprobado;
-- corregir y probar antes de reactivar;
-- actualizar el registro del incidente y la evaluación de privacidad.
+El incidente de imágenes no cambia la autoridad Dux. Conservar la referencia anterior, no eliminar assets legacy ni usar D1/Git/base64 como reemplazo. Si falla la autenticación administrativa, mantener APIs cerradas; no retirar middleware, firma de cookie, origen o rate limiting.
 
 ## Rollback de código
 
-No usar `git reset --hard`, reescritura de historial, force-push ni borrado manual del commit publicado.
-
-Si `0008` ya fue aplicada, no desplegar código anterior mientras existan reservas activas de cualquier canal: esa versión ignoraría las de Checkout Pro y no consumiría stock por webhook. Cortar nuevas preferencias, inventariar WhatsApp pendientes, preferencias vigentes y pagos pendientes, y resolver cada caso de manera controlada. Recién con cero reservas activas se puede revertir el código, dejando las migraciones aditivas aplicadas y sin modificar.
+No usar `git reset --hard`, reescritura de historial, force-push o borrado manual del commit publicado.
 
 Sobre `main` sincronizado:
 
@@ -117,41 +161,46 @@ git status
 git switch main
 git fetch origin
 git pull --ff-only origin main
-git revert <SHA_DEL_COMMIT_FULLSTACK>
+git revert <SHA_COMPLETO>
 npm ci --no-audit --no-fund
 npm run install:browsers
 npm run verify
 git push origin main
 ```
 
-Verificar GitHub Actions sobre el nuevo SHA de revert y el deployment correspondiente.
+Antes de revertir una versión que haya iniciado mutaciones Dux, inventariar todas las operaciones `pending`, `uncertain` y `compensation_pending`; cortar ventas y resolverlas con el proveedor. El estado actual no ejecuta mutaciones Dux.
+
+No revertir hacia una versión que reactive Mercado Libre o stock local como autoridad.
 
 ## Rollback de base
 
-Las migraciones son aditivas. Un rollback de aplicación puede dejar columnas, índices y triggers sin uso; ésa es la opción conservadora. Para `0007` y `0008`, este rollback sólo es seguro después de resolver todas las reservas activas y conciliar pagos con Mercado Pago.
+`0012` es aditiva. La opción conservadora es dejar sus tablas sin uso tras un rollback de aplicación. No hacer `DROP TABLE` inmediato ni editar la migración aplicada.
 
-No hacer `DROP TABLE` como parte de un rollback inmediato. Para revertir esquema o datos:
+Para transformar o eliminar esquema:
 
-- detener nuevas ventas integradas;
-- detener nuevas creaciones WhatsApp y resolver sus pedidos pendientes;
-- confirmar que el Link de Pago manual no reapareció;
-- exportar/respaldar D1;
-- definir SQL de reversión revisado;
-- probarlo sobre una copia local;
-- aprobar la pérdida o transformación de datos;
-- ejecutar en una ventana controlada;
-- validar conteos, relaciones y pagos después.
+1. cerrar comercio y scheduler;
+2. confirmar cero operaciones Dux activas o inciertas;
+3. respaldar D1 y guardar punto Time Travel;
+4. preparar SQL versionado y revisado;
+5. probar sobre copia local;
+6. obtener autorización explícita por la pérdida o transformación;
+7. aplicar en ventana controlada;
+8. verificar relaciones, conteos y pagos.
+
+Las tablas Mercado Libre históricas tampoco se borran como parte de este cierre.
 
 ## Cierre del incidente
 
 Registrar:
 
 - inicio y fin con zona horaria;
-- SHA desplegado antes y después;
-- flags y bindings afectados;
-- estado del fallback manual;
-- alcance de pedidos/pagos/eventos;
+- SHA antes y después;
+- flags, bindings y entorno;
+- endpoint Dux o Mercado Pago afectado;
+- alcance sobre pedidos, reservas y pagos;
+- operaciones inciertas y resolución;
 - pruebas ejecutadas;
-- acciones externas en Cloudflare y Mercado Pago;
-- responsables y aprobaciones;
-- medidas preventivas pendientes.
+- acciones externas en Dux, Mercado Pago, Cloudflare y GitHub;
+- responsables, autorizaciones y pendientes.
+
+Nunca incluir tokens, firmas, cookies ni PII en el informe.

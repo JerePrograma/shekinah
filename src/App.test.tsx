@@ -217,7 +217,13 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: /contacto/i })).not.toBeInTheDocument();
   });
 
-  it('agrega un producto y actualiza contador y ruta del carrito', () => {
+  it('agrega un producto confirmado por el catálogo runtime y actualiza el carrito', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+      products: authorizedProducts,
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    await act(async () => {
+      await refreshRuntimeCatalog();
+    });
     renderApp();
     const firstCard = document.querySelector<HTMLElement>('[data-product]');
     if (firstCard === null) throw new Error('No se encontró una tarjeta de producto.');
@@ -292,10 +298,12 @@ describe('App', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
-  it('resuelve /enfoque como una vista 404 normal', () => {
+  it('resuelve /enfoque como una vista 404 normal', async () => {
     window.history.replaceState(null, '', '/enfoque');
     renderApp();
-    expect(document.title).toBe('Página no encontrada | Shekinah');
+    await waitFor(() => {
+      expect(document.title).toBe('Página no encontrada | Shekinah');
+    });
     expect(
       screen.getByRole('heading', { level: 1, name: 'Página no encontrada.' }),
     ).toBeVisible();
@@ -314,7 +322,9 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Página no encontrada.' }),
     ).toBeVisible();
-    expect(document.title).toBe('Página no encontrada | Shekinah');
+    await waitFor(() => {
+      expect(document.title).toBe('Página no encontrada | Shekinah');
+    });
     expect(screen.getByText('/ruta-inexistente')).toBeVisible();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });

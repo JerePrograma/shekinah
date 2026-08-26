@@ -62,17 +62,18 @@ Reglas:
 - Las capacidades de servidor se implementan con Cloudflare Pages Functions y D1; no se requiere un VPS para la arquitectura prevista.
 - El catálogo canónico conserva 510 productos y 16 categorías.
 - No inventar productos, precios, stock, contacto, horarios, redes, promociones, testimonios, certificaciones ni afirmaciones sanitarias.
+- Dux Software es la única autoridad de inventario, unidades/medidas, depósitos y pedidos/reservas; Shekinah no usa stock local, Excel ni Mercado Libre como fallback para productos Dux.
 - En Checkout Pro integrado, el navegador no decide precios, moneda, totales ni estados de pago; el servidor recalcula y el webhook verifica al proveedor.
-- El fallback manual temporal puede mostrar y copiar el total del carrito únicamente como importe que el comprador ingresa en un Link de Pago sin monto predefinido. Ese total no crea un pedido, no prueba un cobro y debe asociarse/verificarse manualmente antes de fulfillment.
+- El Link de Pago manual está retirado y no debe reactivarse como fallback de Checkout Pro.
 - Mercado Pago Checkout Pro se integra por redirección; el webhook consulta información autoritativa del proveedor.
 - Las operaciones administrativas se protegen en Functions mediante credencial propia server-side, sesión firmada y rate limiting D1. Cloudflare Access puede coexistir como fallback interno, pero no debe interceptar los endpoints de login ni sustituir la validación de sesión.
 - La analítica first-party requiere consentimiento y una retención expresamente autorizada.
 - Checkout Pro automatizado permanece deshabilitado. La analítica first-party está habilitada en preview y producción desde el 2026-08-11, con consentimiento obligatorio, secretos HMAC independientes y retención de 730 días.
 - `manual_payment_click` y `whatsapp_open` son interacciones comerciales; nunca representan pedidos, pagos aprobados, revenue ni ventas.
 - WhatsApp sólo puede habilitarse con un número autorizado. El número `5492236216559` quedó autorizado explícitamente el 2026-08-10 para el fallback manual actual.
-- El Link de Pago manual sólo puede usar una URL pública expresamente autorizada y permitida por la verificación de seguridad; el valor actual es `https://link.mercadopago.com.ar/shekinahmoreno`.
+- La autorización histórica de una URL de Link de Pago no la convierte en una capacidad vigente.
 - No exponer secretos mediante Git, logs, respuestas, bundles ni variables `VITE_*`.
-- No agregar parámetros no documentados al Link de Pago para simular un monto precargado.
+- No reincorporar un Link de Pago ni simular Checkout Pro mediante parámetros no documentados.
 - No reincorporar recetas.
 - Los activos visuales autorizados siguen limitados al inventario del repositorio.
 - El historial anterior se conserva; no afirmar que fue eliminado.

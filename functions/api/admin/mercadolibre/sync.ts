@@ -1,4 +1,5 @@
 import { handleAdminRequest } from '../../../../server/admin-request';
+import { rejectDirectMercadoLibreIntegration } from '../../../../server/config';
 import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { jsonResponse, methodNotAllowedResponse } from '../../../../server/http';
 import { syncMercadoLibreCatalog } from '../../../../server/mercado-libre-catalog';
@@ -13,6 +14,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
 }) => {
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   return handleAdminRequest(request, env, data, 'admin.mercadolibre.sync', async (database) => {
+    rejectDirectMercadoLibreIntegration();
     assertSameOrigin(request, env);
     const summary = await syncMercadoLibreCatalog(database, env, data.adminIdentity?.actor ?? 'unknown', {
       kind: 'full',

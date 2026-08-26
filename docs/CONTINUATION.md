@@ -1,8 +1,10 @@
 # Continuación
 
-## Prioridad vigente desde 2026-08-24
+## Prioridad vigente desde 2026-08-26
 
-Continuar con `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md`. El Link de Pago y el ingreso manual de importe ya no forman parte del flujo público. Checkout Pro y Mercado Libre permanecen cerrados hasta completar OAuth del seller correcto, rotaciones de Mercado Pago, migración `0009`, sincronización real, sandbox, CI, deployment y smoke del mismo SHA.
+Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md` y `docs/COMMERCE_DEPLOYMENT.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Checkout Pro y WhatsApp permanecen cerrados hasta demostrar el lifecycle completo de pedidos Dux, incluida liberación/finalización segura, y completar configuración, migraciones, CI, deployment y smoke del mismo SHA.
+
+Las evidencias de despliegues anteriores que siguen a continuación son históricas. No autorizan reactivar OAuth, sincronización directa Mercado Libre, reservas locales ni Link de Pago.
 
 No reactivar `VITE_MERCADO_PAGO_PAYMENT_LINK` ni usar `manual_payment_click` como capacidad vigente. El evento se conserva únicamente por compatibilidad histórica de analítica.
 
@@ -27,8 +29,8 @@ El repositorio contiene una evolución full-stack basada en:
 - Cloudflare Pages Functions;
 - Cloudflare D1;
 - Mercado Pago Checkout Pro directo, preparado pero no activado públicamente;
-- Mercado Libre como autoridad runtime opcional y fail-closed, con espejo D1 y reserva upstream versionada;
-- pedido pendiente de WhatsApp con datos obligatorios y la misma capa de reserva que Checkout Pro;
+- Dux como única autoridad de inventario, con snapshot D1 read-only y mapping estable;
+- pedido WhatsApp futuro con reserva Dux previa y el mismo lifecycle autoritativo que Checkout Pro;
 - autenticación administrativa propia y Cloudflare Access opcional;
 - backoffice visual de catálogo con stock opcional e imágenes administradas preparadas para R2;
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
@@ -77,7 +79,7 @@ Link de Pago: https://link.mercadopago.com.ar/shekinahmoreno
 
 El código puede usar el WhatsApp normalizado `5492236216559`. La autorización histórica del Link de Pago no lo mantiene activo: el fallback fue retirado y no debe restaurarse. La analítica se activó de forma separada siguiendo la secuencia validación → `0006` → secretos independientes → deployment del SHA exacto → smoke preview → production. Esta autorización y activación no habilitan Checkout Pro ni webhooks.
 
-El canal WhatsApp no requiere VPS. El flujo registra el pedido y reserva stock mediante Pages Functions y D1 antes de abrir WhatsApp; no existe pago manual automático asociado.
+El canal WhatsApp no requiere VPS. Mientras no exista liberación/finalización Dux oficialmente demostrada, el backend falla cerrado antes de registrar un pedido o abrir WhatsApp; D1 no reserva stock físico.
 
 ## Identidad externa verificada
 
@@ -116,13 +118,13 @@ R2 está activo y verificado por API. Production reutiliza `shekinah`; preview u
 3. confirmar que `DB`, `Fail closed`, migraciones y nombres cifrados requeridos siguen presentes en ambos entornos;
 4. ejecutar el smoke administrativo: API 401, login, alta, consulta, modificación, baja, logout y nuevo 401;
 5. no crear una política externa de Access sobre todo `/admin*` o `/api/admin/*`, porque bloquearía el login propio; configurarlo sólo si se diseña como defensa adicional compatible;
-6. ejecutar primero un pago sandbox y luego un pago productivo controlado con comprador distinto del vendedor; comprobar proveedor, webhook, pedido, pago, stock y calidad antes de cambiar flags;
-7. al activar Checkout Pro productivo, decidir explícitamente si el fallback manual se retira o permanece;
+6. confirmar plan Dux PRO/FULL, token, IDs, semántica de cantidades y lifecycle completo; recién después ejecutar un pago sandbox y solicitar autorización separada para uno productivo;
+7. mantener retirado el Link de Pago manual;
 8. antes del smoke de imágenes, releer que `CATALOG_IMAGES` apunte a `shekinah` en production y a `shekinah-preview` en preview, que `publicR2DevEnabled=false` continúe vigente y que el binding pertenezca a Pages, nunca al Worker homónimo;
-9. validar stock legacy sin control, stock cero, stock físico/reservado/disponible, reserva concurrente de la última unidad y consumo exactamente una vez por ambos canales;
+9. validar snapshot y mapping Dux, decimales exactos, stock cero/negativo, unidad sin inferencias y reserva/liberación/finalización exactamente una vez por ambos canales;
 10. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://mp-sandbox.shekinah-7dl.pages.dev` en preview;
 11. comprobar que `manual_payment_click` se persiste sólo tras un clic manual válido y nunca alimenta pedidos, pagos ni revenue;
-12. operar los pedidos WhatsApp dentro de su ventana de 24 horas; verificar que los vencidos figuren como **Vencido**, con `WHATSAPP_RESERVATION_EXPIRED`, reserva liberada y aprobación tardía rechazada.
+12. no habilitar pedidos WhatsApp hasta que Dux documente y demuestre la expiración/liberación autoritativa; nunca sustituirla por una expiración local.
 
 ## Prohibiciones
 

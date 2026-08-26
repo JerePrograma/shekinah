@@ -95,3 +95,56 @@ export function readMercadoLibreCatalogMaxAgeSeconds(env: Env): number {
   }
   return value;
 }
+
+export function assertDirectMercadoLibreInventoryDisabled(env: Env): void {
+  if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+    throw new HttpError(
+      503,
+      'MERCADO_LIBRE_INVENTORY_DISABLED',
+      'La integración directa de inventario con Mercado Libre está deshabilitada; Dux es la autoridad.',
+    );
+  }
+}
+
+export function rejectDirectMercadoLibreIntegration(): void {
+  throw new HttpError(
+    410,
+    'MERCADO_LIBRE_DIRECT_INTEGRATION_RETIRED',
+    'La integración directa con Mercado Libre fue retirada; Dux administra esa sincronización.',
+  );
+}
+
+export function isDirectMercadoLibreIntegrationRetired(): boolean {
+  return true;
+}
+
+export function requireDuxApiEnabled(env: Env): void {
+  requireEnabledFlag(
+    env.DUX_API_ENABLED,
+    'DUX_API_DISABLED',
+    'La API de Dux todavía no está habilitada.',
+  );
+}
+
+export function assertDuxCommerceLifecycleAvailable(env: Env): void {
+  assertDirectMercadoLibreInventoryDisabled(env);
+  requireDuxApiEnabled(env);
+  throw new HttpError(
+    503,
+    'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
+    'Dux no documenta todavía un ciclo público verificable para liberar y finalizar reservas; la venta permanece bloqueada.',
+  );
+}
+
+export function readDuxSnapshotMaxAgeSeconds(env: Env): number {
+  const raw = env.DUX_SNAPSHOT_MAX_AGE_SECONDS ?? '900';
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 300 || value > 86_400) {
+    throw new HttpError(
+      503,
+      'DUX_SNAPSHOT_MAX_AGE_INVALID',
+      'El umbral de frescura de Dux no es válido.',
+    );
+  }
+  return value;
+}

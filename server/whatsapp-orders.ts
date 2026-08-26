@@ -16,6 +16,7 @@ import { getAdminOrderWithFulfillment } from './admin-fulfillment';
 import type { AdminOrderDetail } from './admin-fulfillment';
 import { getRuntimeCatalogProductDetail } from './catalog-store';
 import type { RecalculatedLine, ServerCatalogProduct } from './catalog';
+import { assertDuxCommerceLifecycleAvailable } from './config';
 import { randomToken, sha256Hex } from './crypto';
 import { requireCheckoutFulfillment } from './fulfillment';
 import { HttpError } from './http';
@@ -23,7 +24,7 @@ import {
   reconcileExpiredMercadoLibreReservations,
   reserveMercadoLibreInventory,
 } from './mercado-libre-inventory';
-import { cartFingerprint } from './orders';
+import { assertDuxOrderLifecycleUnlinked, cartFingerprint } from './orders';
 import type { D1Database, D1PreparedStatement, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 import {
@@ -115,6 +116,7 @@ export async function createWhatsappOrder(
   value: unknown,
   env: Env = {},
 ): Promise<CreatedWhatsappOrder> {
+  assertDuxCommerceLifecycleAvailable(env);
   const input = parseWhatsappOrderInput(value);
   if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
     await reconcileExpiredMercadoLibreReservations(database, env);
@@ -316,6 +318,7 @@ export async function resolveWhatsappOrder(
   actor: string,
 ): Promise<AdminOrderDetail & Readonly<{ changed: boolean }>> {
   assertOrderId(orderId);
+  await assertDuxOrderLifecycleUnlinked(database, orderId);
   const resolvedAtDate = new Date();
   await expireWhatsappReservations(database, resolvedAtDate);
   const resolvedAt = resolvedAtDate.toISOString();
@@ -487,7 +490,10 @@ async function calculateWhatsappCart(
       unitPriceMinor,
       available: true,
       stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined,
-      ...(detail.commerce === undefined ? {} : { providerCatalogVersion: detail.commerce.catalogVersion }),
+      ...(detail.commerce === undefined ? {} : {
+        inventoryProvider: detail.commerce.source,
+        providerCatalogVersion: detail.commerce.catalogVersion,
+      }),
     });
     const subtotalMinor = unitPriceMinor * quantity;
     productsTotalMinor += subtotalMinor;
@@ -505,6 +511,16 @@ async function calculateWhatsappCart(
 
   let shippingMinor = 0;
   let shippingTier: OnlineShippingTier | null = null;
+  if (
+    input.fulfillment.method !== 'coordinated_pickup' &&
+    lines.some(({ product }) => product.inventoryProvider === 'dux')
+  ) {
+    throw new HttpError(
+      409,
+      'DUX_SHIPPING_SEMANTICS_UNAVAILABLE',
+      'Dux no informó todavía el peso comercial necesario para calcular el envío sin inferencias.',
+    );
+  }
   const quote = calculateShippingQuote(
     lines.map(({ product, quantity }) => ({
       name: product.name,

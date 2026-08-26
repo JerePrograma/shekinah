@@ -42,9 +42,8 @@ export async function recalculateDynamicCart(
     const expectedCatalogVersion = rawLine.catalogVersion === undefined
       ? null
       : readSafeText(rawLine.catalogVersion, 'catalogVersion', 64);
-    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
+    if (detail.commerce !== undefined) {
       if (
-        detail.commerce === undefined ||
         expectedCatalogVersion === null ||
         !/^[a-f0-9]{64}$/u.test(expectedCatalogVersion)
       ) {
@@ -54,17 +53,27 @@ export async function recalculateDynamicCart(
         throw new HttpError(409, 'CATALOG_VERSION_CONFLICT', `${detail.name} cambió desde que se agregó al carrito.`);
       }
       if (!detail.commerce.checkoutEligible) {
-        throw new HttpError(409, 'MERCADO_LIBRE_STOCK_UNPROTECTED', `${detail.name} requiere confirmación de disponibilidad.`);
+        throw new HttpError(409, 'EXTERNAL_INVENTORY_UNPROTECTED', `${detail.name} requiere confirmación autoritativa de disponibilidad.`);
       }
     }
     const unitPriceMinor = Math.round((detail.salePrice ?? detail.price).amount * 100);
     if (!Number.isSafeInteger(unitPriceMinor) || unitPriceMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
-    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available, stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined, ...(detail.commerce === undefined ? {} : { providerCatalogVersion: detail.commerce.catalogVersion }) });
+    const product: ServerCatalogProduct = Object.freeze({ id: detail.id, name: detail.name, ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }), ...(detail.sku === undefined ? {} : { sku: detail.sku }), unitPriceMinor, available, stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined, ...(detail.commerce === undefined ? {} : { inventoryProvider: detail.commerce.source, providerCatalogVersion: detail.commerce.catalogVersion }) });
     const subtotalMinor = unitPriceMinor * quantity;
     if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor <= 0) throw new HttpError(500, 'CATALOG_PRICE_INVALID', 'El catálogo contiene un precio no válido.', false);
     productsTotalMinor += subtotalMinor; itemCount += quantity;
     if (!Number.isSafeInteger(productsTotalMinor) || !Number.isSafeInteger(itemCount)) throw new HttpError(400, 'CART_TOTAL_OUT_OF_RANGE', 'El carrito excede los límites permitidos.');
     lines.push(Object.freeze({ product, quantity, subtotalMinor }));
+  }
+  if (
+    fulfillment.method !== 'coordinated_pickup' &&
+    lines.some(({ product }) => product.inventoryProvider === 'dux')
+  ) {
+    throw new HttpError(
+      409,
+      'DUX_SHIPPING_SEMANTICS_UNAVAILABLE',
+      'Dux no informó todavía el peso comercial necesario para calcular el envío sin inferencias.',
+    );
   }
   const quote = calculateShippingQuote(lines.map(({ product, quantity }) => ({ name: product.name, ...(product.presentation === undefined ? {} : { presentation: product.presentation }), quantity })), fulfillment.method);
   if (quote.kind === 'manual') throw new HttpError(409, quote.tier === 'manual_unknown_weight' ? 'MANUAL_SHIPPING_WEIGHT_REQUIRED' : 'MANUAL_SHIPPING_OVER_LIMIT', quote.tier === 'manual_unknown_weight' ? 'Uno de los productos no tiene un peso determinístico. Solicitá la cotización por WhatsApp.' : 'El pedido supera los 5 kg. Solicitá la cotización por WhatsApp.');

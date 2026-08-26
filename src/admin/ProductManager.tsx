@@ -108,6 +108,8 @@ export function ProductManager({
   const pendingNavigationReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const editorOpen = editingId !== undefined;
+  const inventoryReadOnly = editingId !== null && editingId !== undefined &&
+    products.find((product) => product.id === editingId)?.commerce?.source === 'dux';
   const isDirty = editorOpen && (
     !formsEqual(form, baseline) || pendingImage !== null || removeImage
   );
@@ -711,6 +713,7 @@ export function ProductManager({
               formRef={editorFormRef}
               imagePreviewUrl={imagePreviewUrl}
               imageStorageConfigured={imageStorageConfigured}
+              inventoryReadOnly={inventoryReadOnly}
               isDirty={isDirty}
               operation={operation}
               pendingImage={pendingImage}

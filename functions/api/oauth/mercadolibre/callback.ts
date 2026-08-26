@@ -1,4 +1,5 @@
 import { completeMercadoLibreAuthorization } from '../../../../server/mercado-libre';
+import { rejectDirectMercadoLibreIntegration } from '../../../../server/config';
 import {
   HttpError,
   methodNotAllowedResponse,
@@ -10,6 +11,7 @@ import type { PagesFunction } from '../../../../server/platform';
 export const onRequest: PagesFunction = async ({ env, request }) => {
   if (request.method !== 'GET') return methodNotAllowedResponse(['GET']);
   try {
+    rejectDirectMercadoLibreIntegration();
     const url = new URL(request.url);
     const error = url.searchParams.get('error');
     if (error !== null) {

@@ -43,7 +43,6 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
           id,
           accessToken,
           mode,
-          env,
         ),
       );
     },

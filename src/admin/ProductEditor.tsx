@@ -28,6 +28,7 @@ export function ProductEditor({
   formRef,
   imagePreviewUrl,
   imageStorageConfigured,
+  inventoryReadOnly,
   isDirty,
   onCancelPendingNavigation,
   onConfirmPendingNavigation,
@@ -55,6 +56,7 @@ export function ProductEditor({
   formRef: RefObject<HTMLFormElement | null>;
   imagePreviewUrl: string | null;
   imageStorageConfigured: boolean;
+  inventoryReadOnly: boolean;
   isDirty: boolean;
   onCancelPendingNavigation: () => void;
   onConfirmPendingNavigation: () => void;
@@ -79,7 +81,7 @@ export function ProductEditor({
 }>) {
   const saving = operation.kind === 'saving';
   const busy = operation.kind !== 'idle';
-  const editorStatus = formAvailabilityLabel(form);
+  const editorStatus = formAvailabilityLabel(form, inventoryReadOnly);
   const pendingNavigationRef = useRef<HTMLDivElement | null>(null);
   const continueEditingRef = useRef<HTMLButtonElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -304,37 +306,45 @@ export function ProductEditor({
 
         <fieldset className="admin-editor-section" disabled={busy}>
           <legend>Inventario y disponibilidad</legend>
-          <label className="admin-switch-field">
-            <input
-              type="checkbox"
-              checked={form.trackStock}
-              aria-labelledby="product-track-stock-label"
-              onChange={(event) => onUpdateField('trackStock', event.currentTarget.checked)}
-            />
-            <span>
-              <strong id="product-track-stock-label">Controlar stock</strong>
-              <small>Sin una cantidad, el producto no puede comprarse. Al llegar a cero, también queda agotado.</small>
-            </span>
-          </label>
-          {form.trackStock ? (
-            <label className="admin-form-field">
-              <span id="product-stock-label">Stock físico</span>
-              <input
-                required
-                type="number"
-                min="0"
-                max={MAX_STOCK_QUANTITY}
-                step="1"
-                inputMode="numeric"
-                value={form.stockQuantity}
-                aria-labelledby="product-stock-label"
-                aria-invalid={fieldErrors.stockQuantity === undefined ? undefined : true}
-                aria-describedby={fieldErrors.stockQuantity === undefined ? undefined : 'product-stock-error'}
-                onChange={(event) => onUpdateField('stockQuantity', event.currentTarget.value)}
-              />
-              <FieldError id="product-stock-error" message={fieldErrors.stockQuantity} />
-            </label>
-          ) : null}
+          {inventoryReadOnly ? (
+            <p className="admin-context-note">
+              Inventario: Dux. El stock físico y su unidad son de sólo lectura en Shekinah.
+            </p>
+          ) : (
+            <>
+              <label className="admin-switch-field">
+                <input
+                  type="checkbox"
+                  checked={form.trackStock}
+                  aria-labelledby="product-track-stock-label"
+                  onChange={(event) => onUpdateField('trackStock', event.currentTarget.checked)}
+                />
+                <span>
+                  <strong id="product-track-stock-label">Controlar stock</strong>
+                  <small>Sin una cantidad, el producto no puede comprarse. Al llegar a cero, también queda agotado.</small>
+                </span>
+              </label>
+              {form.trackStock ? (
+                <label className="admin-form-field">
+                  <span id="product-stock-label">Stock físico</span>
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    max={MAX_STOCK_QUANTITY}
+                    step="1"
+                    inputMode="numeric"
+                    value={form.stockQuantity}
+                    aria-labelledby="product-stock-label"
+                    aria-invalid={fieldErrors.stockQuantity === undefined ? undefined : true}
+                    aria-describedby={fieldErrors.stockQuantity === undefined ? undefined : 'product-stock-error'}
+                    onChange={(event) => onUpdateField('stockQuantity', event.currentTarget.value)}
+                  />
+                  <FieldError id="product-stock-error" message={fieldErrors.stockQuantity} />
+                </label>
+              ) : null}
+            </>
+          )}
           <label className="admin-switch-field">
             <input
               type="checkbox"
@@ -447,9 +457,12 @@ function describedBy(hintId: string, error: string | undefined, errorId: string)
   return error === undefined ? hintId : `${hintId} ${errorId}`;
 }
 
-function formAvailabilityLabel(form: ProductFormState) {
+function formAvailabilityLabel(form: ProductFormState, inventoryReadOnly: boolean) {
   if (form.availability === 'unavailable') {
     return { label: 'No disponible manualmente', tone: 'paused' } as const;
+  }
+  if (inventoryReadOnly) {
+    return { label: 'Inventario administrado por Dux', tone: 'out' } as const;
   }
   if (form.trackStock && form.stockQuantity.trim() === '') {
     return { label: 'Falta indicar el stock actual', tone: 'out' } as const;

@@ -97,7 +97,7 @@ describe('Mercado Libre OAuth y catálogo', () => {
     }
   });
 
-  it('pagina, mapea sólo SKU exacto y detecta stock seller_warehouse versionado', async () => {
+  it('conserva el módulo histórico pero impide usar Mercado Libre como catálogo runtime', async () => {
     const database = new SqliteD1(migration);
     try {
       const localProducts = await listCatalogProductDetails(database);
@@ -165,14 +165,11 @@ describe('Mercado Libre OAuth y catálogo', () => {
         checkoutEligible: true,
         mappingStatus: 'mapped',
       });
-      const runtimeProduct = (await listRuntimeCatalogProducts(database, env))
-        .find((product) => product.id === local?.id);
-      expect(runtimeProduct).toMatchObject({
-        availableQuantity: 2,
-        commerce: { availabilityState: 'verified', checkoutEligible: true },
+      const fetchCallsBeforeRuntimeRead = fetchMock.mock.calls.length;
+      await expect(listRuntimeCatalogProducts(database, env)).rejects.toMatchObject({
+        code: 'MERCADO_LIBRE_INVENTORY_DISABLED',
       });
-      expect(runtimeProduct?.commerce).not.toHaveProperty('itemId');
-      expect(runtimeProduct?.commerce).not.toHaveProperty('variationId');
+      expect(fetchMock).toHaveBeenCalledTimes(fetchCallsBeforeRuntimeRead);
 
       failItemDetails = true;
       const failedRefresh = await syncMercadoLibreCatalog(database, env, 'scheduler:test', {
@@ -190,14 +187,11 @@ describe('Mercado Libre OAuth y catálogo', () => {
         `UPDATE mercadolibre_catalog_units
          SET last_synced_at = '2020-01-01T00:00:00.000Z' WHERE item_id = 'MLA12345'`,
       ).run();
-      const staleProduct = (await listRuntimeCatalogProducts(database, env))
-        .find((product) => product.id === local?.id);
-      expect(staleProduct).toMatchObject({
-        availability: 'unavailable',
-        commerce: { availabilityState: 'updating', checkoutEligible: false },
+      const fetchCallsBeforeStaleRuntimeRead = fetchMock.mock.calls.length;
+      await expect(listRuntimeCatalogProducts(database, env)).rejects.toMatchObject({
+        code: 'MERCADO_LIBRE_INVENTORY_DISABLED',
       });
-      expect(staleProduct).not.toHaveProperty('stockQuantity');
-      expect(staleProduct).not.toHaveProperty('availableQuantity');
+      expect(fetchMock).toHaveBeenCalledTimes(fetchCallsBeforeStaleRuntimeRead);
       expect(scanPage).toBe(4);
     } finally {
       database.close();

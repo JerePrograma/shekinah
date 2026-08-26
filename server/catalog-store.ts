@@ -9,8 +9,12 @@ import {
   parseProducts,
 } from '../src/catalog/model';
 import type { CatalogProductDetail, Product } from '../src/catalog/model';
+import { assertDirectMercadoLibreInventoryDisabled } from './config';
+import {
+  listDuxInventoryUnits,
+  type DuxInventoryUnit,
+} from './dux-inventory';
 import { HttpError } from './http';
-import { getCatalogUnitForDisplay, listMappedCatalogUnits } from './mercado-libre-catalog';
 import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
@@ -91,20 +95,25 @@ export async function listRuntimeCatalogProducts(
   database: D1Database,
   env: Env,
 ): Promise<readonly Product[]> {
-  if (env.MERCADO_LIBRE_CATALOG_ENABLED !== 'true') {
-    return listCatalogProducts(database);
+  const details = await listRuntimeCatalogProductDetails(database, env);
+  return Object.freeze(details.map(toProductSummary));
+}
+
+export async function listRuntimeCatalogProductDetails(
+  database: D1Database,
+  env: Env,
+): Promise<readonly CatalogProductDetail[]> {
+  assertDirectMercadoLibreInventoryDisabled(env);
+  const details = await listCatalogProductDetails(database);
+  let units: readonly DuxInventoryUnit[];
+  try {
+    units = await listDuxInventoryUnits(database, env);
+  } catch (error: unknown) {
+    if (!isMissingDuxInventoryTable(error)) throw error;
+    if (env.DUX_API_ENABLED === 'true') throw duxInventoryMigrationRequired();
+    units = Object.freeze([]);
   }
-  const [details, units] = await Promise.all([
-    listCatalogProductDetails(database),
-    listMappedCatalogUnits(database, env),
-  ]);
-  const detailById = new Map(details.map((detail) => [detail.id, detail]));
-  return Object.freeze(units.flatMap((unit): readonly Product[] => {
-    if (unit.localProductId === null) return [];
-    const detail = detailById.get(unit.localProductId);
-    if (detail === undefined || unit.currency !== 'ARS' || unit.priceMinor <= 0) return [];
-    return [toProductSummary(projectMercadoLibreUnit(detail, unit))];
-  }));
+  return projectDuxCatalog(details, units);
 }
 
 export async function getRuntimeCatalogProductDetail(
@@ -113,15 +122,10 @@ export async function getRuntimeCatalogProductDetail(
   productId: string,
   excludedReservationOrderId: string | null = null,
 ): Promise<CatalogProductDetail | null> {
-  if (env.MERCADO_LIBRE_CATALOG_ENABLED !== 'true') {
-    return getCatalogProductDetail(database, productId, excludedReservationOrderId);
-  }
-  const [detail, unit] = await Promise.all([
-    getCatalogProductDetail(database, productId, excludedReservationOrderId),
-    getCatalogUnitForDisplay(database, env, productId),
-  ]);
-  if (detail === null) return null;
-  return unit === null ? null : projectMercadoLibreUnit(detail, unit);
+  assertProductId(productId);
+  void excludedReservationOrderId;
+  const details = await listRuntimeCatalogProductDetails(database, env);
+  return details.find((detail) => detail.id === productId) ?? null;
 }
 
 export async function listCatalogProductDetails(
@@ -223,6 +227,13 @@ export async function updateCatalogProduct(
   if (current === null) {
     throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
   }
+  if (
+    isRecord(value) &&
+    Object.hasOwn(value, 'stockQuantity') &&
+    await isProductMappedToDux(database, productId)
+  ) {
+    throw duxInventoryReadOnly();
+  }
   const product = parseWritableProduct(value);
   if (product.id !== productId) {
     throw new HttpError(
@@ -257,6 +268,12 @@ export async function patchCatalogProductInventory(
     keys.some((key) => key !== 'availability' && key !== 'stockQuantity')
   ) {
     throw invalidProductPatch();
+  }
+  if (
+    Object.hasOwn(value, 'stockQuantity') &&
+    await isProductMappedToDux(database, productId)
+  ) {
+    throw duxInventoryReadOnly();
   }
 
   let patched: Record<string, unknown> = { ...current };
@@ -377,44 +394,120 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
   });
 }
 
-function projectMercadoLibreUnit(
+function projectDuxCatalog(
+  details: readonly CatalogProductDetail[],
+  units: readonly DuxInventoryUnit[],
+): readonly CatalogProductDetail[] {
+  const mappedByProduct = new Map<string, DuxInventoryUnit[]>();
+  const absentMappedByProduct = new Map<string, DuxInventoryUnit[]>();
+  const ambiguousCandidates = new Map<string, DuxInventoryUnit[]>();
+  for (const unit of units) {
+    if (unit.mappingStatus === 'mapped' && unit.localProductId !== null) {
+      const target = unit.lastSyncStatus === 'absent'
+        ? absentMappedByProduct
+        : mappedByProduct;
+      const mapped = target.get(unit.localProductId) ?? [];
+      mapped.push(unit);
+      target.set(unit.localProductId, mapped);
+    }
+    if (unit.mappingStatus === 'ambiguous' && unit.lastSyncStatus !== 'absent') {
+      for (const candidate of unit.mappingCandidates) {
+        const ambiguous = ambiguousCandidates.get(candidate) ?? [];
+        ambiguous.push(unit);
+        ambiguousCandidates.set(candidate, ambiguous);
+      }
+    }
+  }
+
+  return Object.freeze(details.map((detail) => {
+    const mapped = mappedByProduct.get(detail.id) ?? [];
+    const ambiguous = ambiguousCandidates.get(detail.id) ?? [];
+    if (mapped.length === 1 && ambiguous.length === 0) {
+      const unit = mapped[0];
+      if (unit !== undefined) return projectDuxUnit(detail, unit);
+    }
+    const candidates = [...mapped, ...ambiguous];
+    if (candidates.length === 0) {
+      const absent = absentMappedByProduct.get(detail.id) ?? [];
+      if (absent.length === 1) {
+        const unit = absent[0];
+        if (unit !== undefined) return projectDuxUnit(detail, unit);
+      }
+      if (absent.length > 1) candidates.push(...absent);
+    }
+    return projectDuxUnresolved(
+      detail,
+      candidates.length > 0 ? 'ambiguous' : 'unmapped',
+      latestDuxTimestamp(candidates),
+    );
+  }));
+}
+
+function projectDuxUnit(
   detail: CatalogProductDetail,
-  unit: Awaited<ReturnType<typeof listMappedCatalogUnits>>[number],
+  unit: DuxInventoryUnit,
 ): CatalogProductDetail {
-  const protectedStock = unit.stockModel === 'seller_warehouse_versioned' &&
-    unit.upstreamVersion !== null && unit.stockLocations.length > 0;
-  const availabilityState: NonNullable<Product['commerce']>['availabilityState'] = !unit.fresh
-    ? 'updating'
-    : protectedStock && unit.availableQuantity === 0
-      ? 'out_of_stock'
-      : unit.sellable && unit.checkoutEligible
-        ? 'verified'
-        : 'unavailable';
-  const withoutLocalInventory = { ...detail };
-  delete withoutLocalInventory.stockQuantity;
-  delete withoutLocalInventory.reservedQuantity;
-  delete withoutLocalInventory.availableQuantity;
-  delete withoutLocalInventory.salePrice;
-  const exposeVerifiedQuantity = availabilityState === 'verified' || availabilityState === 'out_of_stock';
-  const projected: CatalogProductDetail = Object.freeze({
+  const availabilityState: NonNullable<Product['commerce']>['availabilityState'] =
+    unit.lastSyncStatus !== 'ok'
+      ? 'unavailable'
+      : !unit.fresh
+        ? 'updating'
+        : unit.observedStock.available === 0
+          ? 'out_of_stock'
+          : unit.checkoutEligible
+            ? 'verified'
+            : 'unavailable';
+  const withoutLocalInventory = stripLocalInventory(detail);
+  return Object.freeze({
     ...withoutLocalInventory,
-    price: Object.freeze({ amount: unit.priceMinor / 100, currency: 'ARS' as const }),
-    variants: Object.freeze([]),
     availability: availabilityState === 'verified' ? 'available' : 'unavailable',
-    ...(exposeVerifiedQuantity ? {
-      stockQuantity: unit.availableQuantity,
-      reservedQuantity: 0,
-      availableQuantity: unit.availableQuantity,
-    } : {}),
     commerce: Object.freeze({
-      source: 'mercadolibre' as const,
+      source: 'dux' as const,
       catalogVersion: unit.catalogVersion,
       syncedAt: unit.lastSyncedAt,
       availabilityState,
       checkoutEligible: unit.checkoutEligible,
+      mappingStatus: 'mapped' as const,
+      quantitySemanticsStatus: unit.quantitySemanticsStatus,
+      observedStock: Object.freeze({ ...unit.observedStock }),
+      depositName: unit.depositName,
     }),
   });
+}
+
+function projectDuxUnresolved(
+  detail: CatalogProductDetail,
+  mappingStatus: 'unmapped' | 'ambiguous',
+  syncedAt: string,
+): CatalogProductDetail {
+  return Object.freeze({
+    ...stripLocalInventory(detail),
+    availability: 'unavailable' as const,
+    commerce: Object.freeze({
+      source: 'dux' as const,
+      catalogVersion: '0'.repeat(64),
+      syncedAt,
+      availabilityState: 'unavailable' as const,
+      checkoutEligible: false,
+      mappingStatus,
+      quantitySemanticsStatus: 'unavailable_from_v2_items' as const,
+    }),
+  });
+}
+
+function stripLocalInventory(detail: CatalogProductDetail): CatalogProductDetail {
+  const projected = { ...detail };
+  delete projected.stockQuantity;
+  delete projected.reservedQuantity;
+  delete projected.availableQuantity;
   return projected;
+}
+
+function latestDuxTimestamp(units: readonly DuxInventoryUnit[]): string {
+  return units.reduce(
+    (latest, unit) => unit.lastSyncedAt > latest ? unit.lastSyncedAt : latest,
+    '1970-01-01T00:00:00.000Z',
+  );
 }
 
 function parseWritableProduct(
@@ -538,6 +631,46 @@ function assertProductId(productId: string): void {
 
 function isMissingCatalogTable(error: unknown): boolean {
   return error instanceof Error && /no such table:\s*catalog_product_mutations/iu.test(error.message);
+}
+
+function isMissingDuxInventoryTable(error: unknown): boolean {
+  return error instanceof Error && /no such table:\s*dux_inventory_items/iu.test(error.message);
+}
+
+async function isProductMappedToDux(
+  database: D1Database,
+  productId: string,
+): Promise<boolean> {
+  try {
+    const row = await database
+      .prepare(
+        `SELECT 1 AS mapped FROM dux_inventory_items
+         WHERE local_product_id = ?1 AND mapping_status = 'mapped'
+         LIMIT 1`,
+      )
+      .bind(productId)
+      .first<Readonly<{ mapped: number }>>();
+    return row?.mapped === 1;
+  } catch (error: unknown) {
+    if (isMissingDuxInventoryTable(error)) return false;
+    throw error;
+  }
+}
+
+function duxInventoryReadOnly(): HttpError {
+  return new HttpError(
+    409,
+    'DUX_INVENTORY_READ_ONLY',
+    'El stock de este producto es administrado exclusivamente por Dux.',
+  );
+}
+
+function duxInventoryMigrationRequired(): HttpError {
+  return new HttpError(
+    503,
+    'DUX_INVENTORY_MIGRATION_REQUIRED',
+    'La migración de inventario Dux todavía no fue aplicada.',
+  );
 }
 
 function isMissingOrderReservationTables(error: unknown): boolean {

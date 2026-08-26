@@ -28,11 +28,17 @@ const terminalReservationMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0010_checkout_terminal_reservation_release.sql'),
   'utf8',
 );
+const duxMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0012_dux_authoritative_inventory.sql'),
+  'utf8',
+);
 
 describe('liberación de reservas terminales de Checkout Pro', () => {
   for (const terminalStatus of ['rejected', 'cancelled'] as const) {
     it(`libera inmediatamente al pasar a ${terminalStatus} y tolera reintentos`, async () => {
-      const database = new SqliteD1(`${baseMigrations}\n${terminalReservationMigration}`);
+      const database = new SqliteD1(
+        `${baseMigrations}\n${terminalReservationMigration}\n${duxMigration}`,
+      );
       try {
         await createControlledProduct(database);
         const first = await prepareOrder({
