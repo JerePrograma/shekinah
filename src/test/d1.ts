@@ -19,11 +19,18 @@ export function createTestD1(...migrations: readonly string[]): TestD1 {
   const database: D1Database = {
     prepare: (query) => new TestPreparedStatement(sqlite, query),
     batch: async <T>(statements: readonly D1PreparedStatement[]) => {
-      const results: D1Result<T>[] = [];
-      for (const statement of statements) {
-        results.push(await statement.run<T>());
+      sqlite.exec('BEGIN IMMEDIATE');
+      try {
+        const results: D1Result<T>[] = [];
+        for (const statement of statements) {
+          results.push(await statement.run<T>());
+        }
+        sqlite.exec('COMMIT');
+        return results;
+      } catch (error: unknown) {
+        sqlite.exec('ROLLBACK');
+        throw error;
       }
-      return results;
     },
     exec: (query) => {
       sqlite.exec(query);
