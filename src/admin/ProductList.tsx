@@ -168,7 +168,7 @@ export function ProductList({
             <option value="all">Todos</option>
             <option value="in-stock">Con stock</option>
             <option value="out-of-stock">Sin stock</option>
-            <option value="untracked">Stock no controlado</option>
+            <option value="untracked">Stock sin configurar</option>
           </select>
         </label>
         <label className="admin-form-field">
@@ -353,7 +353,7 @@ export function ProductList({
                           disabled={rowBusy}
                           onClick={() => onSetUntrackedStock(product)}
                         >
-                          No controlar stock
+                          Dejar sin stock configurado
                         </button>
                         <button
                           className="button button-secondary admin-compact-button"
@@ -431,7 +431,7 @@ function productAvailabilityLabel(product: CatalogProductDetail) {
 
 function productStockLabel(product: CatalogProductDetail) {
   if (product.stockQuantity === undefined) {
-    return { label: 'Stock no controlado', tone: 'untracked' } as const;
+    return { label: 'Stock sin configurar · venta bloqueada', tone: 'out' } as const;
   }
   const reserved = product.reservedQuantity ?? 0;
   const available = product.availableQuantity ?? product.stockQuantity;

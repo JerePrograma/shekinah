@@ -12,9 +12,9 @@ import {
   loadAuthorizedProductDetail,
 } from './authorized-commercial-data';
 
-let cachedProducts: readonly Product[] = authorizedProducts;
-let pendingLoad: Promise<readonly Product[]> | null = null;
 let catalogResolved = false;
+let cachedProducts: readonly Product[] = failClosedProducts(authorizedProducts);
+let pendingLoad: Promise<readonly Product[]> | null = null;
 const listeners = new Set<(products: readonly Product[]) => void>();
 
 export function useRuntimeCatalogProducts(): readonly Product[] {

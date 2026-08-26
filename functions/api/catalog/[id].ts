@@ -3,7 +3,9 @@ import {
   getRuntimeCatalogProductDetail,
 } from '../../../server/catalog-store';
 import { jsonResponse, methodNotAllowedResponse, responseFromError } from '../../../server/http';
+import { projectCatalogProductDetailForSale } from '../../../server/local-inventory';
 import type { PagesFunction } from '../../../server/platform';
+
 export const onRequest: PagesFunction = async ({ env, params, request }) => {
   if (request.method !== 'GET') return methodNotAllowedResponse(['GET']);
   try {
@@ -11,6 +13,17 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
     const product = env.DB === undefined
       ? getBaseCatalogProductDetail(id)
       : await getRuntimeCatalogProductDetail(env.DB, env, id);
-    return product === null ? jsonResponse({ error: { code: 'PRODUCT_NOT_FOUND', message: 'El producto no existe.' } }, 404) : jsonResponse({ product });
-  } catch (error: unknown) { return responseFromError(error); }
+    return product === null
+      ? jsonResponse({
+          error: {
+            code: 'PRODUCT_NOT_FOUND',
+            message: 'El producto no existe.',
+          },
+        }, 404)
+      : jsonResponse({
+          product: projectCatalogProductDetailForSale(product),
+        });
+  } catch (error: unknown) {
+    return responseFromError(error);
+  }
 };

@@ -25,7 +25,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
     try {
       const created = await createCatalogProduct(
         testD1.database,
-        productInput('producto-checkout', 1_000),
+        { ...productInput('producto-checkout', 1_000), stockQuantity: 3 },
         'admin@example.test',
       );
       await updateCatalogProduct(
@@ -89,7 +89,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
     }
   });
 
-  it('admite stock controlado en Checkout Pro y conserva el límite autoritativo', async () => {
+  it('admite stock controlado y rechaza productos sin inventario configurado', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
       const tracked = await createCatalogProduct(
@@ -111,16 +111,19 @@ describe('carrito autoritativo con catálogo dinámico', () => {
         status: 409,
       });
 
-      const legacy = await createCatalogProduct(
+      const unconfigured = await createCatalogProduct(
         testD1.database,
-        productInput('producto-legacy', 1_000),
+        productInput('producto-sin-stock', 1_000),
         'admin@example.test',
       );
       await expect(recalculateDynamicCart({
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
-        items: [{ productId: legacy.id, quantity: 99 }],
-      }, testD1.database)).resolves.toMatchObject({ itemCount: 99 });
+        items: [{ productId: unconfigured.id, quantity: 1 }],
+      }, testD1.database)).rejects.toMatchObject({
+        code: 'STOCK_NOT_CONFIGURED',
+        status: 409,
+      });
     } finally {
       testD1.close();
     }

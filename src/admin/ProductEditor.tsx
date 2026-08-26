@@ -189,7 +189,7 @@ export function ProductEditor({
         onSubmit={onSubmit}
       >
         <p className="admin-field-note" id="product-form-guidance">
-          Nombre y precio son obligatorios. Al crear, elegí al menos una categoría. Si controlás stock, indicá la cantidad actual. Los demás campos son opcionales.
+          Nombre y precio son obligatorios. Al crear, elegí al menos una categoría. Para vender, cargá el stock físico actual. Sin esa cantidad, el producto queda visible pero no puede comprarse. Los demás campos son opcionales.
         </p>
         <fieldset className="admin-editor-section" disabled={busy}>
           <legend>Datos básicos</legend>
@@ -313,7 +313,7 @@ export function ProductEditor({
             />
             <span>
               <strong id="product-track-stock-label">Controlar stock</strong>
-              <small>Al llegar a cero, el producto deja de estar disponible para compra.</small>
+              <small>Sin una cantidad, el producto no puede comprarse. Al llegar a cero, también queda agotado.</small>
             </span>
           </label>
           {form.trackStock ? (
@@ -458,7 +458,7 @@ function formAvailabilityLabel(form: ProductFormState) {
     return { label: 'Sin stock — no disponible para compra', tone: 'out' } as const;
   }
   if (!form.trackStock) {
-    return { label: 'Disponible — stock no controlado', tone: 'untracked' } as const;
+    return { label: 'Stock sin configurar — no disponible para compra', tone: 'out' } as const;
   }
   return { label: 'Disponible para compra', tone: 'available' } as const;
 }

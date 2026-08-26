@@ -5,6 +5,7 @@ import { getRuntimeCatalogProductDetail } from './catalog-store';
 import type { RecalculatedCart, RecalculatedLine, ServerCatalogProduct } from './catalog';
 import { requireCheckoutFulfillment } from './fulfillment';
 import { HttpError } from './http';
+import { hasConfiguredStock } from './local-inventory';
 import type { D1Database, Env } from './platform';
 import { assertExactKeys, isRecord, readInteger, readSafeText } from './validation';
 
@@ -34,6 +35,7 @@ export async function recalculateDynamicCart(
     );
     if (detail === null) throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
     if (detail.availability === 'unavailable') throw new HttpError(409, 'PRODUCT_UNAVAILABLE', 'Uno de los productos ya no está disponible.');
+    if (detail.commerce === undefined && !hasConfiguredStock(detail)) throw new HttpError(409, 'STOCK_NOT_CONFIGURED', `${detail.name} todavía no tiene stock cargado.`);
     const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
     if (availableQuantity !== undefined && quantity > availableQuantity) throw new HttpError(409, 'INSUFFICIENT_STOCK', `No hay stock suficiente para ${detail.name}.`);
     const available = isProductEffectivelyAvailable(detail);
