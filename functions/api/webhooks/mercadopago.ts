@@ -1,5 +1,8 @@
 import { sha256Hex } from '../../../server/crypto';
-import { requireCommerceMode } from '../../../server/config';
+import {
+  requireCommerceMode,
+  requireMercadoPagoAccessToken,
+} from '../../../server/config';
 import {
   HttpError,
   methodNotAllowedResponse,
@@ -33,12 +36,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
   try {
     database = requireDatabase(env);
     const mode = requireCommerceMode(env);
-    const accessToken = requireSecret(
-      env.MERCADO_PAGO_ACCESS_TOKEN,
-      'PAYMENT_CREDENTIALS_MISSING',
-      'Mercado Pago no está configurado.',
-      20,
-    );
+    const accessToken = requireMercadoPagoAccessToken(env, mode);
     const webhookSecret = requireSecret(
       env.MERCADO_PAGO_WEBHOOK_SECRET,
       'WEBHOOK_SECRET_MISSING',

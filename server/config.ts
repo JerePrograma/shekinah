@@ -1,5 +1,7 @@
-import { HttpError, requireText } from './http';
+import { HttpError, requireSecret, requireText } from './http';
 import type { CommerceMode, Env } from './platform';
+
+export const MERCADO_PAGO_APPLICATION_ID = '7373984348988262';
 
 export function requireEnabledFlag(
   value: string | undefined,
@@ -23,6 +25,26 @@ export function requireCommerceMode(env: Env): CommerceMode {
     throw new HttpError(503, 'PAYMENT_MODE_INVALID', 'El modo de Mercado Pago no es válido.');
   }
   return value;
+}
+
+export function requireMercadoPagoAccessToken(env: Env, mode: CommerceMode): string {
+  const accessToken = requireSecret(
+    env.MERCADO_PAGO_ACCESS_TOKEN,
+    'PAYMENT_CREDENTIALS_MISSING',
+    'Mercado Pago no está configurado.',
+    20,
+  );
+  if (mode === 'production') {
+    const clientId = /^APP_USR-(\d{1,30})-/u.exec(accessToken)?.[1];
+    if (clientId !== MERCADO_PAGO_APPLICATION_ID) {
+      throw new HttpError(
+        503,
+        'PAYMENT_APPLICATION_MISMATCH',
+        'Mercado Pago no está configurado para la aplicación autorizada.',
+      );
+    }
+  }
+  return accessToken;
 }
 
 export function requirePublicSiteUrl(env: Env): URL {

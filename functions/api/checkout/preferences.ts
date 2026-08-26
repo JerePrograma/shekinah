@@ -1,5 +1,5 @@
 import { recalculateDynamicCart } from '../../../server/dynamic-cart';
-import { requireCommerceMode, requireEnabledFlag, requirePublicSiteUrl } from '../../../server/config';
+import { requireCommerceMode, requireEnabledFlag, requireMercadoPagoAccessToken, requirePublicSiteUrl } from '../../../server/config';
 import { createPaymentCart, persistOrderFulfillment, reserveCheckoutIntent } from '../../../server/fulfillment';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../server/http';
 import { assertMercadoPagoPreferenceActive, createMercadoPagoPreference, recoverMercadoPagoPreference } from '../../../server/mercado-pago';
@@ -20,9 +20,9 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     } else {
       await expireWhatsappReservations(database);
     }
-    const accessToken = requireSecret(env.MERCADO_PAGO_ACCESS_TOKEN, 'PAYMENT_CREDENTIALS_MISSING', 'Mercado Pago no está configurado.', 20);
+    const mode = requireCommerceMode(env); const accessToken = requireMercadoPagoAccessToken(env, mode);
     void requireSecret(env.MERCADO_PAGO_WEBHOOK_SECRET, 'WEBHOOK_SECRET_MISSING', 'La firma de webhooks no está configurada.', 32);
-    const tokenSecret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de pedidos no está configurada.', 32); const mode = requireCommerceMode(env);
+    const tokenSecret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de pedidos no está configurada.', 32);
     const body = await readJsonBody(request, 32_768); if (!isRecord(body)) throw new HttpError(400, 'INVALID_CHECKOUT', 'La solicitud de checkout no es válida.');
     assertExactKeys(body, ['idempotencyKey', 'items', 'fulfillment'], 'INVALID_CHECKOUT', 'La solicitud contiene campos no permitidos.');
     if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {

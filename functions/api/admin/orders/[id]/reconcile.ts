@@ -1,10 +1,12 @@
-import { requireCommerceMode } from '../../../../../server/config';
+import {
+  requireCommerceMode,
+  requireMercadoPagoAccessToken,
+} from '../../../../../server/config';
 import { handleAdminRequest } from '../../../../../server/admin-request';
 import {
   HttpError,
   jsonResponse,
   methodNotAllowedResponse,
-  requireSecret,
 } from '../../../../../server/http';
 import { reconcileMercadoPagoOrder } from '../../../../../server/payment-reconciliation';
 import type {
@@ -33,18 +35,14 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({
       if (typeof id !== 'string') {
         throw new HttpError(400, 'INVALID_ORDER_ID', 'El pedido no es válido.');
       }
-      const accessToken = requireSecret(
-        env.MERCADO_PAGO_ACCESS_TOKEN,
-        'PAYMENT_CREDENTIALS_MISSING',
-        'Mercado Pago no está configurado.',
-        20,
-      );
+      const mode = requireCommerceMode(env);
+      const accessToken = requireMercadoPagoAccessToken(env, mode);
       return jsonResponse(
         await reconcileMercadoPagoOrder(
           database,
           id,
           accessToken,
-          requireCommerceMode(env),
+          mode,
           env,
         ),
       );
