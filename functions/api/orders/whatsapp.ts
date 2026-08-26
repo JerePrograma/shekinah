@@ -1,13 +1,18 @@
-import { createWhatsappOrder } from '../../../server/whatsapp-orders';
+import {
+  createWhatsappOrder,
+  recalculateWhatsappCart,
+} from '../../../server/whatsapp-orders';
 import { listCatalogProductDetails } from '../../../server/catalog-store';
 import { revalidateMercadoLibreCart } from '../../../server/mercado-libre-catalog';
+import { expireWhatsappReservations } from '../../../server/stock-reservations';
 import {
+  HttpError,
   jsonResponse,
   methodNotAllowedResponse,
   requireDatabase,
   responseFromError,
 } from '../../../server/http';
-import type { PagesFunction } from '../../../server/platform';
+import type { D1Database, PagesFunction } from '../../../server/platform';
 import { assertSameOrigin, readJsonBody } from '../../../server/validation';
 
 export const onRequest: PagesFunction = async ({ env, request }) => {
@@ -24,6 +29,19 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
         await listCatalogProductDetails(database),
         'whatsapp',
       );
+    } else if (await hasLocalStockReservationSchema(database)) {
+      await expireWhatsappReservations(database);
+      const { cart } = await recalculateWhatsappCart(body, database, env);
+      const unconfiguredLine = cart.lines.find(({ product }) => (
+        product.providerCatalogVersion === undefined && product.stockControlled !== true
+      ));
+      if (unconfiguredLine !== undefined) {
+        throw new HttpError(
+          409,
+          'STOCK_NOT_CONFIGURED',
+          `${unconfiguredLine.product.name} todavía no tiene stock cargado.`,
+        );
+      }
     }
     const created = await createWhatsappOrder(
       database,
@@ -35,3 +53,19 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     return responseFromError(error);
   }
 };
+
+async function hasLocalStockReservationSchema(database: D1Database): Promise<boolean> {
+  try {
+    await database.prepare('SELECT stock_controlled FROM order_items LIMIT 0').first();
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '';
+    if (
+      /no such column:\s*(?:\w+\.)?stock_controlled/iu.test(message) ||
+      /no such table:\s*order_items/iu.test(message)
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}

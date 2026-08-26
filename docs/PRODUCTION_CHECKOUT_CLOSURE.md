@@ -47,7 +47,9 @@ WhatsApp usa el mismo inventario: crea una reserva pendiente por 24 horas, la ap
 administrativa consume una sola vez y el rechazo libera sin modificar el stock físico.
 
 La migración `0010_checkout_terminal_reservation_release.sql` corrige pedidos terminales históricos
-y materializa la liberación inmediata para futuras transiciones.
+y materializa la liberación inmediata para futuras transiciones. La migración
+`0011_local_order_stock_required.sql` impide que Checkout Pro o WhatsApp persistan líneas locales
+sin inventario controlado, incluso ante una invocación interna o una carrera con el backoffice.
 
 ## Activación externa obligatoria
 
