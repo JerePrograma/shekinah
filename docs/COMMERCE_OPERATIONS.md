@@ -2,7 +2,7 @@
 
 ## Estado operativo vigente
 
-Dux Software es la autoridad de inventario, pero la integración productiva continúa bloqueada. El 2026-09-01 la API oficial respondió directamente con la credencial autorizada y resolvió empresa `12862`, sucursal `1`, depósito `25566` y `743` items; no se confirmó el nombre exacto del plan y no debe inferirse. Desde Pages Functions las reconciliaciones no alcanzaron una respuesta HTTP Dux clasificable. La API pública revisada tampoco documenta cómo liberar, cancelar, finalizar o vencer en forma segura la reserva de un pedido, ni expone en `GET /v2/items` la semántica de unidad necesaria para vender.
+Dux Software es la autoridad de inventario, pero el corte productivo read-only todavía no se completó. El 2026-09-01 la API oficial respondió directamente con la credencial autorizada y resolvió empresa `12862`, sucursal `1`, depósito `25566` y `743` items; no se confirmó el nombre exacto del plan y no debe inferirse. Tres reconciliaciones Pages históricas no alcanzaron una respuesta HTTP clasificable. La causa fue aislada en `redirect: 'error'` y el candidato adopta el modo manual seguro, aún pendiente de publicación, `0014` y sync. La API pública tampoco documenta cómo liberar, cancelar, finalizar o vencer en forma segura la reserva de un pedido, ni expone en `GET /v2/items` la semántica de unidad necesaria para vender.
 
 Mantener:
 
@@ -17,7 +17,7 @@ DUX_RECONCILIATION_ENABLED=false
 
 Con esta configuración no se crean pedidos Dux, preferencias Mercado Pago ni pedidos WhatsApp nuevos. Tampoco se consulta o modifica Mercado Libre. El catálogo y el carrito se conservan, pero una disponibilidad no confirmable no autoriza una venta.
 
-Las migraciones `0010` a `0013` ya están aplicadas y verificadas en preview y production; los secretos y variables Dux requeridos están configurados server-side. `0013` dejó cero contadores locales en los documentos editoriales y agregó guardas contra su reintroducción. El cierre actual responde a la falla de transporte y a los contratos de unidad/lifecycle pendientes, no a una migración o identificador faltante.
+Las migraciones `0010` a `0013` ya están aplicadas y verificadas en preview y production; los secretos y variables Dux requeridos están configurados server-side. `0013` dejó cero contadores locales en los documentos editoriales y agregó guardas contra su reintroducción. `0014` está versionada pero aún debe aplicarse antes del cutover. Unidad y lifecycle continúan bloqueando el comercio aun si el snapshot read-only resulta exitoso.
 
 ## Responsabilidades
 
@@ -41,11 +41,13 @@ GET /v2/items
 Authorization: Bearer <token>
 ```
 
-La reconciliación obtiene el inventario paginado y escribe un snapshot D1. El cliente serializa las solicitudes con al menos cinco segundos entre inicios; D1 bloquea solapamientos, renueva el lease antes de cada request y aplica un cooldown global entre corridas. No existe un GET por producto y los retries se limitan a lecturas seguras. El máximo operativo es 100 páginas de 50 items; excederlo falla cerrado. Un `429` respeta `Retry-After` cuando está disponible.
+La reconciliación obtiene el inventario paginado completo y publica en D1 sólo su delta. El cliente serializa las solicitudes con al menos cinco segundos entre inicios; D1 bloquea solapamientos, renueva el lease cada diez intentos HTTP y aplica un cooldown global entre corridas. No existe un GET por producto y los retries se limitan a lecturas seguras. La paginación fija el total, exige que permanezca estable y termina sólo con conteo exacto. El techo es 20 páginas/1.000 items y 1.000 identidades después de variantes; staging agrupa 50 filas cambiadas por sentencia y rechaza antes del bind un payload UTF-8 fuera del margen D1. La fase de lecturas del cliente permite como máximo siete minutos y 45 intentos HTTP totales; mapping, hashing y publicación D1 quedan fuera de ese reloj y se controlan con sus límites propios y el resultado real de Functions. El core exitoso usado por los handlers productivos llega a 42 consultas D1; al sumar catálogo/bootstrap/auditoría, el endpoint interno llega a 43, el administrativo exitoso a 45 y su falla capturada extrema a 48. Un no-op del core usa entre 18 y 21. Antes de staging reserva `64 + 14 × delta` contra un tope local conservador de 40.000 estimadas por día UTC. Exceder cualquier límite falla cerrado. Un `429` respeta `Retry-After` cuando está disponible. `redirect: 'manual'` nunca sigue redirecciones y cualquier `300`–`399` se rechaza antes de leer cuerpo o `Location`.
+
+El presupuesto de 40.000 protege esta D1 y deja margen frente a las 100.000 filas escritas diarias de Workers/D1 Free, pero la cuota real es account-wide. Antes de preview, producción y habilitación del scheduler revisar `rows_written` en Cloudflare para todas las D1 de la cuenta. Una reserva no se libera si luego falla la publicación: ese consumo conservador evita reintentos que subestimen escrituras ya realizadas.
 
 El workflow `.github/workflows/dux-reconcile.yml` ejecuta `/api/internal/dux/reconcile` únicamente si la variable de GitHub `DUX_RECONCILIATION_ENABLED` vale `true`. Como el `if` del job se evalúa antes de cargar variables del environment, ese flag debe ser una variable de repositorio u organización; una variable definida sólo en `cloudflare-pages-production` no habilita el job. Debe permanecer ausente o en `false`. `DUX_SCHEDULER_SECRET` debe existir con valores coincidentes en Pages production y en el environment GitHub, sin imprimirlos.
 
-No habilitar el scheduler hasta validar el mapping con un snapshot real. `39ab007` implementa vínculo persistido → código externo → SKU de producto/variante → barcode Dux exacto contra identificadores canónicos → nombre exacto sólo durante bootstrap. Sin conectividad productiva no existe evidencia de sus conteos reales ni de la cobertura de barcodes.
+No habilitar el scheduler hasta validar el mapping con un snapshot real. El primer sync debe salir del backoffice autenticado: `/api/admin/dux/sync` puede seleccionar `kind=initial`; `/api/internal/dux/reconcile` siempre es `scheduled` y no ejecuta bootstrap por nombre. El candidato usa vínculo persistido → código externo → SKU de producto/variante → barcode Dux exacto → clave conservadora de nombre sólo durante bootstrap. Contradicciones de presentación/ID vetan ese paso y no se usa fuzzy matching. Sin sync productivo no existe evidencia de sus conteos reales ni de la cobertura de barcodes.
 
 ## Controles del backoffice
 
@@ -65,7 +67,43 @@ Un producto Dux muestra el inventario como sólo lectura. Si el mapping no es ú
 
 ## Diagnóstico D1 de sólo lectura
 
-Después de aplicar `0012` y `0013` en el entorno correcto, estas consultas ayudan a diagnosticar sin mutar datos:
+Después de aplicar `0012`, `0013` y `0014` en el entorno correcto, estas consultas ayudan a diagnosticar sin mutar datos:
+
+```sql
+SELECT status, COUNT(*) AS generations
+FROM dux_inventory_generations
+GROUP BY status
+ORDER BY status;
+```
+
+```sql
+SELECT generation_id, status, item_count, changed_count, started_at,
+       completed_at, published_at, failed_at
+FROM dux_inventory_generations
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
+```sql
+SELECT generation_id, COUNT(*) AS staged_items
+FROM dux_inventory_generation_items
+GROUP BY generation_id
+ORDER BY generation_id;
+```
+
+```sql
+SELECT
+  (SELECT COUNT(*) FROM dux_inventory_items) AS visible_items,
+  (SELECT COUNT(*) FROM dux_inventory_generation_items) AS staged_items,
+  (SELECT COUNT(*) FROM dux_inventory_generations WHERE status = 'loading') AS loading,
+  (SELECT COUNT(*) FROM dux_inventory_generations WHERE status = 'published') AS published;
+```
+
+```sql
+SELECT company_id, branch_id, deposit_id, verified_at
+FROM dux_tenant_context
+WHERE id = 1;
+```
 
 ```sql
 SELECT last_sync_status, COUNT(*) AS cantidad
@@ -144,6 +182,7 @@ Dux continúa siendo responsable de sincronizar la tienda `HERBOLARIOMDP` con Me
 - `401`: token inválido o ausente; cerrar y revisar configuración.
 - `403`: permisos o acceso insuficiente; confirmar alcance y plan directamente con Dux sin inferir su nombre.
 - `429`: respetar la espera indicada; no multiplicar workers ni retries.
+- `300`–`399`: `provider_redirect`/`DUX_PROVIDER_REJECTED`; nunca seguir ni inspeccionar `Location`.
 - `5xx`: indisponibilidad temporal; snapshot como diagnóstico, venta cerrada.
 - timeout de GET: retry acotado.
 - timeout de futura mutación: resultado incierto; consultar antes de repetir.
@@ -155,15 +194,15 @@ Un snapshot obsoleto puede ayudar al operador, pero no autoriza una venta.
 
 El 2026-09-01 se ejecutaron tres sync manuales de producción. Todos terminaron `DUX_UNAVAILABLE` con cero procesados, mapeados, no mapeados y ambiguos. D1 conserva esos tres ciclos fallidos, pero `dux_tenant_context`, `dux_inventory_items` y `dux_order_links` continúan sin filas; no existe snapshot utilizable.
 
-En `f138820`, el deployment `8781412e-629b-4473-8081-89c6fbc1ffec` registró sólo el diagnóstico terminal seguro `fetch_exception` para `/v2/empresas`, con `providerStatus=null` y `attempts=3`. Esto indica una excepción de transporte antes de una respuesta HTTP, no un `5xx` demostrado. El evento no incluye token, URL completa, query, cuerpo, mensaje de excepción ni PII.
+En `f138820`, el deployment `8781412e-629b-4473-8081-89c6fbc1ffec` registró sólo el diagnóstico terminal seguro `fetch_exception` para `/v2/empresas`, con `providerStatus=null` y `attempts=3`. Esto indica una excepción de transporte antes de una respuesta HTTP, no un `5xx` demostrado. El evento no incluye token, URL completa, query, cuerpo, mensaje de excepción ni PII. El diagnóstico aislado posterior verificó la incompatibilidad con `redirect: 'error'`; el candidato usa modo manual y distingue `fetch_headers`, `read_body` y `classify_response` sin registrar mensajes crudos.
 
-Ante una repetición:
+Ante una repetición después de migrar `0014`:
 
 1. mantener `DUX_API_ENABLED`, comercio, Mercado Libre y scheduler en `false`;
-2. comprobar una sola vez la lectura directa desde un host controlado, sin imprimir la credencial;
-3. ejecutar como máximo un sync manual sobre el SHA diagnóstico y observar `kind`, `endpoint`, `providerStatus` y `attempts`;
-4. consultar `dux_sync_runs` y confirmar que no aparecieron tenant, snapshot/inventario ni vínculos de pedidos;
-5. si `kind=fetch_exception` y `providerStatus=null`, escalar conectividad/DNS/TLS entre Cloudflare y Dux con evidencia sanitizada; no atribuirlo a un status del proveedor;
+2. ejecutar como máximo un sync administrativo sobre el SHA exacto y observar `kind`, `endpoint`, `providerStatus`, `attempts`, `phase`, `errorClass` y `headersReceived`;
+3. consultar runs, generaciones, staging transitorio y publicación visible;
+4. ante una falla capturada, comprobar que la generación nueva figure `failed`, su staging quede limpio y la generación anterior continúe `published` si existía; ante un kill/1102 puede quedar `loading` con staging hasta que la recuperación versionada del lease actúe después de 30 minutos;
+5. escalar sólo con la evidencia sanitizada observada; no atribuir el fallo a DNS, TLS o un status del proveedor sin prueba;
 6. volver a `DUX_API_ENABLED=false` al terminar y no activar el scheduler;
 7. no repetir intentos en bucle, no ampliar retries y no usar stock local, Excel o Mercado Libre como fallback.
 
@@ -188,4 +227,4 @@ Las imágenes administradas continúan en R2 mediante `CATALOG_IMAGES`; el cambi
 
 ## Criterio de apertura
 
-No habilitar comercio hasta completar todos los requisitos de `docs/COMMERCE_DEPLOYMENT.md`, incluidas prueba de reserva, consulta, cancelación/liberación y finalización Dux, sandbox Mercado Pago, webhook, migración, CI y deployment del mismo SHA. Un pago productivo o una reserva real requieren autorización humana puntual.
+No habilitar comercio hasta completar todos los requisitos de `docs/COMMERCE_DEPLOYMENT.md`, incluidas prueba de reserva, consulta, cancelación/liberación y finalización Dux, sandbox Mercado Pago, webhook, migración, CI y deployment del mismo SHA. El scheduler read-only puede evaluarse únicamente después del primer sync `initial` auditado, un segundo ciclo no-op exitoso y la configuración/verificación productiva de `DUX_SNAPSHOT_MAX_AGE_SECONDS=1800`; no sustituye unidad/lifecycle y no habilita comercio. Un pago productivo o una reserva real requieren autorización humana puntual.

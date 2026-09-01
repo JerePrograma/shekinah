@@ -20,7 +20,7 @@ No activar comercio mientras falte cualquiera de estos requisitos:
 - acceso API Dux v2 autorizado y verificable, sin inferir el nombre exacto del plan;
 - token API válido cargado sólo como secreto server-side;
 - empresa, sucursal y depósito obtenidos de endpoints oficiales;
-- migraciones `0012_dux_authoritative_inventory.sql` y `0013_remove_local_catalog_stock.sql` aplicadas y verificadas;
+- migraciones `0012_dux_authoritative_inventory.sql`, `0013_remove_local_catalog_stock.sql` y `0014_dux_atomic_inventory_snapshots.sql` aplicadas y verificadas;
 - snapshot real y mappings auditados;
 - unidad, pesabilidad, divisibilidad y granularidad comercial verificadas;
 - creación y consulta de pedido Dux probadas;
@@ -28,7 +28,7 @@ No activar comercio mientras falte cualquiera de estos requisitos:
 - sandbox Mercado Pago y webhook aprobados;
 - CI, deployment y smoke del mismo SHA.
 
-El 2026-09-01 la API Dux respondió directamente con la credencial autorizada, pero no se verificó el nombre exacto del plan y no debe afirmarse uno. La API pública revisada sigue sin documentar el lifecycle de compensación. Además, las lecturas ejecutadas desde Pages Functions fallaron antes de recibir una respuesta HTTP del proveedor. Por eso el resultado de este despliegue es configuración preparada y fail-closed, no comercio activo.
+El 2026-09-01 la API Dux respondió directamente con la credencial autorizada, pero no se verificó el nombre exacto del plan y no debe afirmarse uno. La API pública revisada sigue sin documentar el lifecycle de compensación. Las lecturas históricas desde Pages fallaron antes de recibir una respuesta HTTP; la causa se aisló en `redirect: 'error'` y el candidato usa el modo manual seguro. Hasta desplegarlo, migrar `0014` y auditar un sync inicial, el resultado sigue siendo configuración preparada y fail-closed, no comercio activo.
 
 ## 1. Validar el commit exacto
 
@@ -51,7 +51,7 @@ Registrar SHA completo, resultados y cualquier prueba no ejecutada. No desplegar
 
 ## 2. Aplicar la migración D1
 
-`migrations/0012_dux_authoritative_inventory.sql` agrega contexto Dux, ciclos de sync, snapshot/mapping, vínculo futuro de pedidos y ledger de operaciones. `0013_remove_local_catalog_stock.sql` elimina del documento editorial los tres contadores locales, retira los triggers que reservaban o consumían esos contadores y exige snapshot Dux exacto para líneas comerciales nuevas. No borra productos, pedidos, líneas históricas, pagos, auditoría, Mercado Libre ni imágenes.
+`migrations/0012_dux_authoritative_inventory.sql` agrega contexto Dux, ciclos de sync, snapshot/mapping, vínculo futuro de pedidos y ledger de operaciones. `0013_remove_local_catalog_stock.sql` elimina del documento editorial los tres contadores locales, retira los triggers que reservaban o consumían esos contadores y exige snapshot Dux exacto para líneas comerciales nuevas. `0014_dux_atomic_inventory_snapshots.sql` agrega generaciones aisladas, staging transitorio del delta, la tabla `dux_d1_write_budget` para reservar capacidad estimada por fecha UTC y un trigger que impide publicar una generación incompleta. No borra productos, pedidos, líneas históricas, pagos, auditoría, Mercado Libre, imágenes ni el snapshot visible anterior.
 
 Antes de tocar una D1 remota:
 
@@ -59,7 +59,7 @@ Antes de tocar una D1 remota:
 2. confirmar que preview y production siguen usando bases distintas;
 3. obtener bookmark Time Travel o backup verificable;
 4. ejecutar primero preview;
-5. inspeccionar tablas, índices, checks, `PRAGMA foreign_key_check` y los triggers `dux_order_link_requires_empty_order`, `dux_order_items_lifecycle_blocked`, `dux_order_items_update_blocked`, `dux_order_items_delete_blocked`, `dux_order_status_lifecycle_blocked` y `dux_mapped_order_status_lifecycle_blocked`;
+5. inspeccionar tablas, índices, checks, `PRAGMA foreign_key_check`, los guards de `0012`/`0013`, `dux_inventory_generations`, `dux_inventory_generation_items`, `dux_d1_write_budget`, sus índices y `dux_inventory_generation_publish_guard`;
 6. recién entonces aplicar production.
 
 Con una configuración Wrangler local correcta y no versionada:
@@ -72,7 +72,7 @@ npx wrangler d1 migrations apply DB --remote --env production
 npx wrangler d1 migrations list DB --remote --env production
 ```
 
-Esos comandos suponen que el binding superior `DB` apunta a preview y `env.production.DB` a producción; comprobar los UUID antes de ejecutar. No agregar `--preview` si el archivo local no define `preview_database_id`. El 2026-09-01 se verificó por nombre y esquema que `0010` a `0013` están aplicadas en ambas bases. Esta evidencia no exime de comprobar nuevamente la lista remota.
+Esos comandos suponen que el binding superior `DB` apunta a preview y `env.production.DB` a producción; comprobar los UUID antes de ejecutar. No agregar `--preview` si el archivo local no define `preview_database_id`. El 2026-09-01 se verificó por nombre y esquema que `0010` a `0013` están aplicadas en ambas bases; `0014` sigue pendiente antes del cutover. Esta evidencia no exime de comprobar nuevamente la lista remota.
 
 Los seis triggers de `0012` y los tres guardas de `0013` son parte del estado fail-closed. Retirarlos requiere una migración aditiva posterior y evidencia del lifecycle oficial de reserva, liberación y finalización Dux.
 
@@ -110,7 +110,7 @@ DUX_API_ENABLED=false
 DUX_COMPANY_ID=12862
 DUX_BRANCH_ID=1
 DUX_DEPOSIT_ID=25566
-DUX_SNAPSHOT_MAX_AGE_SECONDS=900
+DUX_SNAPSHOT_MAX_AGE_SECONDS=1800
 ```
 
 Secretos server-side:
@@ -122,7 +122,7 @@ DUX_SCHEDULER_SECRET
 
 No crear `VITE_DUX_API_TOKEN`. Verificar sólo nombre, tipo y entorno; nunca leer o imprimir valores. Mantener valores distintos por preview/production si la cuenta o permisos difieren.
 
-Después de configurar, dejar `DUX_API_ENABLED=false` hasta que `0012`/`0013` estén aplicadas y el smoke read-only sea seguro. Activar read-only Dux no habilita comercio: el guard de lifecycle debe seguir bloqueando ventas.
+Después de configurar, dejar `DUX_API_ENABLED=false` hasta que `0012`/`0013`/`0014` estén aplicadas y el SHA corregido esté desplegado. Activar read-only Dux no habilita comercio: el guard de lifecycle debe seguir bloqueando ventas.
 
 ## 5. Configurar reconciliación read-only
 
@@ -139,11 +139,11 @@ El job requiere:
 - secreto GitHub environment `DUX_SCHEDULER_SECRET`;
 - el mismo secreto cifrado en Pages production;
 - endpoint desplegado y `DUX_API_ENABLED=true`;
-- migraciones `0012`/`0013` y token Dux válidos.
+- migraciones `0012`/`0013`/`0014` y token Dux válidos.
 
 El `if` del job se evalúa antes de cargar variables del environment; por eso `DUX_RECONCILIATION_ENABLED` debe existir a nivel repositorio u organización, no sólo en `cloudflare-pages-production`. Por defecto debe faltar o valer `false`; así el workflow queda desactivado.
 
-No habilitarlo aunque se recupere la conectividad hasta probar el mapping real. `39ab007` implementa vínculo persistido → código externo → SKU/variante → barcode Dux exacto contra identificadores canónicos → nombre exacto sólo en bootstrap. Exigir un sync manual read-only, revisar conteos/ambigüedades y comprobar el intervalo mínimo de cinco segundos. No ejecutar llamadas Dux durante build.
+No habilitarlo aunque se recupere la conectividad hasta probar el mapping real. El primer sync debe ejecutarse desde `/api/admin/dux/sync`: esa ruta puede elegir `kind=initial`; el endpoint interno siempre usa `scheduled` y no bootstrappea por nombre. El candidato implementa vínculo persistido → código externo → SKU/variante → barcode Dux exacto → clave conservadora de nombre sólo en bootstrap, con vetos de presentación/ID y sin fuzzy matching. Revisar conteos/ambigüedades, generaciones y el intervalo mínimo de cinco segundos. Con cron cada 15 minutos, producción debe usar 1.800 segundos de frescura para cubrir los ~85 segundos normales de lectura y jitter externo sin esconder una falla prolongada. No ejecutar llamadas Dux durante build.
 
 No restaurar el scheduler Mercado Libre. Dux sincroniza ese canal fuera de Shekinah.
 
@@ -155,12 +155,14 @@ Con cuenta, token y IDs confirmados:
 2. `GET /v2/sucursales`: la sucursal pertenece a esa empresa;
 3. `GET /v2/depositos`: el depósito pertenece a la empresa y está habilitado;
 4. `GET /v2/items`: paginación completa, cantidades finitas y depósito correcto;
-5. sincronización: un solo ciclo, sin thundering herd ni `429` repetidos;
-6. D1: conteos de `mapped`, `unmapped` y `ambiguous` consistentes;
+5. sincronización administrativa: un solo ciclo `initial`, sin thundering herd ni `429` repetidos;
+6. D1: una generación `published`, cero `loading`, `item_count` igual a inventario visible, `changed_count` igual a la carga inicial, staging vacío tras publicar y `processed = mapped + unmapped + ambiguous + failed`;
 7. backoffice: cantidad y timestamp visibles, sin IDs/tokens en el frontend;
 8. catálogo: ausentes o ambiguos preservados y no vendibles.
 
 No mutar stock real ni crear pedidos como smoke. No afirmar una unidad o divisibilidad que `GET /v2/items` no entrega.
+
+No fijar `743` ni `744` como total esperado. La API habilitada y el export técnico del ERP pueden representar universos distintos; validar el `paginacion.total` de la corrida real. Exigir además cero duplicados de `local_product_id` mapeado, todas las filas con semántica `unavailable_from_v2_items`, cero `checkout_eligible` y pedidos/pagos/vínculos sin cambios.
 
 ### Resultado productivo del 2026-09-01
 
@@ -177,6 +179,10 @@ attempts=3
 ```
 
 La ausencia de `providerStatus` significa que Pages no recibió una respuesta HTTP clasificable del proveedor; no demuestra un `5xx` Dux. El evento omite URL completa, query, token, cuerpo y mensaje de excepción. Finalizado el diagnóstico, `DUX_API_ENABLED` volvió a `false` y no se habilitó el scheduler.
+
+### Candidato de corrección previo al cutover
+
+Un Worker aislado sin secretos comprobó que `redirect: 'error'` originaba la excepción antes de headers y que `redirect: 'manual'` permitía clasificar la respuesta. El candidato adopta el modo manual, nunca sigue redirecciones, rechaza todo `3xx`, valida la paginación terminal y agrega diagnóstico v2 sanitizado. `0014` compara el snapshot completo, stagea sólo el delta y lo publica de forma atómica. El cliente corta antes del intento HTTP 46. El core exitoso de reconciliación usado por producción consume como máximo 42 consultas D1; el handler interno completo llega a 43, el administrativo exitoso a 45 y su falla capturada extrema a 48. Un no-op del core usa entre 18 y 21. Estas afirmaciones están validadas localmente; el SHA, CI, deployment, migración remota y sync productivo se registran por separado en `docs/validation/DUX_LIVE_INVENTORY_CUTOVER_2026-09-01.md`.
 
 ## 7. Resolver el hard blocker de pedidos
 
@@ -251,6 +257,8 @@ Con todos los flags de venta cerrados:
 - decimales como `738.5`, `36.4` y `2.44` atraviesan parser, D1 y proyección sin redondeo;
 - snapshot obsoleto o Dux caído no habilita venta;
 - doble sync usa lock y no duplica ciclos;
+- una falla capturada de carga o publicación conserva la generación anterior y deja la nueva `failed` con staging limpio; una terminación abrupta del runtime puede dejar `loading` y staging hasta que la recuperación del lease los cierre después de 30 minutos;
+- una corrida idéntica publica frescura global nueva con `changed_count=0` y cero escrituras sobre `dux_inventory_items`;
 - `429` espera y reintenta de forma limitada;
 - backoffice no permite editar stock Dux.
 
@@ -308,6 +316,7 @@ Este estado acredita despliegue seguro del diagnóstico y cierre de flags. La ap
 | CI aprobado | workflow exitoso sobre SHA exacto |
 | Pages desplegado | deployment asociado al SHA |
 | Migraciones `0012`/`0013` aplicadas | lista remota, esquema, conteos y FK verificados |
+| Migración `0014` aplicada | bookmarks, preview→production, tablas/índices/trigger, conteos y FK |
 | Acceso Dux preparado | acceso directo, token e IDs confirmados sin inferir el plan; lectura Pages pendiente |
 | Snapshot Dux | sync real y conteos auditados |
 | Lifecycle Dux | reserva, consulta, liberación y finalización demostradas |

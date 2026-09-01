@@ -15,7 +15,7 @@ Dux -> sincronización de Mercado Libre
 
 Shekinah no está entre Dux y Mercado Libre. La integración directa Mercado Libre quedó retirada del camino activo; su código y tablas históricas se conservan únicamente para compatibilidad y auditoría.
 
-El 2026-09-01 la API Dux v2 respondió directamente con la credencial autorizada y permitió descubrir empresa `12862`, sucursal `1`, depósito `25566` y `743` items. El nombre exacto del plan no fue confirmado y no debe inferirse. `GET /v2/items` sigue sin publicar unidad/pesabilidad/divisibilidad, la API pública de pedidos no documenta cancelación, liberación, finalización o expiración segura de una reserva y Pages Functions no logró completar la primera lectura. El comercio permanece fail-closed hasta resolver transporte y ambos contratos.
+El 2026-09-01 la API Dux v2 respondió directamente con la credencial autorizada y permitió descubrir empresa `12862`, sucursal `1`, depósito `25566` y `743` items. El nombre exacto del plan no fue confirmado y no debe inferirse. `GET /v2/items` sigue sin publicar unidad/pesabilidad/divisibilidad y la API pública de pedidos no documenta cancelación, liberación, finalización o expiración segura de una reserva. Tres lecturas Pages históricas fallaron; la causa se aisló en `redirect: 'error'` y el candidato adopta el modo manual seguro, aún pendiente de cutover. El comercio permanece fail-closed hasta demostrar el transporte productivo y ambos contratos comerciales.
 
 ## Reglas de autoridad
 
@@ -93,9 +93,9 @@ GET /v2/depositos
 GET /v2/items
 ```
 
-El listado de items se pagina; no se hace un GET por producto ni una llamada por render. Las lecturas se serializan con un intervalo mínimo de cinco segundos, aplican timeout y retries limitados sólo para operaciones seguras. Se atienden `429`, `Retry-After` cuando existe y `error.reintentar_en_segundos` cuando forma parte de la respuesta documentada.
+El listado de items se pagina; no se hace un GET por producto ni una llamada por render. Las lecturas se serializan con un intervalo mínimo de cinco segundos, aplican timeout y retries limitados sólo para operaciones seguras. Se atienden `429`, `Retry-After` cuando existe y `error.reintentar_en_segundos` cuando forma parte de la respuesta documentada. El cliente usa `redirect: 'manual'`, no sigue redirecciones y rechaza todo `300`–`399` antes de leer cuerpo o `Location`.
 
-Los parsers exigen identificadores, strings y números finitos. Cantidades decimales o negativas se conservan como observación exacta. Una respuesta inválida o incompleta falla cerrada.
+Los parsers exigen identificadores, strings y números finitos. Cantidades decimales o negativas se conservan como observación exacta. La paginación fija el total inicial, exige que permanezca estable y sólo termina si el número de filas recibidas coincide exactamente. Una respuesta inválida o incompleta falla cerrada.
 
 ### Mapping y snapshot D1
 
@@ -111,6 +111,8 @@ Las dos tablas de pedidos son preparatorias y no habilitan mutaciones. `0012` bl
 
 Las migraciones `0010` a `0013` quedaron aplicadas y verificadas en preview y production el 2026-09-01. `0013` retira los contadores locales de los documentos activos, elimina sus triggers de reserva/consumo y exige una versión exacta del snapshot Dux en toda línea comercial nueva. Tres sync manuales productivos fallaron `DUX_UNAVAILABLE` con todos los conteos de items en cero; D1 conserva los ciclos fallidos, pero no contiene tenant, inventario/snapshot ni vínculos de pedidos Dux.
 
+`0014_dux_atomic_inventory_snapshots.sql`, todavía pendiente en las D1 remotas, agrega generaciones, staging incremental y presupuesto conservador por D1/día. Cada sync conserva la publicación anterior mientras compara el universo completo; reserva `64 + 14 × delta` y stagea sólo filas nuevas, cambiadas o recién ausentes. Un único batch transaccional aplica el delta por `UPSERT`, publica la generación y la frescura global, actualiza tenant/run y limpia staging. Un trigger impide publicar si `changed_count` difiere del staging o `item_count` de la cardinalidad visible resultante. Una corrida idéntica no reescribe inventario; una carga o publicación fallida conserva el snapshot anterior.
+
 El snapshot guarda identidad Dux, depósito, cantidades observadas, timestamps, estado y error. Los campos de unidad o divisibilidad permanecen explícitamente no verificados cuando v2 no los devuelve; nunca se completan a partir del nombre.
 
 El mapeo es determinístico:
@@ -119,11 +121,11 @@ El mapeo es determinístico:
 2. código externo exacto;
 3. SKU exacto;
 4. código de barras exacto y único;
-5. nombre normalizado exacto y único sólo durante bootstrap.
+5. clave conservadora de nombre exacta y única sólo durante bootstrap.
 
 No hay fuzzy matching. `unmapped` y `ambiguous` preservan el producto local sin cambiar contenido, pero lo dejan no vendible. Un item Dux ausente se marca como ausente sin borrar el producto editorial.
 
-`39ab007` implementa ese orden y restringe el nombre exacto a la corrida manual `initial` cuando aún no existe inventario. El barcode Dux se compara de forma exacta contra los identificadores canónicos de producto y variante porque el catálogo local no dispone de un campo de barcode independiente. El scheduler debe permanecer desactivado hasta validar el resultado contra un snapshot real y resolver cualquier ambigüedad observada.
+El candidato restringe el nombre a la corrida administrativa `initial` cuando aún no existe inventario. La clave aplica NFKC, minúsculas, espacios normalizados, diacríticos plegados preservando `ñ` y equivalencias de cantidad sólo para tokens completos; veta contradicciones con presentación o ID. No aplica fuzzy matching, sinónimos, singularización, coincidencias parciales ni aritmética de packs. El barcode Dux se compara de forma exacta contra los identificadores canónicos de producto y variante porque el catálogo local no dispone de un campo de barcode independiente. La canonicalización sólo compara identidad y no infiere semántica comercial ni transforma stock. El scheduler debe permanecer desactivado hasta validar el resultado contra un snapshot real y resolver cualquier ambigüedad observada.
 
 ## Flujo de Checkout Pro requerido
 
@@ -178,11 +180,13 @@ El comprador no ve IDs técnicos, tokens, depósito interno ni errores crudos. E
 - `401`, `403`, `429`, `5xx`, timeout o respuesta inválida bloquean venta;
 - no hay fallback a stock local, Mercado Libre o Excel.
 
-El diagnóstico productivo de `f138820` agrega sólo campos cerrados: `kind`, ruta sin query, status HTTP cuando existe y cantidad de intentos. El evento observado fue `fetch_exception` en `/v2/empresas`, `providerStatus=null`, `attempts=3`; no incluyó token, URL completa, cuerpo, mensaje de excepción ni PII. Esta clasificación prueba una falla antes de una respuesta HTTP, no un `5xx` Dux.
+El diagnóstico productivo histórico de `f138820` agrega sólo campos cerrados: `kind`, ruta sin query, status HTTP cuando existe y cantidad de intentos. El evento observado fue `fetch_exception` en `/v2/empresas`, `providerStatus=null`, `attempts=3`; no incluyó token, URL completa, cuerpo, mensaje de excepción ni PII. El candidato v2 suma fase, clase allowlisted y presencia de headers, sin mensajes, URL, query, headers, cuerpo o credenciales. Un `3xx` se registra como `provider_redirect` y se rechaza; nunca se sigue.
 
 ## Activación
 
-Para abrir comercio deben verificarse simultáneamente: acceso API Dux autorizado sin inferir el plan, token, IDs de tenant, `0012` y `0013` aplicadas, snapshot real, mapping auditado con datos reales, unidad y granularidad verificadas, creación y consulta de pedido, liberación/cancelación, finalización, sandbox Mercado Pago, webhook, CI, deployment y smoke del SHA exacto.
+Para abrir comercio deben verificarse simultáneamente: acceso API Dux autorizado sin inferir el plan, token, IDs de tenant, `0012`, `0013` y `0014` aplicadas, snapshot real, mapping auditado con datos reales, unidad y granularidad verificadas, creación y consulta de pedido, liberación/cancelación, finalización, sandbox Mercado Pago, webhook, CI, deployment y smoke del SHA exacto.
+
+El corte read-only previo exige además: un primer sync desde `/api/admin/dux/sync` con `kind=initial`; exactamente una generación `published` y cero `loading`; `item_count` igual a la tabla visible, `changed_count` igual a la carga inicial y staging vacío tras publicar; conteos del run coherentes; cero duplicados mapeados; toda semántica `unavailable_from_v2_items`; y cero `checkout_eligible`. El endpoint del scheduler siempre es `scheduled` y no puede ejecutar el bootstrap inicial.
 
 Hasta entonces:
 
@@ -197,4 +201,4 @@ VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 
 No se ejecuta un pago real ni una reserva productiva como smoke automático.
 
-La fase diagnóstica del 2026-09-01 cerró con CI `#416` exitoso y deployment Pages production `8781412e-629b-4473-8081-89c6fbc1ffec` sobre `f138820`, con `fail_open=false`, bindings D1/R2 intactos y build exitoso bajo npm `11.6.0` sin auto-install. El candidato funcional `39ab007` eliminó el fallback local y aprobó la validación local completa. Su CI y deployment todavía no se afirman: deben comprobarse sobre el SHA exacto publicado después del push. `DUX_API_ENABLED`, comercio, Mercado Libre y la reconciliación programada permanecen deshabilitados.
+La fase diagnóstica del 2026-09-01 cerró con CI `#416` exitoso y deployment Pages production `8781412e-629b-4473-8081-89c6fbc1ffec` sobre `f138820`, con `fail_open=false`, bindings D1/R2 intactos y build exitoso bajo npm `11.6.0` sin auto-install. `39ab007` eliminó el fallback local. La fase actual agrega transporte manual, snapshot atómico y bootstrap conservador y aprobó la validación local completa; su SHA, CI, deployment, migración `0014` y sync aún no se afirman. `DUX_API_ENABLED`, comercio, Mercado Libre y la reconciliación programada permanecen deshabilitados.

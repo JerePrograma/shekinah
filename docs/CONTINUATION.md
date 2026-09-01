@@ -2,7 +2,7 @@
 
 ## Prioridad vigente desde 2026-09-01
 
-Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md` y `docs/COMMERCE_DEPLOYMENT.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Acceso oficial, IDs y migraciones `0010`–`0013` quedaron verificados; tres sync productivos fallaron por transporte y no existe snapshot. Checkout Pro y WhatsApp permanecen cerrados hasta validar el mapping corregido con un sync read-only y demostrar unidad, liberación y finalización seguras.
+Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`, `docs/COMMERCE_DEPLOYMENT.md` y `docs/validation/DUX_LIVE_INVENTORY_CUTOVER_2026-09-01.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Acceso oficial, IDs y migraciones `0010`–`0013` quedaron verificados; tres sync productivos históricos fallaron y no existe snapshot. La causa de transporte fue aislada y el candidato incorpora el modo manual seguro, publicación atómica `0014` y bootstrap conservador, pero todavía debe publicarse, migrarse y probarse. Checkout Pro y WhatsApp permanecen cerrados hasta validar el mapping con un sync read-only y demostrar unidad, liberación y finalización seguras.
 
 Las evidencias de despliegues anteriores que siguen a continuación son históricas. No autorizan reactivar OAuth, sincronización directa Mercado Libre, reservas locales ni Link de Pago.
 
@@ -29,7 +29,7 @@ El repositorio contiene una evolución full-stack basada en:
 - Cloudflare Pages Functions;
 - Cloudflare D1;
 - Mercado Pago Checkout Pro directo, preparado pero no activado públicamente;
-- Dux como única autoridad de inventario, con snapshot D1 read-only previsto y mapping corregido por código pero no validado en remoto;
+- Dux como única autoridad de inventario, con snapshot D1 read-only por generaciones atómicas y mapping conservador por código todavía no validado en remoto;
 - pedido WhatsApp futuro con reserva Dux previa y el mismo lifecycle autoritativo que Checkout Pro;
 - autenticación administrativa propia y Cloudflare Access opcional;
 - backoffice visual de catálogo sin edición de stock, con inventario Dux read-only e imágenes administradas preparadas para R2;
@@ -91,6 +91,8 @@ Las migraciones `0010` a `0013` se aplicaron primero en preview y luego en produ
 
 Tres reconciliaciones productivas devolvieron `DUX_UNAVAILABLE` con cero items procesados. La instrumentación `f138820` identificó `fetch_exception` en `/v2/empresas`, `providerStatus=null`, después de tres intentos. Producción no contiene snapshot, contexto de tenant, inventario ni vínculos de pedidos Dux. `39ab007` corrigió el orden de mapping y limitó el nombre al bootstrap, pero falta validarlo contra datos Dux reales.
 
+Una fase posterior, iniciada desde `2bbd62f547b9b0de84f8794a6dcf679ef07a7df8`, aisló el fallo en `redirect: 'error'`: con `redirect: 'manual'` Cloudflare recibe una respuesta clasificable. El candidato nunca sigue redirecciones y rechaza todo `3xx`; agrega consistencia terminal de paginación, bootstrap conservador con vetos y `0014` para staging incremental/publicación atómica. Cada corrida verifica el universo completo, pero un no-op no reescribe inventario; la frescura se fija al publicar y existe un presupuesto total de 45 intentos HTTP. Esta fase está validada localmente pero aún no constituye resultado productivo: el SHA, CI, deployment, migración remota y sync siguen pendientes.
+
 `f138820` aprobó CI `#416`. Cloudflare Pages construyó con Node.js `24.18.0` y npm `11.6.0`, mediante `SKIP_DEPENDENCY_INSTALL` y un comando de instalación fijado, y publicó el deployment canónico `8781412e-629b-4473-8081-89c6fbc1ffec`. El éxito de CI y Pages no acredita la reconciliación Dux.
 
 El estado final es fail-closed: `DUX_API_ENABLED=false`, `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false`, ambos flags Mercado Libre en `false` y scheduler Dux deshabilitado. Unidades, divisibilidad, mapping remoto y lifecycle de reserva/liberación/finalización continúan sin demostrarse.
@@ -125,18 +127,20 @@ R2 está activo y verificado por API. Production reutiliza `shekinah`; preview u
 
 ## Próximos pasos
 
-1. resolver siempre el SHA vigente de `main` y `origin/main` antes de continuar;
-2. mantener `DUX_API_ENABLED`, comercio, Mercado Libre directo y scheduler en `false`;
-3. resolver la excepción de transporte Pages → Dux sin exponer token, parámetros, body ni mensajes crudos;
-4. conservar el mapping corregido en `39ab007` y revisar su cobertura antes de un sync real;
-5. ejecutar un único sync read-only controlado y auditar el resultado antes de habilitar el scheduler;
-6. auditar snapshot, conteos `mapped`/`unmapped`/`ambiguous`, decimales y stock cero/negativo sin convertir D1 en autoridad;
-7. obtener de Dux campos oficiales de unidad/divisibilidad y lifecycle idempotente de reserva, consulta, liberación y finalización;
-8. no habilitar Checkout Pro ni WhatsApp hasta completar esos contratos y el sandbox financiero; cualquier operación productiva requiere autorización puntual;
-9. mantener retirado el Link de Pago manual y comprobar que `manual_payment_click` nunca alimente pedidos, pagos o revenue;
-10. preservar `DB`, R2, `Fail closed`, secretos cifrados y aislamiento entre production/preview; no confundir Pages con el Worker homónimo;
-11. ejecutar el smoke administrativo pendiente sin aplicar Access sobre login ni todo `/api/admin/*`;
-12. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` por entorno y repetir los smokes públicos sobre el SHA exacto.
+1. validar y publicar el candidato con transporte manual, delta atómico y bootstrap conservador;
+2. esperar CI y deployment Pages del mismo SHA con Dux todavía deshabilitado;
+3. obtener bookmarks y aplicar `0014` primero en preview y luego en producción, verificando esquema, conteos y cero `loading`;
+4. confirmar en producción cero snapshot, vínculos y operaciones Dux antes del primer ciclo;
+5. ejecutar un único sync read-only desde `/api/admin/dux/sync`, no desde el scheduler, para obtener `kind=initial` y auditar el bootstrap;
+6. auditar generación publicada, conteos `mapped`/`unmapped`/`ambiguous`, duplicados, decimales y stock cero/negativo sin convertir D1 en autoridad;
+7. configurar y verificar en producción `DUX_SNAPSHOT_MAX_AGE_SECONDS=1800`, ejecutar un segundo ciclo no-op y acreditar resultado/CPU de Functions;
+8. habilitar el scheduler read-only sólo después de esas auditorías; unidad y lifecycle son bloqueos independientes del comercio;
+9. obtener de Dux campos oficiales de unidad/divisibilidad y lifecycle idempotente de reserva, consulta, liberación y finalización;
+10. no habilitar Checkout Pro ni WhatsApp hasta completar esos contratos y el sandbox financiero; cualquier pago real requiere autorización puntual;
+11. mantener retirado el Link de Pago manual y comprobar que `manual_payment_click` nunca alimente pedidos, pagos o revenue;
+12. preservar `DB`, R2, `Fail closed`, secretos cifrados y aislamiento entre production/preview; no confundir Pages con el Worker homónimo;
+13. ejecutar el smoke administrativo pendiente sin aplicar Access sobre login ni todo `/api/admin/*`;
+14. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` por entorno y repetir los smokes públicos sobre el SHA exacto.
 
 ## Prohibiciones
 

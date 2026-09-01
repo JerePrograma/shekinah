@@ -68,6 +68,10 @@ Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json`, 
 
 Esta evidencia no habilita Dux ni el comercio: confirma una configuración fail-closed y una incompatibilidad de transporte entre Pages Functions y el endpoint Dux que debe diagnosticarse sin relajar los guards.
 
+### Candidato de corte Dux posterior
+
+Una fase posterior iniciada desde `2bbd62f547b9b0de84f8794a6dcf679ef07a7df8` aisló la incompatibilidad en `redirect: 'error'`. El candidato usa `redirect: 'manual'`, nunca sigue redirecciones, rechaza todo `3xx`, valida el total paginado y emite diagnóstico v2 sanitizado. También agrega bootstrap conservador de identidad y `0014_dux_atomic_inventory_snapshots.sql` para staging incremental/publicación atómica: cada ciclo verifica Dux completo, pero sólo escribe el delta y renueva frescura global al finalizar. Estos cambios están validados localmente, pero el SHA, CI, deployment, aplicación remota de `0014` y primer sync productivo se registran aparte; el estado externo anterior continúa fail-closed y sin snapshot hasta observarlos.
+
 ## Configuración pública autorizada el 2026-08-10
 
 ```text
@@ -115,7 +119,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `0001` a `0013` y deben aplicarse en orden sin modificar las ya publicadas. `0009` incorpora el legado Mercado Libre, `0010` la liberación terminal legacy, `0011` el control local legacy, `0012_dux_authoritative_inventory.sql` la proyección y los guards Dux y `0013_remove_local_catalog_stock.sql` retira la autoridad de stock local del catálogo activo. La evidencia histórica del 2026-08-22 cubre sólo `0001` a `0008`; la verificación del 2026-09-01 confirma que `0010` a `0013` ya están aplicadas en ambas D1 remotas. Cada sesión futura debe volver a comprobar la lista efectiva en vez de inferirla por esta documentación.
+Las migraciones versionadas son `0001` a `0014` y deben aplicarse en orden sin modificar las ya publicadas. `0009` incorpora el legado Mercado Libre, `0010` la liberación terminal legacy, `0011` el control local legacy, `0012_dux_authoritative_inventory.sql` la proyección y los guards Dux, `0013_remove_local_catalog_stock.sql` retira la autoridad de stock local del catálogo activo y `0014_dux_atomic_inventory_snapshots.sql` agrega generaciones, publicación atómica y `dux_d1_write_budget`. La evidencia histórica del 2026-08-22 cubre sólo `0001` a `0008`; la verificación del 2026-09-01 confirma que `0010` a `0013` ya están aplicadas en ambas D1 remotas. `0014` continúa pendiente hasta el cutover. Cada sesión futura debe volver a comprobar la lista efectiva en vez de inferirla por esta documentación.
 
 El endpoint `/query` de D1 devolvió `7500 incomplete input` al intentar `0008` con triggers y revirtió todo. El cierre usó `wrangler d1 execute --file`, que invoca el import oficial, con el SQL versionado y la inserción exacta de su nombre en `d1_migrations`; producción sólo se migró después de la verificación funcional y limpieza de preview.
 
@@ -165,7 +169,7 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 ## Activación
 
 - WhatsApp: número autorizado, pero creación de pedidos bloqueada hasta demostrar el lifecycle Dux; Link de Pago manual retirado;
-- Checkout Pro automatizado: integración financiera conservada; activación productiva bloqueada por la falla de lectura Dux desde Pages, la validación remota pendiente del mapping corregido, la semántica y el lifecycle Dux, además del pago sandbox pendiente;
+- Checkout Pro automatizado: integración financiera conservada; activación productiva bloqueada hasta demostrar el corte read-only desde Pages, el mapping, la semántica y el lifecycle Dux, además del pago sandbox pendiente;
 - analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 

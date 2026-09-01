@@ -20,9 +20,11 @@ El repositorio contiene una integración **read-only** con la API oficial Dux v2
 - cliente server-side con `Authorization: Bearer <token>`;
 - base `https://erp.duxsoftware.com.ar/WSERP/rest/services`;
 - lecturas `GET /v2/empresas`, `GET /v2/sucursales`, `GET /v2/depositos` y `GET /v2/items`;
-- paginación del listado, validación defensiva, timeout, serialización mínima de una solicitud cada cinco segundos y tratamiento acotado de `429`/errores transitorios;
-- persistencia preparada para snapshot y mapping en D1 mediante `migrations/0012_dux_authoritative_inventory.sql`;
-- reconciliación programable por `/api/internal/dux/reconcile`, desactivada hasta completar un sync manual verificable y resolver unidad/lifecycle;
+- paginación del listado con total estable y conteo final exacto, validación defensiva, timeout, serialización mínima de una solicitud cada cinco segundos y tratamiento acotado de `429`/errores transitorios;
+- plazo monotónico de siete minutos para la fase de lecturas Dux, máximo de 45 intentos HTTP y corte previo a cualquier payload D1 fuera del límite seguro; el mapping y la publicación D1 posteriores conservan límites propios;
+- transporte con `redirect: 'manual'`: nunca sigue una redirección y rechaza cualquier `300`–`399` antes de leer el cuerpo o `Location`;
+- snapshot y mapping D1 mediante `0012`, con delta aislado, presupuesto diario conservador de escritura y publicación atómica por generaciones en la migración aditiva `0014_dux_atomic_inventory_snapshots.sql`;
+- reconciliación programable por `/api/internal/dux/reconcile`, desactivada hasta completar y auditar un sync administrativo `initial`; unidad/lifecycle siguen siendo bloqueos independientes del comercio;
 - diagnóstico Dux en el backoffice, con el inventario observado como sólo lectura.
 
 D1 guarda una observación, el vínculo y auditoría; nunca se convierte en autoridad de stock. Un producto sin vínculo único queda preservado editorialmente, pero no puede venderse con stock desconocido.
@@ -32,6 +34,8 @@ El 2026-09-01 el token se verificó directamente contra la API oficial sin persi
 Las migraciones `0010` a `0013` quedaron aplicadas y verificadas en preview y producción. `0013_remove_local_catalog_stock.sql` eliminó los contadores locales de los documentos editoriales, retiró los triggers que reservaban/consumían ese stock y exige una versión exacta de snapshot Dux en toda línea comercial nueva. En producción limpió 6 documentos sin alterar los 15 pedidos, 30 líneas ni 21 mutaciones editoriales.
 
 Tres reconciliaciones productivas anteriores terminaron `DUX_UNAVAILABLE` antes de procesar items. El diagnóstico desplegado en `f138820` clasificó el fallo como `fetch_exception` sobre `/v2/empresas`, sin estado HTTP del proveedor y después de tres intentos. No existe snapshot Dux productivo ni filas de tenant, inventario o vínculos de pedidos.
+
+Un diagnóstico aislado posterior comprobó que `redirect: 'error'` provocaba esa excepción de Cloudflare antes de exponer headers, mientras `redirect: 'manual'` permitía clasificar la respuesta. El candidato actual adopta el modo manual, rechaza todo `3xx` sin seguirlo, valida la paginación completa y conserva telemetría sanitizada. Cada corrida sigue verificando el universo completo, pero `0014` aísla y publica sólo filas nuevas, modificadas o recién ausentes; una corrida idéntica renueva la frescura global sin reescribir `dux_inventory_items`. Estos cambios están validados localmente, pero al momento de este commit aún falta publicar el SHA, aplicar `0014` y ejecutar el primer sync productivo controlado; el estado remoto continúa sin snapshot y fail-closed.
 
 La salida comercial permanece cerrada:
 
@@ -45,9 +49,11 @@ VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 
 Permanecen bloqueos deliberados:
 
-1. Pages Functions no logra completar la lectura Dux aunque la API oficial responda desde la verificación directa;
+1. la corrección del transporte de Pages todavía debe desplegarse y demostrarse mediante un sync productivo controlado;
 2. la API pública revisada no documenta un ciclo seguro para cancelar/liberar/finalizar o vencer una reserva creada por pedido y `GET /v2/items` no publica unidad, pesabilidad, divisibilidad ni una regla de decimales suficiente para habilitar venta;
-3. el mapping corregido en `39ab007` aún no pudo validarse contra un snapshot real: ahora respeta vínculo persistido, código externo, SKU/variante, barcode Dux exacto contra los identificadores canónicos y nombre exacto sólo durante el bootstrap inicial.
+3. el mapping aún no pudo validarse contra un snapshot real: respeta vínculo persistido, código externo, SKU/variante y barcode exacto; sólo en el bootstrap inicial admite una clave de nombre conservadora con tokens completos de presentación, vetos de contradicción y ambigüedad cerrada. No aplica fuzzy matching, sinónimos, singularización ni aritmética de packs.
+
+La canonicalización de presentación se usa exclusivamente para comparar identidad durante ese bootstrap. Nunca infiere unidad comercial, pesabilidad, divisibilidad, paso comprable, peso de envío ni transforma las cantidades de stock recibidas de Dux.
 
 Por esas razones el backend bloquea Checkout Pro y WhatsApp antes de crear una preferencia, abrir el canal o mutar inventario. No se crearon pedidos, pagos ni reservas Dux. Un build correcto no habilita el comercio.
 
@@ -141,6 +147,6 @@ Cloudflare Pages debe conservar:
 - npm: `11.6.0`, con instalación automática de dependencias desactivada mediante `SKIP_DEPENDENCY_INSTALL` y el comando de instalación fijado explícitamente;
 - dominio público canónico: `https://shekinah.ar`.
 
-El cierre del 2026-09-01 partió de `d723f250ec3ef84abfa78bf66675248271106326`. La instrumentación funcional `f138820` aprobó CI `#416`; el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec` completó el build con npm `11.6.0`. El commit funcional `39ab007` elimina la autoridad local de stock y acompaña la migración `0013` ya aplicada. Ninguno de esos hitos acredita una reconciliación Dux: los flags Dux, comercio, Mercado Libre directo y scheduler siguen en `false`.
+El cierre del 2026-09-01 partió de `d723f250ec3ef84abfa78bf66675248271106326`. La instrumentación funcional `f138820` aprobó CI `#416`; el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec` completó el build con npm `11.6.0`. El commit funcional `39ab007` elimina la autoridad local de stock y acompaña la migración `0013` ya aplicada. El estado remoto previo a este candidato es `2bbd62f547b9b0de84f8794a6dcf679ef07a7df8`: `0014` todavía no está aplicada, no existe snapshot productivo y los flags Dux, comercio, Mercado Libre directo y scheduler siguen en `false`.
 
 La CSP mantiene `connect-src 'self'`: el frontend usa APIs first-party y las conexiones con Dux y Mercado Pago ocurren exclusivamente desde Pages Functions. La integración directa de inventario Mercado Libre queda retirada y sus tablas históricas se conservan sin participar del flujo productivo.

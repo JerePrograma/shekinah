@@ -48,6 +48,10 @@ Tratar como permisos o plan insuficiente. Confirmar PRO/FULL y alcance del token
 
 El cliente debe conservar la serialización de una solicitud cada cinco segundos y respetar `Retry-After` cuando exista. No aumentar concurrencia, lanzar varios schedulers ni reintentar sin límite.
 
+### `300`–`399`
+
+El cliente debe clasificarlo como `provider_redirect`/`DUX_PROVIDER_REJECTED`, cancelar el body de forma best-effort y no seguir la redirección ni inspeccionar `Location`. El diagnóstico permitido contiene sólo endpoint sin query, status, intentos, fase, clase cerrada y presencia de headers.
+
 ### `5xx`, timeout o payload inválido
 
 Detener ventas. Un timeout de GET admite retry acotado. Un timeout de una futura mutación es resultado incierto: registrar la operación, consultar por referencia y no repetirla ciegamente. Un snapshot obsoleto puede mostrarse como diagnóstico, nunca autorizar una venta.
@@ -95,7 +99,9 @@ Valores negativos o decimales son observaciones válidas del proveedor. Una cant
 
 ## Snapshot obsoleto o sync fallido
 
-La proyección D1 no es autoridad. Si excede `DUX_SNAPSHOT_MAX_AGE_SECONDS`, la disponibilidad queda desconocida. Revisar el último `dux_sync_runs`, credenciales, IDs y rate limit. Una sincronización solapada debe reutilizar el lock y no iniciar una tormenta de requests.
+La proyección D1 no es autoridad. Si excede `DUX_SNAPSHOT_MAX_AGE_SECONDS`, la disponibilidad queda desconocida. Revisar el último `dux_sync_runs`, credenciales, IDs, rate limit y las generaciones de `0014`. La frescura global proviene de `dux_tenant_context.verified_at` publicado al final de un ciclo íntegro; `last_synced_at` conserva cuándo cambió materialmente cada fila. Una sincronización solapada debe reutilizar el lock y no iniciar una tormenta de requests.
+
+Si falla una carga o publicación, no borrar ni reescribir `dux_inventory_items`. Ante una excepción capturada, verificar que la generación nueva figure `failed`, su staging esté limpio y la generación anterior continúe `published`. Una terminación abrupta del runtime —incluido un kill/1102— puede dejar la generación `loading` y staging hasta que la recuperación versionada del lease actúe después de 30 minutos; no corregir esos estados a mano. Si el error es `DUX_SUBREQUEST_BUDGET_EXHAUSTED`, `DUX_SYNC_DEADLINE_EXCEEDED`, `DUX_D1_WRITE_BUDGET_EXHAUSTED` o `DUX_STAGING_PAYLOAD_TOO_LARGE`, no elevar el límite: revisar transitorio, volumen y métricas `rows_written` de toda la cuenta. Si Cloudflare informa `exceededCpu`/1102, deshabilitar el scheduler y decidir explícitamente entre optimizar/segmentar o contratar Workers Paid; no comprar ni cambiar de plan de forma implícita.
 
 No “recuperar” copiando stock local, desde Excel o desde Mercado Libre.
 
@@ -174,7 +180,7 @@ No revertir hacia una versión que reactive Mercado Libre o stock local como aut
 
 ## Rollback de base
 
-`0012` es aditiva. La opción conservadora es dejar sus tablas sin uso tras un rollback de aplicación. No hacer `DROP TABLE` inmediato ni editar la migración aplicada.
+`0012` y `0014` son aditivas. La opción conservadora es dejar sus tablas sin uso tras un rollback de aplicación. Deshabilitar Dux y scheduler, preservar generaciones y snapshot, y no hacer `DROP TABLE`, borrado manual ni edición de una migración aplicada.
 
 Para transformar o eliminar esquema:
 

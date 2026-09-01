@@ -19,10 +19,12 @@ El candidato incorpora:
 
 - cliente server-side Dux API v2 con Bearer;
 - lecturas oficiales de empresas, sucursales, depósitos e items;
-- paginación, validación defensiva, timeout, rate limit de una solicitud cada cinco segundos y retry limitado de lecturas;
+- paginación con total estable y conteo final exacto, validación defensiva, timeout, rate limit de una solicitud cada cinco segundos y retry limitado de lecturas;
+- `redirect: 'manual'`, rechazo explícito de todo `300`–`399` sin seguimiento y diagnóstico v2 sanitizado;
 - `migrations/0012_dux_authoritative_inventory.sql` para contexto, sync, snapshot/mapping y trazabilidad futura de pedidos;
 - `migrations/0013_remove_local_catalog_stock.sql` para retirar los contadores locales del catálogo activo y exigir snapshot Dux exacto en toda línea comercial nueva;
-- mapping con estados `mapped`, `unmapped` y `ambiguous`, corregido en `39ab007` y todavía pendiente de validación contra un snapshot real;
+- `migrations/0014_dux_atomic_inventory_snapshots.sql` para cargar deltas aislados y publicar sólo estados completos;
+- mapping con estados `mapped`, `unmapped` y `ambiguous`, bootstrap conservador con vetos de presentación/ID y todavía pendiente de validación contra un snapshot real;
 - proyección D1 read-only sin convertirla en autoridad;
 - backoffice Dux de diagnóstico y stock no editable;
 - scheduler Dux read-only desactivado por default;
@@ -59,7 +61,9 @@ providerStatus=null
 attempts=3
 ```
 
-El token permanece únicamente como secreto cifrado. El estado final vuelve a `DUX_API_ENABLED=false` hasta resolver el transporte.
+Los tres fallos permanecen como evidencia histórica. Un diagnóstico aislado posterior comprobó que `redirect: 'error'` producía la excepción antes de headers, mientras `redirect: 'manual'` permitía clasificar la respuesta. El candidato adopta el modo manual, no sigue redirecciones y rechaza explícitamente todo `3xx`; falta desplegarlo y verificarlo dentro de Pages Functions con el token cifrado ya configurado.
+
+El token permanece únicamente como secreto cifrado. El estado remoto continúa con `DUX_API_ENABLED=false` hasta publicar, migrar y ejecutar el sync controlado.
 
 ### Semántica de cantidades
 
@@ -88,7 +92,9 @@ La migración `0012` aplica un hard block adicional en D1: impide líneas y camb
 
 ### Mapping
 
-El contrato exige vínculo persistido, código externo, SKU, barcode exacto único y nombre exacto sólo durante bootstrap. `39ab007` implementa ese orden: compara el barcode Dux contra los identificadores canónicos de producto/variante y sólo permite nombre exacto en una corrida manual `initial` cuando la tabla de inventario está vacía. El catálogo local no posee un campo de barcode independiente, por lo que esa comparación reutiliza SKU/variant SKU y debe auditarse con datos reales. Como los tres sync fallaron antes de procesar items, no existe mapping productivo que limpiar ni evidencia remota para declarar el algoritmo validado. El scheduler permanece desactivado.
+El contrato exige vínculo persistido, código externo, SKU, barcode exacto único y nombre sólo durante bootstrap. El último paso construye una clave conservadora con NFKC, espacios, diacríticos preservando `ñ` y equivalencias de cantidad únicamente para tokens completos reconocidos; contradicciones entre nombre, presentación e ID histórico lo vetan. No elimina puntuación arbitraria ni aplica singularización, sinónimos, fuzzy matching, coincidencias parciales o aritmética de packs. Sólo corre con `kind=initial` e inventario visible vacío. El catálogo local no posee un campo barcode independiente, por lo que esa comparación reutiliza SKU/variant SKU y debe auditarse con datos reales.
+
+La clave sirve sólo para identidad y no infiere semántica comercial ni transforma stock. Como los tres sync fallaron antes de procesar items, no existe mapping productivo que limpiar ni evidencia remota para declarar el algoritmo validado. El scheduler permanece desactivado.
 
 ## Flags
 
@@ -140,6 +146,8 @@ Las migraciones `0010_checkout_terminal_reservation_release.sql`, `0011_local_or
 
 Producción conserva tres ciclos Dux fallidos y cero items procesados. No hay snapshot, contexto de tenant, inventario ni vínculos de pedidos Dux. No se crearon pedidos, pagos o reservas Dux durante la configuración.
 
+El esquema versionado ahora incluye `0014`, que carga en `dux_inventory_generation_items` sólo filas nuevas, cambiadas o recién ausentes bajo una generación `loading`. Antes de staging reserva un presupuesto conservador por día UTC; un único batch aplica el delta a `dux_inventory_items`, publica generación y frescura global, actualiza tenant/run y limpia staging; el trigger coteja `changed_count` e `item_count`. Una corrida idéntica no reescribe inventario y una falla conserva la publicación anterior. El cliente limita deadline, intentos y payload antes de superar contratos Free/D1. `0014` todavía no está aplicada en preview ni producción y debe migrarse, con bookmarks y auditoría, antes de habilitar Dux.
+
 Las migraciones, órdenes, pagos, auditoría, catálogo, imágenes y tablas históricas Mercado Libre existentes se preservan.
 
 ## Cloudflare y GitHub
@@ -162,7 +170,7 @@ Entorno canónico:
 - Playwright;
 - verificadores de catálogo, seguridad y automatización.
 
-CI `#416` y el build de Pages del SHA `f138820` concluyeron correctamente. El candidato funcional `39ab007` aprobó localmente `npm ci`, instalación de navegadores, `npm run verify` y `npm run build:pages` con Node.js `24.18.0` y npm `11.6.0`: 329 pruebas aprobaron, 14 históricas quedaron omitidas y Playwright aprobó 25 de 25. Su CI y deployment deben verificarse sobre el SHA documental final después del push.
+CI `#416` y el build de Pages del SHA `f138820` concluyeron correctamente. Esta fase aprobó localmente `npm ci`, instalación de navegadores, `npm run verify` y `npm run build:pages` con Node.js `24.18.0` y npm `11.6.0`: 358 pruebas aprobaron, 14 históricas quedaron omitidas y Playwright aprobó 25 de 25. Los checks Git aún deben repetirse sobre el diff definitivo. Persisten dos vulnerabilidades altas preexistentes y warnings conocidos de chunk/peso editorial. CI y deployment deben verificarse sobre el SHA documental final después del push.
 
 ## Separación de estados
 
@@ -173,12 +181,13 @@ Toda continuidad debe distinguir:
 3. commit y push;
 4. GitHub Actions;
 5. deployment Pages;
-6. migraciones `0010`–`0013`;
-7. secrets y variables Dux;
-8. acceso API real;
-9. mapping real;
-10. lifecycle de reserva/liberación/finalización;
-11. sandbox Mercado Pago;
-12. activación productiva y pago autorizado.
+6. migraciones `0010`–`0013` ya aplicadas;
+7. migración `0014` versionada y pendiente de aplicación remota;
+8. secrets y variables Dux;
+9. acceso API real;
+10. mapping real;
+11. lifecycle de reserva/liberación/finalización;
+12. sandbox Mercado Pago;
+13. activación productiva y pago autorizado.
 
 Ninguna etapa demuestra automáticamente la siguiente. Código local, secretos, IDs y migraciones están verificados; el mapping está corregido por código pero no validado con datos remotos, y snapshot, unidades y lifecycle no están disponibles. El estado productivo actual es **fail-closed**, con Dux API, comercio, Mercado Libre directo y scheduler deshabilitados.
