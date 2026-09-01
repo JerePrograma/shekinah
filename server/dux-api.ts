@@ -14,6 +14,20 @@ const ITEM_PAGE_LIMIT = 50;
 const MAX_ITEM_PAGES = 100;
 const MAX_RESPONSE_BYTES = 2_000_000;
 
+type DuxReadEndpoint =
+  | '/v2/empresas'
+  | '/v2/sucursales'
+  | '/v2/depositos'
+  | '/v2/items';
+
+type DuxTransportFailureDiagnostic = Readonly<{
+  version: 1;
+  kind: 'upstream_5xx' | 'fetch_exception';
+  endpoint: DuxReadEndpoint;
+  providerStatus: number | null;
+  attempts: number;
+}>;
+
 export type DuxFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -256,10 +270,13 @@ export class DuxApiClient {
     );
   }
 
-  private get(path: string, parameters: Readonly<Record<string, string>> = {}): Promise<unknown> {
+  private get(
+    path: DuxReadEndpoint,
+    parameters: Readonly<Record<string, string>> = {},
+  ): Promise<unknown> {
     const url = new URL(`${DUX_API_BASE_URL}${path}`);
     for (const [name, value] of Object.entries(parameters)) url.searchParams.set(name, value);
-    return this.enqueue(() => this.performGet(url));
+    return this.enqueue(() => this.performGet(url, path));
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -271,7 +288,7 @@ export class DuxApiClient {
     return result;
   }
 
-  private async performGet(url: URL): Promise<unknown> {
+  private async performGet(url: URL, endpoint: DuxReadEndpoint): Promise<unknown> {
     for (let attempt = 0; attempt < this.maxGetAttempts; attempt += 1) {
       await this.waitForRequestSlot();
       await this.beforeRequest();
@@ -312,17 +329,40 @@ export class DuxApiClient {
             continue;
           }
         }
-        throw statusError(response.status);
+        const providerError = statusError(response.status);
+        if (
+          providerError.code === 'DUX_UNAVAILABLE' &&
+          providerError.providerStatus !== null
+        ) {
+          reportDuxTransportFailure({
+            version: 1,
+            kind: 'upstream_5xx',
+            endpoint,
+            providerStatus: providerError.providerStatus,
+            attempts: attempt + 1,
+          });
+        }
+        throw providerError;
       } catch (error: unknown) {
         if (error instanceof DuxApiError || error instanceof HttpError) throw error;
         if (attempt + 1 < this.maxGetAttempts) {
           await this.sleep(defaultRetryDelay(attempt, this.maxRetryDelayMs));
           continue;
         }
+        const aborted = timedOut || isAbortError(error);
+        if (!aborted) {
+          reportDuxTransportFailure({
+            version: 1,
+            kind: 'fetch_exception',
+            endpoint,
+            providerStatus: null,
+            attempts: attempt + 1,
+          });
+        }
         throw new DuxApiError(
           503,
-          timedOut || isAbortError(error) ? 'DUX_TIMEOUT' : 'DUX_UNAVAILABLE',
-          timedOut || isAbortError(error)
+          aborted ? 'DUX_TIMEOUT' : 'DUX_UNAVAILABLE',
+          aborted
             ? 'Dux no respondió dentro del tiempo esperado.'
             : 'Dux no está disponible temporalmente.',
         );
@@ -346,6 +386,10 @@ export class DuxApiClient {
     }
     this.nextRequestAt = startedAt + this.minRequestIntervalMs;
   }
+}
+
+function reportDuxTransportFailure(diagnostic: DuxTransportFailureDiagnostic): void {
+  console.warn('dux_api_transport_failure', diagnostic);
 }
 
 export function parseDuxCompanyPage(value: unknown): DuxPage<DuxCompany> {

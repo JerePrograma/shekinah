@@ -294,20 +294,84 @@ describe('Dux API v2', () => {
       expect(sleeps).toEqual([4_000]);
     });
 
-    it('reintenta fallos 5xx de forma acotada', async () => {
-      let calls = 0;
-      const fetchImplementation: DuxFetch = () => {
-        calls += 1;
-        return Promise.resolve(jsonResponse({ error: { codigo: 'TEMPORAL' } }, 503));
+    it('distingue un 5xx terminal de una excepción fetch sin registrar datos sensibles', async () => {
+      const tokenSentinel = 'dux-token-sentinel-never-log';
+      const bodySentinel = 'provider-body-sentinel-never-log';
+      const errorSentinel = 'fetch-error-sentinel-never-log';
+      const companyIdSentinel = 987654321;
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const common = {
+        accessToken: tokenSentinel,
+        maxGetAttempts: 2,
+        maxRetryDelayMs: 0,
+        minRequestIntervalMs: 0,
+        sleep: () => Promise.resolve(),
       };
-      const client = testClient(fetchImplementation, { maxGetAttempts: 3 });
+      const httpFetch = vi.fn(() => Promise.resolve(new Response(
+        JSON.stringify({ error: bodySentinel }),
+        {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        },
+      )));
+      const failingFetch = vi.fn(() => Promise.reject(new TypeError(errorSentinel)));
 
-      await expect(client.listEmpresas()).rejects.toMatchObject({
-        status: 503,
-        code: 'DUX_UNAVAILABLE',
-        providerStatus: 503,
-      });
-      expect(calls).toBe(3);
+      try {
+        const httpClient = new DuxApiClient({ ...common, fetch: httpFetch });
+        await expect(
+          httpClient.listSucursales(companyIdSentinel),
+        ).rejects.toMatchObject({
+          status: 503,
+          code: 'DUX_UNAVAILABLE',
+          providerStatus: 503,
+        });
+
+        const exceptionClient = new DuxApiClient({ ...common, fetch: failingFetch });
+        await expect(
+          exceptionClient.listSucursales(companyIdSentinel),
+        ).rejects.toMatchObject({
+          status: 503,
+          code: 'DUX_UNAVAILABLE',
+          providerStatus: null,
+        });
+
+        expect(warning.mock.calls).toEqual([
+          [
+            'dux_api_transport_failure',
+            {
+              version: 1,
+              kind: 'upstream_5xx',
+              endpoint: '/v2/sucursales',
+              providerStatus: 503,
+              attempts: 2,
+            },
+          ],
+          [
+            'dux_api_transport_failure',
+            {
+              version: 1,
+              kind: 'fetch_exception',
+              endpoint: '/v2/sucursales',
+              providerStatus: null,
+              attempts: 2,
+            },
+          ],
+        ]);
+        expect(httpFetch).toHaveBeenCalledTimes(2);
+        expect(failingFetch).toHaveBeenCalledTimes(2);
+        expect(warning).toHaveBeenCalledTimes(2);
+
+        const serializedDiagnostics = JSON.stringify(warning.mock.calls);
+        expect(serializedDiagnostics).not.toContain(tokenSentinel);
+        expect(serializedDiagnostics).not.toContain(bodySentinel);
+        expect(serializedDiagnostics).not.toContain(errorSentinel);
+        expect(serializedDiagnostics).not.toContain(String(companyIdSentinel));
+        expect(serializedDiagnostics).not.toContain('id_empresa');
+        expect(serializedDiagnostics).not.toContain('Authorization');
+        expect(serializedDiagnostics).not.toContain('Bearer');
+      } finally {
+        warning.mockRestore();
+      }
     });
 
     it('reintenta errores de red sólo hasta el límite configurado', async () => {
