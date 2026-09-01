@@ -39,6 +39,10 @@ const removeLocalCatalogStockMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0013_remove_local_catalog_stock.sql'),
   'utf8',
 );
+const duxAtomicSnapshotsMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0014_dux_atomic_inventory_snapshots.sql'),
+  'utf8',
+);
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -390,6 +394,64 @@ describe('migraciones D1', () => {
       expect(() => database.prepare(`UPDATE dux_inventory_items
         SET checkout_eligible = 1 WHERE inventory_key = ?`)
         .run('ITEM-1:DET-1:DEP-1')).toThrow();
+      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('agrega generaciones atómicas sin alterar el snapshot Dux ya publicado', () => {
+    const database = new DatabaseSync(':memory:');
+    try {
+      applyAllMigrations(database);
+      const now = '2026-09-01T12:00:00.000Z';
+      database.prepare(`INSERT INTO dux_inventory_items (
+        inventory_key, cod_item, item_name, local_product_id, mapping_status,
+        mapping_source, mapping_candidates_json, deposit_id, deposit_name,
+        stock_real, stock_reservado, stock_disponible, quantity_semantics_status,
+        checkout_eligible, catalog_version, raw_snapshot_json, last_sync_status,
+        last_synced_at, created_at, updated_at
+      ) VALUES (
+        'dux:v2:1:3:LEGACY:base', 'LEGACY', 'Snapshot anterior',
+        'producto-legacy', 'mapped', 'persisted', '["producto-legacy"]',
+        '3', 'Principal', 7.5, 0.5, 7, 'unavailable_from_v2_items', 0,
+        ?, '{}', 'ok', ?, ?, ?
+      )`).run('a'.repeat(64), now, now, now);
+
+      expect(() => database.exec(duxAtomicSnapshotsMigration)).not.toThrow();
+      database.prepare(`INSERT INTO dux_d1_write_budget (
+        utc_date, estimated_rows, created_at, updated_at
+      ) VALUES ('2026-09-01', 64, ?, ?)`).run(now, now);
+      expect(() => database.exec(duxAtomicSnapshotsMigration)).not.toThrow();
+
+      expect(database.prepare(`SELECT cod_item, stock_real, stock_reservado,
+        stock_disponible FROM dux_inventory_items`).get()).toEqual({
+        cod_item: 'LEGACY',
+        stock_real: 7.5,
+        stock_reservado: 0.5,
+        stock_disponible: 7,
+      });
+      const schema = database.prepare(`SELECT name, type FROM sqlite_schema
+        WHERE name = 'dux_d1_write_budget'
+           OR name LIKE 'dux_inventory_generation%'
+           OR name LIKE 'idx_dux_inventory_generation%'
+        ORDER BY name`).all();
+      expect(schema).toEqual(expect.arrayContaining([
+        { name: 'dux_d1_write_budget', type: 'table' },
+        { name: 'dux_inventory_generation_items', type: 'table' },
+        { name: 'dux_inventory_generation_publish_guard', type: 'trigger' },
+        { name: 'dux_inventory_generations', type: 'table' },
+        { name: 'idx_dux_inventory_generation_identity', type: 'index' },
+        { name: 'idx_dux_inventory_generation_local', type: 'index' },
+        { name: 'idx_dux_inventory_generations_published', type: 'index' },
+        { name: 'idx_dux_inventory_generations_run', type: 'index' },
+      ]));
+      expect(database.prepare(
+        `SELECT utc_date, estimated_rows FROM dux_d1_write_budget`,
+      ).get()).toEqual({ utc_date: '2026-09-01', estimated_rows: 64 });
+      expect(() => database.prepare(`INSERT INTO dux_d1_write_budget (
+        utc_date, estimated_rows, created_at, updated_at
+      ) VALUES ('2026-09-02', 40001, ?, ?)`).run(now, now)).toThrow();
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       database.close();

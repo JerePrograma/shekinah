@@ -45,11 +45,16 @@ async function reconcileWithRetry(url, schedulerSecret) {
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       const payload = await readResponse(response);
-      if (
-        (response.status === 409 && errorCode(payload) === 'DUX_SYNC_IN_PROGRESS') ||
-        (response.status === 429 && errorCode(payload) === 'DUX_SYNC_COOLDOWN')
-      ) {
+      const protectedOverlap = response.status === 409 &&
+        errorCode(payload) === 'DUX_SYNC_IN_PROGRESS';
+      if (protectedOverlap && attempt === 1 && lastError === undefined) {
         return { status: 'in_progress' };
+      }
+      if (response.status === 429 && errorCode(payload) === 'DUX_SYNC_COOLDOWN') {
+        throw new NonRetryableReconciliationError(
+          'La reconciliación Dux no se ejecutó porque el ciclo anterior sigue en cooldown ' +
+          '(DUX_SYNC_COOLDOWN).',
+        );
       }
       if (!response.ok) {
         const code = errorCode(payload) ?? `HTTP_${response.status}`;

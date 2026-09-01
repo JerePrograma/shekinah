@@ -7,11 +7,18 @@ const DEFAULT_MIN_REQUEST_INTERVAL_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
 const DEFAULT_MAX_GET_ATTEMPTS = 3;
 const DEFAULT_MAX_RETRY_DELAY_MS = 30_000;
+export const DUX_MAX_HTTP_ATTEMPTS_PER_SYNC = 45;
+export const DUX_SYNC_DEADLINE_MS = 7 * 60 * 1_000;
 const ITEM_PAGE_LIMIT = 50;
-// Con 50 items por página, este techo admite 5.000 items y mantiene una
-// corrida completa dentro del lease D1 de 30 minutos aun si cada GET consume
-// casi todo el timeout de 12 segundos. Excederlo falla cerrado.
-const MAX_ITEM_PAGES = 100;
+// El runner productivo corta la solicitud completa a los ocho minutos. Con
+// tres lecturas de tenant, el intervalo obligatorio de cinco segundos y este
+// techo, una corrida admite hasta 1.000 items y conserva margen holgado para
+// retries y la publicación D1. El límite también mantiene la reconciliación
+// completa dentro de las 50 queries por invocación del plan D1 Free. El
+// presupuesto global separado de 45 intentos HTTP deja margen frente al máximo
+// de 50 subrequests del runtime aun cuando haya retries.
+const MAX_ITEM_PAGES = 20;
+export const DUX_MAX_ITEMS_PER_SYNC = ITEM_PAGE_LIMIT * MAX_ITEM_PAGES;
 const MAX_RESPONSE_BYTES = 2_000_000;
 
 type DuxReadEndpoint =
@@ -20,12 +27,28 @@ type DuxReadEndpoint =
   | '/v2/depositos'
   | '/v2/items';
 
+type DuxTransportFailurePhase = 'fetch_headers' | 'read_body' | 'classify_response';
+
+type DuxTransportErrorClass =
+  | 'http_status'
+  | 'network_connection_lost'
+  | 'host_not_accessible_1021'
+  | 'cloudflare_ip_1024'
+  | 'same_zone_1042'
+  | 'redirect_rejected'
+  | 'type_error'
+  | 'dom_exception'
+  | 'unknown';
+
 type DuxTransportFailureDiagnostic = Readonly<{
-  version: 1;
-  kind: 'upstream_5xx' | 'fetch_exception';
+  version: 2;
+  kind: 'upstream_5xx' | 'fetch_exception' | 'provider_redirect';
   endpoint: DuxReadEndpoint;
   providerStatus: number | null;
   attempts: number;
+  phase: DuxTransportFailurePhase;
+  errorClass: DuxTransportErrorClass;
+  headersReceived: boolean;
 }>;
 
 export type DuxFetch = (
@@ -130,11 +153,14 @@ export type DuxApiClientOptions = Readonly<{
   accessToken: string;
   fetch?: DuxFetch;
   clock?: () => number;
+  monotonicClock?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   minRequestIntervalMs?: number;
   requestTimeoutMs?: number;
   maxGetAttempts?: number;
+  maxTotalRequestAttempts?: number;
   maxRetryDelayMs?: number;
+  syncDeadlineMs?: number;
   beforeRequest?: () => Promise<void>;
 }>;
 
@@ -161,14 +187,19 @@ export class DuxApiClient {
   private readonly accessToken: string;
   private readonly fetchImplementation: DuxFetch;
   private readonly clock: () => number;
+  private readonly monotonicClock: () => number;
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly minRequestIntervalMs: number;
   private readonly requestTimeoutMs: number;
   private readonly maxGetAttempts: number;
+  private readonly maxTotalRequestAttempts: number;
   private readonly maxRetryDelayMs: number;
+  private readonly deadlineAt: number;
   private readonly beforeRequest: () => Promise<void>;
+  private lastMonotonicAt: number;
   private requestQueue: Promise<void> = Promise.resolve();
   private nextRequestAt = Number.NEGATIVE_INFINITY;
+  private requestAttemptCount = 0;
 
   constructor(options: DuxApiClientOptions) {
     if (
@@ -182,6 +213,7 @@ export class DuxApiClient {
     this.accessToken = options.accessToken;
     this.fetchImplementation = options.fetch ?? defaultFetch;
     this.clock = options.clock ?? Date.now;
+    this.monotonicClock = options.monotonicClock ?? defaultMonotonicClock;
     this.sleep = options.sleep ?? delay;
     this.minRequestIntervalMs = boundedIntegerOption(
       options.minRequestIntervalMs,
@@ -204,6 +236,13 @@ export class DuxApiClient {
       5,
       'maxGetAttempts',
     );
+    this.maxTotalRequestAttempts = boundedIntegerOption(
+      options.maxTotalRequestAttempts,
+      DUX_MAX_HTTP_ATTEMPTS_PER_SYNC,
+      1,
+      DUX_MAX_HTTP_ATTEMPTS_PER_SYNC,
+      'maxTotalRequestAttempts',
+    );
     this.maxRetryDelayMs = boundedIntegerOption(
       options.maxRetryDelayMs,
       DEFAULT_MAX_RETRY_DELAY_MS,
@@ -211,6 +250,19 @@ export class DuxApiClient {
       300_000,
       'maxRetryDelayMs',
     );
+    const syncDeadlineMs = boundedIntegerOption(
+      options.syncDeadlineMs,
+      DUX_SYNC_DEADLINE_MS,
+      1,
+      DUX_SYNC_DEADLINE_MS,
+      'syncDeadlineMs',
+    );
+    const deadlineStartedAt = this.monotonicClock();
+    if (!Number.isFinite(deadlineStartedAt)) {
+      throw new DuxApiError(500, 'DUX_CLOCK_INVALID', 'No se pudo coordinar el acceso a Dux.');
+    }
+    this.lastMonotonicAt = deadlineStartedAt;
+    this.deadlineAt = deadlineStartedAt + syncDeadlineMs;
     this.beforeRequest = options.beforeRequest ?? (() => Promise.resolve());
   }
 
@@ -252,10 +304,19 @@ export class DuxApiClient {
   async listItems(options: DuxListItemsFilters = {}): Promise<readonly DuxItem[]> {
     const items: DuxItem[] = [];
     let offset = 0;
+    let expectedTotal: number | null = null;
     for (let pageNumber = 0; pageNumber < MAX_ITEM_PAGES; pageNumber += 1) {
       const page = await this.listItemsPage({ ...options, offset, limit: ITEM_PAGE_LIMIT });
+      expectedTotal ??= page.pagination.total;
+      if (page.pagination.total !== expectedTotal) throw invalidProviderResponse();
+      if (expectedTotal > DUX_MAX_ITEMS_PER_SYNC) throw paginationLimitError();
       items.push(...page.data);
-      if (!page.pagination.hasMore) return Object.freeze(items);
+      if (items.length > expectedTotal) throw invalidProviderResponse();
+      if (!page.pagination.hasMore) {
+        if (items.length !== expectedTotal) throw invalidProviderResponse();
+        return Object.freeze(items);
+      }
+      if (items.length >= expectedTotal) throw invalidProviderResponse();
       if (page.data.length === 0) throw invalidProviderResponse();
       const nextOffset = page.pagination.offset + page.pagination.limit;
       if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset) {
@@ -263,11 +324,7 @@ export class DuxApiClient {
       }
       offset = nextOffset;
     }
-    throw new DuxApiError(
-      502,
-      'DUX_PAGINATION_LIMIT',
-      'Dux excedió el límite operativo de paginación.',
-    );
+    throw paginationLimitError();
   }
 
   private get(
@@ -290,14 +347,30 @@ export class DuxApiClient {
 
   private async performGet(url: URL, endpoint: DuxReadEndpoint): Promise<unknown> {
     for (let attempt = 0; attempt < this.maxGetAttempts; attempt += 1) {
-      await this.waitForRequestSlot();
+      this.assertBeforeDeadline();
+      this.reserveRequestAttempt();
+      this.assertBeforeDeadline();
       await this.beforeRequest();
+      this.assertBeforeDeadline();
+      await this.waitForRequestSlot();
+      const remainingDeadlineMs = this.remainingDeadlineMilliseconds();
       const controller = new AbortController();
       let timedOut = false;
+      let deadlineTimedOut = false;
+      const deadlineControlsTimeout = remainingDeadlineMs <= this.requestTimeoutMs;
+      const attemptTimeoutMs = Math.max(
+        0,
+        Math.floor(Math.min(this.requestTimeoutMs, remainingDeadlineMs)),
+      );
+      if (attemptTimeoutMs < 1) throw deadlineExceededError();
       const timeout = setTimeout(() => {
         timedOut = true;
+        deadlineTimedOut = deadlineControlsTimeout;
         controller.abort();
-      }, this.requestTimeoutMs);
+      }, attemptTimeoutMs);
+      let phase: DuxTransportFailurePhase = 'fetch_headers';
+      let providerStatus: number | null = null;
+      let headersReceived = false;
       try {
         const headers = new Headers({
           accept: 'application/json',
@@ -307,10 +380,31 @@ export class DuxApiClient {
           method: 'GET',
           headers,
           signal: controller.signal,
-          redirect: 'error',
+          redirect: 'manual',
           cache: 'no-store',
         });
+        this.assertBeforeDeadline();
+        providerStatus = response.status;
+        headersReceived = true;
+        if (isRedirectStatus(response.status)) {
+          phase = 'classify_response';
+          cancelProviderBody(response);
+          reportDuxTransportFailure({
+            version: 2,
+            kind: 'provider_redirect',
+            endpoint,
+            providerStatus,
+            attempts: attempt + 1,
+            phase,
+            errorClass: 'redirect_rejected',
+            headersReceived,
+          });
+          throw statusError(response.status);
+        }
+        phase = 'read_body';
         const parsed = await readProviderJson(response);
+        this.assertBeforeDeadline();
+        phase = 'classify_response';
         if (response.ok) {
           if (!parsed.valid) throw invalidProviderResponse();
           return parsed.value;
@@ -325,7 +419,7 @@ export class DuxApiClient {
             this.maxRetryDelayMs,
           );
           if (retryDelay !== null) {
-            await this.sleep(retryDelay);
+            await this.waitWithinDeadline(retryDelay);
             continue;
           }
         }
@@ -335,28 +429,35 @@ export class DuxApiClient {
           providerError.providerStatus !== null
         ) {
           reportDuxTransportFailure({
-            version: 1,
+            version: 2,
             kind: 'upstream_5xx',
             endpoint,
             providerStatus: providerError.providerStatus,
             attempts: attempt + 1,
+            phase,
+            errorClass: 'http_status',
+            headersReceived,
           });
         }
         throw providerError;
       } catch (error: unknown) {
         if (error instanceof DuxApiError || error instanceof HttpError) throw error;
+        if (deadlineTimedOut) throw deadlineExceededError();
         if (attempt + 1 < this.maxGetAttempts) {
-          await this.sleep(defaultRetryDelay(attempt, this.maxRetryDelayMs));
+          await this.waitWithinDeadline(defaultRetryDelay(attempt, this.maxRetryDelayMs));
           continue;
         }
         const aborted = timedOut || isAbortError(error);
         if (!aborted) {
           reportDuxTransportFailure({
-            version: 1,
+            version: 2,
             kind: 'fetch_exception',
             endpoint,
-            providerStatus: null,
+            providerStatus,
             attempts: attempt + 1,
+            phase,
+            errorClass: classifyDuxTransportError(error),
+            headersReceived,
           });
         }
         throw new DuxApiError(
@@ -373,23 +474,115 @@ export class DuxApiClient {
     throw new DuxApiError(503, 'DUX_UNAVAILABLE', 'Dux no está disponible temporalmente.');
   }
 
+  private reserveRequestAttempt(): void {
+    if (this.requestAttemptCount >= this.maxTotalRequestAttempts) {
+      throw new DuxApiError(
+        503,
+        'DUX_SUBREQUEST_BUDGET_EXHAUSTED',
+        'Dux excedió el presupuesto seguro de solicitudes de la sincronización.',
+      );
+    }
+    this.requestAttemptCount += 1;
+  }
+
   private async waitForRequestSlot(): Promise<void> {
+    this.assertBeforeDeadline();
     const now = this.clock();
     if (!Number.isFinite(now)) {
       throw new DuxApiError(500, 'DUX_CLOCK_INVALID', 'No se pudo coordinar el acceso a Dux.');
     }
     const wait = Math.max(0, this.nextRequestAt - now);
-    if (wait > 0) await this.sleep(wait);
+    await this.waitWithinDeadline(wait);
     const startedAt = this.clock();
     if (!Number.isFinite(startedAt)) {
       throw new DuxApiError(500, 'DUX_CLOCK_INVALID', 'No se pudo coordinar el acceso a Dux.');
     }
     this.nextRequestAt = startedAt + this.minRequestIntervalMs;
   }
+
+  private assertBeforeDeadline(): void {
+    this.remainingDeadlineMilliseconds();
+  }
+
+  private remainingDeadlineMilliseconds(): number {
+    const now = this.monotonicClock();
+    if (!Number.isFinite(now)) {
+      throw new DuxApiError(500, 'DUX_CLOCK_INVALID', 'No se pudo coordinar el acceso a Dux.');
+    }
+    if (now < this.lastMonotonicAt) {
+      throw new DuxApiError(500, 'DUX_CLOCK_INVALID', 'No se pudo coordinar el acceso a Dux.');
+    }
+    this.lastMonotonicAt = now;
+    const remaining = this.deadlineAt - now;
+    if (remaining <= 0) throw deadlineExceededError();
+    return remaining;
+  }
+
+  private async waitWithinDeadline(milliseconds: number): Promise<void> {
+    const remaining = this.remainingDeadlineMilliseconds();
+    if (milliseconds >= remaining) throw deadlineExceededError();
+    if (milliseconds > 0) await this.sleep(milliseconds);
+    this.assertBeforeDeadline();
+  }
 }
 
 function reportDuxTransportFailure(diagnostic: DuxTransportFailureDiagnostic): void {
   console.warn('dux_api_transport_failure', diagnostic);
+}
+
+function classifyDuxTransportError(error: unknown): DuxTransportErrorClass {
+  const descriptor = safeTransportErrorDescriptor(error);
+  if (descriptor.text.includes('network connection lost')) return 'network_connection_lost';
+  if (/\b1021\b/u.test(descriptor.text)) return 'host_not_accessible_1021';
+  if (/\b1024\b/u.test(descriptor.text)) return 'cloudflare_ip_1024';
+  if (/\b1042\b/u.test(descriptor.text)) return 'same_zone_1042';
+  if (descriptor.text.includes('redirect')) return 'redirect_rejected';
+  if (descriptor.names.includes('typeerror')) return 'type_error';
+  if (descriptor.names.includes('domexception')) return 'dom_exception';
+  return 'unknown';
+}
+
+function safeTransportErrorDescriptor(error: unknown): Readonly<{
+  names: readonly string[];
+  text: string;
+}> {
+  const names: string[] = [];
+  const fragments: string[] = [];
+  const visited = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && isRecord(current) && !visited.has(current); depth += 1) {
+    visited.add(current);
+    const name = safeRecordValue(current, 'name');
+    if (typeof name === 'string') names.push(name.toLocaleLowerCase('en-US'));
+    const message = safeRecordValue(current, 'message');
+    if (typeof message === 'string') fragments.push(message.toLocaleLowerCase('en-US'));
+    current = safeRecordValue(current, 'cause');
+  }
+  return Object.freeze({
+    names: Object.freeze(names),
+    text: fragments.join('\n'),
+  });
+}
+
+function safeRecordValue(record: Readonly<Record<string, unknown>>, key: string): unknown {
+  try {
+    return record[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status >= 300 && status <= 399;
+}
+
+function cancelProviderBody(response: Response): void {
+  try {
+    const body = response.body;
+    if (body !== null) void body.cancel().catch(() => undefined);
+  } catch {
+    // El rechazo del redirect no depende de poder cancelar el stream del proveedor.
+  }
 }
 
 export function parseDuxCompanyPage(value: unknown): DuxPage<DuxCompany> {
@@ -680,6 +873,22 @@ function invalidProviderResponse(): DuxApiError {
   );
 }
 
+function paginationLimitError(): DuxApiError {
+  return new DuxApiError(
+    502,
+    'DUX_PAGINATION_LIMIT',
+    'Dux excedió el límite operativo de paginación.',
+  );
+}
+
+function deadlineExceededError(): DuxApiError {
+  return new DuxApiError(
+    503,
+    'DUX_SYNC_DEADLINE_EXCEEDED',
+    'Dux excedió el tiempo total seguro de sincronización.',
+  );
+}
+
 function requiredRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw invalidProviderResponse();
   return value;
@@ -797,6 +1006,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function defaultFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return fetch(input, init);
+}
+
+function defaultMonotonicClock(): number {
+  return performance.now();
 }
 
 function delay(milliseconds: number): Promise<void> {

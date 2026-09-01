@@ -126,6 +126,7 @@ for (const fragment of [
   "const expectedPath = '/api/internal/dux/reconcile'",
   "errorCode(payload) === 'DUX_SYNC_IN_PROGRESS'",
   "errorCode(payload) === 'DUX_SYNC_COOLDOWN'",
+  'protectedOverlap && attempt === 1 && lastError === undefined',
   "value.status === 'disabled'",
   "value.status !== 'completed'",
 ]) {

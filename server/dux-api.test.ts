@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DUX_API_BASE_URL,
   DUX_INVENTORY_SEMANTICS_NOT_AVAILABLE,
+  DUX_MAX_HTTP_ATTEMPTS_PER_SYNC,
+  DUX_MAX_ITEMS_PER_SYNC,
+  DUX_SYNC_DEADLINE_MS,
   DuxApiClient,
   parseDuxItemPage,
   selectDuxItemStock,
@@ -182,11 +185,65 @@ describe('Dux API v2', () => {
       expect(url.searchParams.get('id_deposito')).toBe('10');
       expect(url.searchParams.get('limit')).toBe('50');
       expect(observedInit?.method).toBe('GET');
+      expect(observedInit?.redirect).toBe('manual');
       expect(new Headers(observedInit?.headers).get('authorization')).toBe(
         `Bearer ${TEST_ACCESS_TOKEN}`,
       );
       expect(observedInit?.body).toBeUndefined();
     });
+
+    it.each([300, 302, 399])(
+      'rechaza la redirección %s sin seguirla ni leer su cuerpo',
+      async (providerStatus) => {
+        const redirectSentinel = 'redirect-target-sentinel-never-log';
+        const cancel = vi.fn(() => new Promise<void>(() => undefined));
+        const getReader = vi.fn(() => {
+          throw new Error('El cuerpo de una redirección no debe leerse.');
+        });
+        const response = {
+          status: providerStatus,
+          body: { cancel, getReader },
+          headers: new Headers({ location: `https://invalid.example/${redirectSentinel}` }),
+          get ok() {
+            throw new Error('Una redirección debe clasificarse antes de consultar ok.');
+          },
+        } as unknown as Response;
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const fetchImplementation: DuxFetch = vi.fn(() => Promise.resolve(response));
+        const client = testClient(fetchImplementation);
+
+        try {
+          await expect(client.listEmpresas()).rejects.toMatchObject({
+            status: 502,
+            code: 'DUX_PROVIDER_REJECTED',
+            providerStatus,
+          });
+          expect(fetchImplementation).toHaveBeenCalledTimes(1);
+          expect(fetchImplementation).toHaveBeenCalledWith(
+            expect.any(URL),
+            expect.objectContaining({ redirect: 'manual' }),
+          );
+          expect(cancel).toHaveBeenCalledOnce();
+          expect(getReader).not.toHaveBeenCalled();
+          expect(warning).toHaveBeenCalledExactlyOnceWith(
+            'dux_api_transport_failure',
+            {
+              version: 2,
+              kind: 'provider_redirect',
+              endpoint: '/v2/empresas',
+              providerStatus,
+              attempts: 1,
+              phase: 'classify_response',
+              errorClass: 'redirect_rejected',
+              headersReceived: true,
+            },
+          );
+          expect(JSON.stringify(warning.mock.calls)).not.toContain(redirectSentinel);
+        } finally {
+          warning.mockRestore();
+        }
+      },
+    );
 
     it('pagina /v2/items de a 50 sin hacer una llamada por producto', async () => {
       const urls: URL[] = [];
@@ -196,7 +253,7 @@ describe('Dux API v2', () => {
         urls.push(url);
         const offset = Number(url.searchParams.get('offset'));
         return Promise.resolve(jsonResponse(offset === 0
-          ? duxPage([itemPayload([])], 1, 0, 50, true)
+          ? duxPage([itemPayload([])], 2, 0, 50, true)
           : duxPage([itemPayload([])], 2, 50, 50, false)));
       };
       const client = testClient(fetchImplementation, { beforeRequest });
@@ -208,6 +265,65 @@ describe('Dux API v2', () => {
       expect(urls.map((url) => url.searchParams.get('offset'))).toEqual(['0', '50']);
       expect(urls.map((url) => url.searchParams.get('limit'))).toEqual(['50', '50']);
       expect(beforeRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('rechaza una paginación cuyo total cambia o no coincide con las filas recibidas', async () => {
+      const changingTotal = testClient((input) => {
+        const offset = Number(inputUrl(input).searchParams.get('offset'));
+        return Promise.resolve(jsonResponse(offset === 0
+          ? duxPage([itemPayload([])], 2, 0, 50, true)
+          : duxPage([itemPayload([])], 3, 50, 50, false)));
+      });
+      await expect(changingTotal.listItems()).rejects.toMatchObject({
+        status: 502,
+        code: 'DUX_RESPONSE_INVALID',
+      });
+
+      const truncated = testClient(() => Promise.resolve(jsonResponse(
+        duxPage([itemPayload([])], 2, 0, 50, false),
+      )));
+      await expect(truncated.listItems()).rejects.toMatchObject({
+        status: 502,
+        code: 'DUX_RESPONSE_INVALID',
+      });
+    });
+
+    it('admite hasta 20 páginas y rechaza un total mayor antes de agotar el scheduler', async () => {
+      const offsets: number[] = [];
+      const pageItems = Array.from({ length: 50 }, () => itemPayload([]));
+      const client = testClient((input) => {
+        const offset = Number(inputUrl(input).searchParams.get('offset'));
+        offsets.push(offset);
+        return Promise.resolve(jsonResponse(duxPage(
+          pageItems,
+          DUX_MAX_ITEMS_PER_SYNC,
+          offset,
+          50,
+          offset < 950,
+        )));
+      });
+
+      await expect(client.listItems()).resolves.toHaveLength(DUX_MAX_ITEMS_PER_SYNC);
+      expect(offsets).toHaveLength(20);
+      expect(offsets.at(-1)).toBe(950);
+
+      let oversizedCalls = 0;
+      const oversized = testClient(() => {
+        oversizedCalls += 1;
+        return Promise.resolve(jsonResponse(duxPage(
+          pageItems,
+          DUX_MAX_ITEMS_PER_SYNC + 1,
+          0,
+          50,
+          true,
+        )));
+      });
+      await expect(oversized.listItems()).rejects.toMatchObject({
+        status: 502,
+        code: 'DUX_PAGINATION_LIMIT',
+      });
+      expect(oversizedCalls).toBe(1);
+      expect(DUX_MAX_ITEMS_PER_SYNC).toBe(1_000);
     });
 
     it('serializa solicitudes concurrentes con un intervalo mínimo de 5000 ms', async () => {
@@ -245,6 +361,39 @@ describe('Dux API v2', () => {
       await Promise.all([client.listEmpresas(), client.listDepositos()]);
 
       expect(starts).toEqual([0, 5_000]);
+      expect(sleeps).toEqual([5_000]);
+    });
+
+    it('mide el intervalo desde el fetch aunque el heartbeat consuma tiempo', async () => {
+      let now = 0;
+      let heartbeatCalls = 0;
+      const starts: number[] = [];
+      const sleeps: number[] = [];
+      const client = new DuxApiClient({
+        accessToken: TEST_ACCESS_TOKEN,
+        fetch: () => {
+          starts.push(now);
+          return Promise.resolve(jsonResponse(duxPage([
+            { id_empresa: 1, razon_social: 'Shekinah' },
+          ])));
+        },
+        clock: () => now,
+        monotonicClock: () => now,
+        beforeRequest: () => {
+          heartbeatCalls += 1;
+          if (heartbeatCalls === 1) now += 4_000;
+          return Promise.resolve();
+        },
+        sleep: (milliseconds) => {
+          sleeps.push(milliseconds);
+          now += milliseconds;
+          return Promise.resolve();
+        },
+      });
+
+      await Promise.all([client.listEmpresas(), client.listEmpresas()]);
+
+      expect(starts).toEqual([4_000, 9_000]);
       expect(sleeps).toEqual([5_000]);
     });
 
@@ -339,21 +488,27 @@ describe('Dux API v2', () => {
           [
             'dux_api_transport_failure',
             {
-              version: 1,
+              version: 2,
               kind: 'upstream_5xx',
               endpoint: '/v2/sucursales',
               providerStatus: 503,
               attempts: 2,
+              phase: 'classify_response',
+              errorClass: 'http_status',
+              headersReceived: true,
             },
           ],
           [
             'dux_api_transport_failure',
             {
-              version: 1,
+              version: 2,
               kind: 'fetch_exception',
               endpoint: '/v2/sucursales',
               providerStatus: null,
               attempts: 2,
+              phase: 'fetch_headers',
+              errorClass: 'type_error',
+              headersReceived: false,
             },
           ],
         ]);
@@ -374,6 +529,82 @@ describe('Dux API v2', () => {
       }
     });
 
+    it('conserva status y fase cuando falla la lectura del cuerpo', async () => {
+      const bodyErrorSentinel = 'body-stream-sentinel-never-log';
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const fetchImplementation: DuxFetch = vi.fn(() => Promise.resolve(new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new TypeError(`Network connection lost ${bodyErrorSentinel}`));
+          },
+        }),
+        { status: 502 },
+      )));
+      const client = testClient(fetchImplementation, { maxGetAttempts: 1 });
+
+      try {
+        await expect(client.listEmpresas()).rejects.toMatchObject({
+          status: 503,
+          code: 'DUX_UNAVAILABLE',
+          providerStatus: null,
+        });
+        expect(warning).toHaveBeenCalledExactlyOnceWith(
+          'dux_api_transport_failure',
+          {
+            version: 2,
+            kind: 'fetch_exception',
+            endpoint: '/v2/empresas',
+            providerStatus: 502,
+            attempts: 1,
+            phase: 'read_body',
+            errorClass: 'network_connection_lost',
+            headersReceived: true,
+          },
+        );
+        expect(JSON.stringify(warning.mock.calls)).not.toContain(bodyErrorSentinel);
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
+    it('sanitiza una excepción durante la clasificación de la respuesta', async () => {
+      const classifyErrorSentinel = 'classify-sentinel-never-log';
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const response = {
+        status: 418,
+        headers: new Headers(),
+        body: null,
+        get ok(): boolean {
+          throw new TypeError(classifyErrorSentinel);
+        },
+      } as unknown as Response;
+      const client = testClient(() => Promise.resolve(response), { maxGetAttempts: 1 });
+
+      try {
+        await expect(client.listEmpresas()).rejects.toMatchObject({
+          status: 503,
+          code: 'DUX_UNAVAILABLE',
+          providerStatus: null,
+        });
+        expect(warning).toHaveBeenCalledExactlyOnceWith(
+          'dux_api_transport_failure',
+          {
+            version: 2,
+            kind: 'fetch_exception',
+            endpoint: '/v2/empresas',
+            providerStatus: 418,
+            attempts: 1,
+            phase: 'classify_response',
+            errorClass: 'type_error',
+            headersReceived: true,
+          },
+        );
+        expect(JSON.stringify(warning.mock.calls)).not.toContain(classifyErrorSentinel);
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
     it('reintenta errores de red sólo hasta el límite configurado', async () => {
       let calls = 0;
       const fetchImplementation: DuxFetch = () => {
@@ -386,6 +617,101 @@ describe('Dux API v2', () => {
 
       await expect(client.listItemsPage()).resolves.toEqual(expect.objectContaining({ data: [] }));
       expect(calls).toBe(2);
+    });
+
+    it('aplica un presupuesto global de subrequests aun cuando cada lectura reintenta', async () => {
+      let calls = 0;
+      const beforeRequest = vi.fn(() => Promise.resolve());
+      const fetchImplementation: DuxFetch = () => {
+        calls += 1;
+        if (calls % 2 === 1) return Promise.reject(new TypeError('network failed'));
+        return Promise.resolve(jsonResponse(duxPage([
+          { id_empresa: 1, razon_social: 'Shekinah' },
+        ])));
+      };
+      const client = testClient(fetchImplementation, {
+        beforeRequest,
+        maxGetAttempts: 3,
+        maxTotalRequestAttempts: 4,
+      });
+
+      await expect(client.listEmpresas()).resolves.toHaveLength(1);
+      await expect(client.listEmpresas()).resolves.toHaveLength(1);
+      await expect(client.listEmpresas()).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_SUBREQUEST_BUDGET_EXHAUSTED',
+      });
+      expect(calls).toBe(4);
+      expect(beforeRequest).toHaveBeenCalledTimes(4);
+      expect(DUX_MAX_HTTP_ATTEMPTS_PER_SYNC).toBe(45);
+    });
+
+    it('falla por deadline antes de una espera que agotaría los siete minutos', async () => {
+      let monotonicNow = 0;
+      const sleep = vi.fn(() => Promise.resolve());
+      const fetchImplementation: DuxFetch = vi.fn(() => Promise.resolve(jsonResponse(duxPage([
+        { id_empresa: 1, razon_social: 'Shekinah' },
+      ]))));
+      const client = testClient(fetchImplementation, {
+        minRequestIntervalMs: 2_000,
+        monotonicClock: () => monotonicNow,
+        sleep,
+        syncDeadlineMs: 1_000,
+      });
+
+      await expect(client.listEmpresas()).resolves.toHaveLength(1);
+      monotonicNow = 1;
+      await expect(client.listEmpresas()).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_SYNC_DEADLINE_EXCEEDED',
+      });
+      expect(fetchImplementation).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+      expect(DUX_SYNC_DEADLINE_MS).toBe(420_000);
+    });
+
+    it('rechaza un retry que no cabe en el deadline sin dormir ni abrir otro fetch', async () => {
+      const sleep = vi.fn(() => Promise.resolve());
+      const fetchImplementation: DuxFetch = vi.fn(() => Promise.resolve(jsonResponse(
+        { error: { codigo: 'RATE_LIMIT' } },
+        429,
+        { 'retry-after': '2' },
+      )));
+      const client = testClient(fetchImplementation, {
+        monotonicClock: () => 0,
+        sleep,
+        syncDeadlineMs: 1_000,
+      });
+
+      await expect(client.listEmpresas()).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_SYNC_DEADLINE_EXCEEDED',
+      });
+      expect(fetchImplementation).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    });
+
+    it('revalida el reloj monotónico después del fetch y acota la opción a siete minutos', async () => {
+      let monotonicNow = 0;
+      const fetchImplementation: DuxFetch = vi.fn(() => {
+        monotonicNow = 1_000;
+        return Promise.resolve(jsonResponse(duxPage([
+          { id_empresa: 1, razon_social: 'Shekinah' },
+        ])));
+      });
+      const client = testClient(fetchImplementation, {
+        monotonicClock: () => monotonicNow,
+        syncDeadlineMs: 1_000,
+      });
+
+      await expect(client.listEmpresas()).rejects.toMatchObject({
+        status: 503,
+        code: 'DUX_SYNC_DEADLINE_EXCEEDED',
+      });
+      expect(fetchImplementation).toHaveBeenCalledTimes(1);
+      expect(() => testClient(fetchImplementation, {
+        syncDeadlineMs: DUX_SYNC_DEADLINE_MS + 1,
+      })).toThrow('syncDeadlineMs no es válido');
     });
 
     it.each([
