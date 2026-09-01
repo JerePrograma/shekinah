@@ -33,10 +33,10 @@ describe('gestión visual de productos', () => {
 
   it('prioriza el listado, resume, busca y filtra estados reales', async () => {
     installCatalogApi([
-      product('arnica', 'Árnica', { image: true, sku: 'HERB-1', stockQuantity: 8 }),
+      product('arnica', 'Árnica', { image: true, sku: 'HERB-1', commerce: duxCommerce(8) }),
       product('producto-sin-categoria', 'Producto sin categoría', {
         categorized: false,
-        stockQuantity: 0,
+        commerce: duxCommerce(0),
       }),
       product('producto-pausado', 'Producto pausado', { availability: 'unavailable' }),
     ]);
@@ -67,7 +67,7 @@ describe('gestión visual de productos', () => {
 
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: 'all' } });
     fireEvent.change(screen.getByLabelText('Stock'), { target: { value: 'out-of-stock' } });
-    expect(screen.getByText(/Sin stock disponible/u, { selector: '.admin-status-badge' })).toBeVisible();
+    expect(screen.getByText(/Disponible Dux: 0/u, { selector: '.admin-status-badge' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('1 producto encontrado');
 
     fireEvent.change(screen.getByLabelText('Stock'), { target: { value: 'all' } });
@@ -95,7 +95,7 @@ describe('gestión visual de productos', () => {
     expect(screen.getByRole('button', { name: 'Nuevo producto' })).toBeEnabled();
   });
 
-  it('crea con slug automático, categorías múltiples y stock sin doble submit', async () => {
+  it('crea con slug automático y categorías múltiples sin enviar stock ni duplicar el submit', async () => {
     const api = installCatalogApi([], { deferCreate: true, imageStorageConfigured: true });
     render(<ProductManager />);
     await screen.findByRole('heading', { name: 'No hay productos cargados' });
@@ -111,10 +111,8 @@ describe('gestión visual de productos', () => {
       target: { value: '2500.50' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: category().name }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock físico' }), {
-      target: { value: '12' },
-    });
+    expect(screen.getByText(/Shekinah no guarda ni permite editar stock físico/iu)).toBeVisible();
+    expect(screen.queryByRole('spinbutton', { name: 'Stock físico' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Opciones avanzadas'));
     const slug = screen.getByRole('textbox', { name: 'Identificador y dirección pública' });
 
@@ -134,7 +132,8 @@ describe('gestión visual de productos', () => {
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toHaveValue('Té Verde Especial');
     expect(screen.getByText('Todos los cambios están guardados.')).toBeVisible();
     const created = api.products().find(({ id }) => id === 'te-verde-especial');
-    expect(created).toMatchObject({ stockQuantity: 12, price: { amount: 2500.5 } });
+    expect(created).toMatchObject({ price: { amount: 2500.5 } });
+    expect(created).not.toHaveProperty('stockQuantity');
   });
 
   it('expone dirty y operación activa al shell y limpia el estado al desmontar', async () => {
@@ -217,48 +216,32 @@ describe('gestión visual de productos', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Editar Segundo producto' })).toHaveFocus();
   });
 
-  it('rechaza stock vacío en el editor completo sin convertirlo en cero', async () => {
-    const api = installCatalogApi([]);
+  it('no expone ningún control de stock en el editor de altas', async () => {
+    installCatalogApi([]);
     render(<ProductManager />);
     await screen.findByRole('heading', { name: 'No hay productos cargados' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
-      target: { value: 'Producto con stock pendiente' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Precio en pesos' }), {
-      target: { value: '1000' },
-    });
-    fireEvent.click(screen.getByRole('checkbox', { name: category().name }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    const stock = screen.getByRole('spinbutton', { name: 'Stock físico' });
-    expect(stock).toHaveValue(null);
-    expect(screen.getByText('Falta indicar el stock actual')).toBeVisible();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
-
-    expect(screen.getByText(/cantidad entera entre 0 y 1\.000\.000/iu)).toBeVisible();
-    expect(stock).toHaveFocus();
-    expect(api.requests.filter(({ method }) => method === 'POST')).toHaveLength(0);
+    expect(screen.getByText(/Inventario: Dux/iu)).toBeVisible();
+    expect(screen.queryByRole('checkbox', { name: /Controlar stock/iu })).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton', { name: 'Stock físico' })).not.toBeInTheDocument();
   });
 
-  it('rechaza stock rápido vacío sin persistir cero', async () => {
+  it('no expone ajuste rápido aunque el producto todavía no tenga snapshot', async () => {
     const api = installCatalogApi([product('sin-control', 'Sin control de stock')]);
     render(<ProductManager />);
     await screen.findByRole('heading', { level: 4, name: 'Sin control de stock' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ajustar stock de Sin control de stock' }));
-    const quickStock = screen.getByRole('spinbutton', { name: 'Nueva cantidad' });
-    expect(quickStock).toHaveValue(null);
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar stock' }));
-
-    expect(screen.getByText(/cantidad entera entre 0 y 1\.000\.000/iu)).toBeVisible();
-    expect(quickStock).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Ajustar stock de Sin control de stock' }))
+      .not.toBeInTheDocument();
+    expect(screen.getByText(/Sin snapshot Dux verificable/iu, {
+      selector: '.admin-status-badge',
+    })).toBeVisible();
     expect(api.requests.filter(({ method }) => method === 'PATCH')).toHaveLength(0);
-    expect(api.products()[0]?.stockQuantity).toBeUndefined();
+    expect(api.products()[0]).not.toHaveProperty('stockQuantity');
   });
 
-  it('valida precio, categoría y stock antes de crear', async () => {
+  it('valida precio y categoría antes de crear', async () => {
     const api = installCatalogApi([]);
     render(<ProductManager />);
     await screen.findByRole('heading', { name: 'No hay productos cargados' });
@@ -269,15 +252,10 @@ describe('gestión visual de productos', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Precio en pesos' }), {
       target: { value: '-1' },
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /Controlar stock/iu }));
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Stock físico' }), {
-      target: { value: '1.5' },
-    });
     fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
 
     expect(screen.getByText('Ingresá un importe mayor que cero.')).toBeVisible();
     expect(screen.getByText('Seleccioná al menos una categoría.')).toBeVisible();
-    expect(screen.getByText(/cantidad entera entre 0 y 1\.000\.000/iu)).toBeVisible();
     expect(screen.getByRole('checkbox', { name: category().name })).toHaveFocus();
     expect(api.requests.filter(({ method }) => method === 'POST')).toHaveLength(0);
   });
@@ -308,30 +286,31 @@ describe('gestión visual de productos', () => {
     expect(api.requests.filter(({ method }) => method === 'POST')).toHaveLength(0);
   });
 
-  it('actualiza stock por PATCH sólo tras confirmación del servidor', async () => {
+  it('actualiza sólo la pausa editorial por PATCH tras confirmación del servidor', async () => {
     const api = installCatalogApi([
-      product('stock-cero', 'Stock cero', { stockQuantity: 0 }),
+      product('producto-pausado', 'Producto pausado', {
+        availability: 'unavailable',
+        commerce: duxCommerce(6),
+      }),
     ], { deferPatch: true });
     render(<ProductManager />);
-    await screen.findByRole('heading', { level: 4, name: 'Stock cero' });
+    await screen.findByRole('heading', { level: 4, name: 'Producto pausado' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Editar Stock cero' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ajustar stock de Stock cero' }));
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Nueva cantidad' }), {
-      target: { value: '6' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar stock' }));
-    expect(screen.getByText(/Sin stock disponible/u, { selector: '.admin-status-badge' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Producto pausado' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reactivar Producto pausado' }));
+    expect(screen.getByText('No disponible manualmente', {
+      selector: '.admin-status-badge',
+    })).toBeVisible();
     expect(api.requests.filter(({ method }) => method === 'PATCH')).toHaveLength(1);
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cerrar editor' })).toBeDisabled();
 
     api.releasePatch();
-    expect(await screen.findByText('Stock de Stock cero actualizado a 6.')).toBeVisible();
+    expect(await screen.findByText('Producto pausado quedó disponible para venta.')).toBeVisible();
     expect(screen.getByText('Disponible manualmente')).toBeVisible();
-    expect(screen.getByText(/Físico: 6 · reservado: 0 · disponible: 6/u)).toBeVisible();
-    expect(screen.getByRole('spinbutton', { name: 'Stock físico' })).toHaveValue(6);
+    expect(screen.getByText(/Disponible Dux: 6/u)).toBeVisible();
+    expect(screen.queryByRole('spinbutton', { name: 'Stock físico' })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Nombre' })).toBeEnabled();
   });
 
@@ -370,25 +349,25 @@ describe('gestión visual de productos', () => {
     expect(api.requests.some(({ path, method }) => path.endsWith('/image') && method === 'PUT')).toBe(true);
   });
 
-  it('mantiene separados disponibilidad y stock y explica una reactivación sin existencias', async () => {
+  it('mantiene separada la pausa editorial del estado autoritativo Dux', async () => {
     installCatalogApi([
       product('pausado-sin-stock', 'Pausado sin stock', {
         availability: 'unavailable',
-        stockQuantity: 0,
+        commerce: duxCommerce(0),
       }),
     ]);
     render(<ProductManager />);
     const row = await screen.findByRole('article', { name: 'Pausado sin stock' });
     expect(row).toHaveTextContent('No disponible manualmente');
-    expect(row).toHaveTextContent('Sin stock');
+    expect(row).toHaveTextContent('Disponible Dux: 0');
 
     fireEvent.click(screen.getByRole('button', { name: 'Reactivar Pausado sin stock' }));
 
     expect(await screen.findByText(
-      'La disponibilidad manual de Pausado sin stock quedó activa, pero sigue fuera de venta porque no tiene stock.',
+      'La disponibilidad manual de Pausado sin stock quedó activa, pero la venta sigue bloqueada hasta que Dux la verifique.',
     )).toBeVisible();
     expect(row).toHaveTextContent('Disponible manualmente');
-    expect(row).toHaveTextContent('Sin stock');
+    expect(row).toHaveTextContent('Disponible Dux: 0');
   });
 
   it('muestra el inventario Dux sin redondear y oculta el ajuste manual de stock', async () => {
@@ -466,6 +445,20 @@ function category() {
   return value;
 }
 
+function duxCommerce(available: number): NonNullable<CatalogProductDetail['commerce']> {
+  return Object.freeze({
+    source: 'dux' as const,
+    catalogVersion: 'd'.repeat(64),
+    syncedAt: '2026-09-01T12:00:00.000Z',
+    availabilityState: available > 0 ? 'verified' as const : 'out_of_stock' as const,
+    checkoutEligible: available > 0,
+    mappingStatus: 'mapped' as const,
+    quantitySemanticsStatus: 'verified' as const,
+    observedStock: Object.freeze({ real: available, reserved: 0, available }),
+    depositName: 'Principal',
+  });
+}
+
 function product(
   id: string,
   name: string,
@@ -474,7 +467,6 @@ function product(
     categorized?: boolean;
     image?: boolean;
     sku?: string;
-    stockQuantity?: number;
     commerce?: CatalogProductDetail['commerce'];
   }> = {},
 ): CatalogProductDetail {
@@ -494,7 +486,6 @@ function product(
     price: Object.freeze({ amount: 1_000, currency: 'ARS' }),
     ...(options.sku === undefined ? {} : { sku: options.sku }),
     availability: options.availability ?? 'available',
-    ...(options.stockQuantity === undefined ? {} : { stockQuantity: options.stockQuantity }),
     ...(options.commerce === undefined ? {} : { commerce: options.commerce }),
     ...(images[0] === undefined ? {} : { primaryImage: images[0] }),
     images,
@@ -576,7 +567,7 @@ function installCatalogApi(
         ...(current.salePrice === undefined ? {} : { salePrice: current.salePrice }),
         ...(current.sku === undefined ? {} : { sku: current.sku }),
         ...(current.availability === undefined ? {} : { availability: current.availability }),
-        ...(current.stockQuantity === undefined ? {} : { stockQuantity: current.stockQuantity }),
+        ...(current.commerce === undefined ? {} : { commerce: current.commerce }),
         ...(current.shortDescription === undefined ? {} : { shortDescription: current.shortDescription }),
         ...(current.description === undefined ? {} : { description: current.description }),
         images: Object.freeze([]),
@@ -599,18 +590,12 @@ function installCatalogApi(
     if (match !== null && method === 'PATCH') {
       const patch = JSON.parse(readBody(init?.body)) as {
         availability?: 'available' | 'unavailable';
-        stockQuantity?: number | null;
       };
       const finish = () => {
         const current = requiredProduct(products, id);
         let updated = current;
         if (patch.availability !== undefined) {
           updated = Object.freeze({ ...updated, availability: patch.availability });
-        }
-        if (patch.stockQuantity === null) {
-          updated = productWithoutStock(updated);
-        } else if (patch.stockQuantity !== undefined) {
-          updated = Object.freeze({ ...updated, stockQuantity: patch.stockQuantity });
         }
         products = products.map((candidate) => candidate.id === id ? updated : candidate);
         return json({ product: updated });
@@ -640,27 +625,6 @@ function installCatalogApi(
     },
     requests,
   };
-}
-
-function productWithoutStock(current: CatalogProductDetail): CatalogProductDetail {
-  return Object.freeze({
-    id: current.id,
-    slug: current.slug,
-    path: current.path,
-    name: current.name,
-    categorySlugs: current.categorySlugs,
-    categoryNames: current.categoryNames,
-    ...(current.presentation === undefined ? {} : { presentation: current.presentation }),
-    price: current.price,
-    ...(current.salePrice === undefined ? {} : { salePrice: current.salePrice }),
-    ...(current.sku === undefined ? {} : { sku: current.sku }),
-    ...(current.availability === undefined ? {} : { availability: current.availability }),
-    ...(current.shortDescription === undefined ? {} : { shortDescription: current.shortDescription }),
-    ...(current.description === undefined ? {} : { description: current.description }),
-    ...(current.primaryImage === undefined ? {} : { primaryImage: current.primaryImage }),
-    images: current.images,
-    variants: current.variants,
-  });
 }
 
 function requiredProduct(

@@ -26,9 +26,16 @@ type AdminProduct = {
   salePrice?: { amount: number; currency: 'ARS' };
   sku?: string;
   availability?: 'available' | 'unavailable';
-  stockQuantity?: number;
-  reservedQuantity?: number;
-  availableQuantity?: number;
+  commerce?: {
+    source: 'dux';
+    catalogVersion: string;
+    syncedAt: string;
+    availabilityState: 'verified' | 'out_of_stock';
+    checkoutEligible: boolean;
+    mappingStatus: 'mapped';
+    quantitySemanticsStatus: 'verified';
+    observedStock: { real: number; reserved: number; available: number };
+  };
   shortDescription?: string;
   description?: string;
   primaryImage?: { src: string; alt: string };
@@ -158,7 +165,7 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
 });
 
-test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilidad e imagen', async ({ page }) => {
+test('gestiona el catálogo con inventario Dux de solo lectura, disponibilidad e imagen', async ({ page }) => {
   test.setTimeout(60_000);
   const api = await installStatefulAdminApi(page, [
     product('aceite-inicial-e2e', 'Aceite inicial E2E', {
@@ -166,7 +173,7 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
       categorySlug: 'aceites',
       price: 1_500,
       sku: 'ACE-E2E-1',
-      stockQuantity: 4,
+      duxStock: { real: 4, reserved: 0, available: 4 },
     }),
     product('producto-pausado-e2e', 'Producto pausado E2E', {
       availability: 'unavailable',
@@ -238,8 +245,9 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   await expect(page.getByText(`Dirección pública: /${TECHNICAL_PRODUCT_ID}/`)).toBeVisible();
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9876.54');
   await page.getByRole('checkbox', { name: 'Aceites', exact: true }).check();
-  await page.getByRole('checkbox', { name: /Controlar stock/u }).check();
-  await page.getByRole('spinbutton', { name: 'Stock físico' }).fill('7');
+  await expect(page.getByText(/Inventario: Dux\. Shekinah no guarda ni permite editar stock/u))
+    .toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveCount(0);
   await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).uncheck();
   await expect(page.getByText(/Estado efectivo: No disponible manualmente/u)).toBeVisible();
 
@@ -275,13 +283,13 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   expect(requiredProduct(api.products(), TECHNICAL_PRODUCT_ID)).toMatchObject({
     availability: 'unavailable',
     price: { amount: 9_876.54, currency: 'ARS' },
-    stockQuantity: 7,
   });
+  expect(Object.hasOwn(requiredProduct(api.products(), TECHNICAL_PRODUCT_ID), 'stockQuantity'))
+    .toBe(false);
 
   await page.getByRole('button', { name: 'Cerrar editor' }).click();
   await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
   await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).check();
-  await page.getByRole('spinbutton', { name: 'Stock físico' }).fill('3');
   await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9999');
   await page.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
@@ -294,16 +302,14 @@ test('gestiona el catálogo completo con búsqueda, filtros, stock, disponibilid
   const persistedRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
   await expect(persistedRow).toBeVisible();
   await expect(persistedRow.getByText('Disponible manualmente')).toBeVisible();
-  await expect(persistedRow).toContainText('Físico: 3');
-  await expect(persistedRow).toContainText('reservado: 0');
-  await expect(persistedRow).toContainText('disponible: 3');
+  await expect(persistedRow).toContainText('Sin snapshot Dux verificable · venta bloqueada');
   await expect(persistedRow.getByRole('img', { name: TECHNICAL_PRODUCT_NAME })).toHaveAttribute(
     'src',
     MANAGED_IMAGE_PATH,
   );
   await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
   await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('9999');
-  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveValue('3');
+  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', {
     name: /Disponible manualmente para venta/u,
   })).toBeChecked();
@@ -407,9 +413,7 @@ test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async (
       categoryName: 'Aceites',
       categorySlug: 'aceites',
       price: 5_000,
-      stockQuantity: 5,
-      reservedQuantity: 2,
-      availableQuantity: 3,
+      duxStock: { real: 5, reserved: 2, available: 3 },
     }),
   ], {
     // El orden de entrada es deliberado: el mock debe priorizar el pendiente WhatsApp.
@@ -450,22 +454,18 @@ test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async (
   await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
   expect(actionRequests(api.requests, orderId, 'approve')).toHaveLength(1);
   expect(requiredProduct(api.products(), 'producto-reservado-e2e')).toMatchObject({
-    stockQuantity: 3,
-    reservedQuantity: 0,
-    availableQuantity: 3,
+    commerce: { observedStock: { real: 5, reserved: 2, available: 3 } },
   });
 });
 
-test('confirma el rechazo y restaura el stock disponible', async ({ page }) => {
+test('confirma el rechazo sin mutar el snapshot autoritativo Dux', async ({ page }) => {
   const orderId = 'ord_whatsapp_pending_reject_e2e';
   const api = await installStatefulAdminApi(page, [
     product('producto-liberado-e2e', 'Producto liberado E2E', {
       categoryName: 'Aceites',
       categorySlug: 'aceites',
       price: 5_000,
-      stockQuantity: 5,
-      reservedQuantity: 2,
-      availableQuantity: 3,
+      duxStock: { real: 5, reserved: 2, available: 3 },
     }),
   ], {
     orders: [whatsappOrderDetailFixture(orderId, 'producto-liberado-e2e', 'Producto liberado E2E')],
@@ -494,16 +494,12 @@ test('confirma el rechazo y restaura el stock disponible', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
   expect(actionRequests(api.requests, orderId, 'reject')).toHaveLength(1);
   expect(requiredProduct(api.products(), 'producto-liberado-e2e')).toMatchObject({
-    stockQuantity: 5,
-    reservedQuantity: 0,
-    availableQuantity: 5,
+    commerce: { observedStock: { real: 5, reserved: 2, available: 3 } },
   });
 
   await page.getByRole('button', { name: 'Productos' }).click();
   const productRow = page.getByRole('article', { name: 'Producto liberado E2E' });
-  await expect(productRow).toContainText('Físico: 5');
-  await expect(productRow).toContainText('reservado: 0');
-  await expect(productRow).toContainText('disponible: 5');
+  await expect(productRow).toContainText('Stock observado: real 5 · reservado 2 · disponible 3');
 });
 
 test('ante un conflicto 409 refresca el estado autoritativo del pedido', async ({ page }) => {
@@ -513,9 +509,7 @@ test('ante un conflicto 409 refresca el estado autoritativo del pedido', async (
       categoryName: 'Aceites',
       categorySlug: 'aceites',
       price: 5_000,
-      stockQuantity: 5,
-      reservedQuantity: 2,
-      availableQuantity: 3,
+      duxStock: { real: 5, reserved: 2, available: 3 },
     }),
   ], {
     orders: [whatsappOrderDetailFixture(orderId, 'producto-conflicto-e2e', 'Producto conflicto E2E')],
@@ -541,7 +535,7 @@ test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet
       categoryName: 'Aceites',
       categorySlug: 'aceites',
       price: 1_500,
-      stockQuantity: 9,
+      duxStock: { real: 9, reserved: 0, available: 9 },
     }),
   ]);
   await page.goto('/admin');
@@ -870,12 +864,9 @@ async function installStatefulAdminApi(
       if (method === 'PATCH') {
         const patch = request.postDataJSON() as {
           availability?: 'available' | 'unavailable';
-          stockQuantity?: number | null;
         };
         const updated = { ...requiredProduct(products, id) };
         if (patch.availability !== undefined) updated.availability = patch.availability;
-        if (patch.stockQuantity === null) delete updated.stockQuantity;
-        else if (patch.stockQuantity !== undefined) updated.stockQuantity = patch.stockQuantity;
         products = replaceProduct(products, updated);
         await json(route, { product: updated });
         return;
@@ -1061,9 +1052,7 @@ function product(
     categorySlug: string;
     price: number;
     sku?: string;
-    stockQuantity?: number;
-    reservedQuantity?: number;
-    availableQuantity?: number;
+    duxStock?: Readonly<{ real: number; reserved: number; available: number }>;
   }>,
 ): AdminProduct {
   return {
@@ -1077,9 +1066,20 @@ function product(
     price: { amount: options.price, currency: 'ARS' },
     ...(options.sku === undefined ? {} : { sku: options.sku }),
     availability: options.availability ?? 'available',
-    ...(options.stockQuantity === undefined ? {} : { stockQuantity: options.stockQuantity }),
-    ...(options.reservedQuantity === undefined ? {} : { reservedQuantity: options.reservedQuantity }),
-    ...(options.availableQuantity === undefined ? {} : { availableQuantity: options.availableQuantity }),
+    ...(options.duxStock === undefined ? {} : {
+      commerce: {
+        source: 'dux' as const,
+        catalogVersion: 'd'.repeat(64),
+        syncedAt: '2026-09-01T12:00:00.000Z',
+        availabilityState: options.duxStock.available > 0
+          ? 'verified' as const
+          : 'out_of_stock' as const,
+        checkoutEligible: options.duxStock.available > 0,
+        mappingStatus: 'mapped' as const,
+        quantitySemanticsStatus: 'verified' as const,
+        observedStock: { ...options.duxStock },
+      },
+    }),
     images: [],
     variants: [],
   };
@@ -1127,24 +1127,9 @@ function resolveMockOrder(
       approved_at: status === 'approved' ? resolvedAt : current.order.approved_at,
     },
   };
-  const quantities = new Map(current.items.map((item) => [item.product_id, item.quantity]));
-  const nextProducts = products.map((productValue) => {
-    const quantity = quantities.get(productValue.id);
-    if (quantity === undefined || productValue.stockQuantity === undefined) return productValue;
-    const physical = status === 'approved'
-      ? productValue.stockQuantity - quantity
-      : productValue.stockQuantity;
-    const reserved = Math.max(0, (productValue.reservedQuantity ?? quantity) - quantity);
-    return {
-      ...productValue,
-      stockQuantity: physical,
-      reservedQuantity: reserved,
-      availableQuantity: physical - reserved,
-    };
-  });
   return Object.freeze({
     orders: orders.map((candidate) => candidate.order.id === id ? nextOrder : candidate),
-    products: nextProducts,
+    products: [...products],
   });
 }
 

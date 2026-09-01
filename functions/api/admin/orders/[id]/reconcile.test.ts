@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { RecalculatedCart } from '../../../../../server/catalog';
-import { createCatalogProduct, getCatalogProductDetail } from '../../../../../server/catalog-store';
 import { getOrderById, prepareOrder } from '../../../../../server/orders';
 import type {
   AdminContextData,
@@ -35,20 +34,6 @@ describe('conciliación administrativa de Mercado Pago', () => {
   it('consulta por referencia, aplica el pago una vez y audita cada solicitud', async () => {
     const database = new SqliteD1(migration);
     try {
-      await createCatalogProduct(database, {
-        id: 'producto-reconciliacion',
-        slug: 'producto-reconciliacion',
-        path: '/producto-reconciliacion/',
-        name: 'Producto de reconciliación',
-        categorySlugs: ['agroecologicos'],
-        categoryNames: ['Agroecologicos'],
-        presentation: '50 g',
-        price: { amount: 750, currency: 'ARS' },
-        availability: 'available',
-        stockQuantity: 2,
-        images: [],
-        variants: [],
-      }, 'admin@example.test');
       const prepared = await prepareOrder({
         cart: controlledCart(),
         database,
@@ -88,15 +73,10 @@ describe('conciliación administrativa de Mercado Pago', () => {
       expect(first.status).toBe(200);
       expect(second.status).toBe(200);
       await expect(first.json()).resolves.toMatchObject({
-        order: { status: 'approved', stock_reservation_state: 'consumed' },
+        order: { status: 'approved', stock_reservation_state: 'not_controlled' },
         reconciliation: { checkedPayments: 1 },
       });
       expect((await getOrderById(database, prepared.order.id))?.status).toBe('approved');
-      expect(await getCatalogProductDetail(database, 'producto-reconciliacion')).toMatchObject({
-        stockQuantity: 1,
-        reservedQuantity: 0,
-        availableQuantity: 1,
-      });
       await expect(database.prepare(
         "SELECT COUNT(*) AS count FROM payments WHERE provider_payment_id = '123456'",
       ).first()).resolves.toEqual({ count: 1 });
@@ -142,7 +122,6 @@ function controlledCart(): RecalculatedCart {
         name: 'Producto de reconciliación',
         presentation: '50 g',
         available: true,
-        stockControlled: true,
         unitPriceMinor: 75_000,
       }),
       quantity: 1,

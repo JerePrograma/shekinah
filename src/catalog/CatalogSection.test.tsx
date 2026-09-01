@@ -124,9 +124,23 @@ describe('CatalogSection', () => {
   });
 
   it('muestra en la tarjeta la cantidad agregada tras confirmar el catálogo runtime', async () => {
-    const product = authorizedProducts[0]!;
+    const product = {
+      ...authorizedProducts[0]!,
+      availability: 'available' as const,
+      commerce: {
+        source: 'dux' as const,
+        catalogVersion: 'd'.repeat(64),
+        syncedAt: '2026-09-01T12:00:00.000Z',
+        availabilityState: 'verified' as const,
+        checkoutEligible: true,
+        mappingStatus: 'mapped' as const,
+        quantitySemanticsStatus: 'verified' as const,
+        observedStock: { real: 2, reserved: 0, available: 2 },
+      },
+    };
+    const runtimeProducts = [product, ...authorizedProducts.slice(1)];
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
-      products: authorizedProducts,
+      products: runtimeProducts,
     }), { status: 200, headers: { 'content-type': 'application/json' } })));
     await act(async () => {
       await refreshRuntimeCatalog();

@@ -35,6 +35,10 @@ const duxAuthoritativeInventoryMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0012_dux_authoritative_inventory.sql'),
   'utf8',
 );
+const removeLocalCatalogStockMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0013_remove_local_catalog_stock.sql'),
+  'utf8',
+);
 
 describe('migraciones D1', () => {
   it('preserva pedidos históricos y aplica constraints, idempotencia y cascade', () => {
@@ -440,6 +444,104 @@ describe('migraciones D1', () => {
       expect(database.prepare(`SELECT json_extract(payload_json, '$.stockQuantity') AS stock
         FROM catalog_product_mutations WHERE product_id = 'producto-dux-aislado'`).get())
         .toEqual({ stock: 5 });
+      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('elimina los contadores locales, impide reintroducirlos y exige snapshot Dux en líneas nuevas', () => {
+    const database = new DatabaseSync(':memory:');
+    try {
+      applyAllMigrations(database);
+      insertCatalogMutation(database, 'producto-migrado', 9);
+      database.prepare(`UPDATE catalog_product_mutations
+        SET payload_json = json_set(
+          payload_json,
+          '$.reservedQuantity', 2,
+          '$.availableQuantity', 7
+        )
+        WHERE product_id = 'producto-migrado'`).run();
+      insertWhatsappOrder(database, 'pedido-historico', 'pedido-historico-key', 1);
+      insertOrderItem(database, 'pedido-historico', 'producto-migrado', 1);
+
+      database.exec(removeLocalCatalogStockMigration);
+
+      expect(database.prepare(`SELECT
+        json_type(payload_json, '$.stockQuantity') AS physical,
+        json_type(payload_json, '$.reservedQuantity') AS reserved,
+        json_type(payload_json, '$.availableQuantity') AS available,
+        updated_by
+        FROM catalog_product_mutations
+        WHERE product_id = 'producto-migrado'`).get()).toEqual({
+        physical: null,
+        reserved: null,
+        available: null,
+        updated_by: 'migration-0013-dux-authoritative-inventory',
+      });
+      expect(database.prepare(`SELECT product_id, quantity, stock_controlled
+        FROM order_items WHERE order_id = 'pedido-historico'`).get()).toEqual({
+        product_id: 'producto-migrado',
+        quantity: 1,
+        stock_controlled: 1,
+      });
+
+      for (const field of ['stockQuantity', 'reservedQuantity', 'availableQuantity']) {
+        expect(() => database.prepare(`INSERT INTO catalog_product_mutations (
+          product_id, payload_json, deleted, updated_by, created_at, updated_at
+        ) VALUES (?, ?, 0, 'test', ?, ?)`)
+          .run(
+            `prohibido-${field}`,
+            JSON.stringify({ [field]: null }),
+            '2026-09-01T12:00:00.000Z',
+            '2026-09-01T12:00:00.000Z',
+          )).toThrow('DUX_LOCAL_STOCK_FORBIDDEN');
+      }
+      expect(() => database.prepare(`UPDATE catalog_product_mutations
+        SET payload_json = json_set(payload_json, '$.stockQuantity', 1)
+        WHERE product_id = 'producto-migrado'`).run())
+        .toThrow('DUX_LOCAL_STOCK_FORBIDDEN');
+
+      insertWhatsappOrder(database, 'pedido-sin-snapshot', 'pedido-sin-snapshot-key', 1);
+      expect(() => insertOrderItem(
+        database,
+        'pedido-sin-snapshot',
+        'producto-migrado',
+        1,
+        0,
+      )).toThrow('DUX_INVENTORY_SNAPSHOT_REQUIRED');
+
+      const now = '2026-09-01T12:00:00.000Z';
+      const catalogVersion = 'a'.repeat(64);
+      database.prepare(`INSERT INTO dux_inventory_items (
+        inventory_key, cod_item, item_name, local_product_id, mapping_status,
+        mapping_source, mapping_candidates_json, deposit_id, deposit_name,
+        stock_real, stock_reservado, stock_disponible, quantity_semantics_status,
+        checkout_eligible, catalog_version, raw_snapshot_json, last_sync_status,
+        last_synced_at, created_at, updated_at
+      ) VALUES (
+        'dux:v2:1:3:PRODUCTO:base', 'PRODUCTO', 'Producto migrado',
+        'producto-migrado', 'mapped', 'persisted', '["producto-migrado"]',
+        '3', 'Principal', 9, 0, 9, 'unavailable_from_v2_items', 0,
+        ?, '{}', 'ok', ?, ?, ?
+      )`).run(catalogVersion, now, now, now);
+      insertWhatsappOrder(database, 'pedido-con-snapshot', 'pedido-con-snapshot-key', 1);
+      database.prepare(`INSERT INTO order_items (
+        order_id, product_id, name, quantity, unit_price_minor, subtotal_minor,
+        stock_controlled, provider_catalog_version
+      ) VALUES ('pedido-con-snapshot', 'producto-migrado', 'Producto migrado',
+        1, 1000, 1000, 0, ?)`)
+        .run(catalogVersion);
+
+      const triggerNames = database.prepare(`SELECT name FROM sqlite_schema
+        WHERE type = 'trigger' ORDER BY name`).all().map((row) => row.name);
+      expect(triggerNames).toEqual(expect.arrayContaining([
+        'catalog_mutations_insert_dux_inventory_guard',
+        'catalog_mutations_update_dux_inventory_guard',
+        'order_items_require_dux_inventory_snapshot',
+      ]));
+      expect(triggerNames).not.toContain('checkout_orders_consume_stock');
+      expect(triggerNames).not.toContain('whatsapp_orders_consume_reservation');
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       database.close();

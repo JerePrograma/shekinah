@@ -22,7 +22,6 @@ const generated = source.map((product, index) => {
     salePrice,
     presentation,
     sku,
-    availability,
   } = product;
   if (
     typeof id !== 'string' ||
@@ -53,7 +52,10 @@ const generated = source.map((product, index) => {
     ...(presentation === undefined ? {} : { presentation }),
     ...(sku === undefined ? {} : { sku }),
     unitPriceMinor,
-    available: availability === undefined || availability === 'available',
+    // Este artefacto conserva únicamente precio e identidad para compatibilidad
+    // interna. Nunca puede habilitar ventas: la disponibilidad sólo nace del
+    // snapshot Dux servido en runtime.
+    available: false,
   };
 });
 

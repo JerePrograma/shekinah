@@ -229,6 +229,7 @@ export async function syncDuxInventory(
       config,
       items,
       options.localProducts,
+      kind === 'initial',
     );
     const rows = await Promise.all(mappedItems.units.map((unit) => (
       persistableUnit(unit, tenant, startedAt)
@@ -459,10 +460,15 @@ async function mapInventoryItems(
   config: DuxInventoryConfig,
   items: readonly DuxItem[],
   localProducts: readonly CatalogProductDetail[],
+  bootstrapRequested: boolean,
 ): Promise<MappedInventoryItems> {
   const existingMappings = await readPersistedMappings(database);
+  const allowExactNameBootstrap = bootstrapRequested && await isDuxInventoryBootstrap(database);
   const productsById = groupProducts(localProducts, (product) => product.id);
-  const productsBySku = groupProducts(localProducts, (product) => product.sku ?? null);
+  const productsBySku = groupProductIdentifiers(localProducts, (product) => [
+    product.sku,
+    ...product.variants.map((variant) => variant.sku),
+  ]);
   const productsByName = groupProducts(localProducts, (product) => normalizeExactName(product.name));
   const pending: PendingInventoryUnit[] = [];
   const seenKeys = new Set<string>();
@@ -494,6 +500,8 @@ async function mapInventoryItems(
         productsBySku,
         productsByName,
         item,
+        stock,
+        allowExactNameBootstrap,
       );
       pending.push(Object.freeze({ inventoryKey, item, stock, mapping }));
     }
@@ -533,6 +541,8 @@ function decideMapping(
   productsBySku: ReadonlyMap<string, readonly CatalogProductDetail[]>,
   productsByName: ReadonlyMap<string, readonly CatalogProductDetail[]>,
   item: DuxItem,
+  stock: DuxItemStock,
+  allowExactNameBootstrap: boolean,
 ): MappingDecision {
   if (
     persisted?.status === 'mapped' &&
@@ -547,9 +557,16 @@ function decideMapping(
   const sku = productsBySku.get(item.code) ?? [];
   const bySku = candidateDecision(sku, 'sku');
   if (bySku !== null) return bySku;
-  const exactName = productsByName.get(normalizeExactName(item.name)) ?? [];
-  const byName = candidateDecision(exactName, 'exact_name');
-  if (byName !== null) return byName;
+  const barcode = candidateDecision(
+    productsForExactIdentifiers(productsBySku, duxBarcodes(item, stock)),
+    'cod_barra',
+  );
+  if (barcode !== null) return barcode;
+  if (allowExactNameBootstrap) {
+    const exactName = productsByName.get(normalizeExactName(item.name)) ?? [];
+    const byName = candidateDecision(exactName, 'exact_name');
+    if (byName !== null) return byName;
+  }
   return Object.freeze({
     status: 'unmapped' as const,
     source: null,
@@ -560,7 +577,7 @@ function decideMapping(
 
 function candidateDecision(
   products: readonly CatalogProductDetail[],
-  source: 'codigo_externo' | 'sku' | 'exact_name',
+  source: 'codigo_externo' | 'sku' | 'cod_barra' | 'exact_name',
 ): MappingDecision | null {
   if (products.length === 0) return null;
   const candidates = Object.freeze([...new Set(products.map((product) => product.id))].sort());
@@ -601,6 +618,42 @@ function groupProducts(
   return grouped;
 }
 
+function groupProductIdentifiers(
+  products: readonly CatalogProductDetail[],
+  identifiers: (product: CatalogProductDetail) => readonly (string | undefined)[],
+): ReadonlyMap<string, readonly CatalogProductDetail[]> {
+  const grouped = new Map<string, CatalogProductDetail[]>();
+  for (const product of products) {
+    for (const identifier of new Set(identifiers(product))) {
+      if (identifier === undefined || identifier === '') continue;
+      const matches = grouped.get(identifier) ?? [];
+      matches.push(product);
+      grouped.set(identifier, matches);
+    }
+  }
+  return grouped;
+}
+
+function duxBarcodes(item: DuxItem, stock: DuxItemStock): readonly string[] {
+  return Object.freeze([
+    ...(stock.variantBarcode === null ? [] : [stock.variantBarcode]),
+    ...item.barcodes,
+  ]);
+}
+
+function productsForExactIdentifiers(
+  productsByIdentifier: ReadonlyMap<string, readonly CatalogProductDetail[]>,
+  identifiers: readonly string[],
+): readonly CatalogProductDetail[] {
+  const byId = new Map<string, CatalogProductDetail>();
+  for (const identifier of new Set(identifiers)) {
+    for (const product of productsByIdentifier.get(identifier) ?? []) {
+      byId.set(product.id, product);
+    }
+  }
+  return Object.freeze([...byId.values()]);
+}
+
 function normalizeExactName(value: string): string {
   return value.normalize('NFKC').trim().replaceAll(/\s+/gu, ' ').toLocaleLowerCase('es-AR');
 }
@@ -625,6 +678,13 @@ async function readPersistedMappings(
     }
   }
   return mappings;
+}
+
+async function isDuxInventoryBootstrap(database: D1Database): Promise<boolean> {
+  const row = await database
+    .prepare('SELECT COUNT(*) AS row_count FROM dux_inventory_items')
+    .first<Readonly<{ row_count: unknown }>>();
+  return nonNegativeDatabaseInteger(row?.row_count ?? 0) === 0;
 }
 
 async function persistableUnit(

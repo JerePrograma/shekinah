@@ -41,10 +41,13 @@ export function isProductAvailable(product: Product): boolean {
 
 export function getProductCartLimit(product: Product): number {
   if (!isProductAvailable(product)) return 0;
-  return Math.min(
-    MAX_CART_QUANTITY,
-    product.availableQuantity ?? product.stockQuantity ?? MAX_CART_QUANTITY,
-  );
+  const available = product.commerce?.source === 'dux'
+    ? product.commerce.observedStock?.available
+    : undefined;
+  if (typeof available !== 'number' || !Number.isSafeInteger(available) || available < 1) {
+    return 0;
+  }
+  return Math.min(MAX_CART_QUANTITY, available);
 }
 
 function normalizeQuantity(value: unknown, maximum = MAX_CART_QUANTITY): number | null {

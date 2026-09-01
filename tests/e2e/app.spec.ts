@@ -104,7 +104,7 @@ test('presenta navegación, carrito y los 510 productos compilados', async ({ pa
   );
   await page.getByRole('link', { name: 'Guayaba hojas x 50 gr' }).click();
   await expect(page).toHaveURL(/\/guayaba$/u);
-  await expect(page.getByRole('button', { name: 'Agregar al carrito' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
   expectCleanRuntime(page, observation);
 });
 

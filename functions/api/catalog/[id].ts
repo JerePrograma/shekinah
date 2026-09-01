@@ -7,7 +7,6 @@ import {
   requireDatabase,
   responseFromError,
 } from '../../../server/http';
-import { projectCatalogProductDetailForSale } from '../../../server/local-inventory';
 import type { PagesFunction } from '../../../server/platform';
 
 export const onRequest: PagesFunction = async ({ env, params, request }) => {
@@ -23,7 +22,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
           },
         }, 404)
       : jsonResponse({
-          product: projectCatalogProductDetailForSale(product),
+          product,
         });
   } catch (error: unknown) {
     return responseFromError(error);

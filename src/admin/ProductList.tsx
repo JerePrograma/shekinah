@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { FormEvent, KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 
 import { formatProductPrice } from '../catalog/catalog';
 import type { CatalogProductDetail } from '../catalog/model';
@@ -23,28 +23,20 @@ export function ProductList({
   isDirty,
   loadError,
   loading,
-  onBeginQuickStock,
   onAvailabilityFilterChange,
   onCancelDelete,
-  onCancelQuickStock,
   onCategoryFilterChange,
   onConfirmDelete,
   onEdit,
   onOpenDelete,
   onQueryChange,
-  onQuickStockValueChange,
   onResetFilters,
   onRetryLoad,
-  onSetUntrackedStock,
   onSortChange,
   onStockFilterChange,
-  onSubmitQuickStock,
   onUpdateAvailability,
   operation,
   query,
-  quickStockError,
-  quickStockId,
-  quickStockValue,
   remoteBusy,
   sort,
   stockFilter,
@@ -58,31 +50,20 @@ export function ProductList({
   isDirty: boolean;
   loadError: string;
   loading: boolean;
-  onBeginQuickStock: (product: CatalogProductDetail) => void;
   onAvailabilityFilterChange: (value: AvailabilityFilter) => void;
   onCancelDelete: () => void;
-  onCancelQuickStock: () => void;
   onCategoryFilterChange: (value: string) => void;
   onConfirmDelete: (product: CatalogProductDetail) => void;
   onEdit: (product: CatalogProductDetail, returnFocusTarget: HTMLButtonElement) => void;
   onOpenDelete: (product: CatalogProductDetail) => void;
   onQueryChange: (value: string) => void;
-  onQuickStockValueChange: (value: string) => void;
   onResetFilters: () => void;
   onRetryLoad: () => void;
-  onSetUntrackedStock: (product: CatalogProductDetail) => void;
   onSortChange: (value: ProductSort) => void;
   onStockFilterChange: (value: StockFilter) => void;
-  onSubmitQuickStock: (
-    event: FormEvent<HTMLFormElement>,
-    product: CatalogProductDetail,
-  ) => void;
   onUpdateAvailability: (product: CatalogProductDetail) => void;
   operation: ProductOperation;
   query: string;
-  quickStockError: string;
-  quickStockId: string | null;
-  quickStockValue: string;
   remoteBusy: boolean;
   sort: ProductSort;
   stockFilter: StockFilter;
@@ -168,7 +149,7 @@ export function ProductList({
             <option value="all">Todos</option>
             <option value="in-stock">Con stock</option>
             <option value="out-of-stock">Sin stock</option>
-            <option value="untracked">Stock sin configurar</option>
+            <option value="unverified">Sin snapshot Dux verificable</option>
           </select>
         </label>
         <label className="admin-form-field">
@@ -310,17 +291,6 @@ export function ProductList({
                           ? 'Reactivar'
                           : 'Pausar'}
                     </button>
-                    {duxInventory === undefined ? (
-                      <button
-                        className="button button-secondary admin-compact-button"
-                        type="button"
-                        disabled={remoteBusy || (selected && isDirty)}
-                        aria-label={`Ajustar stock de ${product.name}`}
-                        onClick={() => onBeginQuickStock(product)}
-                      >
-                        Ajustar stock
-                      </button>
-                    ) : null}
                     <button
                       ref={(element) => {
                         if (element === null) deleteTriggerRefs.current.delete(product.id);
@@ -335,61 +305,6 @@ export function ProductList({
                       Quitar
                     </button>
                   </div>
-
-                  {quickStockId === product.id && duxInventory === undefined ? (
-                    <form
-                      className="admin-inline-editor"
-                      onSubmit={(event) => onSubmitQuickStock(event, product)}
-                    >
-                      <label className="admin-form-field">
-                        <span>Nueva cantidad</span>
-                        <input
-                          type="number"
-                          min={product.reservedQuantity ?? 0}
-                          max="1000000"
-                          step="1"
-                          inputMode="numeric"
-                          value={quickStockValue}
-                          disabled={rowBusy}
-                          aria-invalid={quickStockError === '' ? undefined : true}
-                          aria-describedby={quickStockError === '' ? undefined : `quick-stock-error-${product.id}`}
-                          onChange={(event) => onQuickStockValueChange(event.currentTarget.value)}
-                        />
-                      </label>
-                      {product.reservedQuantity === undefined || product.reservedQuantity === 0 ? null : (
-                        <p className="admin-context-note">
-                          Hay {product.reservedQuantity.toLocaleString('es-AR')} unidades reservadas;
-                          el stock físico no puede quedar por debajo de ese valor.
-                        </p>
-                      )}
-                      <div className="admin-inline-actions">
-                        <button className="button button-primary admin-compact-button" type="submit" disabled={rowBusy}>
-                          {rowBusy ? 'Guardando…' : 'Guardar stock'}
-                        </button>
-                        <button
-                          className="button button-secondary admin-compact-button"
-                          type="button"
-                          disabled={rowBusy}
-                          onClick={() => onSetUntrackedStock(product)}
-                        >
-                          Dejar sin stock configurado
-                        </button>
-                        <button
-                          className="button button-secondary admin-compact-button"
-                          type="button"
-                          disabled={rowBusy}
-                          onClick={onCancelQuickStock}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                      {quickStockError === '' ? null : (
-                        <p className="admin-field-error" id={`quick-stock-error-${product.id}`} role="alert">
-                          {quickStockError}
-                        </p>
-                      )}
-                    </form>
-                  ) : null}
 
                   {deleteCandidate?.id === product.id ? (
                     <div
@@ -468,21 +383,7 @@ function productStockLabel(product: CatalogProductDetail) {
       tone: product.commerce.checkoutEligible ? 'available' : 'out',
     } as const;
   }
-  if (product.stockQuantity === undefined) {
-    return { label: 'Stock sin configurar · venta bloqueada', tone: 'out' } as const;
-  }
-  const reserved = product.reservedQuantity ?? 0;
-  const available = product.availableQuantity ?? product.stockQuantity;
-  if (available === 0) {
-    return {
-      label: `Sin stock disponible · físico: ${product.stockQuantity.toLocaleString('es-AR')} · reservado: ${reserved.toLocaleString('es-AR')} · disponible: 0`,
-      tone: 'out',
-    } as const;
-  }
-  return {
-    label: `Físico: ${product.stockQuantity.toLocaleString('es-AR')} · reservado: ${reserved.toLocaleString('es-AR')} · disponible: ${available.toLocaleString('es-AR')}`,
-    tone: 'available',
-  } as const;
+  return { label: 'Sin snapshot Dux verificable · venta bloqueada', tone: 'out' } as const;
 }
 
 function duxMappingLabel(mappingStatus: 'mapped' | 'unmapped' | 'ambiguous'): string {

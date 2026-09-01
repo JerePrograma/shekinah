@@ -452,26 +452,33 @@ async function calculateWhatsappCart(
     if (detail === null) {
       throw new HttpError(400, 'PRODUCT_NOT_FOUND', 'Uno de los productos ya no existe.');
     }
+    if (detail.commerce?.source !== 'dux') {
+      throw new HttpError(
+        409,
+        'DUX_INVENTORY_REQUIRED',
+        `${detail.name} no tiene una identidad de inventario Dux verificable.`,
+      );
+    }
     if (!isProductEffectivelyAvailable(detail)) {
       throw new HttpError(409, 'PRODUCT_UNAVAILABLE', `${detail.name} ya no está disponible.`);
     }
-    if (env.MERCADO_LIBRE_CATALOG_ENABLED === 'true') {
-      if (
-        detail.commerce === undefined ||
-        catalogVersion === undefined ||
-        !/^[a-f0-9]{64}$/u.test(catalogVersion)
-      ) {
-        throw new HttpError(409, 'CATALOG_VERSION_REQUIRED', 'Actualizá el carrito antes de continuar.');
-      }
-      if (catalogVersion !== detail.commerce.catalogVersion) {
-        throw new HttpError(409, 'CATALOG_VERSION_CONFLICT', `${detail.name} cambió desde que se agregó al carrito.`);
-      }
-      if (!detail.commerce.checkoutEligible) {
-        throw new HttpError(409, 'MERCADO_LIBRE_STOCK_UNPROTECTED', `${detail.name} requiere confirmación de disponibilidad.`);
-      }
+    if (
+      catalogVersion === undefined ||
+      !/^[a-f0-9]{64}$/u.test(catalogVersion)
+    ) {
+      throw new HttpError(409, 'CATALOG_VERSION_REQUIRED', 'Actualizá el carrito antes de continuar.');
     }
-    const availableQuantity = detail.availableQuantity ?? detail.stockQuantity;
-    if (availableQuantity !== undefined && quantity > availableQuantity) {
+    if (catalogVersion !== detail.commerce.catalogVersion) {
+      throw new HttpError(409, 'CATALOG_VERSION_CONFLICT', `${detail.name} cambió desde que se agregó al carrito.`);
+    }
+    if (!detail.commerce.checkoutEligible) {
+      throw new HttpError(409, 'DUX_STOCK_UNPROTECTED', `${detail.name} requiere confirmación autoritativa de disponibilidad.`);
+    }
+    const availableQuantity = detail.commerce.observedStock?.available;
+    if (availableQuantity === undefined) {
+      throw new HttpError(409, 'DUX_STOCK_UNVERIFIED', `${detail.name} no tiene stock Dux verificable.`);
+    }
+    if (quantity > availableQuantity) {
       throw new HttpError(
         409,
         'INSUFFICIENT_STOCK',
@@ -489,11 +496,9 @@ async function calculateWhatsappCart(
       ...(detail.sku === undefined ? {} : { sku: detail.sku }),
       unitPriceMinor,
       available: true,
-      stockControlled: detail.commerce === undefined && detail.stockQuantity !== undefined,
-      ...(detail.commerce === undefined ? {} : {
-        inventoryProvider: detail.commerce.source,
-        providerCatalogVersion: detail.commerce.catalogVersion,
-      }),
+      stockControlled: false,
+      inventoryProvider: 'dux',
+      providerCatalogVersion: detail.commerce.catalogVersion,
     });
     const subtotalMinor = unitPriceMinor * quantity;
     productsTotalMinor += subtotalMinor;

@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { createCatalogProduct } from '../../../server/catalog-store';
 import type {
   AdminContextData,
   Env,
@@ -47,7 +46,6 @@ describe('Functions de pedidos WhatsApp', () => {
   it('falla cerrado sin Dux y exige origen autorizado antes de procesar', async () => {
     const testD1 = createTestD1(...migrations);
     try {
-      await createProduct(testD1.database, 'pedido-function');
       const body = {
         idempotencyKey: crypto.randomUUID(),
         fulfillment,
@@ -221,25 +219,4 @@ function adminContext(
     next: () => Promise.resolve(new Response(null, { status: 404 })),
     waitUntil: () => undefined,
   };
-}
-
-async function createProduct(
-  database: NonNullable<Env['DB']>,
-  id: string,
-  controlled = true,
-): Promise<void> {
-  await createCatalogProduct(database, {
-    id,
-    slug: id,
-    path: `/${id}/`,
-    name: `Producto ${id}`,
-    categorySlugs: ['agroecologicos'],
-    categoryNames: ['Agroecologicos'],
-    presentation: '100 g',
-    price: { amount: 1_000, currency: 'ARS' },
-    availability: 'available',
-    ...(controlled ? { stockQuantity: 5 } : {}),
-    images: [],
-    variants: [],
-  }, 'admin@example.test');
 }

@@ -43,19 +43,17 @@ for (const product of generated) {
   if (canonical === undefined) throw new Error(`Producto generado inexistente: ${product.id}.`);
   const effectivePrice = canonical.salePrice ?? canonical.price;
   const expectedMinor = Math.round(effectivePrice.amount * 100);
-  const expectedAvailable =
-    canonical.availability === undefined || canonical.availability === 'available';
   if (
     product.name !== canonical.name ||
     product.presentation !== canonical.presentation ||
     product.sku !== canonical.sku ||
     product.unitPriceMinor !== expectedMinor ||
-    product.available !== expectedAvailable
+    product.available !== false
   ) {
     throw new Error(`Divergencia en el producto ${product.id}.`);
   }
 }
 
 console.log(
-  `Catálogo comercial verificado: ${generated.length} productos, precio efectivo y campos mínimos sin divergencias.`,
+  `Catálogo comercial verificado: ${generated.length} productos, precio efectivo y disponibilidad estática bloqueada.`,
 );

@@ -13,7 +13,16 @@ const { product, trackAnalyticsEvent } = vi.hoisted(() => ({
     categoryNames: Object.freeze([]),
     price: Object.freeze({ amount: 1_000, currency: 'ARS' as const }),
     availability: 'available' as const,
-    stockQuantity: 2,
+    commerce: Object.freeze({
+      source: 'dux' as const,
+      catalogVersion: 'd'.repeat(64),
+      syncedAt: '2026-09-01T12:00:00.000Z',
+      availabilityState: 'verified' as const,
+      checkoutEligible: true,
+      mappingStatus: 'mapped' as const,
+      quantitySemanticsStatus: 'verified' as const,
+      observedStock: Object.freeze({ real: 2, reserved: 0, available: 2 }),
+    }),
   }),
   trackAnalyticsEvent: vi.fn(() => Promise.resolve()),
 }));

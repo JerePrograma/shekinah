@@ -9,7 +9,6 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { normalizeSearchText } from '../catalog/catalog';
 import {
   InvalidProductError,
-  MAX_STOCK_QUANTITY,
   isProductEffectivelyAvailable,
   parseProductDetail,
   parseProducts,
@@ -57,8 +56,6 @@ const EMPTY_FORM: ProductFormState = Object.freeze({
   salePrice: '',
   sku: '',
   availability: 'available',
-  trackStock: false,
-  stockQuantity: '',
   shortDescription: '',
   description: '',
   images: Object.freeze([]),
@@ -97,9 +94,6 @@ export function ProductManager({
     useState<PendingNavigation | null>(null);
   const [deleteCandidate, setDeleteCandidate] =
     useState<CatalogProductDetail | null>(null);
-  const [quickStockId, setQuickStockId] = useState<string | null>(null);
-  const [quickStockValue, setQuickStockValue] = useState('');
-  const [quickStockError, setQuickStockError] = useState('');
   const submitRef = useRef(false);
   const deferredInventoryRefreshRef = useRef(false);
   const editorTitleRef = useRef<HTMLHeadingElement | null>(null);
@@ -108,8 +102,6 @@ export function ProductManager({
   const pendingNavigationReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const editorOpen = editingId !== undefined;
-  const inventoryReadOnly = editingId !== null && editingId !== undefined &&
-    products.find((product) => product.id === editingId)?.commerce?.source === 'dux';
   const isDirty = editorOpen && (
     !formsEqual(form, baseline) || pendingImage !== null || removeImage
   );
@@ -190,7 +182,8 @@ export function ProductManager({
       (product) => product.availability === 'unavailable',
     ).length,
     outOfStock: products.filter(
-      (product) => (product.availableQuantity ?? product.stockQuantity) === 0,
+      (product) => product.commerce?.source === 'dux' &&
+        product.commerce.observedStock?.available === 0,
     ).length,
   }), [products]);
 
@@ -210,17 +203,19 @@ export function ProductManager({
         const effectivelyAvailable = isProductEffectivelyAvailable(product);
         if (availabilityFilter === 'available' && !effectivelyAvailable) return false;
         if (availabilityFilter === 'unavailable' && effectivelyAvailable) return false;
-        if (stockFilter === 'untracked' && product.stockQuantity !== undefined) return false;
+        const duxAvailable = product.commerce?.source === 'dux'
+          ? product.commerce.observedStock?.available
+          : undefined;
+        if (stockFilter === 'unverified' && duxAvailable !== undefined) return false;
         if (
           stockFilter === 'in-stock' &&
-          ((product.availableQuantity ?? product.stockQuantity) === undefined ||
-            (product.availableQuantity ?? product.stockQuantity ?? 0) <= 0)
+          (duxAvailable === undefined || duxAvailable <= 0)
         ) {
           return false;
         }
         if (
           stockFilter === 'out-of-stock' &&
-          (product.availableQuantity ?? product.stockQuantity) !== 0
+          duxAvailable !== 0
         ) return false;
         if (terms.length === 0) return true;
         const searchableText = normalizeSearchText([
@@ -362,46 +357,11 @@ export function ProductManager({
         nextAvailability === 'available'
           ? isProductEffectivelyAvailable(updated)
             ? `${product.name} quedó disponible para venta.`
-            : `La disponibilidad manual de ${product.name} quedó activa, pero sigue fuera de venta porque no tiene stock.`
+            : `La disponibilidad manual de ${product.name} quedó activa, pero la venta sigue bloqueada hasta que Dux la verifique.`
           : `${product.name} quedó pausado manualmente.`,
       );
     } catch (updateError: unknown) {
       setError(errorMessage(updateError));
-    } finally {
-      setOperation({ kind: 'idle' });
-    }
-  }
-
-  async function updateQuickStock(
-    product: CatalogProductDetail,
-    nextStock: number | null,
-  ): Promise<void> {
-    if (remoteBusy) return;
-    setOperation({ kind: 'quick', productId: product.id, action: 'stock' });
-    setQuickStockError('');
-    setError('');
-    setMessage('');
-    try {
-      const payload = await adminJson(
-        `/api/admin/products/${encodeURIComponent(product.id)}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ stockQuantity: nextStock }),
-        },
-        false,
-        onUnauthorized,
-      );
-      const updated = parseAdminProduct(payload);
-      replaceProduct(updated);
-      setQuickStockId(null);
-      await refreshRuntimeCatalog();
-      setMessage(
-        nextStock === null
-          ? `${product.name} quedó sin control de stock.`
-          : `Stock de ${product.name} actualizado a ${nextStock}.`,
-      );
-    } catch (updateError: unknown) {
-      setQuickStockError(errorMessage(updateError));
     } finally {
       setOperation({ kind: 'idle' });
     }
@@ -460,8 +420,7 @@ export function ProductManager({
     value: ProductFormState[K],
   ): void {
     setForm((current) => ({ ...current, [key]: value }));
-    if (key === 'trackStock' && value === false) clearFieldError('stockQuantity');
-    else clearFieldError(key as ProductFieldName);
+    clearFieldError(key as ProductFieldName);
   }
 
   function updateName(value: string): void {
@@ -589,33 +548,6 @@ export function ProductManager({
     clearFieldError('image');
   }
 
-  function beginQuickStock(product: CatalogProductDetail): void {
-    setQuickStockId(product.id);
-    setQuickStockValue(
-      product.stockQuantity === undefined ? '' : String(product.stockQuantity),
-    );
-    setQuickStockError('');
-  }
-
-  function submitQuickStock(
-    event: FormEvent<HTMLFormElement>,
-    product: CatalogProductDetail,
-  ): void {
-    event.preventDefault();
-    const quickStockForm = event.currentTarget;
-    const stock = parseStockQuantity(quickStockValue);
-    if (stock === null) {
-      setQuickStockError(
-        `Indicá una cantidad entera entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`,
-      );
-      window.requestAnimationFrame(() => {
-        quickStockForm.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
-      });
-      return;
-    }
-    void updateQuickStock(product, stock);
-  }
-
   return (
     <section className="admin-page section" aria-labelledby="backoffice-title">
       <div className="container admin-product-shell">
@@ -669,38 +601,27 @@ export function ProductManager({
             loading={loading}
             operation={operation}
             query={query}
-            quickStockError={quickStockError}
-            quickStockId={quickStockId}
-            quickStockValue={quickStockValue}
             remoteBusy={remoteBusy}
             sort={sort}
             stockFilter={stockFilter}
             totalProductCount={products.length}
             visibleProducts={visibleProducts}
             onAvailabilityFilterChange={setAvailabilityFilter}
-            onBeginQuickStock={beginQuickStock}
             onCancelDelete={() => setDeleteCandidate(null)}
-            onCancelQuickStock={() => setQuickStockId(null)}
             onCategoryFilterChange={setCategoryFilter}
             onConfirmDelete={(product) => void remove(product)}
             onEdit={requestEdit}
             onRetryLoad={() => void reload()}
             onOpenDelete={setDeleteCandidate}
             onQueryChange={setQuery}
-            onQuickStockValueChange={(value) => {
-              setQuickStockValue(value);
-              setQuickStockError('');
-            }}
             onResetFilters={() => {
               setQuery('');
               setCategoryFilter(ALL_FILTERS);
               setAvailabilityFilter(ALL_FILTERS);
               setStockFilter(ALL_FILTERS);
             }}
-            onSetUntrackedStock={(product) => void updateQuickStock(product, null)}
             onSortChange={setSort}
             onStockFilterChange={setStockFilter}
-            onSubmitQuickStock={submitQuickStock}
             onUpdateAvailability={(product) => void updateAvailability(product)}
           />
           {editorOpen ? (
@@ -713,7 +634,6 @@ export function ProductManager({
               formRef={editorFormRef}
               imagePreviewUrl={imagePreviewUrl}
               imageStorageConfigured={imageStorageConfigured}
-              inventoryReadOnly={inventoryReadOnly}
               isDirty={isDirty}
               operation={operation}
               pendingImage={pendingImage}
@@ -780,10 +700,6 @@ function validateForm(
   if (priceError !== null) errors.price = priceError;
   const salePriceError = validatePrice(form.salePrice, true);
   if (salePriceError !== null) errors.salePrice = salePriceError;
-  if (form.trackStock && parseStockQuantity(form.stockQuantity) === null) {
-    errors.stockQuantity =
-      `Indicá una cantidad entera entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`;
-  }
   if (image !== null) {
     const imageError = validateImage(image);
     if (imageError !== null) errors.image = imageError;
@@ -815,15 +731,6 @@ function validateImage(file: File): string | null {
   return null;
 }
 
-function parseStockQuantity(value: string): number | null {
-  const normalized = value.trim();
-  if (normalized === '') return null;
-  const numeric = Number(normalized);
-  return Number.isSafeInteger(numeric) && numeric >= 0 && numeric <= MAX_STOCK_QUANTITY
-    ? numeric
-    : null;
-}
-
 function focusFirstInvalidField(
   formElement: HTMLFormElement | null,
   errors: ProductFieldErrors,
@@ -838,7 +745,6 @@ function focusFirstInvalidField(
     { field: 'price', selector: '[aria-labelledby="product-price-label"]' },
     { field: 'salePrice', selector: '[aria-labelledby="product-sale-price-label"]' },
     { field: 'image', selector: 'input[type="file"]' },
-    { field: 'stockQuantity', selector: '[aria-labelledby="product-stock-label"]' },
     { field: 'slug', selector: '[aria-labelledby="product-slug-label"]' },
   ];
   const target = targets.find(({ field }) => Object.hasOwn(errors, field));
@@ -864,9 +770,7 @@ function productOperationLabel(
   }
   const productName = products.find(({ id }) => id === operation.productId)?.name ?? 'producto';
   if (operation.kind === 'deleting') return `Quitando ${productName} del catálogo`;
-  return operation.action === 'availability'
-    ? `Actualizando disponibilidad de ${productName}`
-    : `Actualizando stock de ${productName}`;
+  return `Actualizando disponibilidad de ${productName}`;
 }
 
 function buildPayload(form: ProductFormState): CatalogProductDetail {
@@ -897,7 +801,6 @@ function buildPayload(form: ProductFormState): CatalogProductDetail {
     ...(saleAmount === null ? {} : { salePrice: { amount: saleAmount, currency: 'ARS' } }),
     ...(form.sku.trim() === '' ? {} : { sku: form.sku.trim() }),
     availability: form.availability,
-    ...(form.trackStock ? { stockQuantity: Number(form.stockQuantity) } : {}),
     ...(form.shortDescription.trim() === ''
       ? {}
       : { shortDescription: form.shortDescription.trim() }),
@@ -929,8 +832,6 @@ function formFromProduct(product: CatalogProductDetail): ProductFormState {
     salePrice: product.salePrice === undefined ? '' : String(product.salePrice.amount),
     sku: product.sku ?? '',
     availability: product.availability === 'unavailable' ? 'unavailable' : 'available',
-    trackStock: product.stockQuantity !== undefined,
-    stockQuantity: product.stockQuantity === undefined ? '' : String(product.stockQuantity),
     shortDescription: product.shortDescription ?? '',
     description: product.description ?? '',
     images: product.images,
@@ -979,8 +880,8 @@ function productComparator(sort: ProductSort) {
     }
     if (sort === 'stock-asc' || sort === 'stock-desc') {
       const difference = compareStock(
-        left.availableQuantity ?? left.stockQuantity,
-        right.availableQuantity ?? right.stockQuantity,
+        left.commerce?.source === 'dux' ? left.commerce.observedStock?.available : undefined,
+        right.commerce?.source === 'dux' ? right.commerce.observedStock?.available : undefined,
       );
       return (sort === 'stock-desc' ? -difference : difference) || compareNames(left, right);
     }

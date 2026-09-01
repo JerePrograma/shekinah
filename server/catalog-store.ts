@@ -41,38 +41,6 @@ export type CatalogMutationRow = Readonly<{
   deleted: number;
 }>;
 
-type ReservedQuantityRow = Readonly<{
-  product_id: string;
-  reserved_quantity: number;
-}>;
-
-const activeStockReservationSql = `(
-  (
-    reserved_orders.channel = 'whatsapp'
-    AND reserved_orders.status = 'pending'
-    AND (
-      reserved_orders.stock_reservation_expires_at IS NULL
-      OR unixepoch(reserved_orders.stock_reservation_expires_at) > unixepoch()
-    )
-  )
-  OR (
-    reserved_orders.channel = 'checkout_pro'
-    AND reserved_orders.stock_reserved_at IS NOT NULL
-    AND reserved_orders.stock_reservation_expires_at IS NOT NULL
-    AND reserved_orders.stock_consumed_at IS NULL
-    AND reserved_orders.status NOT IN ('approved', 'refunded')
-    AND (
-      unixepoch(reserved_orders.stock_reservation_expires_at) > unixepoch()
-      OR EXISTS (
-        SELECT 1
-        FROM payments AS pending_payments
-        WHERE pending_payments.order_id = reserved_orders.id
-          AND pending_payments.mapped_status = 'pending'
-      )
-    )
-  )
-)`;
-
 export function getBaseCatalogProducts(): readonly Product[] {
   return baseProducts;
 }
@@ -155,11 +123,8 @@ export async function listCatalogProductDetails(
     }
   }
 
-  const reservedByProduct = await listReservedQuantities(database);
   return Object.freeze(
-    [...merged.values()].map((product) =>
-      withInventoryProjection(product, reservedByProduct.get(product.id) ?? 0),
-    ).sort((left, right) =>
+    [...merged.values()].sort((left, right) =>
       left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' }),
     ),
   );
@@ -171,6 +136,7 @@ export async function getCatalogProductDetail(
   excludedReservationOrderId: string | null = null,
 ): Promise<CatalogProductDetail | null> {
   assertProductId(productId);
+  void excludedReservationOrderId;
   let row: CatalogMutationRow | null;
   try {
     row = await database
@@ -187,17 +153,10 @@ export async function getCatalogProductDetail(
   }
 
   if (row === null) {
-    const product = baseDetailById.get(productId) ?? null;
-    return product === null
-      ? null
-      : projectProductInventory(database, product, excludedReservationOrderId);
+    return baseDetailById.get(productId) ?? null;
   }
   if (row.deleted === 1 || row.payload_json === null) return null;
-  return projectProductInventory(
-    database,
-    parseStoredProduct(row.payload_json),
-    excludedReservationOrderId,
-  );
+  return parseStoredProduct(row.payload_json);
 }
 
 export async function createCatalogProduct(
@@ -206,13 +165,14 @@ export async function createCatalogProduct(
   actorEmail: string,
 ): Promise<CatalogProductDetail> {
   await ensureCatalogStorageReady(database);
+  assertNoLocalInventoryInput(value);
   const product = parseWritableProduct(value, { requireCategory: true });
   if (await getCatalogProductDetail(database, product.id) !== null) {
     throw new HttpError(409, 'PRODUCT_ALREADY_EXISTS', 'Ya existe un producto con ese slug.');
   }
   assertNoDirectImageMutation(null, product);
   await persistProduct(database, product, actorEmail);
-  return projectProductInventory(database, product);
+  return product;
 }
 
 export async function updateCatalogProduct(
@@ -227,13 +187,7 @@ export async function updateCatalogProduct(
   if (current === null) {
     throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'El producto no existe.');
   }
-  if (
-    isRecord(value) &&
-    Object.hasOwn(value, 'stockQuantity') &&
-    await isProductMappedToDux(database, productId)
-  ) {
-    throw duxInventoryReadOnly();
-  }
+  assertNoLocalInventoryInput(value);
   const product = parseWritableProduct(value);
   if (product.id !== productId) {
     throw new HttpError(
@@ -244,7 +198,7 @@ export async function updateCatalogProduct(
   }
   assertNoDirectImageMutation(current, product);
   await persistProduct(database, product, actorEmail);
-  return projectProductInventory(database, product);
+  return product;
 }
 
 export async function patchCatalogProductInventory(
@@ -263,17 +217,9 @@ export async function patchCatalogProductInventory(
     throw invalidProductPatch();
   }
   const keys = Object.keys(value);
-  if (
-    keys.length === 0 ||
-    keys.some((key) => key !== 'availability' && key !== 'stockQuantity')
-  ) {
+  if (keys.length === 0 || keys.some((key) => key !== 'availability')) {
+    if (keys.some((key) => isLocalInventoryField(key))) throw duxInventoryReadOnly();
     throw invalidProductPatch();
-  }
-  if (
-    Object.hasOwn(value, 'stockQuantity') &&
-    await isProductMappedToDux(database, productId)
-  ) {
-    throw duxInventoryReadOnly();
   }
 
   let patched: Record<string, unknown> = { ...current };
@@ -283,17 +229,9 @@ export async function patchCatalogProductInventory(
     }
     patched = { ...patched, availability: value.availability };
   }
-  if (Object.hasOwn(value, 'stockQuantity')) {
-    if (value.stockQuantity === null) {
-      delete patched.stockQuantity;
-    } else {
-      patched = { ...patched, stockQuantity: value.stockQuantity };
-    }
-  }
-
   const product = parseWritableProduct(patched);
   await persistProduct(database, product, actorEmail);
-  return projectProductInventory(database, product);
+  return product;
 }
 
 export type CatalogImageReplacement = Readonly<{
@@ -326,7 +264,7 @@ export async function replaceCatalogProductImages(
   await persistProduct(database, product, actorEmail);
   return Object.freeze({
     previousImages: current.images,
-    product: await projectProductInventory(database, product),
+    product,
   });
 }
 
@@ -379,13 +317,6 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
     ...(detail.salePrice === undefined ? {} : { salePrice: detail.salePrice }),
     ...(detail.sku === undefined ? {} : { sku: detail.sku }),
     ...(detail.availability === undefined ? {} : { availability: detail.availability }),
-    ...(detail.stockQuantity === undefined ? {} : { stockQuantity: detail.stockQuantity }),
-    ...(detail.reservedQuantity === undefined
-      ? {}
-      : { reservedQuantity: detail.reservedQuantity }),
-    ...(detail.availableQuantity === undefined
-      ? {}
-      : { availableQuantity: detail.availableQuantity }),
     ...(detail.shortDescription === undefined
       ? {}
       : { shortDescription: detail.shortDescription }),
@@ -496,11 +427,11 @@ function projectDuxUnresolved(
 }
 
 function stripLocalInventory(detail: CatalogProductDetail): CatalogProductDetail {
-  const projected = { ...detail };
+  const projected: Record<string, unknown> = { ...detail };
   delete projected.stockQuantity;
   delete projected.reservedQuantity;
   delete projected.availableQuantity;
-  return projected;
+  return projected as CatalogProductDetail;
 }
 
 function latestDuxTimestamp(units: readonly DuxInventoryUnit[]): string {
@@ -549,17 +480,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function stripInventoryProjection(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const writable = { ...value };
+  delete writable.stockQuantity;
   delete writable.reservedQuantity;
   delete writable.availableQuantity;
   delete writable.commerce;
   return writable;
 }
 
+function assertNoLocalInventoryInput(value: unknown): void {
+  if (
+    isRecord(value) &&
+    Object.keys(value).some((key) => isLocalInventoryField(key))
+  ) {
+    throw duxInventoryReadOnly();
+  }
+}
+
+function isLocalInventoryField(key: string): boolean {
+  return key === 'stockQuantity' || key === 'reservedQuantity' || key === 'availableQuantity';
+}
+
 function invalidProductPatch(): HttpError {
   return new HttpError(
     400,
     'INVALID_PRODUCT_PATCH',
-    'La actualización rápida sólo admite disponibilidad y stock.',
+    'La actualización rápida sólo admite la pausa editorial de disponibilidad.',
   );
 }
 
@@ -637,26 +582,6 @@ function isMissingDuxInventoryTable(error: unknown): boolean {
   return error instanceof Error && /no such table:\s*dux_inventory_items/iu.test(error.message);
 }
 
-async function isProductMappedToDux(
-  database: D1Database,
-  productId: string,
-): Promise<boolean> {
-  try {
-    const row = await database
-      .prepare(
-        `SELECT 1 AS mapped FROM dux_inventory_items
-         WHERE local_product_id = ?1 AND mapping_status = 'mapped'
-         LIMIT 1`,
-      )
-      .bind(productId)
-      .first<Readonly<{ mapped: number }>>();
-    return row?.mapped === 1;
-  } catch (error: unknown) {
-    if (isMissingDuxInventoryTable(error)) return false;
-    throw error;
-  }
-}
-
 function duxInventoryReadOnly(): HttpError {
   return new HttpError(
     409,
@@ -673,101 +598,6 @@ function duxInventoryMigrationRequired(): HttpError {
   );
 }
 
-function isMissingOrderReservationTables(error: unknown): boolean {
-  return error instanceof Error && (
-    /no such (?:table|column):\s*(?:orders|order_items|payments|(?:\w+\.)?channel)/iu.test(error.message) ||
-    /no such column:\s*(?:\w+\.)?channel/iu.test(error.message)
-  );
-}
-
-function isMissingCheckoutReservationColumns(error: unknown): boolean {
-  return error instanceof Error &&
-    /no such column:\s*(?:\w+\.)?(?:stock_reserved_at|stock_reservation_expires_at|stock_consumed_at)/iu.test(error.message);
-}
-
-function checkoutStockMigrationRequired(): HttpError {
-  return new HttpError(
-    503,
-    'CHECKOUT_STOCK_MIGRATION_REQUIRED',
-    'La migración de reservas de Checkout Pro todavía no fue aplicada.',
-  );
-}
-
-async function listReservedQuantities(
-  database: D1Database,
-): Promise<ReadonlyMap<string, number>> {
-  try {
-    const result = await database
-      .prepare(
-        `SELECT items.product_id, SUM(items.quantity) AS reserved_quantity
-         FROM order_items AS items
-         INNER JOIN orders AS reserved_orders ON reserved_orders.id = items.order_id
-         WHERE ${activeStockReservationSql}
-         GROUP BY items.product_id`,
-      )
-      .all<ReservedQuantityRow>();
-    return new Map(
-      (result.results ?? []).map((row) => [
-        row.product_id,
-        assertReservedQuantity(row.reserved_quantity),
-      ]),
-    );
-  } catch (error: unknown) {
-    if (isMissingOrderReservationTables(error)) return new Map();
-    if (isMissingCheckoutReservationColumns(error)) throw checkoutStockMigrationRequired();
-    throw error;
-  }
-}
-
-async function projectProductInventory(
-  database: D1Database,
-  product: CatalogProductDetail,
-  excludedReservationOrderId: string | null = null,
-): Promise<CatalogProductDetail> {
-  if (product.stockQuantity === undefined) return product;
-  let reservedQuantity = 0;
-  try {
-    const row = await database
-      .prepare(
-        `SELECT COALESCE(SUM(items.quantity), 0) AS reserved_quantity
-         FROM order_items AS items
-         INNER JOIN orders AS reserved_orders ON reserved_orders.id = items.order_id
-         WHERE items.product_id = ?1
-           AND (?2 IS NULL OR reserved_orders.id <> ?2)
-           AND ${activeStockReservationSql}`,
-      )
-      .bind(product.id, excludedReservationOrderId)
-      .first<Readonly<{ reserved_quantity: number }>>();
-    reservedQuantity = assertReservedQuantity(row?.reserved_quantity ?? 0);
-  } catch (error: unknown) {
-    if (isMissingCheckoutReservationColumns(error)) throw checkoutStockMigrationRequired();
-    if (!isMissingOrderReservationTables(error)) throw error;
-  }
-  return withInventoryProjection(product, reservedQuantity);
-}
-
-function withInventoryProjection(
-  product: CatalogProductDetail,
-  reservedQuantity: number,
-): CatalogProductDetail {
-  if (product.stockQuantity === undefined) return product;
-  if (reservedQuantity > product.stockQuantity) {
-    throw new Error('El stock reservado supera el stock físico persistido.');
-  }
-  return Object.freeze({
-    ...product,
-    reservedQuantity,
-    availableQuantity: product.stockQuantity - reservedQuantity,
-  });
-}
-
-function assertReservedQuantity(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error('La reserva de stock persistida no es válida.');
-  }
-  return value;
-}
-
 function throwCatalogStorageError(error: unknown): never {
   if (isMissingCatalogTable(error)) {
     throw new HttpError(
@@ -775,6 +605,9 @@ function throwCatalogStorageError(error: unknown): never {
       'CATALOG_MIGRATION_REQUIRED',
       'La migración del catálogo administrativo todavía no fue aplicada.',
     );
+  }
+  if (error instanceof Error && error.message.includes('DUX_LOCAL_STOCK_FORBIDDEN')) {
+    throw duxInventoryReadOnly();
   }
   if (
     error instanceof Error &&

@@ -339,13 +339,18 @@ describe.skip('reservas locales históricas de WhatsApp (fuera del flujo product
       expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
       expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1);
       const product = await getCatalogProductDetail(database, 'carrera-estado');
+      const legacyProjection = product as unknown as Readonly<{
+        stockQuantity?: number;
+        reservedQuantity?: number;
+        availableQuantity?: number;
+      }>;
       expect([
         { stockQuantity: 1, reservedQuantity: 0, availableQuantity: 1 },
         { stockQuantity: 4, reservedQuantity: 0, availableQuantity: 4 },
       ]).toContainEqual({
-        stockQuantity: product?.stockQuantity,
-        reservedQuantity: product?.reservedQuantity,
-        availableQuantity: product?.availableQuantity,
+        stockQuantity: legacyProjection.stockQuantity,
+        reservedQuantity: legacyProjection.reservedQuantity,
+        availableQuantity: legacyProjection.availableQuantity,
       });
     } finally {
       database.close();
@@ -479,24 +484,14 @@ describe.skip('reservas locales históricas de WhatsApp (fuera del flujo product
 });
 
 describe('pedidos WhatsApp con inventario autoritativo Dux', () => {
-  it('bloquea un producto local sin vínculo Dux y no crea una reserva local', async () => {
+  it('bloquea el pedido sin Dux antes de consultar catálogo o crear reservas', async () => {
     const database = new SqliteD1(migration);
     try {
-      await createCatalogProduct(
-        database,
-        productInput('whatsapp-sin-dux', 1_000, 10),
-        'admin@test',
-      );
       await expect(createWhatsappOrder(
         database,
         orderRequest('whatsapp-sin-dux', 1),
       )).rejects.toMatchObject({ status: 503, code: 'DUX_API_DISABLED' });
       expect(await count(database, 'orders')).toBe(0);
-      await expect(getCatalogProductDetail(database, 'whatsapp-sin-dux')).resolves.toMatchObject({
-        stockQuantity: 10,
-        reservedQuantity: 0,
-        availableQuantity: 10,
-      });
     } finally {
       database.close();
     }
@@ -507,11 +502,6 @@ describe('pedidos WhatsApp con inventario autoritativo Dux', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     try {
-      await createCatalogProduct(
-        database,
-        productInput('whatsapp-sin-mercadolibre', 1_000, 10),
-        'admin@test',
-      );
       await expect(createWhatsappOrder(
         database,
         orderRequest('whatsapp-sin-mercadolibre', 1),

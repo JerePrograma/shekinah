@@ -149,33 +149,36 @@ describe('catálogo efectivo persistido en D1', () => {
     }
   });
 
-  it('valida stock y permite desactivar el control con null en PATCH', async () => {
+  it('permite la pausa editorial pero rechaza toda escritura de stock local', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
-      const tracked = await patchCatalogProductInventory(
+      const paused = await patchCatalogProductInventory(
         testD1.database,
         'guayaba',
-        { availability: 'available', stockQuantity: 4 },
+        { availability: 'unavailable' },
         actor,
       );
-      expect(tracked.stockQuantity).toBe(4);
-      expect((await getCatalogProductDetail(testD1.database, 'guayaba'))?.stockQuantity).toBe(4);
+      expect(paused.availability).toBe('unavailable');
       expect((await listCatalogProducts(testD1.database)).find(({ id }) => id === 'guayaba'))
-        .toMatchObject({ stockQuantity: 4 });
-
-      const untracked = await patchCatalogProductInventory(
-        testD1.database,
-        'guayaba',
+        .not.toHaveProperty('stockQuantity');
+      for (const body of [
+        { stockQuantity: 4 },
         { stockQuantity: null },
-        actor,
-      );
-      expect(untracked.stockQuantity).toBeUndefined();
-      await expect(patchCatalogProductInventory(
+        { reservedQuantity: 1 },
+        { availableQuantity: 3 },
+      ]) {
+        await expect(patchCatalogProductInventory(
+          testD1.database,
+          'guayaba',
+          body,
+          actor,
+        )).rejects.toMatchObject({ code: 'DUX_INVENTORY_READ_ONLY', status: 409 });
+      }
+      await expect(createCatalogProduct(
         testD1.database,
-        'guayaba',
-        { stockQuantity: -1 },
+        { ...writableProduct('stock-prohibido'), stockQuantity: 1 },
         actor,
-      )).rejects.toMatchObject({ code: 'INVALID_PRODUCT' });
+      )).rejects.toMatchObject({ code: 'DUX_INVENTORY_READ_ONLY', status: 409 });
       await expect(patchCatalogProductInventory(
         testD1.database,
         'guayaba',
@@ -204,10 +207,11 @@ describe('catálogo efectivo persistido en D1', () => {
       const patched = await patchCatalogProductInventory(
         testD1.database,
         id,
-        { stockQuantity: 2 },
+        { availability: 'unavailable' },
         actor,
       );
       expect(patched.categorySlugs).toEqual([]);
+      expect(patched.availability).toBe('unavailable');
       const replacement = await replaceCatalogProductImages(testD1.database, id, [], actor);
       expect(replacement.product.categorySlugs).toEqual([]);
 

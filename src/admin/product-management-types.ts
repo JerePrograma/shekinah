@@ -12,8 +12,6 @@ export type ProductFormState = Readonly<{
   salePrice: string;
   sku: string;
   availability: 'available' | 'unavailable';
-  trackStock: boolean;
-  stockQuantity: string;
   shortDescription: string;
   description: string;
   images: CatalogProductDetail['images'];
@@ -26,12 +24,11 @@ export type ProductFieldName =
   | 'categorySlugs'
   | 'price'
   | 'salePrice'
-  | 'stockQuantity'
   | 'image';
 
 export type ProductFieldErrors = Partial<Record<ProductFieldName, string>>;
 export type AvailabilityFilter = 'all' | 'available' | 'unavailable';
-export type StockFilter = 'all' | 'in-stock' | 'out-of-stock' | 'untracked';
+export type StockFilter = 'all' | 'in-stock' | 'out-of-stock' | 'unverified';
 export type ProductSort =
   | 'name'
   | 'category'
@@ -46,7 +43,7 @@ export type PendingNavigation =
 export type ProductOperation =
   | Readonly<{ kind: 'idle' }>
   | Readonly<{ kind: 'saving'; stage: 'product' | 'image' }>
-  | Readonly<{ kind: 'quick'; productId: string; action: 'availability' | 'stock' }>
+  | Readonly<{ kind: 'quick'; productId: string; action: 'availability' }>
   | Readonly<{ kind: 'deleting'; productId: string }>;
 
 export type CatalogSummary = Readonly<{

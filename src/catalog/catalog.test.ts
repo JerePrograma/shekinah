@@ -11,7 +11,6 @@ import {
 } from './catalog';
 import {
   InvalidProductError,
-  MAX_STOCK_QUANTITY,
   isManagedCatalogImagePath,
   isProductEffectivelyAvailable,
   parseCategories,
@@ -109,26 +108,37 @@ describe('modelo de producto', () => {
     ).toThrow(/ruta local autorizada/u);
   });
 
-  it('valida stock opcional y deriva la disponibilidad efectiva', () => {
+  it('rechaza stock local y sólo Dux puede habilitar disponibilidad efectiva', () => {
     const legacy = parseProduct(baseProduct);
-    const tracked = parseProduct({ ...baseProduct, stockQuantity: 3 });
-    const depleted = parseProduct({ ...baseProduct, stockQuantity: 0 });
+    const duxVerified = parseProduct({
+      ...baseProduct,
+      commerce: {
+        source: 'dux',
+        catalogVersion: 'd'.repeat(64),
+        syncedAt: '2026-09-01T12:00:00.000Z',
+        availabilityState: 'verified',
+        checkoutEligible: true,
+        mappingStatus: 'mapped',
+        quantitySemanticsStatus: 'verified',
+        observedStock: { real: 3, reserved: 0, available: 3 },
+      },
+    });
 
-    expect(legacy.stockQuantity).toBeUndefined();
-    expect(isProductEffectivelyAvailable(legacy)).toBe(true);
-    expect(isProductEffectivelyAvailable(tracked)).toBe(true);
-    expect(isProductEffectivelyAvailable(depleted)).toBe(false);
-    expect(isProductEffectivelyAvailable({ ...tracked, availability: 'unavailable' })).toBe(false);
+    expect(Object.hasOwn(legacy, 'stockQuantity')).toBe(false);
+    expect(isProductEffectivelyAvailable(legacy)).toBe(false);
+    expect(isProductEffectivelyAvailable(duxVerified)).toBe(true);
+    expect(isProductEffectivelyAvailable({ ...duxVerified, availability: 'unavailable' })).toBe(false);
 
-    for (const stockQuantity of [-1, 1.5, Number.NaN, MAX_STOCK_QUANTITY + 1, null]) {
-      expect(() => parseProduct({ ...baseProduct, stockQuantity })).toThrow(InvalidProductError);
+    for (const stockQuantity of [3, 0, -1, 1.5, Number.NaN, null]) {
+      expect(() => parseProduct({ ...baseProduct, stockQuantity }))
+        .toThrow(/exclusivamente a Dux/u);
     }
   });
 
   it('explica la causa efectiva de indisponibilidad sin contradicciones', () => {
     expect(formatAvailability('available', 0)).toBe('Agotado');
     expect(formatAvailability('unavailable', 8)).toBe('No disponible');
-    expect(formatAvailability('available', 8)).toBe('Disponible');
+    expect(formatAvailability('available', 8)).toBe('Disponibilidad pendiente de Dux');
     expect(formatAvailability('available', 8, 'verified')).toBe('8 unidades disponibles');
     expect(formatAvailability('available', 1, 'verified')).toBe('1 unidad disponible');
     expect(formatAvailability('unavailable', undefined, 'updating')).toBe('Actualizando disponibilidad');
@@ -186,7 +196,7 @@ describe('modelo de producto', () => {
       observedStock: { real: 738.5, reserved: 36.4, available: -2.44 },
       unit: { id: '7', name: 'Kilogramo', symbol: 'kg' },
     });
-    expect(product.stockQuantity).toBeUndefined();
+    expect(Object.hasOwn(product, 'stockQuantity')).toBe(false);
     expect(isProductEffectivelyAvailable(product)).toBe(false);
     expect(Object.isFrozen(product.commerce)).toBe(true);
     expect(Object.isFrozen(product.commerce?.source === 'dux'

@@ -25,7 +25,7 @@ describe('carrito autoritativo con catálogo dinámico', () => {
     try {
       const created = await createCatalogProduct(
         testD1.database,
-        { ...productInput('producto-checkout', 1_000), stockQuantity: 3 },
+        productInput('producto-checkout', 1_000),
         'admin@example.test',
       );
       await updateCatalogProduct(
@@ -85,27 +85,11 @@ describe('carrito autoritativo con catálogo dinámico', () => {
   it('no usa stock local configurado ni lo trata como fallback de Dux', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {
-      const tracked = await createCatalogProduct(
+      await expect(createCatalogProduct(
         testD1.database,
         { ...productInput('producto-con-stock', 1_000), stockQuantity: 2 },
         'admin@example.test',
-      );
-      await expect(recalculateDynamicCart({
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: tracked.id, quantity: 2 }],
-      }, testD1.database)).rejects.toMatchObject({
-        code: 'PRODUCT_UNAVAILABLE',
-        status: 409,
-      });
-      await expect(recalculateDynamicCart({
-        idempotencyKey: crypto.randomUUID(),
-        fulfillment,
-        items: [{ productId: tracked.id, quantity: 3 }],
-      }, testD1.database)).rejects.toMatchObject({
-        code: 'PRODUCT_UNAVAILABLE',
-        status: 409,
-      });
+      )).rejects.toMatchObject({ code: 'DUX_INVENTORY_READ_ONLY', status: 409 });
 
       const unconfigured = await createCatalogProduct(
         testD1.database,

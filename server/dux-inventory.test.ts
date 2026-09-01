@@ -41,29 +41,40 @@ const env: Env = Object.freeze({
 });
 
 describe('proyección autoritativa read-only de Dux', () => {
-  it('mapea por identidad externa, SKU y nombre exacto, preserva unmapped y prioriza el vínculo persistido', async () => {
+  it('mapea por identidad externa, SKU, barcode y nombre sólo en bootstrap; luego prioriza el vínculo persistido', async () => {
     const testD1 = database();
     try {
       const products = [
         product('externo', 'Producto externo'),
         product('por-sku', 'Producto por SKU', 'SKU-2'),
+        product('por-barcode', 'Producto por barcode', '779000000001'),
         product('por-nombre', 'Té Verde'),
         product('preservado', 'Producto local preservado'),
       ];
       const firstClient = reader([
         item('ITEM-EXT', 'Producto remoto', [stock(3, 7.5)], { externalCode: 'externo' }),
         item('SKU-2', 'Otro nombre', [stock(3, 5)]),
+        item('ITEM-BARCODE', 'Otro barcode', [stock(3, 6)], {
+          barcodes: ['779000000001'],
+        }),
         item('ITEM-NAME', 'TÉ   VERDE', [stock(3, 4)]),
         item('ITEM-NONE', 'Sin coincidencia', [stock(3, 3)]),
       ]);
-      const first = await sync(testD1, firstClient, products, 'dux_sync_first');
+      const first = await sync(
+        testD1,
+        firstClient,
+        products,
+        'dux_sync_first',
+        '2026-08-26T10:00:00.000Z',
+        'initial',
+      );
       expect(first).toMatchObject({
         status: 'succeeded',
-        processed: 4,
-        mapped: 3,
+        processed: 5,
+        mapped: 4,
         unmapped: 1,
         ambiguous: 0,
-        localProductsPreserved: 4,
+        localProductsPreserved: 5,
       });
       const units = await listDuxInventoryUnits(testD1.database, env, date('2026-08-26T10:01:00.000Z'));
       expect(byCode(units, 'ITEM-EXT')).toMatchObject({
@@ -74,6 +85,10 @@ describe('proyección autoritativa read-only de Dux', () => {
       expect(byCode(units, 'SKU-2')).toMatchObject({
         localProductId: 'por-sku',
         mappingSource: 'sku',
+      });
+      expect(byCode(units, 'ITEM-BARCODE')).toMatchObject({
+        localProductId: 'por-barcode',
+        mappingSource: 'cod_barra',
       });
       expect(byCode(units, 'ITEM-NAME')).toMatchObject({
         localProductId: 'por-nombre',
@@ -88,7 +103,10 @@ describe('proyección autoritativa read-only de Dux', () => {
       const firstVersion = byCode(units, 'ITEM-EXT').catalogVersion;
       await sync(
         testD1,
-        reader([item('ITEM-EXT', 'Producto remoto', [stock(3, 7.5)], { externalCode: 'por-sku' })]),
+        reader([
+          item('ITEM-EXT', 'Producto remoto', [stock(3, 7.5)], { externalCode: 'por-sku' }),
+          item('ITEM-LATE-NAME', 'TÉ VERDE', [stock(3, 2)]),
+        ]),
         products,
         'dux_sync_second',
         '2026-08-26T10:02:00.000Z',
@@ -102,9 +120,13 @@ describe('proyección autoritativa read-only de Dux', () => {
         localProductId: 'externo',
         mappingSource: 'persisted',
       });
+      expect(byCode(persisted, 'ITEM-LATE-NAME')).toMatchObject({
+        localProductId: null,
+        mappingStatus: 'unmapped',
+      });
       expect(byCode(persisted, 'ITEM-EXT').catalogVersion).not.toBe(firstVersion);
-      expect(persisted.filter((unit) => unit.lastSyncStatus === 'absent')).toHaveLength(3);
-      expect(products).toHaveLength(4);
+      expect(persisted.filter((unit) => unit.lastSyncStatus === 'absent')).toHaveLength(4);
+      expect(products).toHaveLength(5);
     } finally {
       testD1.close();
     }
@@ -436,9 +458,10 @@ function sync(
   localProducts: readonly CatalogProductDetail[],
   runId: string,
   now = '2026-08-26T10:00:00.000Z',
+  kind: 'initial' | 'full' | 'manual' | 'scheduled' = 'manual',
 ) {
   return syncDuxInventory(testD1.database, env, 'test', {
-    kind: 'manual',
+    kind,
     localProducts,
     client,
     now: () => date(now),
@@ -512,13 +535,14 @@ function item(
   options: Readonly<{
     externalCode?: string;
     unitsPerPackage?: number;
+    barcodes?: readonly string[];
   }> = {},
 ): DuxItem {
   return Object.freeze({
     code,
     externalCode: options.externalCode ?? null,
     name,
-    barcodes: Object.freeze([]),
+    barcodes: Object.freeze([...(options.barcodes ?? [])]),
     enabled: true,
     unitsPerPackage: options.unitsPerPackage ?? null,
     stocks: Object.freeze(stocks),

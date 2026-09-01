@@ -8,8 +8,6 @@ export type ProductImage = Readonly<{
   alt: string;
 }>;
 
-export const MAX_STOCK_QUANTITY = 1_000_000;
-
 const legacyCatalogImagePattern =
   /^\/images\/original\/catalog\/[a-f0-9]{64}\.(?:jpg|png|webp)$/u;
 const managedCatalogImagePattern =
@@ -87,9 +85,6 @@ export type CatalogProductSummary = Readonly<{
   salePrice?: ProductPrice;
   sku?: string;
   availability?: 'available' | 'unavailable';
-  stockQuantity?: number;
-  reservedQuantity?: number;
-  availableQuantity?: number;
   shortDescription?: string;
   primaryImage?: ProductImage;
   commerce?: ProductCommerceSnapshot;
@@ -181,19 +176,19 @@ export function isManagedCatalogImagePath(value: string): boolean {
 export function isProductEffectivelyAvailable(
   product: Pick<
     CatalogProductSummary,
-    'availability' | 'stockQuantity' | 'availableQuantity' | 'commerce'
+    'availability' | 'commerce'
   >,
 ): boolean {
-  if (
-    product.commerce !== undefined &&
-    (!product.commerce.checkoutEligible || product.commerce.availabilityState !== 'verified')
-  ) {
-    return false;
-  }
-  const availableQuantity = product.availableQuantity ?? product.stockQuantity;
+  const commerce = product.commerce;
   return (
     product.availability !== 'unavailable' &&
-    (availableQuantity === undefined || availableQuantity > 0)
+    commerce?.source === 'dux' &&
+    commerce.mappingStatus === 'mapped' &&
+    commerce.quantitySemanticsStatus === 'verified' &&
+    commerce.availabilityState === 'verified' &&
+    commerce.checkoutEligible &&
+    commerce.observedStock !== undefined &&
+    commerce.observedStock.available > 0
   );
 }
 
@@ -292,38 +287,19 @@ export function parseProduct(value: unknown): Product {
   ) {
     throw new InvalidProductError('La disponibilidad del producto no es válida.');
   }
-  const stockQuantity = Object.hasOwn(value, 'stockQuantity')
-    ? parseStockQuantity(value.stockQuantity)
-    : undefined;
-  const reservedQuantity = Object.hasOwn(value, 'reservedQuantity')
-    ? parseStockQuantity(value.reservedQuantity)
-    : undefined;
-  const availableQuantity = Object.hasOwn(value, 'availableQuantity')
-    ? parseStockQuantity(value.availableQuantity)
-    : undefined;
   if (
-    (reservedQuantity === undefined) !== (availableQuantity === undefined) ||
-    (stockQuantity === undefined && reservedQuantity !== undefined) ||
-    (stockQuantity !== undefined &&
-      reservedQuantity !== undefined &&
-      (reservedQuantity > stockQuantity ||
-        availableQuantity !== stockQuantity - reservedQuantity))
+    Object.hasOwn(value, 'stockQuantity') ||
+    Object.hasOwn(value, 'reservedQuantity') ||
+    Object.hasOwn(value, 'availableQuantity')
   ) {
-    throw new InvalidProductError('La proyección de stock disponible no es válida.');
+    throw new InvalidProductError(
+      'El catálogo no admite stock local; el inventario pertenece exclusivamente a Dux.',
+    );
   }
   const shortDescription = readOptionalText(value, 'shortDescription');
   const commerce = Object.hasOwn(value, 'commerce')
     ? parseCommerceSnapshot(value.commerce)
     : undefined;
-  if (
-    commerce?.source === 'dux' &&
-    (stockQuantity !== undefined || reservedQuantity !== undefined || availableQuantity !== undefined)
-  ) {
-    throw new InvalidProductError(
-      'Un producto gobernado por Dux no puede exponer la proyección de stock local.',
-    );
-  }
-
   return Object.freeze({
     id,
     slug,
@@ -336,9 +312,6 @@ export function parseProduct(value: unknown): Product {
     ...(salePrice === undefined ? {} : { salePrice }),
     ...(sku === undefined ? {} : { sku }),
     ...(availability === undefined ? {} : { availability }),
-    ...(stockQuantity === undefined ? {} : { stockQuantity }),
-    ...(reservedQuantity === undefined ? {} : { reservedQuantity }),
-    ...(availableQuantity === undefined ? {} : { availableQuantity }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
     ...(commerce === undefined ? {} : { commerce }),
@@ -450,20 +423,6 @@ function parseDuxUnit(value: unknown): NonNullable<DuxCommerceSnapshot['unit']> 
     ...(name === undefined ? {} : { name }),
     ...(symbol === undefined ? {} : { symbol }),
   });
-}
-
-function parseStockQuantity(value: unknown): number {
-  if (
-    typeof value !== 'number' ||
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > MAX_STOCK_QUANTITY
-  ) {
-    throw new InvalidProductError(
-      `El stock debe ser un entero entre 0 y ${MAX_STOCK_QUANTITY.toLocaleString('es-AR')}.`,
-    );
-  }
-  return value;
 }
 
 export function parseProducts(

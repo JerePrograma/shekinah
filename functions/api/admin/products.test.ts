@@ -90,11 +90,11 @@ describe('API administrativa de productos', () => {
         testD1.database,
         'producto-api',
         'PATCH',
-        { availability: 'unavailable', stockQuantity: 7 },
+        { availability: 'unavailable' },
       ));
       expect(patchResponse.status).toBe(200);
       await expect(patchResponse.json()).resolves.toMatchObject({
-        product: { availability: 'unavailable', stockQuantity: 7 },
+        product: { availability: 'unavailable' },
       });
 
       const deleteResponse = await productResource(resourceContext(
@@ -193,10 +193,10 @@ describe('API administrativa de productos', () => {
     }
   });
 
-  it('rechaza PATCH vacío, con claves desconocidas o stock inválido', async () => {
+  it('rechaza PATCH inválido y toda escritura de stock local', async () => {
     const testD1 = createTestD1(commerceMigration, catalogMigration);
     try {
-      for (const body of [{}, { name: 'No permitido' }, { stockQuantity: 1.5 }]) {
+      for (const body of [{}, { name: 'No permitido' }]) {
         const response = await productResource(resourceContext(
           testD1.database,
           'guayaba',
@@ -205,6 +205,32 @@ describe('API administrativa de productos', () => {
         ));
         expect(response.status).toBe(400);
       }
+      for (const body of [
+        { stockQuantity: 1 },
+        { stockQuantity: null },
+        { reservedQuantity: 0 },
+        { availableQuantity: 1 },
+      ]) {
+        const response = await productResource(resourceContext(
+          testD1.database,
+          'guayaba',
+          'PATCH',
+          body,
+        ));
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toMatchObject({
+          error: { code: 'DUX_INVENTORY_READ_ONLY' },
+        });
+      }
+      const createWithStock = await productsCollection(collectionContext(
+        testD1.database,
+        'POST',
+        { ...productInput('producto-con-stock-prohibido'), stockQuantity: 1 },
+      ));
+      expect(createWithStock.status).toBe(409);
+      await expect(createWithStock.json()).resolves.toMatchObject({
+        error: { code: 'DUX_INVENTORY_READ_ONLY' },
+      });
     } finally {
       testD1.close();
     }

@@ -26,6 +26,7 @@ const dynamicProduct = {
   presentation: '100 g',
   price: { amount: 2_500, currency: 'ARS' as const },
   availability: 'available' as const,
+  commerce: verifiedDuxCommerce(5),
   description: 'Detalle persistido en D1.',
   images: [],
   variants: [],
@@ -121,16 +122,14 @@ describe('App', () => {
     await restoreRuntimeCatalog();
   });
 
-  it('muestra como agotado un producto cuyo stock físico está totalmente reservado', async () => {
+  it('muestra como agotado un producto cuyo snapshot Dux no tiene disponibilidad', async () => {
     const reservedProduct = {
       ...dynamicProduct,
       id: 'producto-totalmente-reservado',
       slug: 'producto-totalmente-reservado',
       path: '/producto-totalmente-reservado/',
       name: 'Producto totalmente reservado',
-      stockQuantity: 5,
-      reservedQuantity: 5,
-      availableQuantity: 0,
+      commerce: verifiedDuxCommerce(0),
     };
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const path = requestUrl(input);
@@ -218,8 +217,13 @@ describe('App', () => {
   });
 
   it('agrega un producto confirmado por el catálogo runtime y actualiza el carrito', async () => {
+    const runtimeProducts = authorizedProducts.map((product, index) =>
+      index === 0
+        ? { ...product, availability: 'available' as const, commerce: verifiedDuxCommerce(3) }
+        : product,
+    );
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
-      products: authorizedProducts,
+      products: runtimeProducts,
     }), { status: 200, headers: { 'content-type': 'application/json' } })));
     await act(async () => {
       await refreshRuntimeCatalog();
@@ -236,7 +240,7 @@ describe('App', () => {
     expect(screen.getByText('1 unidad en el carrito.')).toBeVisible();
   });
 
-  it('carga una ficha comercial con detalle diferido y CTA de carrito', async () => {
+  it('carga una ficha comercial con detalle diferido y bloquea el CTA sin snapshot Dux', async () => {
     window.history.replaceState(null, '', '/guayaba/');
     renderApp();
     expect(document.title).toBe('Guayaba hojas x 50 gr | Shekinah');
@@ -245,7 +249,7 @@ describe('App', () => {
     ).toBeVisible();
     expect(screen.getByText('Precio', { exact: true })).toBeVisible();
     expect(screen.getByText('Disponibilidad', { exact: true })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
     expect(screen.queryByText('23/07/2026')).not.toBeInTheDocument();
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Descripción' }),
@@ -344,4 +348,17 @@ async function restoreRuntimeCatalog(): Promise<void> {
     await refreshRuntimeCatalog();
   });
   vi.unstubAllGlobals();
+}
+
+function verifiedDuxCommerce(available: number) {
+  return {
+    source: 'dux' as const,
+    catalogVersion: 'd'.repeat(64),
+    syncedAt: '2026-09-01T12:00:00.000Z',
+    availabilityState: available > 0 ? 'verified' as const : 'out_of_stock' as const,
+    checkoutEligible: available > 0,
+    mappingStatus: 'mapped' as const,
+    quantitySemanticsStatus: 'verified' as const,
+    observedStock: { real: available, reserved: 0, available },
+  };
 }

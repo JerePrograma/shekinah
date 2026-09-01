@@ -9,7 +9,6 @@ import type {
   RefObject,
 } from 'react';
 
-import { MAX_STOCK_QUANTITY } from '../catalog/model';
 import { authorizedCategories } from '../data/authorized-commercial-data';
 import { ProductImageField } from './ProductImageField';
 import type {
@@ -28,7 +27,6 @@ export function ProductEditor({
   formRef,
   imagePreviewUrl,
   imageStorageConfigured,
-  inventoryReadOnly,
   isDirty,
   onCancelPendingNavigation,
   onConfirmPendingNavigation,
@@ -56,7 +54,6 @@ export function ProductEditor({
   formRef: RefObject<HTMLFormElement | null>;
   imagePreviewUrl: string | null;
   imageStorageConfigured: boolean;
-  inventoryReadOnly: boolean;
   isDirty: boolean;
   onCancelPendingNavigation: () => void;
   onConfirmPendingNavigation: () => void;
@@ -81,7 +78,7 @@ export function ProductEditor({
 }>) {
   const saving = operation.kind === 'saving';
   const busy = operation.kind !== 'idle';
-  const editorStatus = formAvailabilityLabel(form, inventoryReadOnly);
+  const editorStatus = formAvailabilityLabel(form);
   const pendingNavigationRef = useRef<HTMLDivElement | null>(null);
   const continueEditingRef = useRef<HTMLButtonElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -191,7 +188,7 @@ export function ProductEditor({
         onSubmit={onSubmit}
       >
         <p className="admin-field-note" id="product-form-guidance">
-          Nombre y precio son obligatorios. Al crear, elegí al menos una categoría. Para vender, cargá el stock físico actual. Sin esa cantidad, el producto queda visible pero no puede comprarse. Los demás campos son opcionales.
+          Nombre y precio son obligatorios. Al crear, elegí al menos una categoría. El inventario, las unidades y la aptitud para vender se leen exclusivamente desde Dux; los demás campos son editoriales.
         </p>
         <fieldset className="admin-editor-section" disabled={busy}>
           <legend>Datos básicos</legend>
@@ -306,45 +303,9 @@ export function ProductEditor({
 
         <fieldset className="admin-editor-section" disabled={busy}>
           <legend>Inventario y disponibilidad</legend>
-          {inventoryReadOnly ? (
-            <p className="admin-context-note">
-              Inventario: Dux. El stock físico y su unidad son de sólo lectura en Shekinah.
-            </p>
-          ) : (
-            <>
-              <label className="admin-switch-field">
-                <input
-                  type="checkbox"
-                  checked={form.trackStock}
-                  aria-labelledby="product-track-stock-label"
-                  onChange={(event) => onUpdateField('trackStock', event.currentTarget.checked)}
-                />
-                <span>
-                  <strong id="product-track-stock-label">Controlar stock</strong>
-                  <small>Sin una cantidad, el producto no puede comprarse. Al llegar a cero, también queda agotado.</small>
-                </span>
-              </label>
-              {form.trackStock ? (
-                <label className="admin-form-field">
-                  <span id="product-stock-label">Stock físico</span>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    max={MAX_STOCK_QUANTITY}
-                    step="1"
-                    inputMode="numeric"
-                    value={form.stockQuantity}
-                    aria-labelledby="product-stock-label"
-                    aria-invalid={fieldErrors.stockQuantity === undefined ? undefined : true}
-                    aria-describedby={fieldErrors.stockQuantity === undefined ? undefined : 'product-stock-error'}
-                    onChange={(event) => onUpdateField('stockQuantity', event.currentTarget.value)}
-                  />
-                  <FieldError id="product-stock-error" message={fieldErrors.stockQuantity} />
-                </label>
-              ) : null}
-            </>
-          )}
+          <p className="admin-context-note">
+            Inventario: Dux. Shekinah no guarda ni permite editar stock físico, reservado o disponible.
+          </p>
           <label className="admin-switch-field">
             <input
               type="checkbox"
@@ -457,21 +418,9 @@ function describedBy(hintId: string, error: string | undefined, errorId: string)
   return error === undefined ? hintId : `${hintId} ${errorId}`;
 }
 
-function formAvailabilityLabel(form: ProductFormState, inventoryReadOnly: boolean) {
+function formAvailabilityLabel(form: ProductFormState) {
   if (form.availability === 'unavailable') {
     return { label: 'No disponible manualmente', tone: 'paused' } as const;
   }
-  if (inventoryReadOnly) {
-    return { label: 'Inventario administrado por Dux', tone: 'out' } as const;
-  }
-  if (form.trackStock && form.stockQuantity.trim() === '') {
-    return { label: 'Falta indicar el stock actual', tone: 'out' } as const;
-  }
-  if (form.trackStock && Number(form.stockQuantity) === 0) {
-    return { label: 'Sin stock — no disponible para compra', tone: 'out' } as const;
-  }
-  if (!form.trackStock) {
-    return { label: 'Stock sin configurar — no disponible para compra', tone: 'out' } as const;
-  }
-  return { label: 'Disponible para compra', tone: 'available' } as const;
+  return { label: 'Disponibilidad sujeta a la verificación Dux', tone: 'out' } as const;
 }

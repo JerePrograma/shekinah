@@ -5,6 +5,8 @@ import {
   emptyCart,
   MAX_CART_LINES,
   MAX_CART_QUANTITY,
+  getProductCartLimit,
+  isProductAvailable,
   parseStoredCart,
   parseStoredCartJson,
   removeCartItem,
@@ -97,10 +99,23 @@ describe('carrito', () => {
     })]).items).toEqual([{ productId: dynamic.id, quantity: 2 }]);
   });
 
-  it('limita y reconcilia cantidades con el stock controlado sin afectar productos legacy', () => {
+  it('ignora stock local legacy y sólo usa disponibilidad Dux entera verificada', () => {
     const tracked = product('controlado', 100, { stockQuantity: 3 });
     const depleted = product('sin-stock', 100, { stockQuantity: 0 });
     const legacy = product('legacy');
+    const dux = Object.freeze({
+      ...product('dux'),
+      commerce: Object.freeze({
+        source: 'dux' as const,
+        catalogVersion: 'a'.repeat(64),
+        syncedAt: '2026-09-01T12:00:00.000Z',
+        availabilityState: 'verified' as const,
+        checkoutEligible: true,
+        mappingStatus: 'mapped' as const,
+        quantitySemanticsStatus: 'verified' as const,
+        observedStock: Object.freeze({ real: 3, reserved: 0, available: 3 }),
+      }),
+    });
     const stored = parseStoredCart({
       version: 1,
       updatedAt: '2026-08-10T00:00:00.000Z',
@@ -116,6 +131,10 @@ describe('carrito', () => {
       { productId: depleted.id, quantity: 1 },
       { productId: legacy.id, quantity: MAX_CART_QUANTITY },
     ]);
+    expect(isProductAvailable(tracked)).toBe(false);
+    expect(getProductCartLimit(tracked)).toBe(0);
+    expect(isProductAvailable(dux)).toBe(true);
+    expect(getProductCartLimit(dux)).toBe(3);
     const added = addCartItem(emptyCart(), tracked.id, 3, 3);
     expect(addCartItem(added, tracked.id, 1, 3)).toBe(added);
     expect(setCartItemQuantity(added, tracked.id, 4, 3)).toBe(added);

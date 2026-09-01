@@ -1,13 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import type { RecalculatedCart } from './catalog';
-import { createCatalogProduct, getCatalogProductDetail } from './catalog-store';
-import {
-  getOrderById,
-  prepareOrder,
-  updateOrderFromPayment,
-} from './orders';
 import { SqliteD1 } from './test/sqlite-d1';
 
 const baseMigrationNames = [
@@ -28,92 +21,7 @@ const terminalReservationMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0010_checkout_terminal_reservation_release.sql'),
   'utf8',
 );
-const duxMigration = readFileSync(
-  resolve(process.cwd(), 'migrations', '0012_dux_authoritative_inventory.sql'),
-  'utf8',
-);
-
-describe('liberación de reservas terminales de Checkout Pro', () => {
-  for (const terminalStatus of ['rejected', 'cancelled'] as const) {
-    it(`libera inmediatamente al pasar a ${terminalStatus} y tolera reintentos`, async () => {
-      const database = new SqliteD1(
-        `${baseMigrations}\n${terminalReservationMigration}\n${duxMigration}`,
-      );
-      try {
-        await createControlledProduct(database);
-        const first = await prepareOrder({
-          cart: controlledCart(),
-          database,
-          idempotencyKey: crypto.randomUUID(),
-          tokenSecret: 'o'.repeat(40),
-        });
-        expect(await getCatalogProductDetail(database, 'producto-terminal')).toMatchObject({
-          stockQuantity: 1,
-          reservedQuantity: 1,
-          availableQuantity: 0,
-        });
-
-        const payment = {
-          id: `payment-${terminalStatus}`,
-          status: terminalStatus,
-          statusDetail: terminalStatus,
-          amountMinor: first.order.total_minor,
-          currency: 'ARS',
-          externalReference: first.order.id,
-          approvedAt: null,
-          updatedAt: '2026-08-26T12:00:00.000Z',
-        } as const;
-        await updateOrderFromPayment(
-          database,
-          first.order,
-          payment,
-          terminalStatus,
-          `event-${terminalStatus}`,
-        );
-
-        const terminalOrder = await getOrderById(database, first.order.id);
-        expect(terminalOrder).toMatchObject({ status: terminalStatus });
-        expect(terminalOrder?.stock_reservation_expires_at).toBe(
-          terminalOrder?.updated_at,
-        );
-        expect(await getCatalogProductDetail(database, 'producto-terminal')).toMatchObject({
-          stockQuantity: 1,
-          reservedQuantity: 0,
-          availableQuantity: 1,
-        });
-
-        const second = await prepareOrder({
-          cart: controlledCart(),
-          database,
-          idempotencyKey: crypto.randomUUID(),
-          tokenSecret: 'o'.repeat(40),
-        });
-        expect(second.created).toBe(true);
-        expect(await getCatalogProductDetail(database, 'producto-terminal')).toMatchObject({
-          stockQuantity: 1,
-          reservedQuantity: 1,
-          availableQuantity: 0,
-        });
-
-        if (terminalOrder === null) throw new Error('Pedido terminal ausente.');
-        await updateOrderFromPayment(
-          database,
-          terminalOrder,
-          payment,
-          terminalStatus,
-          `event-${terminalStatus}-repeated`,
-        );
-        expect(await getCatalogProductDetail(database, 'producto-terminal')).toMatchObject({
-          stockQuantity: 1,
-          reservedQuantity: 1,
-          availableQuantity: 0,
-        });
-      } finally {
-        database.close();
-      }
-    });
-  }
-
+describe('migración histórica de reservas terminales de Checkout Pro', () => {
   it('libera reservas terminales anteriores al despliegue de la migración', async () => {
     const historicalOrderId = 'ord_terminal_historical_release';
     const historicalSetup = `
@@ -215,55 +123,3 @@ describe('liberación de reservas terminales de Checkout Pro', () => {
     }
   });
 });
-
-async function createControlledProduct(database: SqliteD1): Promise<void> {
-  await createCatalogProduct(database, {
-    id: 'producto-terminal',
-    slug: 'producto-terminal',
-    path: '/producto-terminal/',
-    name: 'Producto terminal',
-    categorySlugs: ['agroecologicos'],
-    categoryNames: ['Agroecologicos'],
-    presentation: '100 g',
-    price: { amount: 1_000, currency: 'ARS' },
-    availability: 'available',
-    stockQuantity: 1,
-    images: [],
-    variants: [],
-  }, 'admin@example.test');
-}
-
-function controlledCart(): RecalculatedCart {
-  return Object.freeze({
-    lines: Object.freeze([
-      Object.freeze({
-        product: Object.freeze({
-          id: 'producto-terminal',
-          name: 'Producto terminal',
-          presentation: '100 g',
-          unitPriceMinor: 100_000,
-          available: true,
-          stockControlled: true,
-        }),
-        quantity: 1,
-        subtotalMinor: 100_000,
-      }),
-    ]),
-    currency: 'ARS',
-    itemCount: 1,
-    productsTotalMinor: 100_000,
-    shippingMinor: 0,
-    shippingTier: 'coordinated_pickup',
-    totalWeightGrams: 100,
-    fulfillment: Object.freeze({
-      method: 'coordinated_pickup',
-      fullName: 'Ana Pérez',
-      phone: '5491155554444',
-      address: 'Calle 123',
-      locality: 'CABA',
-      province: 'Buenos Aires',
-      postalCode: 'C1234ABC',
-    }),
-    totalMinor: 100_000,
-  });
-}
