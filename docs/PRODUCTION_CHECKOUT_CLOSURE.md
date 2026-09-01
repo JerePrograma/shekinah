@@ -23,13 +23,17 @@ COMMERCE_ENABLED=false
 VITE_COMMERCE_ENABLED=false
 MERCADO_LIBRE_CATALOG_ENABLED=false
 VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
+DUX_RECONCILIATION_ENABLED=false
 ```
 
 Bloqueos:
 
-1. la cuenta muestra Plan ESTÁNDAR; se requiere PRO/FULL y token;
-2. `GET /v2/items` no publica unidad/pesabilidad/divisibilidad o paso decimal suficiente;
-3. la API pública no documenta cancelación/liberación/finalización/expiración segura de reservas de pedidos.
+1. la lectura Dux desde Pages Functions falla antes de recibir un status HTTP, aunque la misma credencial y los endpoints oficiales respondieron directamente desde el host de operación;
+2. el mapping corregido en `39ab007` todavía no pudo auditarse contra un snapshot real; el catálogo local no posee un campo de barcode independiente y compara el barcode Dux con SKU/variant SKU canónicos;
+3. `GET /v2/items` no publica unidad/pesabilidad/divisibilidad o paso decimal suficiente;
+4. la API pública no documenta cancelación/liberación/finalización/expiración segura de reservas de pedidos.
+
+No se confirmó el nombre exacto del plan Dux y no debe inferirse. El acceso directo efectivo, el token configurado y los IDs descubiertos no resuelven los cuatro bloqueos anteriores.
 
 Por diseño, Checkout responde antes de crear una preferencia. WhatsApp se bloquea antes de abrir el canal. No se crean pedidos Dux reales ni se usa stock local o Mercado Libre como fallback.
 
@@ -61,7 +65,7 @@ No se implementa el paso 2 hasta disponer de los pasos 6 a 9. Crear una reserva 
 
 ## Migración y configuración
 
-Aplicar y verificar `migrations/0012_dux_authoritative_inventory.sql` primero en preview y luego en production. No se afirma que esté aplicada remotamente.
+`migrations/0012_dux_authoritative_inventory.sql`, junto con `0010`, `0011` y `0013_remove_local_catalog_stock.sql`, quedó aplicada y verificada primero en preview y luego en production el 2026-09-01. `0013` saneó seis documentos productivos, dejó en cero los contadores locales y exige snapshot Dux exacto en toda línea comercial nueva. Los guards permanecen activos y no deben retirarse.
 
 Configurar por nombre y entorno:
 
@@ -83,13 +87,16 @@ MERCADO_PAGO_CHECKOUT_MODE=production
 
 Los IDs Dux deben provenir de `GET /v2/empresas`, `GET /v2/sucursales` y `GET /v2/depositos`; no del seller Mercado Libre o de una pantalla del ERP.
 
+Los valores verificados son empresa `12862`, sucursal `1` y depósito `25566`; `GET /v2/items` informó `743` items en la lectura directa. Los secretos y variables server-side quedaron configurados sin revelar valores. El estado final conserva `DUX_API_ENABLED=false`.
+
 ## Gate de activación
 
-No cambiar `DUX_API_ENABLED`, `COMMERCE_ENABLED` o `VITE_COMMERCE_ENABLED` hasta demostrar:
+No cambiar `DUX_API_ENABLED`, `COMMERCE_ENABLED`, `VITE_COMMERCE_ENABLED` o el scheduler hasta demostrar:
 
-- PRO/FULL y token válidos;
+- acceso API autorizado y token válido, sin inferir el plan;
 - lectura real sin exponer secretos;
-- mapping y cantidades auditados;
+- lectura completa desde Pages Functions y snapshot auditado;
+- mapping corregido y auditado contra un snapshot real, con cantidades revisadas;
 - unidad/divisibilidad oficiales;
 - reserva, consulta, cancelación/liberación y finalización Dux;
 - idempotencia y timeout incierto;
@@ -102,3 +109,17 @@ No cambiar `DUX_API_ENABLED`, `COMMERCE_ENABLED` o `VITE_COMMERCE_ENABLED` hasta
 `VITE_COMMERCE_ENABLED` es build-time; requiere deployment nuevo. `COMMERCE_ENABLED` y `DUX_API_ENABLED` son runtime server-side. Los tres deben representar el mismo estado autorizado.
 
 No ejecutar un cobro real ni reservar stock productivo como smoke automático. La prueba financiera final requiere autorización expresa.
+
+## Evidencia del cierre seguro del 2026-09-01
+
+- se intentaron tres sync manuales de producción; todos terminaron `DUX_UNAVAILABLE` con cero procesados, mapeados, no mapeados y ambiguos;
+- D1 conserva los tres ciclos fallidos y cero filas de tenant, inventario/snapshot y vínculos de pedidos;
+- el diagnóstico de `f138820` registró exclusivamente `fetch_exception` en `/v2/empresas`, `providerStatus=null`, `attempts=3`, sin token, query, cuerpo, mensaje de error ni PII;
+- CI `#416` concluyó correctamente;
+- Pages publicó el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec` sobre `f138820`, con `fail_open=false` y bindings intactos;
+- el builder omitió auto-install y ejecutó npm `11.6.0`; el build terminó correctamente;
+- `DUX_API_ENABLED`, comercio, Mercado Libre y scheduler quedaron apagados.
+
+Después de esa fase, `39ab007` retiró el runtime de stock local, bloqueó su reintroducción y corrigió el orden del mapping; `0013` quedó aplicada en ambas D1 remotas. La validación local aprobó 329 pruebas, mantuvo 14 omisiones históricas y aprobó 25 de 25 pruebas de navegador. Este avance no reemplaza el snapshot Dux inexistente ni habilita el comercio.
+
+El evento seguro permite separar un `5xx` real de una excepción de transporte. `providerStatus=null` exige investigar conectividad/DNS/TLS entre Cloudflare y Dux; no autoriza a aumentar retries, habilitar el scheduler ni usar otra fuente de stock.

@@ -21,11 +21,17 @@ El repositorio contiene una integración **read-only** con la API oficial Dux v2
 - base `https://erp.duxsoftware.com.ar/WSERP/rest/services`;
 - lecturas `GET /v2/empresas`, `GET /v2/sucursales`, `GET /v2/depositos` y `GET /v2/items`;
 - paginación del listado, validación defensiva, timeout, serialización mínima de una solicitud cada cinco segundos y tratamiento acotado de `429`/errores transitorios;
-- snapshot y mapeo exacto en D1 mediante `migrations/0012_dux_authoritative_inventory.sql`;
-- reconciliación programable por `/api/internal/dux/reconcile`, desactivada hasta contar con acceso y configuración verificados;
+- persistencia preparada para snapshot y mapping en D1 mediante `migrations/0012_dux_authoritative_inventory.sql`;
+- reconciliación programable por `/api/internal/dux/reconcile`, desactivada hasta completar un sync manual verificable y resolver unidad/lifecycle;
 - diagnóstico Dux en el backoffice, con el inventario observado como sólo lectura.
 
 D1 guarda una observación, el vínculo y auditoría; nunca se convierte en autoridad de stock. Un producto sin vínculo único queda preservado editorialmente, pero no puede venderse con stock desconocido.
+
+El 2026-09-01 el token se verificó directamente contra la API oficial sin persistirlo ni imprimirlo. Los endpoints devolvieron una única empresa (`12862`), una única sucursal (`1`), un depósito habilitado (`25566`) y 743 items; 27 cantidades disponibles eran fraccionarias y 8 no positivas. Esta lectura acredita acceso efectivo, no el nombre comercial del plan contratado.
+
+Las migraciones `0010` a `0013` quedaron aplicadas y verificadas en preview y producción. `0013_remove_local_catalog_stock.sql` eliminó los contadores locales de los documentos editoriales, retiró los triggers que reservaban/consumían ese stock y exige una versión exacta de snapshot Dux en toda línea comercial nueva. En producción limpió 6 documentos sin alterar los 15 pedidos, 30 líneas ni 21 mutaciones editoriales.
+
+Tres reconciliaciones productivas anteriores terminaron `DUX_UNAVAILABLE` antes de procesar items. El diagnóstico desplegado en `f138820` clasificó el fallo como `fetch_exception` sobre `/v2/empresas`, sin estado HTTP del proveedor y después de tres intentos. No existe snapshot Dux productivo ni filas de tenant, inventario o vínculos de pedidos.
 
 La salida comercial permanece cerrada:
 
@@ -37,12 +43,13 @@ MERCADO_LIBRE_CATALOG_ENABLED=false
 VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 ```
 
-Hay dos bloqueos externos deliberados:
+Permanecen bloqueos deliberados:
 
-1. la cuenta aportada muestra **Plan ESTÁNDAR** y la documentación Dux exige PRO o FULL para usar la API; se necesita upgrade y token;
-2. la API pública revisada no documenta un ciclo seguro para cancelar/liberar/finalizar o vencer una reserva creada por pedido. Además, `GET /v2/items` no publica unidad, pesabilidad, divisibilidad ni una regla de decimales suficiente para habilitar venta.
+1. Pages Functions no logra completar la lectura Dux aunque la API oficial responda desde la verificación directa;
+2. la API pública revisada no documenta un ciclo seguro para cancelar/liberar/finalizar o vencer una reserva creada por pedido y `GET /v2/items` no publica unidad, pesabilidad, divisibilidad ni una regla de decimales suficiente para habilitar venta;
+3. el mapping corregido en `39ab007` aún no pudo validarse contra un snapshot real: ahora respeta vínculo persistido, código externo, SKU/variante, barcode Dux exacto contra los identificadores canónicos y nombre exacto sólo durante el bootstrap inicial.
 
-Por esas razones el backend bloquea Checkout Pro y WhatsApp antes de crear una preferencia, abrir el canal o mutar inventario. No se crean pedidos Dux reales mientras soporte Dux no confirme oficialmente el lifecycle completo. Un build correcto no habilita el comercio.
+Por esas razones el backend bloquea Checkout Pro y WhatsApp antes de crear una preferencia, abrir el canal o mutar inventario. No se crearon pedidos, pagos ni reservas Dux. Un build correcto no habilita el comercio.
 
 ## Funcionalidad
 
@@ -99,15 +106,15 @@ git diff --cached --check
 
 ## Configuración segura
 
-Los defaults continúan cerrados. El token Dux y los secretos de Mercado Pago se cargan sólo como secretos cifrados de Cloudflare Pages y nunca con prefijo `VITE_`.
+Los defaults y la configuración efectiva final continúan cerrados. El token Dux y los secretos de Mercado Pago se cargan sólo como secretos cifrados de Cloudflare Pages y nunca con prefijo `VITE_`. El valor del token no se guarda en Git, D1, logs, respuestas ni bundles.
 
 Variables Dux server-side previstas:
 
 ```text
 DUX_API_ENABLED=false
-DUX_COMPANY_ID=<obtenido de GET /v2/empresas>
-DUX_BRANCH_ID=<obtenido de GET /v2/sucursales>
-DUX_DEPOSIT_ID=<obtenido de GET /v2/depositos>
+DUX_COMPANY_ID=12862
+DUX_BRANCH_ID=1
+DUX_DEPOSIT_ID=25566
 DUX_SNAPSHOT_MAX_AGE_SECONDS=900
 ```
 
@@ -120,7 +127,7 @@ DUX_SCHEDULER_SECRET
 
 El ID de vendedor Mercado Libre `445638367` y el ID de usuario Dux `3851` aportados por el cliente no se reutilizan como empresa, sucursal, depósito o personal. Esos identificadores deben resolverse mediante los endpoints oficiales y validarse contra la cuenta autorizada.
 
-Consultar `docs/FULL_STACK_COMMERCE.md`, `docs/COMMERCE_DEPLOYMENT.md` y `docs/COMMERCE_OPERATIONS.md` antes de configurar un entorno. Tener código en `main`, CI verde o un deployment Pages no demuestra que Dux, la migración ni los secretos estén operativos.
+Consultar `docs/FULL_STACK_COMMERCE.md`, `docs/COMMERCE_DEPLOYMENT.md` y `docs/COMMERCE_OPERATIONS.md` antes de configurar un entorno. Tener código en `main`, CI verde, migraciones aplicadas o un deployment Pages no demuestra que exista un snapshot Dux operativo.
 
 ## Producción
 
@@ -131,6 +138,9 @@ Cloudflare Pages debe conservar:
 - comando: `npm run build:pages`;
 - salida: `dist`;
 - Node.js: `24.18.0`;
+- npm: `11.6.0`, con instalación automática de dependencias desactivada mediante `SKIP_DEPENDENCY_INSTALL` y el comando de instalación fijado explícitamente;
 - dominio público canónico: `https://shekinah.ar`.
+
+El cierre del 2026-09-01 partió de `d723f250ec3ef84abfa78bf66675248271106326`. La instrumentación funcional `f138820` aprobó CI `#416`; el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec` completó el build con npm `11.6.0`. El commit funcional `39ab007` elimina la autoridad local de stock y acompaña la migración `0013` ya aplicada. Ninguno de esos hitos acredita una reconciliación Dux: los flags Dux, comercio, Mercado Libre directo y scheduler siguen en `false`.
 
 La CSP mantiene `connect-src 'self'`: el frontend usa APIs first-party y las conexiones con Dux y Mercado Pago ocurren exclusivamente desde Pages Functions. La integración directa de inventario Mercado Libre queda retirada y sus tablas históricas se conservan sin participar del flujo productivo.

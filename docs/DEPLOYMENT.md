@@ -28,7 +28,7 @@ Configuración de referencia: `wrangler.example.jsonc`.
 
 Existe un Worker independiente también llamado `shekinah`. Verificar siempre que la ruta del panel sea `pages/view/shekinah`; los settings bajo `workers/services/view/shekinah` pertenecen al recurso equivocado.
 
-## Estado externo verificado el 2026-08-22
+## Estado externo histórico verificado el 2026-08-22
 
 - build `npm run build:pages`, salida `dist`, rama `main` y deployments automáticos: verificados;
 - binding `DB`: `shekinah-commerce` en producción y `shekinah-commerce-preview` en preview;
@@ -50,6 +50,23 @@ Existe un Worker independiente también llamado `shekinah`. Verificar siempre qu
 - TLS de apex y `www`: pack Universal `active` de Google Trust Services WE1, SAN `shekinah.ar` y `*.shekinah.ar`, TLS 1.3 verificado.
 
 Como `/api/*`, `/admin` y `/admin/*` están incluidos en `public/_routes.json`, ambos entornos deben conservar `Fail closed`. Cloudflare documenta la diferencia en <https://developers.cloudflare.com/pages/functions/routing/#fail-open--closed>.
+
+## Estado productivo vigente verificado el 2026-09-01
+
+- la API Dux v2 respondió correctamente desde el host de operación con el secreto suministrado, sin imprimirlo ni persistirlo; el plan comercial exacto de la cuenta no fue confirmado y no debe inferirse;
+- los identificadores obtenidos mediante endpoints oficiales son empresa `12862`, sucursal `1` y depósito `25566`; `GET /v2/items` informó `743` items;
+- las migraciones `0010` a `0013` quedaron aplicadas y verificadas tanto en `shekinah-commerce-preview` como en `shekinah-commerce`, con bindings separados y sin violaciones de claves foráneas;
+- `0013_remove_local_catalog_stock.sql` saneó seis documentos editoriales productivos y dejó cero payloads activos que contengan `stockQuantity`, `reservedQuantity` o `availableQuantity`; retiró los triggers de reserva/consumo local y exige snapshot Dux exacto en toda línea comercial nueva; los 15 pedidos y 30 items históricos se preservaron;
+- las variables Dux y los nombres de secretos server-side requeridos quedaron configurados; sus valores no se registraron ni se incorporaron al repositorio;
+- tres reconciliaciones manuales en producción fallaron cerradas con `DUX_UNAVAILABLE`, sin procesar ni mapear items y sin publicar snapshot;
+- el candidato diagnóstico `f138820` registró un único evento seguro por la falla terminal: `kind=fetch_exception`, `endpoint=/v2/empresas`, `providerStatus=null`, `attempts=3`; no registró URL completa, query, token, cuerpo del proveedor ni mensaje de excepción;
+- el estado D1 posterior conserva tres ciclos fallidos, cero filas de contexto de tenant, cero filas de inventario/snapshot y cero vínculos de pedidos Dux;
+- el estado final mantiene `DUX_API_ENABLED=false`, `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false`, ambos flags Mercado Libre en `false` y el scheduler Dux desactivado;
+- GitHub Actions CI `#416` concluyó correctamente para `f138820`;
+- el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec` publicó `f138820` con stage exitoso, `fail_open=false` y los bindings D1/R2 preservados;
+- el builder de Pages omite la instalación automática y ejecuta el build con npm `11.6.0`; el build productivo terminó correctamente.
+
+Esta evidencia no habilita Dux ni el comercio: confirma una configuración fail-closed y una incompatibilidad de transporte entre Pages Functions y el endpoint Dux que debe diagnosticarse sin relajar los guards.
 
 ## Configuración pública autorizada el 2026-08-10
 
@@ -98,7 +115,7 @@ Los números de WhatsApp, dominios públicos y Links de Pago no son secretos, pe
 
 ## D1
 
-Las migraciones versionadas son `0001` a `0012` y deben aplicarse en orden sin modificar las ya publicadas. `0009` incorpora el legado Mercado Libre, `0010` la liberación terminal legacy, `0011` el control local legacy y `0012_dux_authoritative_inventory.sql` la proyección y los guards Dux. La evidencia histórica del 2026-08-22 cubre sólo `0001` a `0008`; no se debe asumir que `0009` a `0012` estén aplicadas sin verificarlas en cada D1 remota.
+Las migraciones versionadas son `0001` a `0013` y deben aplicarse en orden sin modificar las ya publicadas. `0009` incorpora el legado Mercado Libre, `0010` la liberación terminal legacy, `0011` el control local legacy, `0012_dux_authoritative_inventory.sql` la proyección y los guards Dux y `0013_remove_local_catalog_stock.sql` retira la autoridad de stock local del catálogo activo. La evidencia histórica del 2026-08-22 cubre sólo `0001` a `0008`; la verificación del 2026-09-01 confirma que `0010` a `0013` ya están aplicadas en ambas D1 remotas. Cada sesión futura debe volver a comprobar la lista efectiva en vez de inferirla por esta documentación.
 
 El endpoint `/query` de D1 devolvió `7500 incomplete input` al intentar `0008` con triggers y revirtió todo. El cierre usó `wrangler d1 execute --file`, que invoca el import oficial, con el SQL versionado y la inserción exacta de su nombre en `d1_migrations`; producción sólo se migró después de la verificación funcional y limpieza de preview.
 
@@ -126,7 +143,7 @@ R2 y ambos bindings quedaron verificados por API. Los buckets conservan clase St
 
 ### Link de Pago retirado
 
-El carrito no expone URL fija, copia de total ni ingreso manual de monto. Con Checkout cerrado, el botón queda deshabilitado. WhatsApp conserva su pedido pendiente y reserva server-side.
+El carrito no expone URL fija, copia de total ni ingreso manual de monto. Con Checkout cerrado, el botón queda deshabilitado. WhatsApp no crea pedidos ni reservas nuevas mientras Dux permanezca fail-closed; los pedidos históricos se preservan únicamente para auditoría y compatibilidad.
 
 ### Checkout Pro integrado pendiente de activación
 
@@ -148,7 +165,7 @@ Cloudflare Access no es obligatorio. El JWT interno se conserva como fallback cu
 ## Activación
 
 - WhatsApp: número autorizado, pero creación de pedidos bloqueada hasta demostrar el lifecycle Dux; Link de Pago manual retirado;
-- Checkout Pro automatizado: integración financiera conservada; activación productiva bloqueada por plan/token, semántica y lifecycle Dux, migraciones remotas y pago sandbox;
+- Checkout Pro automatizado: integración financiera conservada; activación productiva bloqueada por la falla de lectura Dux desde Pages, la validación remota pendiente del mapping corregido, la semántica y el lifecycle Dux, además del pago sandbox pendiente;
 - analítica first-party: habilitada desde el 2026-08-11 en preview y producción, siempre bajo consentimiento y con retención 730;
 - administración: configuración externa lista; sólo se considera productiva sobre un SHA con deployment y smoke autenticado verificados.
 
@@ -170,3 +187,5 @@ Después del despliegue:
 - comprobar formato/tamaño/firma, rutas first-party y cleanup en R2 sin tocar assets legacy ni habilitar `r2.dev`.
 
 La configuración de Pages, D1, migraciones `0001` a `0006`, bindings `DB`/`CATALOG_IMAGES`, nombres de secretos administrativos y analíticos, `Fail closed` y aislamiento R2 quedó verificada el 2026-08-11. Zero Trust/Access continúa ausente por diseño opcional y Mercado Pago Checkout Pro permanece deshabilitado. El SHA funcional `bcb6ec0956fa46bba95b2bb5aa8b645657202da8`, CI `31452548845`, deployments y smokes analíticos quedaron comprobados; el smoke autenticado de administración no se repitió por ausencia de credencial en claro.
+
+La verificación posterior del 2026-09-01 no reemplaza ese historial: agrega las migraciones Dux remotas hasta `0013`, CI `#416`, deployment `8781412e-629b-4473-8081-89c6fbc1ffec` sobre `f138820`, el candidato funcional `39ab007` validado localmente y la decisión explícita de mantener todas las capacidades comerciales y de reconciliación cerradas hasta verificar el SHA publicado.

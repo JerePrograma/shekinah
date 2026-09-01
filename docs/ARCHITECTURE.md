@@ -17,11 +17,11 @@ Dux Software ──lectura de inventario / pedidos-reservas──> Shekinah ─�
 - Mercado Pago es autoridad financiera del pago.
 - Mercado Libre es sincronizado por Dux y queda fuera del flujo de inventario de Shekinah.
 
-El código conserva componentes históricos de stock local y de Mercado Libre para compatibilidad y trazabilidad, pero no deben volver a activarse como autoridad. No existe fallback a Excel, scraping, cookies del ERP ni inferencia de unidad mediante el nombre del producto.
+El esquema conserva columnas y migraciones históricas de stock local y Mercado Libre para trazabilidad, pero el runtime, el catálogo y la administración ya no las usan como autoridad. No existe fallback a stock precargado, Excel, scraping, cookies del ERP ni inferencia de unidad mediante el nombre del producto.
 
 ## Estado de activación
 
-La integración Dux implementada es de lectura y diagnóstico. La cuenta indicada por el cliente muestra Plan ESTÁNDAR y necesita PRO/FULL más token. Además, la API pública revisada no demuestra:
+La integración Dux implementada es de lectura y diagnóstico. El 2026-09-01 la API oficial respondió directamente con la credencial autorizada y devolvió los IDs de tenant configurados y `743` items. El plan comercial exacto no fue confirmado y no debe inferirse. La lectura desde Pages Functions continúa bloqueada por una excepción de transporte anterior a cualquier status HTTP del proveedor. Además, la API pública revisada no demuestra:
 
 - unidad, pesabilidad, divisibilidad o granularidad comercial en `GET /v2/items`;
 - cancelación, liberación, finalización o expiración segura de una reserva creada con la API de pedidos.
@@ -61,6 +61,8 @@ El mapping sigue este orden, sin coincidencia difusa:
 
 El resultado es `mapped`, `unmapped` o `ambiguous`. Cero o varios candidatos no alteran el producto local y lo mantienen no vendible. Un producto ausente en Dux tampoco se borra.
 
+El commit `39ab007` implementa ese orden: incluye SKU de producto/variante, compara los barcodes Dux contra esos identificadores canónicos exactos y habilita el nombre sólo cuando la corrida es `initial` y `dux_inventory_items` está vacía. La ambigüedad continúa bloqueando. El catálogo no tiene un campo barcode local independiente, por lo que la eficacia real del paso de barcode sigue pendiente de un snapshot productivo auditado.
+
 El snapshot D1 conserva cantidades `REAL` y metadatos observados sin `floor`, `ceil`, `round`, conversiones de gramos/kilos ni escalas inferidas. Dux sigue siendo la autoridad; D1 sólo reduce llamadas y permite diagnóstico.
 
 ## Integración Dux
@@ -76,7 +78,9 @@ El snapshot D1 conserva cantidades `REAL` y metadatos observados sin `floor`, `c
 
 El cliente valida respuestas explícitamente, preserva decimales y valores negativos observados, aplica timeout, serializa a una solicitud cada cinco segundos, respeta `Retry-After` cuando existe y limita retries a lecturas seguras. D1 impide corridas solapadas, renueva el lease antes de cada request y conserva un cooldown global entre corridas; el listado se limita a 100 páginas de 50 items. Superar 5.000 items falla cerrado en vez de abrir otra corrida concurrente. Una respuesta inválida, `401`, `403`, `429`, `5xx` o timeout nunca habilita una venta.
 
-`server/dux-inventory.ts` valida empresa, sucursal y depósito contra esas lecturas, ejecuta el mapeo exacto y persiste la proyección. El scheduler `dux-reconcile.yml` llama a `/api/internal/dux/reconcile`, pero su job sólo corre con `DUX_RECONCILIATION_ENABLED=true`; ese flag no debe activarse sin plan, token, IDs y migración verificados.
+La verificación directa resolvió empresa `12862`, sucursal `1` y depósito `25566`. Sin embargo, tres sync productivos desde Pages fallaron con `DUX_UNAVAILABLE` y cero procesados. El diagnóstico de `f138820` emitió sólo `kind=fetch_exception`, `endpoint=/v2/empresas`, `providerStatus=null`, `attempts=3`, sin URL/query, token, cuerpo ni mensaje de excepción. Por lo tanto no hay evidencia de un `5xx` del proveedor y no se publicó snapshot.
+
+`server/dux-inventory.ts` valida empresa, sucursal y depósito contra esas lecturas, ejecuta el mapeo y persiste la proyección. El scheduler `dux-reconcile.yml` llama a `/api/internal/dux/reconcile`, pero su job sólo corre con `DUX_RECONCILIATION_ENABLED=true`. Como el `if` se evalúa antes de cargar variables del environment, el flag debe definirse a nivel repositorio u organización; permanece ausente o en `false` hasta resolver transporte, validar el mapping real, unidad y lifecycle.
 
 ## Persistencia
 
@@ -88,9 +92,11 @@ Las migraciones publicadas permanecen inmutables. `migrations/0012_dux_authorita
 - relación futura entre pedido local y pedido Dux;
 - ledger de operaciones Dux para idempotencia y resultados inciertos.
 
-`0012` agrega además los guards `dux_order_link_requires_empty_order`, `dux_order_items_lifecycle_blocked`, `dux_order_items_update_blocked`, `dux_order_items_delete_blocked`, `dux_order_status_lifecycle_blocked` y `dux_mapped_order_status_lifecycle_blocked`. Hasta que una migración aditiva posterior implemente el lifecycle oficial, un pedido Dux no puede materializar líneas ni cambiar de estado. El último guard también pone en cuarentena preferencias o pedidos anteriores al corte cuando alguna línea ya coincide con una identidad Dux, evitando que alcancen los triggers legacy de stock local.
+El 2026-09-01 se verificó que `0010` a `0013` están aplicadas en preview y production. `0013_remove_local_catalog_stock.sql` eliminó `stockQuantity`, `reservedQuantity` y `availableQuantity` de los documentos editoriales, retiró los triggers locales de reserva/consumo y agregó guardas que impiden reintroducir esos campos o insertar líneas comerciales nuevas sin una versión exacta de snapshot Dux mapeado. Las líneas históricas no se reescribieron.
 
-Las tablas locales de stock y las tablas Mercado Libre anteriores se conservan como legado. Para productos Dux no representan stock físico ni reservas válidas.
+`0012` agrega además los guards `dux_order_link_requires_empty_order`, `dux_order_items_lifecycle_blocked`, `dux_order_items_update_blocked`, `dux_order_items_delete_blocked`, `dux_order_status_lifecycle_blocked` y `dux_mapped_order_status_lifecycle_blocked`. Hasta que una migración aditiva posterior implemente el lifecycle oficial, un pedido Dux no puede materializar líneas ni cambiar de estado. `0013` elimina los triggers legacy de consumo y reserva para que ninguna ruta vuelva a depender de un contador local.
+
+Las columnas de pedidos y las tablas Mercado Libre anteriores se conservan como historia. Los contadores locales ya no forman parte del contrato de producto ni de sus documentos D1; para toda venta nueva el inventario es exclusivamente Dux.
 
 ## Pedidos y pagos
 
@@ -134,3 +140,5 @@ npm run build:pages
 ```
 
 El build es reproducible sin red Dux. La salida pública se genera en `dist`; las Pages Functions se publican desde `functions/`.
+
+Para el candidato `f138820`, CI `#416` y el deployment productivo `8781412e-629b-4473-8081-89c6fbc1ffec` concluyeron correctamente. El builder omite la instalación automática y ejecuta npm `11.6.0`; el runtime mantiene `fail_open=false` y los bindings D1/R2 intactos. El éxito de build no cambia los flags cerrados.

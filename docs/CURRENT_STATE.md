@@ -1,6 +1,6 @@
 # Estado actual
 
-Fecha de revisión: 2026-08-26.
+Fecha de revisión: 2026-09-01.
 
 ## Decisión de inventario
 
@@ -21,14 +21,15 @@ El candidato incorpora:
 - lecturas oficiales de empresas, sucursales, depósitos e items;
 - paginación, validación defensiva, timeout, rate limit de una solicitud cada cinco segundos y retry limitado de lecturas;
 - `migrations/0012_dux_authoritative_inventory.sql` para contexto, sync, snapshot/mapping y trazabilidad futura de pedidos;
-- mapping exacto con estados `mapped`, `unmapped` y `ambiguous`;
+- `migrations/0013_remove_local_catalog_stock.sql` para retirar los contadores locales del catálogo activo y exigir snapshot Dux exacto en toda línea comercial nueva;
+- mapping con estados `mapped`, `unmapped` y `ambiguous`, corregido en `39ab007` y todavía pendiente de validación contra un snapshot real;
 - proyección D1 read-only sin convertirla en autoridad;
 - backoffice Dux de diagnóstico y stock no editable;
 - scheduler Dux read-only desactivado por default;
 - retiro funcional de OAuth, sync, webhook y reserva directa Mercado Libre;
 - guard fail-closed de Checkout Pro y WhatsApp.
 
-El código histórico de stock local y Mercado Libre no se borra masivamente. Se conserva para compatibilidad y auditoría, pero queda fuera del flujo activo cuando se adopta Dux.
+El runtime de stock local fue retirado: las APIs no lo aceptan ni lo proyectan, el catálogo generado no publica cantidades locales, la UI administrativa no permite editarlas y los flujos comerciales no pueden consumirlas. El esquema y las líneas de pedidos históricos se conservan únicamente para compatibilidad y auditoría; `0013` elimina esos contadores de los documentos editoriales activos y bloquea su reintroducción.
 
 ## API Dux implementada
 
@@ -45,15 +46,20 @@ No se implementan mutaciones contra endpoints no documentados. Aunque la documen
 
 ## Bloqueos externos
 
-### Plan y token
+### Acceso oficial y transporte
 
-La cuenta mostrada por el cliente indica **Plan ESTÁNDAR**. La documentación Dux vigente indica que la API requiere PRO o FULL. No hay token disponible/verificado en esta sesión y no se ejecutaron llamadas autenticadas.
+El 2026-09-01 se verificó el token mediante llamadas autenticadas a la API oficial. Sin imprimirlo ni persistirlo, se obtuvo una empresa (`12862`), una sucursal (`1`), un depósito habilitado (`25566`) y 743 items; 27 cantidades disponibles eran fraccionarias y 8 no positivas. La lectura acredita acceso efectivo, pero no el nombre comercial del plan.
 
-Pendiente externo:
+Desde Pages Functions la reconciliación no superó la primera lectura. Tres sync productivos terminaron `DUX_UNAVAILABLE` con cero items procesados. La instrumentación `f138820` clasificó el tercer fallo como:
 
 ```text
-Upgrade Dux a PRO/FULL + token API requerido
+kind=fetch_exception
+endpoint=/v2/empresas
+providerStatus=null
+attempts=3
 ```
+
+El token permanece únicamente como secreto cifrado. El estado final vuelve a `DUX_API_ENABLED=false` hasta resolver el transporte.
 
 ### Semántica de cantidades
 
@@ -80,6 +86,10 @@ La API pública revisada no documenta un mecanismo seguro para:
 
 La migración `0012` aplica un hard block adicional en D1: impide líneas y cambios de estado para pedidos vinculados a Dux y pone en cuarentena órdenes históricas con productos ya asociados a una identidad/candidata Dux. Webhook, conciliación y expiración también los excluyen; los flujos legacy sólo continúan sin relación Dux.
 
+### Mapping
+
+El contrato exige vínculo persistido, código externo, SKU, barcode exacto único y nombre exacto sólo durante bootstrap. `39ab007` implementa ese orden: compara el barcode Dux contra los identificadores canónicos de producto/variante y sólo permite nombre exacto en una corrida manual `initial` cuando la tabla de inventario está vacía. El catálogo local no posee un campo de barcode independiente, por lo que esa comparación reutiliza SKU/variant SKU y debe auditarse con datos reales. Como los tres sync fallaron antes de procesar items, no existe mapping productivo que limpiar ni evidencia remota para declarar el algoritmo validado. El scheduler permanece desactivado.
+
 ## Flags
 
 Defaults seguros versionados:
@@ -94,6 +104,8 @@ VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 
 El scheduler exige además `DUX_RECONCILIATION_ENABLED=true` en GitHub. No debe configurarse todavía.
 
+La configuración efectiva final de production y preview también conserva `DUX_API_ENABLED=false`, `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false`, `MERCADO_LIBRE_CATALOG_ENABLED=false` y `VITE_MERCADO_LIBRE_CATALOG_ENABLED=false`. La reconciliación GitHub permanece deshabilitada.
+
 ## Producto y UX
 
 Shekinah conserva el catálogo editorial, carrito, páginas públicas, backoffice, imágenes R2, privacidad y analítica. Para inventario Dux:
@@ -106,11 +118,13 @@ Shekinah conserva el catálogo editorial, carrito, páginas públicas, backoffic
 
 El comprador no ve IDs Dux, depósito técnico, token o error crudo. El administrador ve estado de vínculo, cantidad observada, depósito, fecha y error sanitizado. El stock Dux es sólo lectura.
 
+No existe snapshot productivo. El catálogo editorial se preserva, pero ningún producto queda habilitado por Dux mientras el estado sea ausente.
+
 ## Mercado Pago
 
 La integración Checkout Pro existente mantiene cálculo server-side, `external_reference`, metadata, webhook firmado, consulta autoritativa e idempotencia. Sin embargo, la creación de preferencia está bloqueada antes de llamar a Mercado Pago hasta que Dux pueda reservar y compensar con seguridad.
 
-No se ejecutó un pago real. La aplicación autorizada sigue siendo `Shekinah`, Application ID `7373984348988262`, sin exponer credenciales.
+No se ejecutó un pago real ni se creó una preferencia vinculada a Dux. La aplicación autorizada sigue siendo `Shekinah`, Application ID `7373984348988262`, sin exponer credenciales.
 
 ## Mercado Libre
 
@@ -120,7 +134,11 @@ La tienda `HERBOLARIOMDP` y seller ID `445638367` continúan bajo la integració
 
 ## Persistencia
 
-La migración aditiva `0012_dux_authoritative_inventory.sql` existe en el repositorio candidato. No se afirma que esté aplicada en preview o production. Debe ejecutarse primero en preview con backup/Time Travel y verificación de esquema, y luego en production.
+Las migraciones `0010_checkout_terminal_reservation_release.sql`, `0011_local_order_stock_required.sql`, `0012_dux_authoritative_inventory.sql` y `0013_remove_local_catalog_stock.sql` fueron aplicadas primero en preview y después en producción, con bookmarks de Time Travel previos. En ambos entornos se verificaron nombres, esquema, triggers, conteos preservados, ausencia de migraciones pendientes y cero violaciones de claves foráneas.
+
+`0013` retiró los triggers legacy de reserva/consumo local, agregó guards contra nuevos payloads locales y exige que las líneas comerciales nuevas referencien una versión exacta y vigente de `dux_inventory_items`. Preview conservó 14 pedidos, 14 líneas y una fila de pagos. Producción conservó 15 pedidos, 30 líneas, 21 mutaciones editoriales y cero pagos; seis payloads activos fueron saneados y el conteo de `stockQuantity`, `reservedQuantity` o `availableQuantity` quedó en cero.
+
+Producción conserva tres ciclos Dux fallidos y cero items procesados. No hay snapshot, contexto de tenant, inventario ni vínculos de pedidos Dux. No se crearon pedidos, pagos o reservas Dux durante la configuración.
 
 Las migraciones, órdenes, pagos, auditoría, catálogo, imágenes y tablas históricas Mercado Libre existentes se preservan.
 
@@ -128,7 +146,9 @@ Las migraciones, órdenes, pagos, auditoría, catálogo, imágenes y tablas hist
 
 La arquitectura continúa sobre Cloudflare Pages, Pages Functions, D1 y R2, rama `main` del repositorio `JerePrograma/shekinah`. El workflow de reconciliación Dux usa el environment GitHub `cloudflare-pages-production`, pero permanece condicionado a una variable explícita desactivada.
 
-No se afirma que el candidato esté desplegado, que `0012` esté aplicada, que existan secrets Dux en Pages o que el deployment corresponda al futuro commit. Esos estados deben verificarse después del push sobre el SHA exacto.
+El cierre partió de `d723f250ec3ef84abfa78bf66675248271106326`. La instrumentación `f138820` aprobó CI `#416` y quedó publicada en el deployment productivo canónico `8781412e-629b-4473-8081-89c6fbc1ffec`. Pages usó Node.js `24.18.0` y npm `11.6.0`: se deshabilitó la instalación automática mediante `SKIP_DEPENDENCY_INSTALL` y se fijó explícitamente el comando de instalación. El build concluyó correctamente.
+
+El deployment exitoso no acredita un sync Dux: el diagnóstico confirmó una excepción de transporte, no existe snapshot y todos los flags comerciales permanecen cerrados.
 
 ## Calidad
 
@@ -142,7 +162,7 @@ Entorno canónico:
 - Playwright;
 - verificadores de catálogo, seguridad y automatización.
 
-Los resultados del candidato deben registrarse después de ejecutar `npm run verify`, `npm run build:pages`, revisar diff, crear commit y hacer push. No reutilizar conteos de una sesión histórica como evidencia actual.
+CI `#416` y el build de Pages del SHA `f138820` concluyeron correctamente. El candidato funcional `39ab007` aprobó localmente `npm ci`, instalación de navegadores, `npm run verify` y `npm run build:pages` con Node.js `24.18.0` y npm `11.6.0`: 329 pruebas aprobaron, 14 históricas quedaron omitidas y Playwright aprobó 25 de 25. Su CI y deployment deben verificarse sobre el SHA documental final después del push.
 
 ## Separación de estados
 
@@ -153,7 +173,7 @@ Toda continuidad debe distinguir:
 3. commit y push;
 4. GitHub Actions;
 5. deployment Pages;
-6. migración `0012`;
+6. migraciones `0010`–`0013`;
 7. secrets y variables Dux;
 8. acceso API real;
 9. mapping real;
@@ -161,4 +181,4 @@ Toda continuidad debe distinguir:
 11. sandbox Mercado Pago;
 12. activación productiva y pago autorizado.
 
-Ninguna etapa demuestra automáticamente la siguiente. El estado productivo actual es **bloqueado por configuración externa y limitación de API**.
+Ninguna etapa demuestra automáticamente la siguiente. Código local, secretos, IDs y migraciones están verificados; el mapping está corregido por código pero no validado con datos remotos, y snapshot, unidades y lifecycle no están disponibles. El estado productivo actual es **fail-closed**, con Dux API, comercio, Mercado Libre directo y scheduler deshabilitados.

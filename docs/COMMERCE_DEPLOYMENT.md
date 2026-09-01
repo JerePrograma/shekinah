@@ -17,10 +17,10 @@ VITE_MERCADO_LIBRE_CATALOG_ENABLED=false
 
 No activar comercio mientras falte cualquiera de estos requisitos:
 
-- cuenta Dux PRO o FULL;
-- token API válido;
+- acceso API Dux v2 autorizado y verificable, sin inferir el nombre exacto del plan;
+- token API válido cargado sólo como secreto server-side;
 - empresa, sucursal y depósito obtenidos de endpoints oficiales;
-- migración `0012_dux_authoritative_inventory.sql` aplicada y verificada;
+- migraciones `0012_dux_authoritative_inventory.sql` y `0013_remove_local_catalog_stock.sql` aplicadas y verificadas;
 - snapshot real y mappings auditados;
 - unidad, pesabilidad, divisibilidad y granularidad comercial verificadas;
 - creación y consulta de pedido Dux probadas;
@@ -28,7 +28,7 @@ No activar comercio mientras falte cualquiera de estos requisitos:
 - sandbox Mercado Pago y webhook aprobados;
 - CI, deployment y smoke del mismo SHA.
 
-La cuenta aportada muestra Plan ESTÁNDAR y la API pública revisada no documenta el lifecycle de compensación. Por eso el resultado de este despliegue es código preparado y fail-closed, no comercio activo.
+El 2026-09-01 la API Dux respondió directamente con la credencial autorizada, pero no se verificó el nombre exacto del plan y no debe afirmarse uno. La API pública revisada sigue sin documentar el lifecycle de compensación. Además, las lecturas ejecutadas desde Pages Functions fallaron antes de recibir una respuesta HTTP del proveedor. Por eso el resultado de este despliegue es configuración preparada y fail-closed, no comercio activo.
 
 ## 1. Validar el commit exacto
 
@@ -51,7 +51,7 @@ Registrar SHA completo, resultados y cualquier prueba no ejecutada. No desplegar
 
 ## 2. Aplicar la migración D1
 
-`migrations/0012_dux_authoritative_inventory.sql` es aditiva. Agrega contexto Dux, ciclos de sync, snapshot/mapping, vínculo futuro de pedidos y ledger de operaciones. No borra catálogo, stock local histórico, Mercado Libre, pedidos, pagos, auditoría o imágenes.
+`migrations/0012_dux_authoritative_inventory.sql` agrega contexto Dux, ciclos de sync, snapshot/mapping, vínculo futuro de pedidos y ledger de operaciones. `0013_remove_local_catalog_stock.sql` elimina del documento editorial los tres contadores locales, retira los triggers que reservaban o consumían esos contadores y exige snapshot Dux exacto para líneas comerciales nuevas. No borra productos, pedidos, líneas históricas, pagos, auditoría, Mercado Libre ni imágenes.
 
 Antes de tocar una D1 remota:
 
@@ -66,21 +66,21 @@ Con una configuración Wrangler local correcta y no versionada:
 
 ```powershell
 npx wrangler d1 migrations apply DB --local
-npx wrangler d1 migrations apply DB --remote --preview
-npx wrangler d1 migrations list DB --remote --preview
+npx wrangler d1 migrations apply DB --remote
+npx wrangler d1 migrations list DB --remote
 npx wrangler d1 migrations apply DB --remote --env production
 npx wrangler d1 migrations list DB --remote --env production
 ```
 
-No modificar migraciones ya aplicadas ni ejecutar SQL alternativo. En este cierre no se afirma que `0012` esté aplicada en ningún entorno remoto: debe comprobarse por nombre y esquema.
+Esos comandos suponen que el binding superior `DB` apunta a preview y `env.production.DB` a producción; comprobar los UUID antes de ejecutar. No agregar `--preview` si el archivo local no define `preview_database_id`. El 2026-09-01 se verificó por nombre y esquema que `0010` a `0013` están aplicadas en ambas bases. Esta evidencia no exime de comprobar nuevamente la lista remota.
 
-Los seis triggers son parte del estado fail-closed. Retirarlos requiere una migración aditiva posterior y evidencia del lifecycle oficial de reserva, liberación y finalización Dux.
+Los seis triggers de `0012` y los tres guardas de `0013` son parte del estado fail-closed. Retirarlos requiere una migración aditiva posterior y evidencia del lifecycle oficial de reserva, liberación y finalización Dux.
 
 ## 3. Confirmar acceso oficial Dux
 
-No intentar bypass si la cuenta continúa en ESTÁNDAR. El procedimiento válido es:
+No inferir el plan por una pantalla del ERP ni intentar bypass. El procedimiento válido es:
 
-1. cambiar el plan a PRO o FULL;
+1. confirmar con Dux que la cuenta tiene acceso API autorizado, sin afirmar un plan no comprobado;
 2. generar un token desde el mecanismo oficial Dux;
 3. cargarlo como `DUX_API_TOKEN` cifrado en Pages;
 4. comprobar una lectura con Bearer sin registrar el token;
@@ -99,15 +99,17 @@ GET /v2/items
 
 Los IDs aportados `445638367` (seller Mercado Libre) y `3851` (usuario Dux mostrado) no equivalen de forma demostrada a empresa, sucursal, depósito o personal.
 
+La lectura directa verificada el 2026-09-01 resolvió empresa `12862`, sucursal `1` y depósito `25566`, y el listado paginado informó `743` items. La credencial funcionó desde el host de operación; esto demuestra acceso efectivo, no el nombre exacto del plan contratado.
+
 ## 4. Configurar Dux en Pages
 
 Variables server-side por entorno:
 
 ```text
 DUX_API_ENABLED=false
-DUX_COMPANY_ID=<id confirmado por GET /v2/empresas>
-DUX_BRANCH_ID=<id confirmado por GET /v2/sucursales>
-DUX_DEPOSIT_ID=<id confirmado por GET /v2/depositos>
+DUX_COMPANY_ID=12862
+DUX_BRANCH_ID=1
+DUX_DEPOSIT_ID=25566
 DUX_SNAPSHOT_MAX_AGE_SECONDS=900
 ```
 
@@ -120,7 +122,7 @@ DUX_SCHEDULER_SECRET
 
 No crear `VITE_DUX_API_TOKEN`. Verificar sólo nombre, tipo y entorno; nunca leer o imprimir valores. Mantener valores distintos por preview/production si la cuenta o permisos difieren.
 
-Después de configurar, dejar `DUX_API_ENABLED=false` hasta que `0012` esté aplicada y el smoke read-only sea seguro. Activar read-only Dux no habilita comercio: el guard de lifecycle debe seguir bloqueando ventas.
+Después de configurar, dejar `DUX_API_ENABLED=false` hasta que `0012`/`0013` estén aplicadas y el smoke read-only sea seguro. Activar read-only Dux no habilita comercio: el guard de lifecycle debe seguir bloqueando ventas.
 
 ## 5. Configurar reconciliación read-only
 
@@ -133,13 +135,15 @@ Authorization: Bearer <DUX_SCHEDULER_SECRET>
 
 El job requiere:
 
-- variable GitHub `DUX_RECONCILIATION_ENABLED=true`;
+- variable GitHub de repositorio u organización `DUX_RECONCILIATION_ENABLED=true`;
 - secreto GitHub environment `DUX_SCHEDULER_SECRET`;
 - el mismo secreto cifrado en Pages production;
 - endpoint desplegado y `DUX_API_ENABLED=true`;
-- migración `0012` y token Dux válidos.
+- migraciones `0012`/`0013` y token Dux válidos.
 
-Por defecto la variable debe faltar o valer `false`; así el workflow queda desactivado. Habilitarlo sólo después de un sync manual read-only y revisar que el intervalo respete una petición cada cinco segundos. No ejecutar llamadas Dux durante build.
+El `if` del job se evalúa antes de cargar variables del environment; por eso `DUX_RECONCILIATION_ENABLED` debe existir a nivel repositorio u organización, no sólo en `cloudflare-pages-production`. Por defecto debe faltar o valer `false`; así el workflow queda desactivado.
+
+No habilitarlo aunque se recupere la conectividad hasta probar el mapping real. `39ab007` implementa vínculo persistido → código externo → SKU/variante → barcode Dux exacto contra identificadores canónicos → nombre exacto sólo en bootstrap. Exigir un sync manual read-only, revisar conteos/ambigüedades y comprobar el intervalo mínimo de cinco segundos. No ejecutar llamadas Dux durante build.
 
 No restaurar el scheduler Mercado Libre. Dux sincroniza ese canal fuera de Shekinah.
 
@@ -157,6 +161,22 @@ Con cuenta, token y IDs confirmados:
 8. catálogo: ausentes o ambiguos preservados y no vendibles.
 
 No mutar stock real ni crear pedidos como smoke. No afirmar una unidad o divisibilidad que `GET /v2/items` no entrega.
+
+### Resultado productivo del 2026-09-01
+
+Se ejecutaron tres reconciliaciones manuales autorizadas en producción. Las tres respondieron `DUX_UNAVAILABLE`, procesaron cero items y dejaron en cero `mapped`, `unmapped` y `ambiguous`; no publicaron contexto de tenant, inventario/snapshot ni vínculos de pedidos.
+
+El candidato `f138820` agregó diagnóstico terminal sin datos sensibles. Su único evento fue:
+
+```text
+event=dux_api_transport_failure
+kind=fetch_exception
+endpoint=/v2/empresas
+providerStatus=null
+attempts=3
+```
+
+La ausencia de `providerStatus` significa que Pages no recibió una respuesta HTTP clasificable del proveedor; no demuestra un `5xx` Dux. El evento omite URL completa, query, token, cuerpo y mensaje de excepción. Finalizado el diagnóstico, `DUX_API_ENABLED` volvió a `false` y no se habilitó el scheduler.
 
 ## 7. Resolver el hard blocker de pedidos
 
@@ -269,6 +289,17 @@ El cambio Dux no altera los bindings existentes:
 
 Al modificar variables o bindings, distinguir siempre el proyecto Pages del Worker homónimo. No reemplazar una configuración activa con `wrangler.example.jsonc`: contiene marcadores, no IDs reales.
 
+## Estado externo verificado el 2026-09-01
+
+- CI `#416`: `success` sobre `f138820`;
+- Pages production: deployment canónico `8781412e-629b-4473-8081-89c6fbc1ffec`, stage exitoso sobre `f138820`;
+- runtime: `fail_open=false`, D1 y R2 conservados en sus bindings correctos;
+- builder: instalación automática omitida, npm `11.6.0` y `npm run build:pages` exitoso;
+- flags finales: Dux API, reconciliación, comercio y Mercado Libre deshabilitados;
+- D1 Dux: tres ciclos fallidos conservados como evidencia, sin tenant, snapshot/inventario ni vínculos de pedidos.
+
+Este estado acredita despliegue seguro del diagnóstico y cierre de flags. La aplicación posterior de `0013` acredita cero contadores locales en payloads productivos y guardas remotas activos; no acredita snapshot Dux, mapping real, lifecycle de pedidos ni comercio productivo.
+
 ## Estados que deben informarse por separado
 
 | Estado | Evidencia mínima |
@@ -276,8 +307,8 @@ Al modificar variables o bindings, distinguir siempre el proyecto Pages del Work
 | Código preparado | diff y pruebas locales |
 | CI aprobado | workflow exitoso sobre SHA exacto |
 | Pages desplegado | deployment asociado al SHA |
-| Migración `0012` aplicada | lista remota y esquema verificado |
-| Dux API habilitada | PRO/FULL, token e IDs confirmados |
+| Migraciones `0012`/`0013` aplicadas | lista remota, esquema, conteos y FK verificados |
+| Acceso Dux preparado | acceso directo, token e IDs confirmados sin inferir el plan; lectura Pages pendiente |
 | Snapshot Dux | sync real y conteos auditados |
 | Lifecycle Dux | reserva, consulta, liberación y finalización demostradas |
 | Mercado Pago sandbox | preferencia, firma y estados verificados |

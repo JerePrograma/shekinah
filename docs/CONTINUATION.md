@@ -1,8 +1,8 @@
 # Continuación
 
-## Prioridad vigente desde 2026-08-26
+## Prioridad vigente desde 2026-09-01
 
-Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md` y `docs/COMMERCE_DEPLOYMENT.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Checkout Pro y WhatsApp permanecen cerrados hasta demostrar el lifecycle completo de pedidos Dux, incluida liberación/finalización segura, y completar configuración, migraciones, CI, deployment y smoke del mismo SHA.
+Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md` y `docs/COMMERCE_DEPLOYMENT.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Acceso oficial, IDs y migraciones `0010`–`0013` quedaron verificados; tres sync productivos fallaron por transporte y no existe snapshot. Checkout Pro y WhatsApp permanecen cerrados hasta validar el mapping corregido con un sync read-only y demostrar unidad, liberación y finalización seguras.
 
 Las evidencias de despliegues anteriores que siguen a continuación son históricas. No autorizan reactivar OAuth, sincronización directa Mercado Libre, reservas locales ni Link de Pago.
 
@@ -29,10 +29,10 @@ El repositorio contiene una evolución full-stack basada en:
 - Cloudflare Pages Functions;
 - Cloudflare D1;
 - Mercado Pago Checkout Pro directo, preparado pero no activado públicamente;
-- Dux como única autoridad de inventario, con snapshot D1 read-only y mapping estable;
+- Dux como única autoridad de inventario, con snapshot D1 read-only previsto y mapping corregido por código pero no validado en remoto;
 - pedido WhatsApp futuro con reserva Dux previa y el mismo lifecycle autoritativo que Checkout Pro;
 - autenticación administrativa propia y Cloudflare Access opcional;
-- backoffice visual de catálogo con stock opcional e imágenes administradas preparadas para R2;
+- backoffice visual de catálogo sin edición de stock, con inventario Dux read-only e imágenes administradas preparadas para R2;
 - Backoffice V2 separado en Resumen, Productos, Pedidos, Analítica y Auditoría;
 - detalle de pedidos, resolución administrativa limitada a aprobar/rechazar pendientes de WhatsApp y conciliación de Checkout Pro exclusivamente contra Mercado Pago;
 - analítica first-party opcional; `manual_payment_click` conserva únicamente eventos históricos.
@@ -83,6 +83,18 @@ El canal WhatsApp no requiere VPS. Mientras no exista liberación/finalización 
 
 ## Identidad externa verificada
 
+### Cierre Dux del 2026-09-01
+
+La intervención partió de `d723f250ec3ef84abfa78bf66675248271106326`. El token se validó directamente contra la API oficial y permanece sólo como secreto cifrado. Sin afirmar plan comercial ni registrar datos personales, quedaron confirmados empresa `12862`, sucursal `1`, depósito habilitado `25566` y 743 items; 27 cantidades disponibles eran fraccionarias y 8 no positivas.
+
+Las migraciones `0010` a `0013` se aplicaron primero en preview y luego en producción con bookmarks de Time Travel, esquema y triggers verificados, conteos preservados, cero pendientes y cero violaciones de claves foráneas. `0013` limpió los 6 payloads productivos con contadores locales y dejó cero; no se crearon pedidos, pagos ni reservas Dux.
+
+Tres reconciliaciones productivas devolvieron `DUX_UNAVAILABLE` con cero items procesados. La instrumentación `f138820` identificó `fetch_exception` en `/v2/empresas`, `providerStatus=null`, después de tres intentos. Producción no contiene snapshot, contexto de tenant, inventario ni vínculos de pedidos Dux. `39ab007` corrigió el orden de mapping y limitó el nombre al bootstrap, pero falta validarlo contra datos Dux reales.
+
+`f138820` aprobó CI `#416`. Cloudflare Pages construyó con Node.js `24.18.0` y npm `11.6.0`, mediante `SKIP_DEPENDENCY_INSTALL` y un comando de instalación fijado, y publicó el deployment canónico `8781412e-629b-4473-8081-89c6fbc1ffec`. El éxito de CI y Pages no acredita la reconciliación Dux.
+
+El estado final es fail-closed: `DUX_API_ENABLED=false`, `COMMERCE_ENABLED=false`, `VITE_COMMERCE_ENABLED=false`, ambos flags Mercado Libre en `false` y scheduler Dux deshabilitado. Unidades, divisibilidad, mapping remoto y lifecycle de reserva/liberación/finalización continúan sin demostrarse.
+
 - Proyecto Pages: `shekinah`.
 - Dominio canónico de producción: `shekinah.ar`.
 - Dominio técnico de Pages y origen de preview: `shekinah-7dl.pages.dev`.
@@ -93,7 +105,7 @@ El canal WhatsApp no requiere VPS. Mientras no exista liberación/finalización 
 
 La zona DNS `shekinah.ar` figura `active` en Cloudflare y usa `angela.ns.cloudflare.com` y `ed.ns.cloudflare.com`. DNSSEC está deshabilitado sin DS publicado en `.ar`, estado coherente y sin riesgo de validación rota. El custom domain del apex, su verificación y validación están `active`; el CNAME proxied apunta al dominio técnico de Pages y el apex responde HTTPS 200 con TLS confiable emitido por Google. La Bulk Redirect HTTPS de `www` responde `301`, preserva path/query y termina en el apex 200; el A proxied `192.0.2.1` es sólo el placeholder oficial para que la regla reciba tráfico, nunca un origen. El pack Universal está activo, usa Google Trust Services WE1, cubre el apex y `*.shekinah.ar`, y el handshake negocia TLS 1.3.
 
-La configuración autenticada confirma dos D1 aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones remotas `0001` a `0008`, secretos cifrados y `Fail closed` en production/preview. `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y retención `730` están activos en ambos; producción mantiene `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Preview usa el origen sandbox autorizado, backend habilitado, botón público oculto y modo `sandbox`. El Worker homónimo permaneció intacto.
+Como evidencia histórica anterior al cierre Dux, la configuración autenticada confirmaba dos D1 aisladas (`shekinah-commerce` y `shekinah-commerce-preview`), binding `DB`, migraciones remotas `0001` a `0008`, secretos cifrados y `Fail closed` en production/preview. `ANALYTICS_ENABLED=true`, `VITE_ANALYTICS_ENABLED=true` y retención `730` estaban activos en ambos; producción mantenía `COMMERCE_ENABLED=false` y `VITE_COMMERCE_ENABLED=false`. Preview usaba el origen sandbox autorizado, backend habilitado, botón público oculto y modo `sandbox`. El Worker homónimo permaneció intacto. El cierre del 2026-09-01 reemplaza sólo ese estado operativo: ambos backends comerciales y Dux quedaron apagados.
 
 `migrations/0007_whatsapp_order_reservations.sql` fue aplicada el 2026-08-12 primero en preview y luego en producción mediante el import autenticado de D1 usando el SQL versionado exacto. En ambos entornos se verificaron `d1_migrations`, columnas, índices, triggers, conteos y `PRAGMA foreign_key_check`; no había pedidos previos y la aplicación no creó ninguno.
 
@@ -114,17 +126,17 @@ R2 está activo y verificado por API. Production reutiliza `shekinah`; preview u
 ## Próximos pasos
 
 1. resolver siempre el SHA vigente de `main` y `origin/main` antes de continuar;
-2. comprobar CI y deployment de Pages para ese mismo SHA;
-3. confirmar que `DB`, `Fail closed`, migraciones y nombres cifrados requeridos siguen presentes en ambos entornos;
-4. ejecutar el smoke administrativo: API 401, login, alta, consulta, modificación, baja, logout y nuevo 401;
-5. no crear una política externa de Access sobre todo `/admin*` o `/api/admin/*`, porque bloquearía el login propio; configurarlo sólo si se diseña como defensa adicional compatible;
-6. confirmar plan Dux PRO/FULL, token, IDs, semántica de cantidades y lifecycle completo; recién después ejecutar un pago sandbox y solicitar autorización separada para uno productivo;
-7. mantener retirado el Link de Pago manual;
-8. antes del smoke de imágenes, releer que `CATALOG_IMAGES` apunte a `shekinah` en production y a `shekinah-preview` en preview, que `publicR2DevEnabled=false` continúe vigente y que el binding pertenezca a Pages, nunca al Worker homónimo;
-9. validar snapshot y mapping Dux, decimales exactos, stock cero/negativo, unidad sin inferencias y reserva/liberación/finalización exactamente una vez por ambos canales;
-10. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS`: `https://shekinah.ar` en production y `https://mp-sandbox.shekinah-7dl.pages.dev` en preview;
-11. comprobar que `manual_payment_click` se persiste sólo tras un clic manual válido y nunca alimenta pedidos, pagos ni revenue;
-12. no habilitar pedidos WhatsApp hasta que Dux documente y demuestre la expiración/liberación autoritativa; nunca sustituirla por una expiración local.
+2. mantener `DUX_API_ENABLED`, comercio, Mercado Libre directo y scheduler en `false`;
+3. resolver la excepción de transporte Pages → Dux sin exponer token, parámetros, body ni mensajes crudos;
+4. conservar el mapping corregido en `39ab007` y revisar su cobertura antes de un sync real;
+5. ejecutar un único sync read-only controlado y auditar el resultado antes de habilitar el scheduler;
+6. auditar snapshot, conteos `mapped`/`unmapped`/`ambiguous`, decimales y stock cero/negativo sin convertir D1 en autoridad;
+7. obtener de Dux campos oficiales de unidad/divisibilidad y lifecycle idempotente de reserva, consulta, liberación y finalización;
+8. no habilitar Checkout Pro ni WhatsApp hasta completar esos contratos y el sandbox financiero; cualquier operación productiva requiere autorización puntual;
+9. mantener retirado el Link de Pago manual y comprobar que `manual_payment_click` nunca alimente pedidos, pagos o revenue;
+10. preservar `DB`, R2, `Fail closed`, secretos cifrados y aislamiento entre production/preview; no confundir Pages con el Worker homónimo;
+11. ejecutar el smoke administrativo pendiente sin aplicar Access sobre login ni todo `/api/admin/*`;
+12. preservar `PUBLIC_SITE_URL` y `ALLOWED_SITE_ORIGINS` por entorno y repetir los smokes públicos sobre el SHA exacto.
 
 ## Prohibiciones
 
