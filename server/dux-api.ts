@@ -657,7 +657,7 @@ function cancelProviderBody(response: Response): void {
 }
 
 export function parseDuxCompanyPage(value: unknown): DuxPage<DuxCompany> {
-  return parsePage(value, (candidate) => {
+  return parseReferencePage(value, (candidate) => {
     const record = requiredRecord(candidate);
     return Object.freeze({
       id: requiredIdentifier(record.id_empresa),
@@ -667,7 +667,7 @@ export function parseDuxCompanyPage(value: unknown): DuxPage<DuxCompany> {
 }
 
 export function parseDuxBranchPage(value: unknown): DuxPage<DuxBranch> {
-  return parsePage(value, (candidate) => {
+  return parseReferencePage(value, (candidate) => {
     const record = requiredRecord(candidate);
     return Object.freeze({
       id: requiredIdentifier(record.id_sucursal),
@@ -678,7 +678,7 @@ export function parseDuxBranchPage(value: unknown): DuxPage<DuxBranch> {
 }
 
 export function parseDuxWarehousePage(value: unknown): DuxPage<DuxWarehouse> {
-  return parsePage(value, (candidate) => {
+  return parseReferencePage(value, (candidate) => {
     const record = requiredRecord(candidate);
     return Object.freeze({
       id: requiredIdentifier(record.id_deposito),
@@ -776,6 +776,26 @@ function parsePage<T>(
   return Object.freeze({
     data: Object.freeze(record.datos.map(parseEntry)),
     pagination,
+    requestId: optionalText(record.id_solicitud, 300),
+  });
+}
+
+function parseReferencePage<T>(
+  value: unknown,
+  parseEntry: (candidate: unknown) => T,
+): DuxPage<T> {
+  const record = requiredRecord(value);
+  if (record.paginacion !== undefined) return parsePage(value, parseEntry);
+  if (!Array.isArray(record.datos)) throw invalidProviderResponse();
+  const data = Object.freeze(record.datos.map(parseEntry));
+  return Object.freeze({
+    data,
+    pagination: Object.freeze({
+      total: data.length,
+      offset: 0,
+      limit: Math.max(1, data.length),
+      hasMore: false,
+    }),
     requestId: optionalText(record.id_solicitud, 300),
   });
 }

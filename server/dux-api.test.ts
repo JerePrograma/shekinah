@@ -224,6 +224,48 @@ describe('Dux API v2', () => {
       }
     });
 
+    it('admite listas de referencia terminales cuando Dux omite paginación', async () => {
+      const client = testClient((input) => {
+        const path = inputUrl(input).pathname;
+        if (path.endsWith('/v2/empresas')) {
+          return Promise.resolve(jsonResponse({
+            datos: [{ id_empresa: 12862, razon_social: 'Empresa de prueba' }],
+            id_solicitud: 'request-company',
+          }));
+        }
+        if (path.endsWith('/v2/sucursales')) {
+          return Promise.resolve(jsonResponse({
+            datos: [{ id_sucursal: 1, id_empresa: 12862, sucursal: 'Sucursal de prueba' }],
+            id_solicitud: 'request-branch',
+          }));
+        }
+        return Promise.resolve(jsonResponse({
+          datos: [{
+            id_deposito: 25566,
+            id_empresa: 12862,
+            deposito: 'Depósito de prueba',
+            habilitado: true,
+          }],
+          id_solicitud: 'request-warehouse',
+        }));
+      });
+
+      await expect(client.listEmpresas()).resolves.toEqual([
+        { id: 12862, legalName: 'Empresa de prueba' },
+      ]);
+      await expect(client.listSucursales(12862)).resolves.toEqual([
+        { id: 1, companyId: 12862, name: 'Sucursal de prueba' },
+      ]);
+      await expect(client.listDepositos(25566)).resolves.toEqual([
+        {
+          id: 25566,
+          companyId: 12862,
+          name: 'Depósito de prueba',
+          enabled: true,
+        },
+      ]);
+    });
+
     it.each([300, 302, 399])(
       'rechaza la redirección %s sin seguirla ni leer su cuerpo',
       async (providerStatus) => {
