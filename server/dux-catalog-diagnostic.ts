@@ -172,7 +172,7 @@ function summarizeArrayField(
     containers.push(candidate);
     if (!Array.isArray(candidate)) continue;
     if (candidate.length > 0) itemCountWithEntries += 1;
-    entries.push(...candidate);
+    for (const entry of candidate as readonly unknown[]) entries.push(entry);
   }
 
   return Object.freeze({
