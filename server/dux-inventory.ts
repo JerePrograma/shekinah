@@ -221,6 +221,7 @@ type PersistedMappingRow = Readonly<{
   local_product_id: unknown;
   mapping_status: unknown;
   mapping_source: unknown;
+  mapping_candidates_json: unknown;
 }>;
 
 type InventoryRow = Readonly<Record<string, unknown>>;
@@ -654,6 +655,20 @@ function decideMapping(
     'cod_barra',
   );
   if (barcode !== null) return barcode;
+  if (
+    persisted?.status === 'ambiguous' &&
+    persisted.candidates.length > 0 &&
+    persisted.candidates.every((candidate) => productsById.has(candidate)) &&
+    (
+      persisted.localProductId === null ||
+      (
+        productsById.has(persisted.localProductId) &&
+        persisted.candidates.includes(persisted.localProductId)
+      )
+    )
+  ) {
+    return persisted;
+  }
   if (allowExactNameBootstrap) {
     const exactName = productsByName.get(normalizeBootstrapName(item.name)) ?? [];
     const byName = candidateDecision(exactName, 'exact_name');
@@ -854,20 +869,65 @@ async function readPersistedMappings(
 ): Promise<ReadonlyMap<string, MappingDecision>> {
   const result = await database
     .prepare(
-      `SELECT inventory_key, local_product_id, mapping_status, mapping_source
-       FROM dux_inventory_items WHERE local_product_id IS NOT NULL`,
+      `SELECT inventory_key, local_product_id, mapping_status, mapping_source,
+              mapping_candidates_json
+       FROM dux_inventory_items
+       WHERE mapping_status IN ('mapped', 'ambiguous')`,
     )
     .all<PersistedMappingRow>();
+
   const mappings = new Map<string, MappingDecision>();
+
   for (const row of result.results ?? []) {
     const inventoryKey = databaseText(row.inventory_key, 1_000);
     const localProductId = nullableDatabaseText(row.local_product_id, 180);
     const status = mappingStatus(row.mapping_status);
     const source = mappingSource(row.mapping_source);
-    if (localProductId !== null && source !== null && (status === 'mapped' || status === 'ambiguous')) {
-      mappings.set(inventoryKey, mappedDecision(localProductId, 'persisted'));
+    const candidates = parseStringArray(row.mapping_candidates_json);
+
+    if (status === 'mapped') {
+      if (
+        localProductId === null ||
+        source === null ||
+        candidates.length !== 1 ||
+        candidates[0] !== localProductId
+      ) {
+        throw invalidDatabaseProjection();
+      }
+
+      mappings.set(
+        inventoryKey,
+        mappedDecision(localProductId, 'persisted'),
+      );
+      continue;
     }
+
+    if (candidates.length === 0) throw invalidDatabaseProjection();
+
+    if (localProductId === null) {
+      if (source !== null) throw invalidDatabaseProjection();
+
+      mappings.set(inventoryKey, Object.freeze({
+        status: 'ambiguous' as const,
+        source: null,
+        localProductId: null,
+        candidates,
+      }));
+      continue;
+    }
+
+    if (source === null || !candidates.includes(localProductId)) {
+      throw invalidDatabaseProjection();
+    }
+
+    mappings.set(inventoryKey, Object.freeze({
+      status: 'ambiguous' as const,
+      source,
+      localProductId,
+      candidates,
+    }));
   }
+
   return mappings;
 }
 
