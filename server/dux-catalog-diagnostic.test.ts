@@ -94,12 +94,20 @@ describe('diagnóstico estructural del catálogo Dux', () => {
       prices: {
         itemCountWithEntries: 2,
         entryCount: 2,
-        safeSamples: [{
-          id_lista_precio: 7,
-          lista_precio: 'Minorista',
-          moneda: 'ARS',
-          precio: '<number>',
-        }],
+        safeSamples: [
+          {
+            id_lista_precio: 7,
+            lista_precio: 'Minorista',
+            moneda: 'ARS',
+            precio: '<number>',
+          },
+          {
+            id_lista_precio: 7,
+            lista_precio: 'Minorista',
+            moneda: 'ARS',
+            precio: '<integer>',
+          },
+        ],
       },
       category: {
         objectCount: 2,
