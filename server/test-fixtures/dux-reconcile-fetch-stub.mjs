@@ -23,6 +23,12 @@ globalThis.fetch = async () => {
   if (scenario === 'initial_cooldown') {
     return jsonResponse(429, 'DUX_SYNC_COOLDOWN');
   }
+  if (scenario === 'disabled') {
+    return new Response(JSON.stringify({ status: 'disabled' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
   throw new Error('Escenario de runner Dux no reconocido.');
 };
 

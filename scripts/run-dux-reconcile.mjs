@@ -9,9 +9,12 @@ const secret = requireSecret(process.env.SHEKINAH_RECONCILE_SECRET);
 
 const result = await reconcileWithRetry(target, secret);
 if (result.status === 'disabled') {
-  console.log('Reconciliación omitida: la integración de Dux está deshabilitada.');
+  throw new Error('La reconciliación Dux no se ejecutó porque la integración está deshabilitada.');
 } else if (result.status === 'in_progress') {
-  console.log('Reconciliación omitida: ya existe un ciclo protegido por el lock D1.');
+  throw new Error(
+    'La reconciliación Dux no se ejecutó porque ya existe un ciclo protegido por el lock D1 ' +
+    '(DUX_SYNC_IN_PROGRESS).',
+  );
 } else {
   const optionalMetrics = [
     ['vinculadas', result.summary.mapped],

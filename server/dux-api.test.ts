@@ -192,6 +192,38 @@ describe('Dux API v2', () => {
       expect(observedInit?.body).toBeUndefined();
     });
 
+    it('diagnostica un contrato inválido sin registrar valores del proveedor', async () => {
+      const providerValueSentinel = 'provider-value-sentinel-never-log';
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const client = testClient(() => Promise.resolve(jsonResponse(duxPage([{
+        id_empresa: providerValueSentinel,
+        razon_social: providerValueSentinel,
+      }]))));
+
+      try {
+        await expect(client.listEmpresas()).rejects.toMatchObject({
+          code: 'DUX_RESPONSE_INVALID',
+        });
+        expect(warning).toHaveBeenCalledExactlyOnceWith(
+          'dux_api_schema_failure',
+          expect.objectContaining({
+            version: 1,
+            endpoint: '/v2/empresas',
+            root: 'object',
+            data: 'array',
+            dataLength: 1,
+            firstData: {
+              id_empresa: 'string',
+              razon_social: 'string',
+            },
+          }),
+        );
+        expect(JSON.stringify(warning.mock.calls)).not.toContain(providerValueSentinel);
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
     it.each([300, 302, 399])(
       'rechaza la redirección %s sin seguirla ni leer su cuerpo',
       async (providerStatus) => {

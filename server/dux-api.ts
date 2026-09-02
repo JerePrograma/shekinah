@@ -268,14 +268,14 @@ export class DuxApiClient {
 
   async listEmpresas(): Promise<readonly DuxCompany[]> {
     const value = await this.get('/v2/empresas');
-    return parseDuxCompanyPage(value).data;
+    return parseWithSchemaDiagnostic('/v2/empresas', value, parseDuxCompanyPage).data;
   }
 
   async listSucursales(companyId: number): Promise<readonly DuxBranch[]> {
     const value = await this.get('/v2/sucursales', {
       id_empresa: positiveIdentifier(companyId, 'id_empresa'),
     });
-    return parseDuxBranchPage(value).data;
+    return parseWithSchemaDiagnostic('/v2/sucursales', value, parseDuxBranchPage).data;
   }
 
   async listDepositos(warehouseId?: number): Promise<readonly DuxWarehouse[]> {
@@ -284,7 +284,7 @@ export class DuxApiClient {
       parameters.id_deposito = positiveIdentifier(warehouseId, 'id_deposito');
     }
     const value = await this.get('/v2/depositos', parameters);
-    return parseDuxWarehousePage(value).data;
+    return parseWithSchemaDiagnostic('/v2/depositos', value, parseDuxWarehousePage).data;
   }
 
   async listItemsPage(options: DuxListItemsPageOptions = {}): Promise<DuxPage<DuxItem>> {
@@ -294,11 +294,13 @@ export class DuxApiClient {
     parameters.offset = String(offset);
     parameters.limit = String(limit);
     const value = await this.get('/v2/items', parameters);
-    const page = parseDuxItemPage(value);
-    if (page.pagination.offset !== offset || page.pagination.limit !== limit) {
-      throw invalidProviderResponse();
-    }
-    return page;
+    return parseWithSchemaDiagnostic('/v2/items', value, (candidate) => {
+      const page = parseDuxItemPage(candidate);
+      if (page.pagination.offset !== offset || page.pagination.limit !== limit) {
+        throw invalidProviderResponse();
+      }
+      return page;
+    });
   }
 
   async listItems(options: DuxListItemsFilters = {}): Promise<readonly DuxItem[]> {
@@ -528,6 +530,75 @@ export class DuxApiClient {
 
 function reportDuxTransportFailure(diagnostic: DuxTransportFailureDiagnostic): void {
   console.warn('dux_api_transport_failure', diagnostic);
+}
+
+function parseWithSchemaDiagnostic<T>(
+  endpoint: DuxReadEndpoint,
+  value: unknown,
+  parser: (candidate: unknown) => T,
+): T {
+  try {
+    return parser(value);
+  } catch (error: unknown) {
+    if (error instanceof DuxApiError && error.code === 'DUX_RESPONSE_INVALID') {
+      console.warn('dux_api_schema_failure', {
+        version: 1,
+        endpoint,
+        ...describeProviderShape(value),
+      });
+    }
+    throw error;
+  }
+}
+
+function describeProviderShape(value: unknown): Readonly<Record<string, unknown>> {
+  if (!isRecord(value)) return Object.freeze({ root: valueKind(value) });
+  const data = safeRecordValue(value, 'datos');
+  const pagination = safeRecordValue(value, 'paginacion');
+  const firstData = Array.isArray(data) ? (data as unknown[])[0] : undefined;
+  return Object.freeze({
+    root: 'object',
+    rootKeys: Object.freeze(Object.keys(value).sort()),
+    data: valueKind(data),
+    dataLength: Array.isArray(data) ? data.length : null,
+    firstData: recordFieldKinds(firstData),
+    pagination: valueKind(pagination),
+    paginationFields: recordFieldKinds(pagination),
+    paginationValues: paginationValues(pagination),
+  });
+}
+
+function recordFieldKinds(value: unknown): Readonly<Record<string, string>> | null {
+  if (!isRecord(value)) return null;
+  return Object.freeze(Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, valueKind(safeRecordValue(value, key))]),
+  ));
+}
+
+function paginationValues(value: unknown): Readonly<Record<string, number | boolean>> | null {
+  if (!isRecord(value)) return null;
+  const result: Record<string, number | boolean> = {};
+  for (const key of ['total', 'offset', 'limit', 'hay_mas']) {
+    const candidate = safeRecordValue(value, key);
+    if (
+      typeof candidate === 'boolean' ||
+      (typeof candidate === 'number' && Number.isSafeInteger(candidate))
+    ) {
+      result[key] = candidate;
+    }
+  }
+  return Object.freeze(result);
+}
+
+function valueKind(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'string') return value.length === 0 ? 'empty_string' : 'string';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return 'non_finite_number';
+    return Number.isSafeInteger(value) ? 'integer' : 'number';
+  }
+  return typeof value;
 }
 
 function classifyDuxTransportError(error: unknown): DuxTransportErrorClass {

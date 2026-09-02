@@ -23,11 +23,11 @@ describe('runner programado de reconciliación Dux', () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain(expectedCode);
   });
 
-  it('considera benigno un overlap protegido observado en el primer intento', () => {
+  it('no considera éxito un overlap protegido observado en el primer intento', () => {
     const result = runScenario('initial_overlap');
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('ya existe un ciclo protegido por el lock D1');
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain('DUX_SYNC_IN_PROGRESS');
   });
 
   it('no considera éxito un cooldown aunque aparezca en el primer intento', () => {
@@ -35,6 +35,13 @@ describe('runner programado de reconciliación Dux', () => {
 
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toContain('ciclo anterior sigue en cooldown');
+  });
+
+  it('no considera éxito que la integración remota esté deshabilitada', () => {
+    const result = runScenario('disabled');
+
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain('integración está deshabilitada');
   });
 });
 
