@@ -10,9 +10,13 @@ import type {
   CatalogProductDetail,
   Product,
 } from '../catalog/model';
-import { authorizedCategories } from './authorized-commercial-data';
+import {
+  authorizedCategories,
+  loadAuthorizedProductDetail,
+} from './authorized-commercial-data';
 
 let catalogResolved = false;
+let catalogSource: 'dux' | 'legacy-bootstrap' | 'unknown' = 'unknown';
 let cachedProducts: readonly Product[] = Object.freeze([]);
 let cachedCategories: readonly CatalogCategory[] = Object.freeze([]);
 let pendingLoad: Promise<RuntimeCatalogState> | null = null;
@@ -105,7 +109,11 @@ export async function loadRuntimeProductDetail(
     if (summary === undefined) return null;
     return parseProductDetail(summary, payload.product);
   } catch {
-    return null;
+    if (catalogSource !== 'legacy-bootstrap') return null;
+    const fallback = await loadAuthorizedProductDetail(slug);
+    return fallback === null
+      ? null
+      : Object.freeze({ ...fallback, availability: 'unavailable' as const });
   }
 }
 
@@ -131,6 +139,7 @@ async function loadCatalog(): Promise<RuntimeCatalogState> {
       categories = authorizedCategories;
     }
     const products = parseProducts(productValues, categories);
+    catalogSource = payload.source === 'dux' ? 'dux' : 'legacy-bootstrap';
     catalogResolved = true;
     return Object.freeze({ products, categories });
   } catch {
