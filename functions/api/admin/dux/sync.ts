@@ -4,6 +4,7 @@ import {
   isDuxInventoryBootstrapPending,
   syncDuxInventory,
 } from '../../../../server/dux-inventory';
+import { createDuxInventoryReader } from '../../../../server/dux-inventory-reader';
 import { jsonResponse, methodNotAllowedResponse } from '../../../../server/http';
 import type { AdminContextData, Env, PagesFunction } from '../../../../server/platform';
 import { assertSameOrigin } from '../../../../server/validation';
@@ -24,6 +25,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       {
         kind: bootstrapPending ? 'initial' : 'manual',
         localProducts: await listCatalogProductDetails(database),
+        client: createDuxInventoryReader(env),
       },
     );
     return jsonResponse({ summary });

@@ -5,6 +5,7 @@ import {
   isDuxInventoryBootstrapPending,
   syncDuxInventory,
 } from '../../../../server/dux-inventory';
+import { createDuxInventoryReader } from '../../../../server/dux-inventory-reader';
 import {
   HttpError,
   jsonResponse,
@@ -48,6 +49,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       {
         kind: 'scheduled',
         localProducts: await listCatalogProductDetails(database),
+        client: createDuxInventoryReader(env),
       },
     );
     return jsonResponse({ status: 'completed', summary });
