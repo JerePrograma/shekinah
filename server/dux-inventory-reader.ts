@@ -186,22 +186,24 @@ function transformItemsResponse(
 
   const excludedItemIndices: number[] = [];
   let unquantifiedStockEntries = 0;
-  const data = value.datos.map((candidate, itemIndex) => {
+  const providerData: readonly unknown[] = value.datos;
+  const data = providerData.map((candidate, itemIndex) => {
     if (!isRecord(candidate) || !Array.isArray(candidate.stock)) return candidate;
     let configuredWarehouseWasUnquantified = false;
-    const stock = candidate.stock.filter((entry) => {
+    const stock: readonly unknown[] = candidate.stock;
+    const filteredStock = stock.filter((entry) => {
       if (!isSafeUnquantifiedStock(entry)) return true;
       unquantifiedStockEntries += 1;
       if (entry.id === warehouseId) configuredWarehouseWasUnquantified = true;
       return false;
     });
-    const hasRemainingConfiguredWarehouse = stock.some((entry) => (
+    const hasRemainingConfiguredWarehouse = filteredStock.some((entry) => (
       isRecord(entry) && entry.id === warehouseId
     ));
     if (configuredWarehouseWasUnquantified && !hasRemainingConfiguredWarehouse) {
       excludedItemIndices.push(itemIndex);
     }
-    return { ...candidate, stock };
+    return { ...candidate, stock: filteredStock };
   });
 
   return Object.freeze({
