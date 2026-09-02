@@ -224,6 +224,42 @@ describe('Dux API v2', () => {
       }
     });
 
+    it('identifica la fila y los campos inválidos de items sin registrar valores', async () => {
+      const providerValueSentinel = 'provider-item-value-sentinel-never-log';
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const client = testClient(() => Promise.resolve(jsonResponse(duxPage([
+        itemPayload([stockPayload()]),
+        itemPayload([stockPayload({ stock_disponible: providerValueSentinel })]),
+      ]))));
+
+      try {
+        await expect(client.listItemsPage()).rejects.toMatchObject({
+          code: 'DUX_RESPONSE_INVALID',
+        });
+        expect(warning).toHaveBeenCalledExactlyOnceWith(
+          'dux_api_schema_failure',
+          expect.objectContaining({
+            version: 1,
+            endpoint: '/v2/items',
+            invalidDataIndex: 1,
+            invalidDataFields: ['stock[0].stock_disponible'],
+            invalidDataFieldKinds: {
+              cod_item: 'string',
+              codigo_externo: 'string',
+              codigos_barra: 'array',
+              ctd_unidades_por_bulto: 'number',
+              habilitado: 'boolean',
+              item: 'string',
+              stock: 'array',
+            },
+          }),
+        );
+        expect(JSON.stringify(warning.mock.calls)).not.toContain(providerValueSentinel);
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
     it('admite listas de referencia terminales cuando Dux omite paginación', async () => {
       const client = testClient((input) => {
         const path = inputUrl(input).pathname;

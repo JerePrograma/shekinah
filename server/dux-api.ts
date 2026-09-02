@@ -544,14 +544,17 @@ function parseWithSchemaDiagnostic<T>(
       console.warn('dux_api_schema_failure', {
         version: 1,
         endpoint,
-        ...describeProviderShape(value),
+        ...describeProviderShape(value, endpoint),
       });
     }
     throw error;
   }
 }
 
-function describeProviderShape(value: unknown): Readonly<Record<string, unknown>> {
+function describeProviderShape(
+  value: unknown,
+  endpoint: DuxReadEndpoint,
+): Readonly<Record<string, unknown>> {
   if (!isRecord(value)) return Object.freeze({ root: valueKind(value) });
   const data = safeRecordValue(value, 'datos');
   const pagination = safeRecordValue(value, 'paginacion');
@@ -565,7 +568,97 @@ function describeProviderShape(value: unknown): Readonly<Record<string, unknown>
     pagination: valueKind(pagination),
     paginationFields: recordFieldKinds(pagination),
     paginationValues: paginationValues(pagination),
+    ...(endpoint === '/v2/items' && Array.isArray(data)
+      ? describeInvalidItem(data)
+      : {}),
   });
+}
+
+function describeInvalidItem(data: readonly unknown[]): Readonly<Record<string, unknown>> {
+  for (let index = 0; index < data.length; index += 1) {
+    const candidate = data[index];
+    try {
+      parseItem(candidate);
+    } catch {
+      return Object.freeze({
+        invalidDataIndex: index,
+        invalidDataFields: invalidItemFields(candidate),
+        invalidDataFieldKinds: recordFieldKinds(candidate),
+      });
+    }
+  }
+  return Object.freeze({ invalidDataIndex: null });
+}
+
+function invalidItemFields(candidate: unknown): readonly string[] {
+  if (!isRecord(candidate)) return Object.freeze(['item']);
+  const failures: string[] = [];
+  collectInvalidField(failures, 'cod_item', () => requiredText(candidate.cod_item, 300));
+  collectInvalidField(failures, 'codigo_externo', () => optionalText(candidate.codigo_externo, 300));
+  collectInvalidField(failures, 'item', () => requiredText(candidate.item, 500));
+  collectInvalidField(failures, 'codigos_barra', () => parseBarcodes(candidate.codigos_barra));
+  collectInvalidField(failures, 'habilitado', () => requiredBoolean(candidate.habilitado));
+  collectInvalidField(
+    failures,
+    'ctd_unidades_por_bulto',
+    () => optionalFiniteNumber(candidate.ctd_unidades_por_bulto),
+  );
+  if (!Array.isArray(candidate.stock)) {
+    failures.push('stock');
+    return Object.freeze(failures);
+  }
+  candidate.stock.forEach((stock, index) => {
+    if (!isRecord(stock)) {
+      failures.push(`stock[${index}]`);
+      return;
+    }
+    collectInvalidField(failures, `stock[${index}].id`, () => requiredIdentifier(stock.id));
+    collectInvalidField(
+      failures,
+      `stock[${index}].nombre`,
+      () => requiredText(stock.nombre, 300),
+    );
+    collectInvalidField(
+      failures,
+      `stock[${index}].stock_real`,
+      () => requiredFiniteNumber(stock.stock_real),
+    );
+    collectInvalidField(
+      failures,
+      `stock[${index}].stock_reservado`,
+      () => requiredFiniteNumber(stock.stock_reservado),
+    );
+    collectInvalidField(
+      failures,
+      `stock[${index}].stock_disponible`,
+      () => requiredFiniteNumber(stock.stock_disponible),
+    );
+    collectInvalidField(
+      failures,
+      `stock[${index}].id_det_item`,
+      () => optionalIdentifier(stock.id_det_item),
+    );
+    collectInvalidField(
+      failures,
+      `stock[${index}].cod_barra_detalle`,
+      () => optionalText(stock.cod_barra_detalle, 300),
+    );
+    collectInvalidField(failures, `stock[${index}].talle`, () => optionalText(stock.talle, 300));
+    collectInvalidField(failures, `stock[${index}].color`, () => optionalText(stock.color, 300));
+  });
+  return Object.freeze(failures);
+}
+
+function collectInvalidField(
+  failures: string[],
+  field: string,
+  validation: () => unknown,
+): void {
+  try {
+    validation();
+  } catch {
+    failures.push(field);
+  }
 }
 
 function recordFieldKinds(value: unknown): Readonly<Record<string, string>> | null {
