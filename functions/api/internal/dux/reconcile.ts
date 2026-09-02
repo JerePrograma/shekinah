@@ -1,7 +1,10 @@
 import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { isEnabledFlag } from '../../../../server/config';
 import { constantTimeEqual } from '../../../../server/crypto';
-import { syncDuxInventory } from '../../../../server/dux-inventory';
+import {
+  isDuxInventoryBootstrapPending,
+  syncDuxInventory,
+} from '../../../../server/dux-inventory';
 import {
   HttpError,
   jsonResponse,
@@ -31,6 +34,13 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     }
 
     const database = requireDatabase(env);
+    if (await isDuxInventoryBootstrapPending(database)) {
+      throw new HttpError(
+        409,
+        'DUX_INITIAL_SYNC_REQUIRED',
+        'La primera sincronización Dux debe ejecutarse desde el backoffice antes de habilitar el scheduler.',
+      );
+    }
     const summary = await syncDuxInventory(
       database,
       env,
