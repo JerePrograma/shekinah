@@ -2,6 +2,10 @@ import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { isEnabledFlag } from '../../../../server/config';
 import { constantTimeEqual } from '../../../../server/crypto';
 import {
+  isDuxCatalogMigrationRequiredError,
+  persistDuxCatalogSnapshot,
+} from '../../../../server/dux-catalog';
+import {
   isDuxInventoryBootstrapPending,
   syncDuxInventory,
 } from '../../../../server/dux-inventory';
@@ -28,7 +32,11 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     );
     const authorization = request.headers.get('authorization') ?? '';
     if (!constantTimeEqual(authorization, `${AUTHORIZATION_PREFIX}${configuredSecret}`)) {
-      throw new HttpError(401, 'SCHEDULER_UNAUTHORIZED', 'La autenticación del scheduler no es válida.');
+      throw new HttpError(
+        401,
+        'SCHEDULER_UNAUTHORIZED',
+        'La autenticación del scheduler no es válida.',
+      );
     }
     if (!isEnabledFlag(env.DUX_API_ENABLED)) {
       return jsonResponse({ status: 'disabled' });
@@ -42,6 +50,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
         'La primera sincronización Dux debe ejecutarse desde el backoffice antes de habilitar el scheduler.',
       );
     }
+    const reader = createDuxInventoryReader(env);
     const summary = await syncDuxInventory(
       database,
       env,
@@ -49,10 +58,29 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       {
         kind: 'scheduled',
         localProducts: await listCatalogProductDetails(database),
-        client: createDuxInventoryReader(env),
+        client: reader,
       },
     );
-    return jsonResponse({ status: 'completed', summary });
+    let catalog: Awaited<ReturnType<typeof persistDuxCatalogSnapshot>> | null;
+    try {
+      catalog = await persistDuxCatalogSnapshot(
+        database,
+        summary.runId,
+        reader.takeCatalogItems(),
+        summary.completedAt,
+      );
+    } catch (error: unknown) {
+      if (!isDuxCatalogMigrationRequiredError(error)) throw error;
+      catalog = null;
+    }
+    return jsonResponse({
+      status: 'completed',
+      summary,
+      catalog: catalog ?? {
+        status: 'pending_migration',
+        migration: '0015_dux_catalog_snapshot.sql',
+      },
+    });
   } catch (error: unknown) {
     return responseFromError(error);
   }

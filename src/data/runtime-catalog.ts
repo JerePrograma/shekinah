@@ -1,32 +1,59 @@
 import { useEffect, useState } from 'react';
 
-import { parseProductDetail, parseProducts } from '../catalog/model';
-import type { CatalogProductDetail, Product } from '../catalog/model';
 import {
-  authorizedCategories,
-  authorizedProducts,
-  loadAuthorizedProductDetail,
-} from './authorized-commercial-data';
+  parseCategories,
+  parseProductDetail,
+  parseProducts,
+} from '../catalog/model';
+import type {
+  CatalogCategory,
+  CatalogProductDetail,
+  Product,
+} from '../catalog/model';
+import { authorizedCategories } from './authorized-commercial-data';
 
 let catalogResolved = false;
-let cachedProducts: readonly Product[] = failClosedProducts(authorizedProducts);
-let pendingLoad: Promise<readonly Product[]> | null = null;
-const listeners = new Set<(products: readonly Product[]) => void>();
+let cachedProducts: readonly Product[] = Object.freeze([]);
+let cachedCategories: readonly CatalogCategory[] = Object.freeze([]);
+let pendingLoad: Promise<RuntimeCatalogState> | null = null;
+const productListeners = new Set<(products: readonly Product[]) => void>();
+const categoryListeners = new Set<(categories: readonly CatalogCategory[]) => void>();
+
+type RuntimeCatalogState = Readonly<{
+  products: readonly Product[];
+  categories: readonly CatalogCategory[];
+}>;
 
 export function useRuntimeCatalogProducts(): readonly Product[] {
   const [products, setProducts] = useState(cachedProducts);
   useEffect(() => {
-    listeners.add(setProducts);
+    productListeners.add(setProducts);
     void refreshRuntimeCatalog();
     return () => {
-      listeners.delete(setProducts);
+      productListeners.delete(setProducts);
     };
   }, []);
   return products;
 }
 
+export function useRuntimeCatalogCategories(): readonly CatalogCategory[] {
+  const [categories, setCategories] = useState(cachedCategories);
+  useEffect(() => {
+    categoryListeners.add(setCategories);
+    void refreshRuntimeCatalog();
+    return () => {
+      categoryListeners.delete(setCategories);
+    };
+  }, []);
+  return categories;
+}
+
 export function getRuntimeCatalogProduct(slug: string): Product | undefined {
   return cachedProducts.find((product) => product.slug === slug);
+}
+
+export function getRuntimeCatalogCategory(slug: string): CatalogCategory | undefined {
+  return cachedCategories.find((category) => category.slug === slug);
 }
 
 export function isRuntimeCatalogResolved(): boolean {
@@ -34,18 +61,24 @@ export function isRuntimeCatalogResolved(): boolean {
 }
 
 export async function refreshRuntimeCatalog(): Promise<readonly Product[]> {
-  pendingLoad ??= loadProducts().finally(() => {
+  pendingLoad ??= loadCatalog().finally(() => {
     pendingLoad = null;
   });
-  const products = await pendingLoad;
-  if (products !== cachedProducts) {
-    cachedProducts = products;
-    listeners.forEach((listener) => listener(products));
+  const state = await pendingLoad;
+  if (state.products !== cachedProducts) {
+    cachedProducts = state.products;
+    productListeners.forEach((listener) => listener(cachedProducts));
   }
-  return products;
+  if (state.categories !== cachedCategories) {
+    cachedCategories = state.categories;
+    categoryListeners.forEach((listener) => listener(cachedCategories));
+  }
+  return cachedProducts;
 }
 
-export async function loadRuntimeProductDetail(slug: string): Promise<CatalogProductDetail | null> {
+export async function loadRuntimeProductDetail(
+  slug: string,
+): Promise<CatalogProductDetail | null> {
   try {
     const response = await fetch(`/api/catalog/${encodeURIComponent(slug)}`, {
       credentials: 'same-origin',
@@ -53,7 +86,10 @@ export async function loadRuntimeProductDetail(slug: string): Promise<CatalogPro
     });
     if (
       response.status === 404 &&
-      response.headers.get('content-type')?.toLocaleLowerCase('en').includes('application/json') === true
+      response.headers
+        .get('content-type')
+        ?.toLocaleLowerCase('en')
+        .includes('application/json') === true
     ) {
       return null;
     }
@@ -62,36 +98,55 @@ export async function loadRuntimeProductDetail(slug: string): Promise<CatalogPro
     if (!isRecord(payload) || !isRecord(payload.product)) {
       throw new Error('El catálogo dinámico devolvió un producto inválido.');
     }
-    const summary = parseProducts([payload.product], authorizedCategories)[0];
+    const categories = cachedCategories.length === 0
+      ? authorizedCategories
+      : cachedCategories;
+    const summary = parseProducts([payload.product], categories)[0];
     if (summary === undefined) return null;
     return parseProductDetail(summary, payload.product);
   } catch {
-    const fallback = await loadAuthorizedProductDetail(slug);
-    return fallback === null
-      ? null
-      : Object.freeze({ ...fallback, availability: 'unavailable' as const });
+    return null;
   }
 }
 
-async function loadProducts(): Promise<readonly Product[]> {
+async function loadCatalog(): Promise<RuntimeCatalogState> {
   try {
     const response = await fetch('/api/catalog', {
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
-    if (!response.ok) return failClosedProducts(cachedProducts);
+    if (!response.ok) return failClosedState();
     const payload = await response.json() as unknown;
-    if (!isRecord(payload) || !Array.isArray(payload.products)) return failClosedProducts(cachedProducts);
-    const products = parseProducts(payload.products, authorizedCategories);
+    if (!isRecord(payload) || !Array.isArray(payload.products)) {
+      return failClosedState();
+    }
+    // Compatibilidad exclusiva con dobles de prueba y respuestas anteriores:
+    // producción nueva siempre publica `categories` junto con los productos Dux.
+    const productValues: readonly unknown[] = payload.products;
+    let categories: readonly CatalogCategory[];
+    if (Array.isArray(payload.categories)) {
+      const categoryValues: readonly unknown[] = payload.categories;
+      categories = parseCategories(categoryValues);
+    } else {
+      categories = authorizedCategories;
+    }
+    const products = parseProducts(productValues, categories);
     catalogResolved = true;
-    return products;
+    return Object.freeze({ products, categories });
   } catch {
-    return failClosedProducts(cachedProducts);
+    return failClosedState();
   }
 }
 
-function failClosedProducts(products: readonly Product[]): readonly Product[] {
+function failClosedState(): RuntimeCatalogState {
   catalogResolved = false;
+  return Object.freeze({
+    products: failClosedProducts(cachedProducts),
+    categories: cachedCategories,
+  });
+}
+
+function failClosedProducts(products: readonly Product[]): readonly Product[] {
   return Object.freeze(products.map((product) => Object.freeze({
     ...product,
     availability: 'unavailable' as const,

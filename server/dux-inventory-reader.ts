@@ -7,6 +7,10 @@ import {
   type DuxItem,
 } from './dux-api';
 import {
+  parseDuxCatalogSourceItems,
+  type DuxCatalogSourceItem,
+} from './dux-catalog';
+import {
   readDuxInventoryConfig,
   type DuxInventoryReader,
 } from './dux-inventory';
@@ -20,29 +24,41 @@ const DUX_ITEMS_PATH = new URL(`${DUX_API_BASE_URL}/v2/items`).pathname;
 type InventoryPageObservation = Readonly<{
   excludedItemIndices: readonly number[];
   unquantifiedStockEntries: number;
+  catalogItems: readonly DuxCatalogSourceItem[];
+}>;
+
+type QuantifiedInventoryRead = Readonly<{
+  items: readonly DuxItem[];
+  catalogItems: readonly DuxCatalogSourceItem[];
+}>;
+
+export type DuxInventoryCatalogReader = DuxInventoryReader & Readonly<{
+  takeCatalogItems: () => readonly DuxCatalogSourceItem[];
 }>;
 
 /**
  * Adapta exclusivamente la lectura de inventario para el snapshot autoritativo.
  * Dux puede devolver un bloque de depósito con las tres cantidades en null. Ese
- * patrón no se convierte a cero: se retira de la proyección cuantitativa y el
- * resto del contrato continúa validándose por DuxApiClient sin relajaciones.
+ * patrón no se convierte a cero: se retira de la proyección cuantitativa. En
+ * paralelo conserva el item completo para la fotografía pública del catálogo.
  */
 export function createDuxInventoryReader(
   env: Env,
   fetchImplementation: DuxFetch = defaultFetch,
-): DuxInventoryReader {
+): DuxInventoryCatalogReader {
   const config = readDuxInventoryConfig(env);
   const filter = new DuxInventoryResponseFilter(config.depositId, fetchImplementation);
   const client = new DuxApiClient({
     accessToken: config.accessToken,
     fetch: filter.fetch,
   });
+  let capturedCatalogItems: readonly DuxCatalogSourceItem[] | null = null;
+
   return Object.freeze({
     listEmpresas: () => client.listEmpresas(),
     listSucursales: (companyId: number) => client.listSucursales(companyId),
     listDepositos: (warehouseId?: number) => client.listDepositos(warehouseId),
-    listItems: (options = {}) => {
+    listItems: async (options = {}) => {
       const warehouseId = options.warehouseId ?? config.depositId;
       if (warehouseId !== config.depositId) {
         throw new DuxApiError(
@@ -51,12 +67,26 @@ export function createDuxInventoryReader(
           'El depósito solicitado no coincide con la configuración de inventario Dux.',
         );
       }
-      return listQuantifiedInventoryItems(
+      const result = await listQuantifiedInventoryItems(
         client,
         filter,
         warehouseId,
         options.enabled,
       );
+      capturedCatalogItems = result.catalogItems;
+      return result.items;
+    },
+    takeCatalogItems: () => {
+      if (capturedCatalogItems === null) {
+        throw new DuxApiError(
+          500,
+          'DUX_CATALOG_NOT_CAPTURED',
+          'La lectura Dux no capturó todavía el catálogo completo.',
+        );
+      }
+      const result = capturedCatalogItems;
+      capturedCatalogItems = null;
+      return result;
     },
   });
 }
@@ -77,6 +107,7 @@ class DuxInventoryResponseFilter {
     const observation = this.observations.get(offset) ?? Object.freeze({
       excludedItemIndices: Object.freeze([]),
       unquantifiedStockEntries: 0,
+      catalogItems: Object.freeze([]),
     });
     this.observations.delete(offset);
     return observation;
@@ -104,8 +135,12 @@ class DuxInventoryResponseFilter {
     } catch {
       return rebuiltResponse(response, raw);
     }
+    const catalogItems = parseDuxCatalogSourceItems(value);
     const transformed = transformItemsResponse(value, this.warehouseId);
-    this.observations.set(offset, transformed.observation);
+    this.observations.set(offset, Object.freeze({
+      ...transformed.observation,
+      catalogItems,
+    }));
     return rebuiltResponse(response, JSON.stringify(transformed.value));
   }
 }
@@ -115,8 +150,9 @@ async function listQuantifiedInventoryItems(
   filter: DuxInventoryResponseFilter,
   warehouseId: number,
   enabled?: boolean,
-): Promise<readonly DuxItem[]> {
+): Promise<QuantifiedInventoryRead> {
   const items: DuxItem[] = [];
+  const catalogItems: DuxCatalogSourceItem[] = [];
   let receivedCount = 0;
   let offset = 0;
   let expectedTotal: number | null = null;
@@ -137,6 +173,7 @@ async function listQuantifiedInventoryItems(
 
     receivedCount += page.data.length;
     if (receivedCount > expectedTotal) throw invalidProviderResponse();
+    catalogItems.push(...observation.catalogItems);
     const excluded = new Set(observation.excludedItemIndices);
     page.data.forEach((item, index) => {
       if (excluded.has(index)) {
@@ -148,7 +185,12 @@ async function listQuantifiedInventoryItems(
     unquantifiedStockEntries += observation.unquantifiedStockEntries;
 
     if (!page.pagination.hasMore) {
-      if (receivedCount !== expectedTotal) throw invalidProviderResponse();
+      if (
+        receivedCount !== expectedTotal ||
+        catalogItems.length !== expectedTotal
+      ) {
+        throw invalidProviderResponse();
+      }
       if (unquantifiedStockEntries > 0) {
         console.warn('dux_inventory_unquantified_stock', {
           version: 1,
@@ -157,7 +199,10 @@ async function listQuantifiedInventoryItems(
           unquantifiedStockEntries,
         });
       }
-      return Object.freeze(items);
+      return Object.freeze({
+        items: Object.freeze(items),
+        catalogItems: Object.freeze(catalogItems),
+      });
     }
     if (receivedCount >= expectedTotal) throw invalidProviderResponse();
     if (page.data.length === 0) throw invalidProviderResponse();
@@ -173,7 +218,10 @@ async function listQuantifiedInventoryItems(
 function transformItemsResponse(
   value: unknown,
   warehouseId: number,
-): Readonly<{ value: unknown; observation: InventoryPageObservation }> {
+): Readonly<{
+  value: unknown;
+  observation: Omit<InventoryPageObservation, 'catalogItems'>;
+}> {
   if (!isRecord(value) || !Array.isArray(value.datos)) {
     return Object.freeze({
       value,

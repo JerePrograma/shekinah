@@ -1,6 +1,4 @@
-import {
-  getRuntimeCatalogProductDetail,
-} from '../../../server/catalog-store';
+import { getPublicCatalogProductDetail } from '../../../server/dux-public-catalog';
 import {
   jsonResponse,
   methodNotAllowedResponse,
@@ -13,7 +11,11 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
   if (request.method !== 'GET') return methodNotAllowedResponse(['GET']);
   try {
     const id = typeof params.id === 'string' ? params.id : '';
-    const product = await getRuntimeCatalogProductDetail(requireDatabase(env), env, id);
+    const product = await getPublicCatalogProductDetail(
+      requireDatabase(env),
+      env,
+      id,
+    );
     return product === null
       ? jsonResponse({
           error: {
@@ -21,9 +23,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
             message: 'El producto no existe.',
           },
         }, 404)
-      : jsonResponse({
-          product,
-        });
+      : jsonResponse({ product });
   } catch (error: unknown) {
     return responseFromError(error);
   }

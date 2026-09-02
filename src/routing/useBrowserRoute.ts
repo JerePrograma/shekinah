@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { CatalogCategory } from '../catalog/model';
+import {
+  getRuntimeCatalogCategory,
+  getRuntimeCatalogProduct,
+  isRuntimeCatalogResolved,
+  refreshRuntimeCatalog,
+} from '../data/runtime-catalog';
 import {
   createNotFoundRoute,
   createProductRoute,
@@ -8,13 +15,7 @@ import {
   normalizePathname,
   resolveRoute,
 } from './routes';
-import type { AppRoute } from './routes';
-import type { Navigate } from './routes';
-import {
-  getRuntimeCatalogProduct,
-  isRuntimeCatalogResolved,
-  refreshRuntimeCatalog,
-} from '../data/runtime-catalog';
+import type { AppRoute, Navigate } from './routes';
 
 function readCurrentPathname(): string {
   return normalizePathname(window.location.pathname);
@@ -100,41 +101,90 @@ export function useBrowserRoute(shouldNavigate: () => boolean = () => true) {
       : null,
     [pathname, staticRoute.id],
   );
+  const potentialCategorySlug = useMemo(
+    () => staticRoute.id === 'category' || staticRoute.id === 'not-found'
+      ? getPotentialCategorySlug(pathname)
+      : null,
+    [pathname, staticRoute.id],
+  );
 
   useEffect(() => {
-    if (potentialProductSlug === null || isRuntimeCatalogResolved()) return;
+    if (
+      (potentialProductSlug === null && potentialCategorySlug === null) ||
+      isRuntimeCatalogResolved()
+    ) {
+      return;
+    }
     let active = true;
     void refreshRuntimeCatalog().then((products) => {
       if (!active) return;
-      const product = products.find(({ slug }) => slug === potentialProductSlug);
-      setRuntimeResolution({
-        pathname,
-        route: product === undefined
+      let route: AppRoute;
+      if (potentialProductSlug !== null) {
+        const product = products.find(({ slug }) => slug === potentialProductSlug);
+        route = product === undefined
           ? createNotFoundRoute(pathname)
-          : createProductRoute(product),
-      });
+          : createProductRoute(product);
+      } else {
+        const category = potentialCategorySlug === null
+          ? undefined
+          : getRuntimeCatalogCategory(potentialCategorySlug);
+        route = category === undefined
+          ? createNotFoundRoute(pathname)
+          : createRuntimeCategoryRoute(category);
+      }
+      setRuntimeResolution({ pathname, route });
     });
     return () => {
       active = false;
     };
-  }, [pathname, potentialProductSlug]);
+  }, [pathname, potentialCategorySlug, potentialProductSlug]);
 
   const route = useMemo(() => {
-    if (potentialProductSlug === null) return staticRoute;
-    const runtimeProduct = getRuntimeCatalogProduct(potentialProductSlug);
-    if (runtimeProduct !== undefined) return createProductRoute(runtimeProduct);
-    if (isRuntimeCatalogResolved()) return createNotFoundRoute(pathname);
-    if (runtimeResolution?.pathname === pathname) return runtimeResolution.route;
-    return staticRoute.id === 'product'
-      ? staticRoute
-      : createResolvingProductRoute(pathname, potentialProductSlug);
-  }, [pathname, potentialProductSlug, runtimeResolution, staticRoute]);
+    if (potentialProductSlug !== null) {
+      const runtimeProduct = getRuntimeCatalogProduct(potentialProductSlug);
+      if (runtimeProduct !== undefined) return createProductRoute(runtimeProduct);
+      if (isRuntimeCatalogResolved()) return createNotFoundRoute(pathname);
+      if (runtimeResolution?.pathname === pathname) return runtimeResolution.route;
+      return createResolvingProductRoute(pathname, potentialProductSlug);
+    }
+    if (potentialCategorySlug !== null) {
+      const runtimeCategory = getRuntimeCatalogCategory(potentialCategorySlug);
+      if (runtimeCategory !== undefined) {
+        return createRuntimeCategoryRoute(runtimeCategory);
+      }
+      if (isRuntimeCatalogResolved()) return createNotFoundRoute(pathname);
+      if (runtimeResolution?.pathname === pathname) return runtimeResolution.route;
+      return createResolvingProductRoute(pathname, potentialCategorySlug);
+    }
+    return staticRoute;
+  }, [
+    pathname,
+    potentialCategorySlug,
+    potentialProductSlug,
+    runtimeResolution,
+    staticRoute,
+  ]);
 
   return {
     navigate,
     pathname,
     route,
   } as const;
+}
+
+function getPotentialCategorySlug(pathname: string): string | null {
+  return /^\/tienda\/categoria\/([a-z0-9][a-z0-9-]{0,179})$/u
+    .exec(normalizePathname(pathname))?.[1] ?? null;
+}
+
+function createRuntimeCategoryRoute(category: CatalogCategory): AppRoute {
+  return {
+    id: 'category',
+    path: normalizePathname(category.path),
+    categorySlug: category.slug,
+    title: `${category.name} | Catálogo Shekinah`,
+    description: `Explorá ${category.productCount} productos de la categoría ${category.name} en Shekinah.`,
+  };
 }
 
 function readHistoryIndex(value: unknown): number | null {
