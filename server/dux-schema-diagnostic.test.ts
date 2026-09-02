@@ -13,8 +13,12 @@ const env: Env = {
 describe('diagnóstico estructural Dux', () => {
   it('informa sólo tipos de cantidades inválidas y nunca valores del proveedor', async () => {
     const providerValueSentinel = 'provider-stock-value-never-return';
-    const fetchImplementation: DuxFetch = async (input, init) => {
-      const url = new URL(String(input));
+    const fetchImplementation: DuxFetch = (input, init) => {
+      const url = input instanceof URL
+        ? input
+        : input instanceof Request
+          ? new URL(input.url)
+          : new URL(input);
       expect(url.pathname).toBe('/WSERP/rest/services/v2/items');
       expect(url.searchParams.get('id_deposito')).toBe('25566');
       expect(url.searchParams.get('habilitado')).toBe('true');
@@ -23,7 +27,7 @@ describe('diagnóstico estructural Dux', () => {
       expect(init?.redirect).toBe('manual');
       expect(init?.cache).toBe('no-store');
 
-      return new Response(JSON.stringify({
+      return Promise.resolve(new Response(JSON.stringify({
         datos: [
           {
             stock: [{
@@ -50,7 +54,7 @@ describe('diagnóstico estructural Dux', () => {
       }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
-      });
+      }));
     };
 
     const diagnostic = await readDuxStockSchemaDiagnostic(env, fetchImplementation);
