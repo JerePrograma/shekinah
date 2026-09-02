@@ -29,6 +29,7 @@ const { product, trackAnalyticsEvent } = vi.hoisted(() => ({
 
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent }));
 vi.mock('../data/runtime-catalog', () => ({
+  isRuntimeCatalogResolved: () => true,
   useRuntimeCatalogProducts: () => [product],
 }));
 

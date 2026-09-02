@@ -44,6 +44,7 @@ const {
 
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent }));
 vi.mock('../data/runtime-catalog', () => ({
+  isRuntimeCatalogResolved: () => true,
   refreshRuntimeCatalog,
   useRuntimeCatalogProducts: () => [product],
 }));
