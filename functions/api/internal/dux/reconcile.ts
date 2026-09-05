@@ -1,10 +1,8 @@
 import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { isEnabledFlag } from '../../../../server/config';
 import { constantTimeEqual } from '../../../../server/crypto';
-import {
-  isDuxCatalogMigrationRequiredError,
-  persistDuxCatalogSnapshot,
-} from '../../../../server/dux-catalog';
+import { isDuxCatalogMigrationRequiredError } from '../../../../server/dux-catalog';
+import { persistDuxCatalogSnapshotWhenEnabled } from '../../../../server/dux-catalog-control';
 import {
   isDuxInventoryBootstrapPending,
   syncDuxInventory,
@@ -61,25 +59,29 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
         client: reader,
       },
     );
-    let catalog: Awaited<ReturnType<typeof persistDuxCatalogSnapshot>> | null;
+    let catalog: unknown;
     try {
-      catalog = await persistDuxCatalogSnapshot(
+      const controlled = await persistDuxCatalogSnapshotWhenEnabled(
         database,
+        env,
         summary.runId,
         reader.takeCatalogItems(),
         summary.completedAt,
       );
+      catalog = controlled.status === 'persisted'
+        ? controlled.summary
+        : { status: 'disabled', reason: 'snapshot_collection_disabled' };
     } catch (error: unknown) {
       if (!isDuxCatalogMigrationRequiredError(error)) throw error;
-      catalog = null;
+      catalog = {
+        status: 'pending_migration',
+        migration: '0015_dux_catalog_snapshot.sql',
+      };
     }
     return jsonResponse({
       status: 'completed',
       summary,
-      catalog: catalog ?? {
-        status: 'pending_migration',
-        migration: '0015_dux_catalog_snapshot.sql',
-      },
+      catalog,
     });
   } catch (error: unknown) {
     return responseFromError(error);

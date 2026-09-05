@@ -1,0 +1,1229 @@
+{
+  "schemaVersion": 1,
+  "companyId": "12862",
+  "batchId": "dux_editorial_auto_20260903_v1",
+  "expectedLinkCount": 135,
+  "evidence": {
+    "matchingSourceSha256": "bd418f6815ad4841967aaa667601ebe5380fc6af491968497a6a754931c169cb",
+    "baseMatchingReportSha256": "788bd4d3506ea3d3c876f7966eb88ebdf6d90b88bfba9c77719b9091b5282f9a",
+    "autoConfirmableCsvSha256": "b68e4dc366546537a622c1834e3682bf9fe5186dfb2c5eab959536ccc145d3f0",
+    "analysisCommit": "ce71f9d9a611b1038bd2e866b84645867db8c967"
+  },
+  "links": [
+    {
+      "code": "799000001",
+      "localProductId": "adobo-pizza-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000002",
+      "localProductId": "aji-molido-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000003",
+      "localProductId": "aji-molido-gourmet-ahumado",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_tokens",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000006",
+      "localProductId": "ajo-en-polvo-salteno",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000007",
+      "localProductId": "ajo-en-polvo-salteno-ahumado",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000008",
+      "localProductId": "ajo-triturado-chino",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000009",
+      "localProductId": "albahaca-origen-mendoza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000010",
+      "localProductId": "apio-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000011",
+      "localProductId": "baharat-7-especias-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000012",
+      "localProductId": "caldo-sin-sal-en-polvo",
+      "reuseImages": false,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000014",
+      "localProductId": "canela-molida-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000016",
+      "localProductId": "cayena-amarilla-saltena-triturada",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000017",
+      "localProductId": "cayena-roja-molida",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000018",
+      "localProductId": "cebolla-de-verdeo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000019",
+      "localProductId": "cebolla-en-polvo-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000020",
+      "localProductId": "cebolla-en-escama",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000021",
+      "localProductId": "chimichurri-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000024",
+      "localProductId": "comino-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000027",
+      "localProductId": "coriandro-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000028",
+      "localProductId": "curcuma-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000029",
+      "localProductId": "curry-tradicional-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000030",
+      "localProductId": "curry-ahumado-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000031",
+      "localProductId": "curry-picante-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000032",
+      "localProductId": "fenogreco-molido",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000033",
+      "localProductId": "fenogreco-semilla",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000035",
+      "localProductId": "garam-masala-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000038",
+      "localProductId": "humo-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000039",
+      "localProductId": "jengibre-molido-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000040",
+      "localProductId": "kale-en-hojas-deshidratado",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000041",
+      "localProductId": "kummel-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000043",
+      "localProductId": "laurel-molido",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000045",
+      "localProductId": "merken",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000046",
+      "localProductId": "mostaza-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000047",
+      "localProductId": "mostaza-molida",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000049",
+      "localProductId": "nuez-moscada-entera-calibre-grande",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000051",
+      "localProductId": "oregano-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000053",
+      "localProductId": "perejil",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000055",
+      "localProductId": "pimenton-ahumado-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000057",
+      "localProductId": "pimenton-dulce-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000061",
+      "localProductId": "pimienta-blanca-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000062",
+      "localProductId": "pimienta-blanca-molida-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000063",
+      "localProductId": "pimienta-de-jamaica-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000064",
+      "localProductId": "pimienta-negra-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000065",
+      "localProductId": "pimienta-negra-molida-100percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000066",
+      "localProductId": "pimienta-rosa-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000068",
+      "localProductId": "pimienta-verde-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000069",
+      "localProductId": "provenzal-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000070",
+      "localProductId": "ras-el-hanout",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000071",
+      "localProductId": "remolacha-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000075",
+      "localProductId": "sopa-juliana",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000076",
+      "localProductId": "tandoori-masala-gourmet",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000077",
+      "localProductId": "tomate-deshidratado-premium",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000079",
+      "localProductId": "tomillo-origen-mendoza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000080",
+      "localProductId": "wasabi",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000081",
+      "localProductId": "zahatar",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000083",
+      "localProductId": "zanahoria-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000090",
+      "localProductId": "aritos-frutales",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000099",
+      "localProductId": "tutucas-fa53",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000100",
+      "localProductId": "quinoa-pop",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000103",
+      "localProductId": "arandanos-pasas",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000104",
+      "localProductId": "banana-chip",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000105",
+      "localProductId": "castana-de-caju",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000112",
+      "localProductId": "higo-negro",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000115",
+      "localProductId": "mani-tostado-pelado-con-sal",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000116",
+      "localProductId": "mani-tostado-pelado-sin-sal",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000117",
+      "localProductId": "mix-frutos-secos-clasico-100gr",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000119",
+      "localProductId": "mix-frutos-secos-sin-mani",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000121",
+      "localProductId": "mix-frutos-secos-tropical",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000126",
+      "localProductId": "pasas-jumbo-sin-semilla",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000128",
+      "localProductId": "pasas-rubias",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000131",
+      "localProductId": "avena-instantanea",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000132",
+      "localProductId": "avena-tradicional",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000133",
+      "localProductId": "cebada-perlada",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000134",
+      "localProductId": "cous-cous",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000136",
+      "localProductId": "fecula-de-maiz-maicena",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000141",
+      "localProductId": "harina-de-almendra-con-piel-70percent-pureza",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000143",
+      "localProductId": "harina-de-arroz",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000144",
+      "localProductId": "harina-de-arroz-integral",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000145",
+      "localProductId": "harina-de-avena",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000146",
+      "localProductId": "harina-de-avena-integral",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000147",
+      "localProductId": "harina-de-centeno-03fa",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000148",
+      "localProductId": "harina-de-coco",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000149",
+      "localProductId": "harina-de-garbanzos",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000152",
+      "localProductId": "harina-integral",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000158",
+      "localProductId": "salvado-de-avena",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000159",
+      "localProductId": "salvado-de-trigo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000160",
+      "localProductId": "semola",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000162",
+      "localProductId": "soja-texturizada-fina",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000164",
+      "localProductId": "trigo-burgol-fino",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000165",
+      "localProductId": "trigo-burgol-grueso",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000180",
+      "localProductId": "anis-estrellado",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000270",
+      "localProductId": "hinojo",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000325",
+      "localProductId": "polen",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000362",
+      "localProductId": "te-rooibos",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000386",
+      "localProductId": "arroz-basmati-500-gr",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000389",
+      "localProductId": "arroz-integral-fino",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000394",
+      "localProductId": "garbanzos-8mm",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000395",
+      "localProductId": "lentejas",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000397",
+      "localProductId": "lentejon",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000399",
+      "localProductId": "porotos-aduki",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000400",
+      "localProductId": "porotos-alubia",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000401",
+      "localProductId": "porotos-colorados",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000403",
+      "localProductId": "porotos-mung",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000404",
+      "localProductId": "porotos-negros",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000405",
+      "localProductId": "porotos-pallares",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000414",
+      "localProductId": "cacao-amargo-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000417",
+      "localProductId": "cascarilla-de-cacao-00d3",
+      "reuseImages": true,
+      "reuseDescription": false,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000418",
+      "localProductId": "coco-en-escamas",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000423",
+      "localProductId": "leche-de-coco-en-polvo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000424",
+      "localProductId": "polvo-para-hornear",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000437",
+      "localProductId": "cafe-verde-en-grano",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000438",
+      "localProductId": "chia-molida",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000441",
+      "localProductId": "girasol-pelado",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000443",
+      "localProductId": "lino-semilla",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000446",
+      "localProductId": "semilla-de-zapallo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000447",
+      "localProductId": "sesamo-blanco",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000448",
+      "localProductId": "sesamo-integral",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000449",
+      "localProductId": "sesamo-negro",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000450",
+      "localProductId": "quinoa-real-blanca",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000451",
+      "localProductId": "aceite-de-coco-virgen-200cc",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000499",
+      "localProductId": "yerba-magia-agroecologica-ccafe-de-algarroba-500gr",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000503",
+      "localProductId": "pasta-de-mani-natural",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000506",
+      "localProductId": "mermelada-las-quinas-frutos-rojos",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000509",
+      "localProductId": "mermelada-brucor-frutilla",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000510",
+      "localProductId": "mermelada-brucor-arandanos",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000511",
+      "localProductId": "mermelada-brucor-higo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "none"
+    },
+    {
+      "code": "799000516",
+      "localProductId": "aceite-de-cannabis-40percent-cbd-origen-chile-10ml",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000520",
+      "localProductId": "citrato-de-magnesio-150gr-bad-monkey",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000521",
+      "localProductId": "citrato-de-magnesio-300gr-bad-monkey",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000523",
+      "localProductId": "citrato-de-potasio-150gr-bad-monkey",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000527",
+      "localProductId": "melena-de-leon-futuro-fungi-50ml",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000530",
+      "localProductId": "reishi-futuro-fungi-50ml",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "confirmed_identity",
+      "decisionMethod": "persisted_inventory_mapping",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000628",
+      "localProductId": "nibs-de-cacao-semillas-tostadas-x-100-gr-",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_tokens",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000682",
+      "localProductId": "te-matcha",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    },
+    {
+      "code": "799000700",
+      "localProductId": "cardamomo",
+      "reuseImages": true,
+      "reuseDescription": true,
+      "decisionKind": "auto_full",
+      "decisionMethod": "exact_semantic_name",
+      "presentationRelation": "same"
+    }
+  ]
+}

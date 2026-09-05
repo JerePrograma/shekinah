@@ -9,10 +9,17 @@ import {
   toProductSummary,
 } from './catalog-store';
 import {
-  isDuxCatalogBootstrapPendingError,
   projectDuxRuntimeCatalog,
   readDuxCatalogSnapshot,
 } from './dux-catalog';
+import {
+  readDuxCatalogControl,
+  requireExpectedDuxCompany,
+} from './dux-catalog-control';
+import {
+  applyDuxEditorialLinks,
+  listActiveDuxEditorialLinks,
+} from './dux-editorial-links';
 import { listDuxInventoryUnits } from './dux-inventory';
 import type { D1Database, Env } from './platform';
 
@@ -24,20 +31,16 @@ export type PublicCatalog = Readonly<{
 }>;
 
 /**
- * El servidor conserva el catálogo anterior únicamente durante la ventana de
- * despliegue en la que 0015 aún no existe o todavía no se publicó el primer
- * snapshot comercial Dux. Desde la primera publicación, cualquier producto
- * ausente en Dux desaparece del catálogo público y no existe fallback local.
+ * El catálogo local continúa siendo el runtime público hasta que el control
+ * persistido habilita explícitamente el cutover. Tener 0015 aplicado o disponer
+ * de un snapshot nunca activa Dux por sí solo.
  */
 export async function readPublicCatalog(
   database: D1Database,
   env: Env,
 ): Promise<PublicCatalog> {
-  let snapshot: Awaited<ReturnType<typeof readDuxCatalogSnapshot>>;
-  try {
-    snapshot = await readDuxCatalogSnapshot(database);
-  } catch (error: unknown) {
-    if (!isDuxCatalogBootstrapPendingError(error)) throw error;
+  const control = await readDuxCatalogControl(database);
+  if (!control.publicCutoverEnabled) {
     const productDetails = await listRuntimeCatalogProductDetails(database, env);
     return Object.freeze({
       products: Object.freeze(productDetails.map(toProductSummary)),
@@ -47,23 +50,33 @@ export async function readPublicCatalog(
     });
   }
 
+  requireExpectedDuxCompany(env);
+  const snapshot = await readDuxCatalogSnapshot(database);
   let localProducts: readonly CatalogProductDetail[];
   try {
     localProducts = await listCatalogProductDetails(database);
   } catch {
-    console.warn('dux_catalog_local_enrichment_unavailable', { version: 1 });
+    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
     localProducts = Object.freeze([]);
   }
-  const inventoryUnits = await listDuxInventoryUnits(database, env);
-  const runtime = projectDuxRuntimeCatalog(
+  const [inventoryUnits, editorialLinks] = await Promise.all([
+    listDuxInventoryUnits(database, env),
+    listActiveDuxEditorialLinks(database),
+  ]);
+  const duxRuntime = projectDuxRuntimeCatalog(
     snapshot,
-    localProducts,
+    Object.freeze([]),
     inventoryUnits,
   );
+  const productDetails = applyDuxEditorialLinks(
+    duxRuntime.products,
+    localProducts,
+    editorialLinks,
+  );
   return Object.freeze({
-    products: Object.freeze(runtime.products.map(toProductSummary)),
-    productDetails: runtime.products,
-    categories: runtime.categories,
+    products: Object.freeze(productDetails.map(toProductSummary)),
+    productDetails,
+    categories: duxRuntime.categories,
     source: 'dux' as const,
   });
 }

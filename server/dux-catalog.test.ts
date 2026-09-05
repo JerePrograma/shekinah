@@ -11,6 +11,7 @@ import {
   readDuxCatalogSnapshot,
 } from './dux-catalog';
 import type { DuxInventoryUnit } from './dux-inventory';
+import { updateDuxCatalogControl } from './dux-catalog-control';
 import { readPublicCatalog } from './dux-public-catalog';
 
 const commerceMigration = readFileSync(
@@ -27,6 +28,10 @@ const inventoryMigration = readFileSync(
 );
 const duxCatalogMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0015_dux_catalog_snapshot.sql'),
+  'utf8',
+);
+const duxEditorialMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0016_dux_editorial_links_and_cutover.sql'),
   'utf8',
 );
 
@@ -114,15 +119,19 @@ describe('catálogo público autoritativo de Dux', () => {
     }
   });
 
-  it('reemplaza el catálogo público local desde la primera fotografía Dux', async () => {
+  it('reemplaza el catálogo público local sólo después del cutover explícito', async () => {
     const testD1 = createTestD1(
       commerceMigration,
       catalogMigration,
       inventoryMigration,
       duxCatalogMigration,
+      duxEditorialMigration,
     );
     try {
       insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', {
+        snapshotCollectionEnabled: true,
+      });
       await persistDuxCatalogSnapshot(
         testD1.database,
         runId,
@@ -130,7 +139,18 @@ describe('catálogo público autoritativo de Dux', () => {
         syncedAt,
       );
 
+      const beforeCutover = await readPublicCatalog(testD1.database, {
+        DUX_COMPANY_ID: '12862',
+        DUX_SNAPSHOT_MAX_AGE_SECONDS: '1800',
+      });
+      expect(beforeCutover.source).toBe('legacy-bootstrap');
+      expect(beforeCutover.products.some(({ id }) => id === 'guayaba')).toBe(true);
+
+      await updateDuxCatalogControl(testD1.database, 'test', {
+        publicCutoverEnabled: true,
+      });
       const publicCatalog = await readPublicCatalog(testD1.database, {
+        DUX_COMPANY_ID: '12862',
         DUX_SNAPSHOT_MAX_AGE_SECONDS: '1800',
       });
 
