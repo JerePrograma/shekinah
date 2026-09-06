@@ -30,10 +30,32 @@ const baseProduct = {
 } as const;
 
 describe('modelo de producto', () => {
+  it.each(['placeholder', 'missing_or_zero', 'invalid'])('admite precio Dux %s sólo con null y sin checkout ni oferta', (priceStatus) => {
+    const input = {
+      ...baseProduct,
+      price: null,
+      priceStatus,
+      commerce: {
+        source: 'dux', catalogVersion: 'd'.repeat(64), syncedAt: '2026-09-01T12:00:00.000Z',
+        availabilityState: 'unavailable', checkoutEligible: false, mappingStatus: 'unmapped',
+        quantitySemanticsStatus: 'unavailable_from_v2_items',
+      },
+    };
+    const product = parseProduct(input);
+    expect(product.price).toBeNull();
+    expect(product.priceStatus).toBe(priceStatus);
+    expect(formatProductPrice(product.price)).toBe('Consultar precio');
+    expect(isProductEffectivelyAvailable(product)).toBe(false);
+    expect(() => parseProduct({ ...input, price: { amount: 1, currency: 'ARS' } })).toThrow(InvalidProductError);
+    expect(() => parseProduct({ ...input, salePrice: { amount: 4000, currency: 'ARS' } })).toThrow(InvalidProductError);
+    expect(() => parseProduct({ ...input, commerce: undefined })).toThrow(InvalidProductError);
+    expect(() => parseProduct({ ...input, priceStatus: 'usable' })).toThrow(InvalidProductError);
+  });
+
   it('acepta campos opcionales ausentes y conserva objetos inmutables', () => {
     const product = parseProduct(baseProduct);
 
-    expect(product).toEqual(baseProduct);
+    expect(product).toEqual({ ...baseProduct, priceStatus: 'usable' });
     expect(product.presentation).toBeUndefined();
     expect(product.sku).toBeUndefined();
     expect(Object.isFrozen(product)).toBe(true);

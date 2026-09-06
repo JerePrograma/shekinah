@@ -112,7 +112,8 @@ export function paginateProducts(
   });
 }
 
-export function formatProductPrice(price: ProductPrice | undefined): string | null {
+export function formatProductPrice(price: ProductPrice | null | undefined): string | null {
+  if (price === null) return 'Consultar precio';
   return price === undefined ? null : arsFormatter.format(price.amount);
 }
 

@@ -24,6 +24,7 @@ const APPROVED_AUTO_CONFIRMABLE_CSV_SHA256 =
 
 type DecisionKind = 'confirmed_identity' | 'auto_full';
 type DecisionMethod =
+  | 'manual_review'
   | 'persisted_inventory_mapping'
   | 'exact_semantic_name'
   | 'exact_semantic_tokens';
@@ -163,11 +164,16 @@ export async function listActiveDuxEditorialLinks(
   try {
     const result = await database
       .prepare(
-        `SELECT cod_item, local_product_id, reuse_images, reuse_description,
-                decision_kind, decision_method, presentation_relation, active
-         FROM dux_editorial_links
-         WHERE company_id = ?1 AND active = 1
-         ORDER BY cod_item`,
+        `SELECT link.cod_item, link.local_product_id, link.reuse_images, link.reuse_description,
+                link.decision_kind, link.decision_method, link.presentation_relation, link.active
+         FROM dux_editorial_links link
+         LEFT JOIN dux_editorial_triage triage ON triage.company_id = link.company_id AND triage.cod_item = link.cod_item
+         WHERE link.company_id = ?1 AND link.active = 1 AND (
+           (triage.review_state = 'approved' AND triage.link_id = link.id)
+           OR ((triage.review_state = 'auto_confirmed' OR triage.cod_item IS NULL)
+             AND link.batch_id = '${APPROVED_BATCH_ID}')
+         )
+         ORDER BY link.cod_item`,
       )
       .bind(DUX_CATALOG_COMPANY_ID)
       .all<LinkRow>();
@@ -460,7 +466,7 @@ function parseStoredLink(row: LinkRow): DuxEditorialLink {
 }
 
 function isDecisionMethod(value: unknown): value is DecisionMethod {
-  return value === 'persisted_inventory_mapping' ||
+  return value === 'manual_review' || value === 'persisted_inventory_mapping' ||
     value === 'exact_semantic_name' ||
     value === 'exact_semantic_tokens';
 }
@@ -481,6 +487,7 @@ function isMissingEditorialTable(error: unknown): boolean {
   return error instanceof Error && (
     error.message.includes('no such table: dux_editorial_link_imports') ||
     error.message.includes('no such table: dux_editorial_links') ||
+    error.message.includes('no such table: dux_editorial_triage') ||
     error.message.includes('no such table: dux_catalog_control')
   );
 }

@@ -1,5 +1,11 @@
 # Estado actual
 
+## Iteración de catálogo completo — 2026-09-06
+
+La base de esta iteración es `60bdbb62db4e39f1639978f422db0516745cec9c`. El código separa colección, catálogo público y corte comercial mediante tres controles que nacen en `0`; agrega `0017` y snapshot v2 con precios explícitamente no disponibles; conserva todos los códigos Dux habilitados y el triage 135/294/318. Los 318 descartan enriquecimiento local, nunca el producto Dux. Dux determina nombre, SKU, precio/estado, stock y categorías; local sólo imágenes/descripción autorizadas. Mercado Libre aporta cero evidencias en el baseline y no es autoridad.
+
+El procedimiento vigente y el rollback sin revertir migraciones están en [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md). El script operativo tiene validación local por defecto, Preview separada y Production condicionada a Preview verde y confirmación explícita. Esta iteración de código no aplica D1 remoto, no ejecuta sync ni activa flags productivos. CI y deployment del nuevo SHA deben acreditarse por separado en el informe de cierre. Las secciones de fecha anterior conservan el estado histórico y no sustituyen este contrato vigente.
+
 Fecha de revisión: 2026-09-01.
 
 ## Decisión de inventario

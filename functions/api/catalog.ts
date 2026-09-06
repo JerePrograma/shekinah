@@ -1,4 +1,5 @@
 import { readPublicCatalog } from '../../server/dux-public-catalog';
+import { CATALOG_API_SCHEMA_VERSION } from '../../src/catalog/model';
 import {
   jsonResponse,
   methodNotAllowedResponse,
@@ -12,6 +13,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
   try {
     const catalog = await readPublicCatalog(requireDatabase(env), env);
     return jsonResponse({
+      schemaVersion: CATALOG_API_SCHEMA_VERSION,
       products: catalog.products,
       categories: catalog.categories,
       source: catalog.source,

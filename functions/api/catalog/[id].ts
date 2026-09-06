@@ -1,4 +1,5 @@
 import { getPublicCatalogProductDetail } from '../../../server/dux-public-catalog';
+import { CATALOG_API_SCHEMA_VERSION } from '../../../src/catalog/model';
 import {
   jsonResponse,
   methodNotAllowedResponse,
@@ -23,7 +24,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
             message: 'El producto no existe.',
           },
         }, 404)
-      : jsonResponse({ product });
+      : jsonResponse({ schemaVersion: CATALOG_API_SCHEMA_VERSION, product });
   } catch (error: unknown) {
     return responseFromError(error);
   }

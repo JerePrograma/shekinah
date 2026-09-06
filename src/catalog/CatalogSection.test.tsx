@@ -6,6 +6,7 @@ import { authorizedProducts } from '../data/authorized-commercial-data';
 import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { catalogProductFixtures } from '../test/fixtures/catalog-products';
 import { CatalogSection } from './CatalogSection';
+import { parseProduct } from './model';
 
 function renderCatalog(element: ReactElement) {
   return render(<CartProvider>{element}</CartProvider>);
@@ -14,6 +15,21 @@ function renderCatalog(element: ReactElement) {
 describe('CatalogSection', () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it('muestra Consultar precio y bloquea agregar un producto Dux sin precio usable', () => {
+    const product = parseProduct({
+      ...catalogProductFixtures[0], price: null, priceStatus: 'placeholder',
+      commerce: {
+        source: 'dux', catalogVersion: 'a'.repeat(64), syncedAt: '2026-09-06T12:00:00.000Z',
+        availabilityState: 'unavailable', checkoutEligible: false, mappingStatus: 'unmapped',
+        quantitySemanticsStatus: 'unavailable_from_v2_items',
+      },
+    });
+    renderCatalog(<CatalogSection navigate={vi.fn()} products={[product]} />);
+    expect(screen.getByText('Consultar precio')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Menta seca no está disponible' })).toBeDisabled();
+    expect(document.querySelector('[data-product]')?.textContent).not.toContain('$');
   });
 
   it('informa 510 resultados y renderiza sólo la primera página de 24', () => {

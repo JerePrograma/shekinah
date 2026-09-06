@@ -18,7 +18,9 @@ describe('API pública del catálogo', () => {
       const response = await listCatalog(context('/api/catalog', testD1.database));
       expect(response.status).toBe(200);
       expect(response.headers.get('cache-control')).toBe('no-store');
-      const payload = await response.json() as { products: Array<{ id?: unknown }> };
+      const payload = await response.json() as { schemaVersion: number; products: Array<{ id?: unknown; priceStatus?: unknown }> };
+      expect(payload.schemaVersion).toBe(2);
+      expect(payload.products.every(({ priceStatus }) => priceStatus === 'usable')).toBe(true);
       expect(payload.products.some(({ id }) => id === 'guayaba')).toBe(true);
 
       const methodResponse = await listCatalog(context('/api/catalog', testD1.database, 'POST'));
@@ -51,6 +53,7 @@ describe('API pública del catálogo', () => {
         detailContext('guayaba', testD1.database),
       );
       expect(detailResponse.status).toBe(200);
+      expect(await detailResponse.json()).toMatchObject({ schemaVersion: 2, product: { priceStatus: 'usable' } });
     } finally {
       testD1.close();
     }

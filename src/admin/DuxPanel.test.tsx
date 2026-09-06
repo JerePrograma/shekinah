@@ -2,6 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { DuxPanel } from './DuxPanel';
 
+vi.mock('./DuxCatalogControls', () => ({ DuxCatalogControls: () => null }));
+vi.mock('./DuxEditorialReviewPanel', () => ({ DuxEditorialReviewPanel: () => null }));
+
 describe('panel administrativo Dux', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

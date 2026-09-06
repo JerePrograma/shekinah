@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { readDuxAnalysisPrice } from './dux-analysis-price.mjs';
 
 const PRICE_LIST = 'PRECIOS DEL NEGOCIO';
 const FUZZY_REVIEW_SCORE = 0.75;
@@ -61,14 +62,17 @@ export function buildDuxEditorialLinkAnalysis(source, baseReport) {
       authority: Object.freeze({
         existence: 'dux',
         name: 'dux',
+        sku: 'dux',
         price: 'dux',
+        priceStatus: 'dux',
         stock: 'dux',
+        categories: 'dux',
       }),
       local: 'editorial_enrichment_only',
       mercadoLibre: 'not_available_in_d1',
       writesPerformed: false,
       automaticFields: Object.freeze(['images', 'description']),
-      neverCopiedFromLocal: Object.freeze(['name', 'price', 'stock', 'sku']),
+      neverCopiedFromLocal: Object.freeze(['name', 'price', 'priceStatus', 'stock', 'sku', 'categories', 'presentation', 'shortDescription']),
     }),
     thresholds: Object.freeze({
       fuzzyReviewScore: FUZZY_REVIEW_SCORE,
@@ -88,6 +92,7 @@ export function buildDuxEditorialLinkAnalysis(source, baseReport) {
         proposal.dux.priceQuality === 'placeholder').length,
       missingOrZeroPublicPrice: proposals.filter((proposal) =>
         proposal.dux.priceQuality === 'missing_or_zero').length,
+      invalidPublicPrice: proposals.filter((proposal) => proposal.dux.priceQuality === 'invalid').length,
       quantified: proposals.filter((proposal) => proposal.dux.quantified).length,
       unquantified: proposals.filter((proposal) => !proposal.dux.quantified).length,
       cutoverPriceBlockers: proposals.filter((proposal) =>
@@ -326,17 +331,12 @@ function proposal(
 }
 
 function duxSummary(item, quantified) {
-  const price = publicPrice(item);
+  const price = readDuxAnalysisPrice(item.prices);
   return Object.freeze({
     code: item.code,
     name: item.name,
-    publicPrice: price,
-    priceQuality:
-      price === null
-        ? 'missing_or_zero'
-        : price === 1 || price === 2
-          ? 'placeholder'
-          : 'usable',
+    publicPrice: price.amount,
+    priceQuality: price.status,
     quantified,
     categories: Object.freeze([
       ...(item.category === null ? [] : [item.category.name]),
@@ -587,15 +587,6 @@ function descriptionPresentationFingerprint(value) {
 function samePresentation(left, right) {
   return left.length === right.length &&
     left.every((value, index) => value === right[index]);
-}
-
-function publicPrice(item) {
-  const matches = item.prices.filter((price) =>
-    price.name.toLocaleUpperCase('es-AR') === PRICE_LIST);
-  const match = matches.length === 1 ? matches[0] : undefined;
-  return match !== undefined && Number.isFinite(match.amount) && match.amount > 0
-    ? match.amount
-    : null;
 }
 
 function groupByKey(values, keySelector) {

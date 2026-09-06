@@ -26,6 +26,7 @@ const {
     categoryNames: Object.freeze([]),
     presentation: '100 g',
     price: Object.freeze({ amount: 1_000, currency: 'ARS' as const }),
+    priceStatus: 'usable' as const,
     availability: 'available' as const,
     commerce: Object.freeze({
       source: 'dux' as const,

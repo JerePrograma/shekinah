@@ -1,5 +1,11 @@
 # Continuación
 
+## Prioridad vigente desde 2026-09-06
+
+Continuar por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md) y el informe del SHA que implemente el catálogo completo desde `60bdbb62db4e39f1639978f422db0516745cec9c`. Verificar primero CI y deployment Pages de ese SHA. Durante la iteración de código no ejecutar D1 remoto, sync ni activación. La fase remota posterior usa únicamente `scripts/finalize-dux-catalog.ps1`: Preview completa primero; Production en invocación separada con recibo verde del mismo SHA y confirmación explícita.
+
+El catálogo público Dux usa `public_catalog_enabled`; el corte comercial conserva `public_cutover_enabled=0`. Precio no usable significa «Consultar precio», nunca exclusión del producto ni fallback local/ML. Los 135 vínculos, 294 casos manuales y 318 descartes editoriales no alteran el universo Dux. Rollback: cerrar catálogo público, conservar datos y retornar al catálogo local. No reabrir pagos, pedidos, reservas ni stock Dux. Las prioridades y evidencias fechadas que siguen son históricas.
+
 ## Prioridad vigente desde 2026-09-01
 
 Continuar con `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`, `docs/COMMERCE_DEPLOYMENT.md` y `docs/validation/DUX_LIVE_INVENTORY_CUTOVER_2026-09-01.md`. Dux reemplazó al stock local y a Mercado Libre como autoridad de inventario. Acceso oficial, IDs y migraciones `0010`–`0013` quedaron verificados; tres sync productivos históricos fallaron y no existe snapshot. La causa de transporte fue aislada y el candidato incorpora el modo manual seguro, publicación atómica `0014` y bootstrap conservador, pero todavía debe publicarse, migrarse y probarse. Checkout Pro y WhatsApp permanecen cerrados hasta validar el mapping con un sync read-only y demostrar unidad, liberación y finalización seguras.

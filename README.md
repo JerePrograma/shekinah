@@ -4,10 +4,12 @@ Aplicación comercial de hierbas, especias, alimentos y productos naturales cons
 
 ## Autoridades del sistema
 
+La finalización del catálogo completo está descrita en [Catálogo Dux completo y publicación segura](docs/DUX_COMPLETE_CATALOG.md). Desde esta iteración Dux determina existencia, nombre, SKU, precio/estado, stock y categorías del modo público Dux; el catálogo local aporta exclusivamente imágenes y descripción mediante vínculos explícitos. `public_catalog_enabled` selecciona ese universo y admite productos con «Consultar precio»; `public_cutover_enabled` queda reservado al comercio y permanece cerrado. Los tres controles nacen en `0`. El manifiesto baseline conserva 135 auto-confirmados, 294 casos manuales y 318 enriquecimientos descartados, sin descartar productos Dux.
+
 La arquitectura objetivo separa responsabilidades sin superponer inventarios:
 
-- **Dux Software** es la única autoridad de identidad externa de inventario, stock físico, depósito, unidad y semántica de cantidad, y debe administrar los pedidos o reservas que afecten existencias.
-- **Shekinah** conserva el catálogo editorial —slug, imágenes, descripción, categorías, SEO y texto comercial—, el carrito, la orden local y la coordinación entre proveedores.
+- **Dux Software** es la única autoridad de existencia, nombre, código/SKU, precio y estado de precio, categorías, stock físico, depósito, unidad y semántica de cantidad, y debe administrar los pedidos o reservas que afecten existencias.
+- **Shekinah** conserva el catálogo editorial local y aporta únicamente imágenes y descripción autorizadas a los productos Dux; administra el carrito, la orden local y la coordinación entre proveedores.
 - **Mercado Pago** procesa Checkout Pro y aporta el estado financiero autoritativo mediante su API y webhook firmado.
 - **Mercado Libre** recibe la sincronización de stock desde Dux. Shekinah no consulta ni modifica Mercado Libre para decidir o reservar inventario.
 

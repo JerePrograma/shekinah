@@ -12,6 +12,7 @@ const { product, trackAnalyticsEvent } = vi.hoisted(() => ({
     categorySlugs: Object.freeze([]),
     categoryNames: Object.freeze([]),
     price: Object.freeze({ amount: 1_000, currency: 'ARS' as const }),
+    priceStatus: 'usable' as const,
     availability: 'available' as const,
     commerce: Object.freeze({
       source: 'dux' as const,

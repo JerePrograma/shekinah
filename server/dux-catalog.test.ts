@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import type { CatalogProductDetail } from '../src/catalog/model';
+import { parseProductDetail, parseProduct, type CatalogProductDetail } from '../src/catalog/model';
 import { createTestD1 } from '../src/test/d1';
 import {
   DUX_PUBLIC_PRICE_LIST_NAME,
@@ -34,20 +34,27 @@ const duxEditorialMigration = readFileSync(
   resolve(process.cwd(), 'migrations', '0016_dux_editorial_links_and_cutover.sql'),
   'utf8',
 );
+const duxCompleteMigration = readFileSync(
+  resolve(process.cwd(), 'migrations', '0017_dux_complete_public_catalog.sql'),
+  'utf8',
+);
 
 const runId = 'dux_sync_catalog_test';
 const syncedAt = '2026-09-02T20:00:00.000Z';
 
 describe('catálogo público autoritativo de Dux', () => {
-  it('publica todos los ítems Dux y usa lo local sólo como enriquecimiento mapeado', async () => {
+  it('publica todos los ítems Dux sin enriquecer por mapping de inventario', async () => {
     const testD1 = createTestD1(
       commerceMigration,
       catalogMigration,
       inventoryMigration,
       duxCatalogMigration,
+      duxEditorialMigration,
+      duxCompleteMigration,
     );
     try {
       insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
       const sourceItems = sourceCatalog();
       const summary = await persistDuxCatalogSnapshot(
         testD1.database,
@@ -81,16 +88,13 @@ describe('catálogo público autoritativo de Dux', () => {
         },
       ]);
 
-      const mapped = projected.products.find(({ id }) => id === 'hierba-local');
+      const mapped = projected.products.find(({ sku }) => sku === 'A');
       expect(mapped).toMatchObject({
-        id: 'hierba-local',
         name: 'HIERBA DESDE DUX',
         price: { amount: 1_250, currency: 'ARS' },
         sku: 'A',
         categorySlugs: ['dux-rubro-10'],
         availability: 'unavailable',
-        primaryImage: { alt: 'Imagen local autorizada' },
-        description: 'Descripción local de respaldo.',
         commerce: {
           source: 'dux',
           mappingStatus: 'mapped',
@@ -99,6 +103,11 @@ describe('catálogo público autoritativo de Dux', () => {
         },
       });
       expect(mapped?.variants).toEqual([]);
+      expect(mapped?.id).toMatch(/^dux-hierba-desde-dux-/u);
+      expect(mapped?.images).toEqual([]);
+      expect(mapped).not.toHaveProperty('description');
+      expect(mapped).not.toHaveProperty('presentation');
+      expect(mapped).not.toHaveProperty('shortDescription');
 
       const unquantified = projected.products.find(({ sku }) => sku === 'B');
       expect(unquantified?.id).toMatch(/^dux-segundo-producto-/u);
@@ -126,6 +135,7 @@ describe('catálogo público autoritativo de Dux', () => {
       inventoryMigration,
       duxCatalogMigration,
       duxEditorialMigration,
+      duxCompleteMigration,
     );
     try {
       insertCompletedRun(testD1, runId);
@@ -147,7 +157,7 @@ describe('catálogo público autoritativo de Dux', () => {
       expect(beforeCutover.products.some(({ id }) => id === 'guayaba')).toBe(true);
 
       await updateDuxCatalogControl(testD1.database, 'test', {
-        publicCutoverEnabled: true,
+        publicCatalogEnabled: true,
       });
       const publicCatalog = await readPublicCatalog(testD1.database, {
         DUX_COMPANY_ID: '12862',
@@ -166,14 +176,17 @@ describe('catálogo público autoritativo de Dux', () => {
     }
   });
 
-  it('rechaza una lista pública ausente sin reemplazar la fotografía anterior', async () => {
+  it('una lista pública ausente publica el producto sin precio inventado', async () => {
     const testD1 = createTestD1(
       commerceMigration,
       inventoryMigration,
       duxCatalogMigration,
+      duxEditorialMigration,
+      duxCompleteMigration,
     );
     try {
       insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
       await persistDuxCatalogSnapshot(
         testD1.database,
         runId,
@@ -197,18 +210,122 @@ describe('catálogo público autoritativo de Dux', () => {
         runId,
         invalid,
         syncedAt,
-      )).rejects.toMatchObject({
-        code: 'DUX_CATALOG_PRICE_LIST_INVALID',
-        status: 502,
-      });
+      )).resolves.toMatchObject({ itemCount: 1 });
       await expect(readDuxCatalogSnapshot(testD1.database)).resolves.toMatchObject({
-        itemCount: 2,
+        itemCount: 1,
+        items: [{ code: 'INVALIDO', priceAmount: null, priceStatus: 'missing_or_zero' }],
       });
     } finally {
       testD1.close();
     }
   });
+
+  it('clasifica cada precio actual, conserva cada identidad y verifica su contrato público', async () => {
+    const cases: readonly Readonly<{ code: string; prices: unknown; status: string; amount: number | null }>[] = [
+      { code: 'usable', prices: businessPrices(1234.56), status: 'usable', amount: 1234.56 },
+      { code: 'usable-minimum', prices: businessPrices(2.01), status: 'usable', amount: 2.01 },
+      { code: 'almost-placeholder', prices: businessPrices(2.000000001), status: 'invalid', amount: null },
+      { code: 'almost-integer', prices: businessPrices(100.000000001), status: 'invalid', amount: null },
+      { code: 'one', prices: businessPrices(1), status: 'placeholder', amount: null },
+      { code: 'two', prices: businessPrices(2), status: 'placeholder', amount: null },
+      { code: 'zero', prices: businessPrices(0), status: 'missing_or_zero', amount: null },
+      { code: 'absent-list', prices: undefined, status: 'missing_or_zero', amount: null },
+      { code: 'empty-list', prices: [], status: 'missing_or_zero', amount: null },
+      { code: 'absent-value', prices: businessPrices(undefined), status: 'missing_or_zero', amount: null },
+      { code: 'ml-only', prices: [{ id: 2, nombre: 'MERCADO LIBRE', precio: 9876 }], status: 'missing_or_zero', amount: null },
+      { code: 'negative', prices: businessPrices(-5), status: 'invalid', amount: null },
+      { code: 'string', prices: businessPrices('4500'), status: 'invalid', amount: null },
+      { code: 'nan', prices: businessPrices(Number.NaN), status: 'invalid', amount: null },
+      { code: 'infinity', prices: businessPrices(Number.POSITIVE_INFINITY), status: 'invalid', amount: null },
+      { code: 'decimal', prices: businessPrices(300.123), status: 'invalid', amount: null },
+      { code: 'tiny', prices: businessPrices(0.5), status: 'invalid', amount: null },
+      { code: 'duplicate', prices: [...businessPrices(4000), ...businessPrices(5000)], status: 'invalid', amount: null },
+      { code: 'malformed-list', prices: 'bad', status: 'invalid', amount: null },
+      { code: 'malformed-entry', prices: [null], status: 'invalid', amount: null },
+    ];
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, parseDuxCatalogSourceItems({
+        datos: cases.map(({ code, prices }) => ({ cod_item: code, item: code, habilitado: true, precios: prices })),
+      }), syncedAt);
+      const snapshot = await readDuxCatalogSnapshot(testD1.database);
+      expect(snapshot.itemCount).toBe(cases.length);
+      expect(snapshot.priceCounts).toEqual({ usable: 2, placeholder: 2, missing_or_zero: 5, invalid: 11 });
+      const projected = projectDuxRuntimeCatalog(snapshot, [localProduct('fallback-prohibido')], []);
+      for (const expected of cases) {
+        const item = snapshot.items.find(({ code }) => code === expected.code);
+        expect(item).toMatchObject({ priceAmount: expected.amount, priceStatus: expected.status });
+        const detail = projected.products.find(({ sku }) => sku === expected.code);
+        if (detail === undefined) throw new Error('Falta la identidad Dux publicada.');
+        expect(detail.price).toEqual(expected.amount === null ? null : { amount: expected.amount, currency: 'ARS' });
+        expect(detail.priceStatus).toBe(expected.status);
+        expect(detail.commerce?.checkoutEligible).toBe(false);
+        expect(detail).not.toHaveProperty('salePrice');
+        expect(parseProductDetail(parseProduct(detail), detail)).toEqual(detail);
+      }
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('rechaza identidad duplicada o vacía y conserva íntegra la publicación anterior', async () => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog(), syncedAt);
+      const previous = await readDuxCatalogSnapshot(testD1.database);
+      await expect(persistDuxCatalogSnapshot(testD1.database, runId, [
+        ...sourceCatalog(), ...sourceCatalog(),
+      ], syncedAt)).rejects.toMatchObject({ code: 'DUX_CATALOG_DUPLICATE_ITEM' });
+      expect(() => parseDuxCatalogSourceItems({ datos: [{ cod_item: '', item: 'Sin identidad', habilitado: true }] }))
+        .toThrow(/respuesta no válida/u);
+      expect(await readDuxCatalogSnapshot(testD1.database)).toEqual(previous);
+      testD1.sqlite.prepare(`UPDATE dux_catalog_snapshots_v2
+        SET payload_json = json_set(payload_json, '$.items[0].name', 'ALTERADO') WHERE id = 1`).run();
+      await expect(readDuxCatalogSnapshot(testD1.database)).rejects.toMatchObject({ code: 'DUX_CATALOG_SNAPSHOT_INVALID' });
+    } finally {
+      testD1.close();
+    }
+  });
+
+  it('publica nuevos Dux-only, retira ausentes/deshabilitados y revierte a local sin borrar datos', async () => {
+    const testD1 = completeTestDatabase();
+    const env = { DUX_COMPANY_ID: '12862' };
+    try {
+      insertCompletedRun(testD1, runId);
+      const localBefore = await readPublicCatalog(testD1.database, env);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog(), syncedAt);
+      await updateDuxCatalogControl(testD1.database, 'test', { publicCatalogEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, parseDuxCatalogSourceItems({ datos: [
+        { cod_item: 'NUEVO', item: 'PRODUCTO NUEVO DUX', habilitado: true, precios: businessPrices(0) },
+        { cod_item: 'B', item: 'DESHABILITADO', habilitado: false, precios: businessPrices(5000) },
+      ] }), syncedAt);
+      const dux = await readPublicCatalog(testD1.database, env);
+      expect(dux.products).toHaveLength(1);
+      expect(dux.products[0]).toMatchObject({ sku: 'NUEVO', price: null, priceStatus: 'missing_or_zero' });
+      expect(dux.productDetails[0]?.images).toEqual([]);
+      expect(dux.products[0]?.commerce?.checkoutEligible).toBe(false);
+      await updateDuxCatalogControl(testD1.database, 'test', { publicCatalogEnabled: false });
+      expect(await readPublicCatalog(testD1.database, env)).toEqual(localBefore);
+      expect((await readDuxCatalogSnapshot(testD1.database)).itemCount).toBe(1);
+      expect(testD1.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      testD1.close();
+    }
+  });
 });
+
+function businessPrices(amount: unknown) {
+  return [{ id: 1, nombre: DUX_PUBLIC_PRICE_LIST_NAME, precio: amount }];
+}
+
+function completeTestDatabase() {
+  return createTestD1(commerceMigration, catalogMigration, inventoryMigration, duxCatalogMigration, duxEditorialMigration, duxCompleteMigration);
+}
 
 function sourceCatalog() {
   return parseDuxCatalogSourceItems({
@@ -247,6 +364,9 @@ function insertCompletedRun(
   testD1: ReturnType<typeof createTestD1>,
   id: string,
 ): void {
+  testD1.sqlite.prepare(`INSERT OR IGNORE INTO dux_tenant_context VALUES
+    (1, 'v2', '12862', 'Empresa de prueba', '1', 'Sucursal', '25566', 'Depósito', ?, ?)`)
+    .run(syncedAt, syncedAt);
   testD1.sqlite.prepare(`INSERT INTO dux_sync_runs (
     id, kind, status, trigger_actor, processed_count, mapped_count,
     unmapped_count, ambiguous_count, absent_count, failed_count,
@@ -269,6 +389,7 @@ function localProduct(id: string): CatalogProductDetail {
     categoryNames: Object.freeze(['Categoría local']),
     presentation: '100 g',
     price: Object.freeze({ amount: 999, currency: 'ARS' as const }),
+    priceStatus: 'usable',
     shortDescription: 'Texto local breve.',
     description: 'Descripción local de respaldo.',
     primaryImage: image,

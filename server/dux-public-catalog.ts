@@ -32,7 +32,7 @@ export type PublicCatalog = Readonly<{
 
 /**
  * El catálogo local continúa siendo el runtime público hasta que el control
- * persistido habilita explícitamente el cutover. Tener 0015 aplicado o disponer
+ * persistido habilita explícitamente el catálogo. Tener 0017 aplicado o disponer
  * de un snapshot nunca activa Dux por sí solo.
  */
 export async function readPublicCatalog(
@@ -40,7 +40,7 @@ export async function readPublicCatalog(
   env: Env,
 ): Promise<PublicCatalog> {
   const control = await readDuxCatalogControl(database);
-  if (!control.publicCutoverEnabled) {
+  if (!control.publicCatalogEnabled) {
     const productDetails = await listRuntimeCatalogProductDetails(database, env);
     return Object.freeze({
       products: Object.freeze(productDetails.map(toProductSummary)),

@@ -1226,6 +1226,7 @@ function product(
     categorySlugs: Object.freeze([]),
     categoryNames: Object.freeze([]),
     price: Object.freeze({ amount: 1_000, currency: 'ARS' as const }),
+    priceStatus: 'usable',
     ...(sku === undefined ? {} : { sku }),
     ...(presentation === undefined ? {} : { presentation }),
     images: Object.freeze([]),

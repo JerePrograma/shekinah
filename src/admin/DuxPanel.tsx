@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DuxCatalogControls } from './DuxCatalogControls';
+import { DuxEditorialReviewPanel } from './DuxEditorialReviewPanel';
 
 type DuxTenant = Readonly<{
   companyId: string;
@@ -52,9 +54,13 @@ export function DuxPanel({
   const [status, setStatus] = useState<DuxStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [editorialBusy, setEditorialBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const requestRef = useRef(0);
+  const catalogOperation = useCallback((active: boolean) => setCatalogBusy(active), []);
+  const editorialOperation = useCallback((active: boolean) => setEditorialBusy(active), []);
 
   const refresh = useCallback(async () => {
     const requestId = requestRef.current + 1;
@@ -85,12 +91,13 @@ export function DuxPanel({
   }, [refresh]);
 
   useEffect(() => {
-    onOperationStateChange?.(busy, busy ? 'Sincronizando inventario Dux' : undefined);
+    const active = busy || catalogBusy || editorialBusy;
+    onOperationStateChange?.(active, busy ? 'Sincronizando inventario Dux' : active ? 'Actualizando catálogo Dux' : undefined);
     return () => onOperationStateChange?.(false);
-  }, [busy, onOperationStateChange]);
+  }, [busy, catalogBusy, editorialBusy, onOperationStateChange]);
 
   async function synchronize(): Promise<void> {
-    if (busy || status?.enabled !== true) return;
+    if (busy || catalogBusy || editorialBusy || status?.enabled !== true) return;
     setBusy(true);
     setError('');
     setMessage('');
@@ -195,7 +202,7 @@ export function DuxPanel({
             <button
               className="button button-primary"
               type="button"
-              disabled={busy || loading}
+              disabled={busy || catalogBusy || editorialBusy || loading}
               onClick={() => void synchronize()}
             >
               {busy ? 'Sincronizando…' : 'Sincronizar ahora'}
@@ -210,6 +217,10 @@ export function DuxPanel({
         ) : null}
         {message === '' ? null : <p role="status" className="admin-context-note">{message}</p>}
         {error === '' ? null : <p role="alert" className="form-error">{error}</p>}
+        {status === null ? null : <>
+          <DuxCatalogControls disabled={busy || editorialBusy} onOperationStateChange={catalogOperation} onUnauthorized={onUnauthorized} />
+          <DuxEditorialReviewPanel disabled={busy || catalogBusy} onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
+        </>}
       </div>
     </section>
   );

@@ -314,6 +314,7 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
     categoryNames: detail.categoryNames,
     ...(detail.presentation === undefined ? {} : { presentation: detail.presentation }),
     price: detail.price,
+    priceStatus: detail.priceStatus,
     ...(detail.salePrice === undefined ? {} : { salePrice: detail.salePrice }),
     ...(detail.sku === undefined ? {} : { sku: detail.sku }),
     ...(detail.availability === undefined ? {} : { availability: detail.availability }),

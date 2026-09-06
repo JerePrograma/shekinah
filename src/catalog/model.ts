@@ -1,7 +1,11 @@
+export const CATALOG_API_SCHEMA_VERSION = 2;
+
 export type ProductPrice = Readonly<{
   amount: number;
   currency: 'ARS';
 }>;
+
+export type ProductPriceStatus = 'usable' | 'placeholder' | 'missing_or_zero' | 'invalid';
 
 export type ProductImage = Readonly<{
   src: string;
@@ -81,7 +85,8 @@ export type CatalogProductSummary = Readonly<{
   categorySlugs: readonly string[];
   categoryNames: readonly string[];
   presentation?: string;
-  price: ProductPrice;
+  price: ProductPrice | null;
+  priceStatus: ProductPriceStatus;
   salePrice?: ProductPrice;
   sku?: string;
   availability?: 'available' | 'unavailable';
@@ -173,14 +178,13 @@ export function isManagedCatalogImagePath(value: string): boolean {
   return managedCatalogImagePattern.test(value);
 }
 
-export function isProductEffectivelyAvailable(
-  product: Pick<
-    CatalogProductSummary,
-    'availability' | 'commerce'
-  >,
-): boolean {
+export function isProductEffectivelyAvailable<T extends Pick<
+  CatalogProductSummary, 'availability' | 'commerce' | 'price' | 'priceStatus'
+>>(product: T): product is T & { price: ProductPrice; priceStatus: 'usable' } {
   const commerce = product.commerce;
   return (
+    product.priceStatus === 'usable' &&
+    product.price !== null &&
     product.availability !== 'unavailable' &&
     commerce?.source === 'dux' &&
     commerce.mappingStatus === 'mapped' &&
@@ -300,6 +304,24 @@ export function parseProduct(value: unknown): Product {
   const commerce = Object.hasOwn(value, 'commerce')
     ? parseCommerceSnapshot(value.commerce)
     : undefined;
+  // Los documentos locales históricos conservan su precio positivo. El API
+  // normaliza ese contrato anterior al estado explícito `usable`.
+  const priceStatus = value.priceStatus === undefined ? 'usable' : value.priceStatus;
+  if (typeof priceStatus !== 'string' || !['usable', 'placeholder', 'missing_or_zero', 'invalid'].includes(priceStatus)) {
+    throw new InvalidProductError('El estado del precio no es válido.');
+  }
+  const price = priceStatus === 'usable' ? parsePrice(value.price) : null;
+  if (
+    (priceStatus !== 'usable' && (
+      value.price !== null || salePrice !== undefined ||
+      commerce?.source !== 'dux' || commerce.checkoutEligible
+    )) ||
+    (commerce?.source === 'dux' && price !== null && (
+      price.amount <= 2 || Number(price.amount.toFixed(2)) !== price.amount
+    ))
+  ) {
+    throw new InvalidProductError('El precio no coincide con su estado comercial.');
+  }
   return Object.freeze({
     id,
     slug,
@@ -308,7 +330,8 @@ export function parseProduct(value: unknown): Product {
     categorySlugs,
     categoryNames,
     ...(presentation === undefined ? {} : { presentation }),
-    price: parsePrice(value.price),
+    price,
+    priceStatus: priceStatus as ProductPriceStatus,
     ...(salePrice === undefined ? {} : { salePrice }),
     ...(sku === undefined ? {} : { sku }),
     ...(availability === undefined ? {} : { availability }),

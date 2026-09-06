@@ -429,6 +429,7 @@ export function writableProduct(id: string): CatalogProductDetail {
     categoryNames: Object.freeze([category.name]),
     presentation: '100 g',
     price: Object.freeze({ amount: 1_000, currency: 'ARS' }),
+    priceStatus: 'usable',
     sku: `SKU-${id}`,
     availability: 'available',
     shortDescription: 'Descripción breve',

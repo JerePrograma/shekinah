@@ -1,6 +1,7 @@
 import type {
   CatalogCategory,
   CatalogProductDetail,
+  ProductPriceStatus,
 } from '../src/catalog/model';
 import { sha256Hex } from './crypto';
 import type { DuxInventoryUnit } from './dux-inventory';
@@ -9,15 +10,16 @@ import type { D1Database } from './platform';
 
 export const DUX_PUBLIC_PRICE_LIST_NAME = 'PRECIOS DEL NEGOCIO';
 
-const DUX_CATALOG_SCHEMA_VERSION = 1;
+export const DUX_CATALOG_SCHEMA_VERSION = 2;
 const DUX_CATALOG_SNAPSHOT_MAX_BYTES = 1_900_000;
 const DUX_PRODUCT_SLUG_MAX_BASE_LENGTH = 140;
 const DUX_SYNC_ID_PATTERN = /^dux_sync_[A-Za-z0-9._:-]{1,180}$/u;
 
 type DuxCatalogPrice = Readonly<{
-  id: number;
-  name: string;
-  amount: number;
+  id: number | null;
+  name: string | null;
+  amount: number | null;
+  valid: boolean;
 }>;
 
 type DuxCatalogReference = Readonly<{
@@ -30,7 +32,7 @@ export type DuxCatalogSourceItem = Readonly<{
   name: string;
   enabled: boolean;
   unitsPerPackage: number | null;
-  prices: readonly DuxCatalogPrice[];
+  prices: readonly DuxCatalogPrice[] | null;
   category: DuxCatalogReference | null;
   subcategory: DuxCatalogReference | null;
   imageUrl: string | null;
@@ -46,7 +48,8 @@ type StoredDuxCatalogItem = Readonly<{
   slug: string;
   code: string;
   name: string;
-  priceAmount: number;
+  priceAmount: number | null;
+  priceStatus: ProductPriceStatus;
   categories: readonly StoredCatalogReference[];
   unitsPerPackage: number | null;
   imageUrl: string | null;
@@ -64,6 +67,7 @@ export type DuxCatalogSnapshot = Readonly<{
   catalogVersion: string;
   priceListName: typeof DUX_PUBLIC_PRICE_LIST_NAME;
   itemCount: number;
+  priceCounts: Readonly<Record<ProductPriceStatus, number>>;
   items: readonly StoredDuxCatalogItem[];
   syncedAt: string;
 }>;
@@ -138,7 +142,7 @@ export async function persistDuxCatalogSnapshot(
   try {
     await database
       .prepare(
-        `INSERT INTO dux_catalog_snapshot (
+        `INSERT INTO dux_catalog_snapshots_v2 (
           id, inventory_run_id, catalog_version, price_list_name, item_count,
           payload_json, synced_at, created_at, updated_at
         ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6)
@@ -197,7 +201,7 @@ export async function readDuxCatalogSnapshot(
                 catalog.price_list_name, catalog.item_count,
                 catalog.payload_json, catalog.synced_at,
                 run.status AS source_run_status
-         FROM dux_catalog_snapshot AS catalog
+         FROM dux_catalog_snapshots_v2 AS catalog
          INNER JOIN dux_sync_runs AS run ON run.id = catalog.inventory_run_id
          WHERE catalog.id = 1`,
       )
@@ -225,6 +229,8 @@ export async function readDuxCatalogSnapshot(
     throw invalidDatabaseProjection();
   }
   const payload = parseStoredPayload(parsed);
+  const catalogVersion = databaseHexDigest(row.catalog_version);
+  if (await sha256Hex(payloadText) !== catalogVersion) throw invalidDatabaseProjection();
   const itemCount = nonNegativeInteger(row.item_count);
   if (itemCount !== payload.items.length) throw invalidDatabaseProjection();
   if (row.price_list_name !== DUX_PUBLIC_PRICE_LIST_NAME) {
@@ -233,9 +239,10 @@ export async function readDuxCatalogSnapshot(
 
   return Object.freeze({
     inventoryRunId: databaseText(row.inventory_run_id, 220),
-    catalogVersion: databaseHexDigest(row.catalog_version),
+    catalogVersion,
     priceListName: DUX_PUBLIC_PRICE_LIST_NAME,
     itemCount,
+    priceCounts: countPriceStatuses(payload.items),
     items: payload.items,
     syncedAt: timestamp(row.synced_at, invalidDatabaseProjection),
   });
@@ -253,16 +260,16 @@ export function isDuxCatalogMigrationRequiredError(error: unknown): boolean {
 }
 
 /**
- * Proyecta exclusivamente los ítems presentes en Dux. Los datos locales sólo
- * enriquecen ítems con mapping único; nunca agregan productos ausentes, ni
- * reemplazan nombre, precio, SKU o clasificación Dux.
+ * Proyecta exclusivamente los ítems presentes en Dux. El mapping de inventario
+ * sólo aporta la observación Dux; el enriquecimiento se aplica por separado
+ * mediante vínculos editoriales explícitos.
  */
 export function projectDuxRuntimeCatalog(
   snapshot: DuxCatalogSnapshot,
   localProducts: readonly CatalogProductDetail[],
   inventoryUnits: readonly DuxInventoryUnit[],
 ): DuxRuntimeCatalog {
-  const localById = new Map(localProducts.map((product) => [product.id, product]));
+  void localProducts;
   const unitsByCode = groupInventoryUnitsByCode(inventoryUnits);
   const resolutions = new Map(
     snapshot.items.map((item) => [
@@ -270,32 +277,15 @@ export function projectDuxRuntimeCatalog(
       resolveProductMapping(unitsByCode.get(item.code) ?? Object.freeze([])),
     ]),
   );
-  const localIdUseCount = new Map<string, number>();
-  for (const resolution of resolutions.values()) {
-    if (resolution.status !== 'mapped' || resolution.localProductId === null) continue;
-    localIdUseCount.set(
-      resolution.localProductId,
-      (localIdUseCount.get(resolution.localProductId) ?? 0) + 1,
-    );
-  }
-  const generatedSlugs = new Set(snapshot.items.map((item) => item.slug));
   const productIds = new Set<string>();
 
   const products = snapshot.items.map((item) => {
     const resolution = resolutions.get(item.code);
     if (resolution === undefined) throw invalidDatabaseProjection();
-    const localProduct = resolution.localProductId === null
-      ? undefined
-      : localById.get(resolution.localProductId);
-    const canPreserveLocalId =
-      resolution.status === 'mapped' &&
-      localProduct !== undefined &&
-      localIdUseCount.get(localProduct.id) === 1 &&
-      (!generatedSlugs.has(localProduct.id) || localProduct.id === item.slug);
-    const productId = canPreserveLocalId ? localProduct.id : item.slug;
+    const productId = item.slug;
     if (productIds.has(productId)) throw invalidDatabaseProjection();
     productIds.add(productId);
-    return projectProduct(item, snapshot, localProduct, resolution, productId);
+    return projectProduct(item, snapshot, resolution, productId);
   });
 
   return Object.freeze({
@@ -312,17 +302,17 @@ function buildStoredPayload(
   const codes = new Set<string>();
   const slugs = new Set<string>();
   const categoryNames = new Map<string, string>();
+  for (const item of sourceItems) {
+    requiredProviderText(item.code, 300);
+    requiredProviderText(item.name, 500);
+    if (codes.has(item.code)) {
+      throw new HttpError(502, 'DUX_CATALOG_DUPLICATE_ITEM', 'Dux devolvió un código de catálogo duplicado.');
+    }
+    codes.add(item.code);
+  }
   const items = sourceItems
     .filter((item) => item.enabled)
     .map((item) => {
-      if (codes.has(item.code)) {
-        throw new HttpError(
-          502,
-          'DUX_CATALOG_DUPLICATE_ITEM',
-          'Dux devolvió un código de catálogo duplicado.',
-        );
-      }
-      codes.add(item.code);
       const slug = createDuxProductSlug(item.name, item.code);
       if (slugs.has(slug)) {
         throw new HttpError(
@@ -336,7 +326,7 @@ function buildStoredPayload(
         slug,
         code: item.code,
         name: item.name,
-        priceAmount: selectPublicPrice(item.prices),
+        ...selectPublicPrice(item.prices),
         categories: sourceCategories(item, categoryNames),
         unitsPerPackage: item.unitsPerPackage,
         imageUrl: normalizeProviderImageUrl(item.imageUrl),
@@ -391,7 +381,7 @@ function parseStoredPayload(value: unknown): StoredDuxCatalogPayload {
       slug,
       code,
       name: databaseText(candidate.name, 500),
-      priceAmount: databasePrice(candidate.priceAmount),
+      ...databasePrice(candidate.priceAmount, candidate.priceStatus),
       categories,
       unitsPerPackage: nullableFiniteDatabaseNumber(candidate.unitsPerPackage),
       imageUrl: nullableDatabaseText(candidate.imageUrl, 2_048),
@@ -420,15 +410,22 @@ function parseDuxCatalogSourceItem(value: unknown): DuxCatalogSourceItem {
   });
 }
 
-function parsePrices(value: unknown): readonly DuxCatalogPrice[] {
+function parsePrices(value: unknown): readonly DuxCatalogPrice[] | null {
   if (value === undefined || value === null) return Object.freeze([]);
-  if (!Array.isArray(value)) throw invalidProviderResponse();
+  if (!Array.isArray(value)) return null;
   return Object.freeze(value.map((candidate) => {
-    if (!isRecord(candidate)) throw invalidProviderResponse();
+    if (!isRecord(candidate)) return Object.freeze({ id: null, name: null, amount: null, valid: false });
+    const id = typeof candidate.id === 'number' && Number.isSafeInteger(candidate.id) && candidate.id > 0
+      ? candidate.id : null;
+    const name = typeof candidate.nombre === 'string' && candidate.nombre.trim() !== ''
+      && candidate.nombre.length <= 300 ? candidate.nombre.trim() : null;
+    const amount = typeof candidate.precio === 'number' && Number.isFinite(candidate.precio)
+      ? candidate.precio : null;
     return Object.freeze({
-      id: requiredIdentifier(candidate.id),
-      name: requiredProviderText(candidate.nombre, 300),
-      amount: requiredFiniteNumber(candidate.precio),
+      id,
+      name,
+      amount,
+      valid: id !== null && name !== null && (amount !== null || candidate.precio === null || candidate.precio === undefined),
     });
   }));
 }
@@ -467,24 +464,24 @@ function sourceCategories(
   return Object.freeze(categories);
 }
 
-function selectPublicPrice(prices: readonly DuxCatalogPrice[]): number {
-  const matches = prices.filter((price) =>
-    price.name.toLocaleUpperCase('es-AR') === DUX_PUBLIC_PRICE_LIST_NAME,
-  );
-  if (matches.length !== 1) {
-    throw new HttpError(
-      502,
-      'DUX_CATALOG_PRICE_LIST_INVALID',
-      `Dux debe informar exactamente una lista ${DUX_PUBLIC_PRICE_LIST_NAME} por producto.`,
-    );
+function selectPublicPrice(prices: readonly DuxCatalogPrice[] | null):
+  Readonly<{ priceAmount: number | null; priceStatus: ProductPriceStatus }> {
+  if (prices === null || prices.some((price) => price.name === null)) {
+    return Object.freeze({ priceAmount: null, priceStatus: 'invalid' });
   }
+  const matches = prices.filter((price) =>
+    price.name?.toLocaleUpperCase('es-AR') === DUX_PUBLIC_PRICE_LIST_NAME,
+  );
+  if (matches.length === 0) return Object.freeze({ priceAmount: null, priceStatus: 'missing_or_zero' });
   const match = matches[0];
-  if (match === undefined) throw invalidProviderResponse();
-  return validPrice(match.amount, () => new HttpError(
-    502,
-    'DUX_CATALOG_PRICE_INVALID',
-    'Dux devolvió un precio público no válido.',
-  ));
+  if (matches.length !== 1 || match === undefined || !match.valid) {
+    return Object.freeze({ priceAmount: null, priceStatus: 'invalid' });
+  }
+  if (match.amount === null || match.amount === 0) return Object.freeze({ priceAmount: null, priceStatus: 'missing_or_zero' });
+  if (match.amount === 1 || match.amount === 2) return Object.freeze({ priceAmount: null, priceStatus: 'placeholder' });
+  return isUsablePrice(match.amount)
+    ? Object.freeze({ priceAmount: match.amount, priceStatus: 'usable' })
+    : Object.freeze({ priceAmount: null, priceStatus: 'invalid' });
 }
 
 function createDuxProductSlug(name: string, code: string): string {
@@ -575,7 +572,6 @@ function resolveProductMapping(
 function projectProduct(
   item: StoredDuxCatalogItem,
   snapshot: DuxCatalogSnapshot,
-  localProduct: CatalogProductDetail | undefined,
   resolution: ProductMappingResolution,
   productId: string,
 ): CatalogProductDetail {
@@ -592,8 +588,8 @@ function projectProduct(
         : 'unavailable' as const;
   const depositNames = new Set(resolution.units.map((unit) => unit.depositName));
   const depositName = depositNames.size === 1 ? [...depositNames][0] : undefined;
-  const images = localProduct?.images ?? Object.freeze([]);
-  const description = item.description ?? localProduct?.description;
+  const images = Object.freeze([]);
+  const description = item.description ?? undefined;
 
   return Object.freeze({
     id: productId,
@@ -602,16 +598,10 @@ function projectProduct(
     name: item.name,
     categorySlugs: Object.freeze(item.categories.map((category) => category.slug)),
     categoryNames: Object.freeze(item.categories.map((category) => category.name)),
-    ...(localProduct?.presentation === undefined
-      ? {}
-      : { presentation: localProduct.presentation }),
-    price: Object.freeze({ amount: item.priceAmount, currency: 'ARS' as const }),
+    price: item.priceAmount === null ? null : Object.freeze({ amount: item.priceAmount, currency: 'ARS' as const }),
+    priceStatus: item.priceStatus,
     sku: item.code,
     availability: 'unavailable' as const,
-    ...(localProduct?.shortDescription === undefined
-      ? {}
-      : { shortDescription: localProduct.shortDescription }),
-    ...(images[0] === undefined ? {} : { primaryImage: images[0] }),
     commerce: Object.freeze({
       source: 'dux' as const,
       catalogVersion: snapshot.catalogVersion,
@@ -678,22 +668,28 @@ function buildRuntimeCategories(
     })));
 }
 
-function validPrice(value: number, error: () => HttpError): number {
+function isUsablePrice(value: number): boolean {
   const minor = value * 100;
-  if (
-    !Number.isFinite(value) ||
-    value <= 0 ||
-    !Number.isSafeInteger(Math.round(minor)) ||
-    Math.abs(minor - Math.round(minor)) > 0.000001
-  ) {
-    throw error();
-  }
-  return value;
+  return Number.isFinite(value) && value > 2 &&
+    Number.isSafeInteger(Math.round(minor)) &&
+    Number(value.toFixed(2)) === value;
 }
 
-function databasePrice(value: unknown): number {
-  if (typeof value !== 'number') throw invalidDatabaseProjection();
-  return validPrice(value, invalidDatabaseProjection);
+function databasePrice(value: unknown, status: unknown):
+  Readonly<{ priceAmount: number | null; priceStatus: ProductPriceStatus }> {
+  if (status === 'usable' && typeof value === 'number' && isUsablePrice(value)) {
+    return Object.freeze({ priceAmount: value, priceStatus: status });
+  }
+  if (value === null && (status === 'placeholder' || status === 'missing_or_zero' || status === 'invalid')) {
+    return Object.freeze({ priceAmount: null, priceStatus: status });
+  }
+  throw invalidDatabaseProjection();
+}
+
+function countPriceStatuses(items: readonly StoredDuxCatalogItem[]): Readonly<Record<ProductPriceStatus, number>> {
+  const counts: Record<ProductPriceStatus, number> = { usable: 0, placeholder: 0, missing_or_zero: 0, invalid: 0 };
+  for (const item of items) counts[item.priceStatus] += 1;
+  return Object.freeze(counts);
 }
 
 function requiredBoolean(value: unknown): boolean {
@@ -802,7 +798,7 @@ function syncRunId(value: unknown): string {
 }
 
 function isMissingCatalogSnapshotTable(error: unknown): boolean {
-  return error instanceof Error && /no such table:\s*dux_catalog_snapshot/iu.test(error.message);
+  return error instanceof Error && /no such table:\s*dux_catalog_snapshots_v2/iu.test(error.message);
 }
 
 function catalogMigrationRequired(): HttpError {

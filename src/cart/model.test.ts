@@ -30,6 +30,7 @@ const product = (
   categorySlugs: Object.freeze([]),
   categoryNames: Object.freeze([]),
   price: Object.freeze({ amount, currency: 'ARS' }),
+  priceStatus: 'usable',
   ...(options.saleAmount === undefined
     ? {}
     : { salePrice: Object.freeze({ amount: options.saleAmount, currency: 'ARS' as const }) }),
@@ -38,6 +39,15 @@ const product = (
 });
 
 describe('carrito', () => {
+  it('retira del carrito guardado un precio que dejó de estar disponible sin inventar total', () => {
+    const previous = product('sin-precio', 1500);
+    const cart = addCartItem(emptyCart(), previous.id, 2);
+    const current: Product = { ...previous, price: null, priceStatus: 'missing_or_zero' };
+    expect(parseStoredCart(cart, [current]).items).toEqual([]);
+    expect(summarizeCart(cart, [current])).toEqual({ items: [], itemCount: 0, total: 0 });
+    expect(isProductAvailable(current)).toBe(false);
+    expect(getProductCartLimit(current)).toBe(0);
+  });
   it('agrega, limita, actualiza, elimina, vacía y resume con precio efectivo', () => {
     const products = [product('uno', 250, { saleAmount: 200 })];
     const added = addCartItem(emptyCart(), 'uno', 2);

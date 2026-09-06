@@ -78,12 +78,10 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
         readOnly: true,
         priceListName: DUX_PUBLIC_PRICE_LIST_NAME,
         authority: Object.freeze({
-          dux: Object.freeze(['existence', 'name', 'price', 'stock']),
+          dux: Object.freeze(['existence', 'name', 'sku', 'price', 'priceStatus', 'stock', 'categories']),
           local: Object.freeze([
             'images',
             'description',
-            'shortDescription',
-            'presentation',
           ]),
           mercadoLibre: 'editorial_evidence_only',
         }),

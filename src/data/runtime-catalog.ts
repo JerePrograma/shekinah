@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import {
+  CATALOG_API_SCHEMA_VERSION,
   parseCategories,
+  parseProduct,
   parseProductDetail,
   parseProducts,
 } from '../catalog/model';
@@ -102,11 +104,12 @@ export async function loadRuntimeProductDetail(
     if (!isRecord(payload) || !isRecord(payload.product)) {
       throw new Error('El catálogo dinámico devolvió un producto inválido.');
     }
-    const categories = cachedCategories.length === 0
-      ? authorizedCategories
-      : cachedCategories;
-    const summary = parseProducts([payload.product], categories)[0];
-    if (summary === undefined) return null;
+    if (!compatibleCatalogSchema(payload) ||
+      (payload.schemaVersion === CATALOG_API_SCHEMA_VERSION && !Object.hasOwn(payload.product, 'priceStatus'))) return null;
+    // La ficha puede responder antes que el listado, o después de un nuevo
+    // snapshot. Sus categorías Dux no dependen del catálogo guardado en memoria.
+    const summary = parseProduct(payload.product);
+    if (summary.slug !== slug) return null;
     return parseProductDetail(summary, payload.product);
   } catch {
     if (catalogSource !== 'legacy-bootstrap') return null;
@@ -128,6 +131,12 @@ async function loadCatalog(): Promise<RuntimeCatalogState> {
     if (!isRecord(payload) || !Array.isArray(payload.products)) {
       return failClosedState();
     }
+    if (!compatibleCatalogSchema(payload) ||
+      (payload.schemaVersion === CATALOG_API_SCHEMA_VERSION && (
+        !Array.isArray(payload.categories) ||
+        (payload.source !== 'dux' && payload.source !== 'legacy-bootstrap') ||
+        !payload.products.every((product: unknown) => isRecord(product) && Object.hasOwn(product, 'priceStatus'))
+      ))) return failClosedState();
     // Compatibilidad exclusiva con dobles de prueba y respuestas anteriores:
     // producción nueva siempre publica `categories` junto con los productos Dux.
     const productValues: readonly unknown[] = payload.products;
@@ -164,4 +173,8 @@ function failClosedProducts(products: readonly Product[]): readonly Product[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function compatibleCatalogSchema(value: Record<string, unknown>): boolean {
+  return value.schemaVersion === undefined || value.schemaVersion === CATALOG_API_SCHEMA_VERSION;
 }

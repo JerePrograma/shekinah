@@ -1,5 +1,11 @@
 # Arquitectura
 
+## Catálogo Dux completo — contrato vigente 2026-09-06
+
+La proyección comercial y la visibilidad pública se rigen por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md). `public_catalog_enabled` selecciona exclusivamente el universo del snapshot Dux v2, con precio nullable y `priceStatus` obligatorio; no requiere vínculos editoriales ni precios usables para visibilidad. `snapshot_collection_enabled` sólo permite recolección y `public_cutover_enabled` conserva los guards transaccionales. Los tres nacen en `0` y el corte comercial sigue cerrado.
+
+Dux determina existencia, nombre, código/SKU, precio/estado, stock y categorías. Local sólo aporta imágenes y descripción mediante decisiones activas 1:1. El triage separa evidencia y revisión de los vínculos: 135 auto-confirmados, 294 manuales y 318 descartes de enriquecimiento; ninguno modifica la existencia Dux. El snapshot v1 anterior y las migraciones publicadas se conservan. Las descripciones históricas posteriores de autoridad editorial local no amplían los campos reutilizables en el modo público Dux.
+
 ## Resumen
 
 Shekinah es una SPA React/TypeScript/Vite con backend en Cloudflare Pages Functions, persistencia Cloudflare D1 e imágenes administradas en R2.

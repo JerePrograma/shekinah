@@ -26,6 +26,7 @@ const catalogMigration = migration('0004_catalog_admin.sql');
 const inventoryMigration = migration('0012_dux_authoritative_inventory.sql');
 const duxCatalogMigration = migration('0015_dux_catalog_snapshot.sql');
 const editorialMigration = migration('0016_dux_editorial_links_and_cutover.sql');
+const completeMigration = migration('0017_dux_complete_public_catalog.sql');
 const companyEnv = Object.freeze({
   DUX_COMPANY_ID: '12862',
   DUX_SNAPSHOT_MAX_AGE_SECONDS: '1800',
@@ -51,13 +52,14 @@ describe('control y vínculos editoriales Dux', () => {
     expect(manifest.links.filter(({ reuseDescription }) => reuseDescription)).toHaveLength(127);
   });
 
-  it('aplica 0016 con ambos flags cerrados', async () => {
+  it('aplica 0017 con los tres flags cerrados', async () => {
     const testD1 = database();
     try {
       await expect(readDuxCatalogControl(testD1.database)).resolves.toEqual({
         migrationApplied: true,
         companyId: '12862',
         snapshotCollectionEnabled: false,
+        publicCatalogEnabled: false,
         publicCutoverEnabled: false,
       });
       expect(testD1.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -135,8 +137,8 @@ describe('control y vínculos editoriales Dux', () => {
       enableSnapshotCollection(testD1);
       insertRawSnapshot(testD1, runId, 4_500, [{
         ...rawItem('A', 'PRODUCTO DUX A', 4_500),
-        priceAmount: undefined,
-        ...priceFields,
+        priceAmount: null,
+        priceStatus: Object.keys(priceFields).length === 0 ? 'missing_or_zero' : 'invalid',
       }]);
       await expect(updateDuxCatalogControl(testD1.database, 'test', {
         publicCutoverEnabled: true,
@@ -314,7 +316,7 @@ describe('control y vínculos editoriales Dux', () => {
     expect(enriched?.categoryNames).not.toEqual(local.categoryNames);
   });
 
-  it('cutover=0 conserva catálogo local aunque exista snapshot Dux', async () => {
+  it('public_catalog=0 conserva catálogo local aunque exista snapshot Dux', async () => {
     const testD1 = database();
     try {
       insertCompletedRun(testD1, 'dux_sync_local_runtime');
@@ -329,7 +331,7 @@ describe('control y vínculos editoriales Dux', () => {
     }
   });
 
-  it('cutover=1 publica sólo universo Dux y mantiene checkoutEligible=false', async () => {
+  it('public_catalog=1 publica sólo universo Dux y mantiene checkoutEligible=false', async () => {
     const testD1 = database();
     try {
       insertCompletedRun(testD1, 'dux_sync_dux_runtime');
@@ -339,7 +341,7 @@ describe('control y vínculos editoriales Dux', () => {
         rawItem('B', 'PRODUCTO DUX B', 5_500),
       ]);
       await updateDuxCatalogControl(testD1.database, 'test', {
-        publicCutoverEnabled: true,
+        publicCatalogEnabled: true,
       });
       const catalog = await readPublicCatalog(testD1.database, companyEnv);
       expect(catalog.source).toBe('dux');
@@ -360,13 +362,18 @@ function migration(name: string): string {
 }
 
 function database() {
-  return createTestD1(
+  const testD1 = createTestD1(
     commerceMigration,
     catalogMigration,
     inventoryMigration,
     duxCatalogMigration,
     editorialMigration,
+    completeMigration,
   );
+  testD1.sqlite.prepare(`INSERT INTO dux_tenant_context VALUES (
+    1, 'v2', '12862', 'Test company', '1', 'Branch', '25566', 'Deposit', ?, ?
+  )`).run(syncedAt, syncedAt);
+  return testD1;
 }
 
 function sourceCatalog(price: number) {
@@ -412,15 +419,15 @@ function insertRawSnapshot(
   items: readonly Record<string, unknown>[] = [rawItem('A', 'PRODUCTO DUX A', priceAmount)],
 ): void {
   const payload = JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     priceListName: 'PRECIOS DEL NEGOCIO',
     items,
   });
-  testD1.sqlite.prepare(`INSERT INTO dux_catalog_snapshot (
+  testD1.sqlite.prepare(`INSERT INTO dux_catalog_snapshots_v2 (
     id, inventory_run_id, catalog_version, price_list_name, item_count,
     payload_json, synced_at, created_at, updated_at
   ) VALUES (1, ?, ?, 'PRECIOS DEL NEGOCIO', ?, ?, ?, ?, ?)`)
-    .run(runId, 'a'.repeat(64), items.length, payload, syncedAt, syncedAt, syncedAt);
+    .run(runId, createHash('sha256').update(payload).digest('hex'), items.length, payload, syncedAt, syncedAt, syncedAt);
 }
 
 function rawItem(code: string, name: string, priceAmount: number) {
@@ -428,7 +435,8 @@ function rawItem(code: string, name: string, priceAmount: number) {
     slug: `dux-${code.toLowerCase()}-${code.toLowerCase()}`,
     code,
     name,
-    priceAmount,
+    priceAmount: priceAmount > 2 ? priceAmount : null,
+    priceStatus: priceAmount > 2 ? 'usable' : priceAmount === 0 ? 'missing_or_zero' : 'placeholder',
     categories: [{ slug: 'dux-rubro-1', name: 'Rubro Dux' }],
     unitsPerPackage: 1,
     imageUrl: null,
@@ -437,7 +445,7 @@ function rawItem(code: string, name: string, priceAmount: number) {
 }
 
 function snapshotCount(testD1: ReturnType<typeof createTestD1>): number {
-  return Number(testD1.sqlite.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshot').get()?.count ?? 0);
+  return Number(testD1.sqlite.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()?.count ?? 0);
 }
 
 function insertTestBatch(testD1: ReturnType<typeof createTestD1>): void {
@@ -494,6 +502,7 @@ function localProduct(id: string): CatalogProductDetail {
     categorySlugs: Object.freeze(['local']),
     categoryNames: Object.freeze(['Categoría local']),
     price: Object.freeze({ amount: 999, currency: 'ARS' as const }),
+    priceStatus: 'usable',
     sku: 'LOCAL-SKU',
     description: 'Descripción local autorizada.',
     primaryImage: image,
@@ -511,6 +520,7 @@ function duxProduct(id: string, sku: string): CatalogProductDetail {
     categorySlugs: Object.freeze(['dux-rubro-1']),
     categoryNames: Object.freeze(['Rubro Dux']),
     price: Object.freeze({ amount: 4_500, currency: 'ARS' as const }),
+    priceStatus: 'usable',
     sku,
     images: Object.freeze([]),
     variants: Object.freeze([]),

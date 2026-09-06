@@ -47,7 +47,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       if (!isDuxCatalogMigrationRequiredError(error)) throw error;
       catalog = {
         status: 'pending_migration',
-        migration: '0015_dux_catalog_snapshot.sql',
+        migration: '0017_dux_complete_public_catalog.sql',
       };
     }
     return jsonResponse({ summary, catalog });

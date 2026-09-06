@@ -1,0 +1,122 @@
+# Catálogo Dux completo y publicación segura
+
+## Alcance de esta iteración
+
+La iteración parte de `60bdbb62db4e39f1639978f422db0516745cec9c` (`feat: persist Dux editorial links safely`). Prepara código, pruebas, documentación y un procedimiento operativo. Su publicación Git y su deployment Pages no aplican migraciones D1 ni habilitan capacidades remotas.
+
+Dux es la autoridad de existencia, nombre, código/SKU, precio y estado de precio, stock y categorías. El catálogo local sólo puede aportar imágenes y descripción mediante vínculos editoriales explícitos. Las presentaciones, descripciones cortas, precios, categorías y disponibilidad locales no se copian al producto Dux. La colección local canónica de 510 productos y 16 categorías se conserva como inventario editorial; no determina el tamaño del universo Dux.
+
+La SPA, History API, activos autorizados, autenticación administrativa, same-origin, auditoría y bloqueos de comercio se conservan. No se habilitan Checkout Pro, WhatsApp transaccional, reservas ni mutaciones de stock. `checkoutEligible` permanece en `false` para todos los productos Dux.
+
+## Tres controles independientes
+
+| Control D1 | Propósito | Requisito para habilitarlo | Valor inicial |
+| --- | --- | --- | --- |
+| `snapshot_collection_enabled` | Permite recolectar y sustituir la proyección Dux | Tenant y lectura Dux válidos | `0` |
+| `public_catalog_enabled` | Selecciona Dux para la API y UI públicas | Snapshot válido y no vacío; confirmación explícita | `0` |
+| `public_cutover_enabled` | Reserva el corte comercial/transaccional | Precios usables y contratos comerciales completos | `0`; permanece cerrado |
+
+Crear o aplicar `0017`, importar cualquiera de los manifiestos o recolectar un snapshot no habilita el catálogo público. Habilitar el catálogo no habilita comercio. `public_cutover_enabled` no selecciona el universo público y no se activa desde el flujo de publicación de esta iteración.
+
+Con `public_catalog_enabled=0`, el runtime conserva el catálogo local. Con `public_catalog_enabled=1`, publica todos los códigos habilitados del último snapshot Dux válido, tengan o no vínculo editorial. Un nuevo código aparece Dux-only; un código retirado o deshabilitado desaparece al publicar el siguiente snapshot. Los vínculos huérfanos no crean productos y los productos exclusivamente locales no aparecen.
+
+## Precio explícito y proyección v2
+
+`0017_dux_complete_public_catalog.sql` agrega una proyección `dux_catalog_snapshots_v2`, con payload `schemaVersion=2`, sin reescribir las migraciones publicadas `0015` y `0016`. La fotografía anterior se conserva. El payload registra `priceAmount: number | null` y un `priceStatus` obligatorio; el contrato público expone `price: { amount, currency: 'ARS' } | null` y `priceStatus` obligatorio.
+
+| `priceStatus` | Interpretación de la respuesta actual Dux | Precio público |
+| --- | --- | --- |
+| `usable` | Una entrada válida de `PRECIOS DEL NEGOCIO`, finita, mayor que 2 y con hasta dos decimales | Importe Dux en ARS |
+| `placeholder` | Importe exactamente 1 o 2 | `null`; «Consultar precio» |
+| `missing_or_zero` | Lista/entrada ausente o importe cero | `null`; «Consultar precio» |
+| `invalid` | Tipo inválido, negativo, duplicidad incoherente o precisión inválida | `null`; «Consultar precio» |
+
+Un error de precio conserva el producto dentro del snapshot. Una identidad crítica inválida o duplicada aborta la nueva fotografía y conserva la anterior. Los precios no usables no pueden agregarse al carrito, no tienen oferta sin precio base y nunca reciben un fallback local o Mercado Libre. La visibilidad pública admite estos estados; los guards transaccionales permanecen estrictos.
+
+La evidencia histórica tiene 592 precios usables, 87 placeholders y 68 ausentes/cero: 155 no usables entre 747 productos. Es una comparación de regresión, nunca una semilla de precios ni un límite fijo para snapshots futuros.
+
+## Triage editorial
+
+El manifiesto determinista `catalog/internal/dux-editorial-triage-v1.json` procede del directorio de evidencia original validado. Conserva los hashes de fuente, los códigos y los candidatos permitidos como evidencia editorial; sus nombres y conteos históricos no gobiernan el runtime comercial.
+
+| Disposición inicial | Cantidad | Publicación mientras no exista aprobación manual |
+| --- | --- | --- |
+| `auto_confirmed` | 135 | Puede reutilizar exclusivamente los campos autorizados del vínculo activo |
+| `pending_manual_review` | 294 | Dux-only; candidato no equivale a decisión |
+| `discarded_enrichment` | 318 | Dux-only; descarta el enriquecimiento, conserva el producto Dux |
+
+Los 747 códigos son únicos y las tres disposiciones no se solapan. `dux_editorial_triage` representa evidencia y revisión; `dux_editorial_links` representa decisiones activas. La importación fija autenticada y same-origin no acepta CSV ni mappings enviados por el cliente. Repetirla conserva clasificación y decisiones sin crear duplicados.
+
+La revisión filtra, busca y pagina los casos pendientes. Aprobar exige un candidato permitido y existente, campos editoriales válidos y unicidad activa 1:1; vínculo y resolución se guardan de manera atómica. Rechazar/descartar mantiene el producto Dux-only. Para cambiar un vínculo se desactiva explícitamente el anterior. Fuzzy, ambiguos y diferencias de presentación nunca se autoaprueban.
+
+Mercado Libre sólo puede aportar evidencia auxiliar de identidad mediante filas históricas válidas del seller esperado. El baseline observado aporta **0 evidencias Mercado Libre**. No se reactiva su integración ni se hacen llamadas públicas al proveedor; esa ausencia no bloquea el catálogo ni resuelve casos manuales.
+
+## Publicación posterior al commit
+
+El único script operativo es `scripts/finalize-dux-catalog.ps1`. Su fase por defecto, `Validate`, es local: verifica sintaxis, archivos y manifiestos; no solicita credenciales, no usa red y no ejecuta migraciones, importaciones, sincronizaciones o activaciones.
+
+```powershell
+pwsh -NoProfile -File .\scripts\finalize-dux-catalog.ps1 -Phase Validate
+```
+
+Las fases remotas no se ejecutan durante la iteración de código. Antes de autorizarlas deben estar comprobados el commit y push sobre `main`, CI verde y deployment Pages del mismo SHA. El script vuelve a comprobar `HEAD`, el `main` remoto real y el último CI del SHA exacto. No cambia variables de Pages ni despliega; exige una configuración externa autorizada para la lectura Dux y conserva los flags de comercio y Mercado Libre cerrados.
+
+Requisitos para una futura fase remota:
+
+- PowerShell 7, Node exacto de `.node-version`, GitHub CLI autenticado y Wrangler ya disponible; se aceptan rutas explícitas de ambos ejecutables;
+- cuenta Cloudflare, UUID D1 y deployment concretos, origen HTTPS del entorno, sucursal y depósito verificados y directorio de evidencia fuera del repositorio;
+- token Cloudflare con lectura de Pages y acceso a la D1 elegida, tomado de `CLOUDFLARE_API_TOKEN` o solicitado con `Read-Host -AsSecureString`;
+- usuario y contraseña de la administración de ese entorno, solicitados en consola; no se guardan ni imprimen contraseña, cookies o tokens;
+- `DUX_API_ENABLED=true` ya autorizado en la configuración del entorno para permitir la lectura; el script comprueba tenant, binding `DB`, base separada y los cuatro flags de comercio/Mercado Libre en `false`;
+- migraciones `0001`–`0014` ya verificadas y tenant persistido; si faltan, se detiene antes de migrar;
+- tres controles en `0` al iniciar y conteos esperados explícitamente revisados para la fecha de operación.
+
+No usar transcripciones de consola que capturen secretos. El script guarda sólo recibos sanitizados, hashes, IDs operativos, conteos y bookmark. El token se mantiene en memoria y en el entorno del proceso Wrangler durante la operación; después restaura los valores previos.
+
+Cada invocación realiza una sola fase. Preview utiliza `shekinah-commerce-preview` y una URL del deployment bajo `*.shekinah-7dl.pages.dev`; Production exige `shekinah-commerce` y `https://shekinah.ar`. La configuración temporal de Wrangler contiene únicamente la D1 seleccionada y copias exactas de `0015`, `0016` y `0017`, para impedir que se apliquen migraciones ajenas. Los archivos y el recibo quedan en el directorio de evidencia, fuera de Git.
+
+El operador pasa `-Phase Preview`, `-ExpectedCommit`, `-AccountId`, `-DatabaseId`, `-DeploymentId`, `-SiteOrigin`, `-ExpectedBranchId`, `-ExpectedDepositId`, `-EvidenceDirectory`, `-WranglerPath` y `-GitHubCliPath` con valores verificados. Los defaults de conteo corresponden exclusivamente al baseline 747/592/87/68/0; un cambio real en Dux exige revisar y proporcionar `-ExpectedItems`, `-ExpectedUsable`, `-ExpectedPlaceholder`, `-ExpectedMissingOrZero` y `-ExpectedInvalid`. Un conteo inesperado detiene la fase; el script no lo acepta silenciosamente ni descarta productos para ajustarlo.
+
+La secuencia es:
+
+1. Verificar SHA, CI, deployment, entorno, D1 y tenant, y conservar un bookmark Time Travel previo.
+2. Aplicar sólo `0015`–`0017`; verificar su registro, `foreign_key_check` y los tres controles en `0`.
+3. Autenticarse; registrar los IDs del catálogo local para comprobar rollback.
+4. Importar los 135 vínculos dos veces y el triage dos veces; verificar idempotencia y 135/294/318 sin decisiones inesperadas.
+5. Habilitar colección y ejecutar **una sola** sincronización administrativa Dux read-only. No hay reintento automático ante un fallo o timeout.
+6. Verificar snapshot v2, tenant, frescura, run, códigos únicos, conteos de precio y `checkoutEligible=0`.
+7. Habilitar catálogo con confirmación; comprobar igualdad exacta entre universo público y snapshot, nombre/precio Dux y comercio cerrado.
+8. Deshabilitar catálogo; comprobar retorno al catálogo local, conservación de snapshot/triage/vínculos y claves foráneas.
+9. Rehabilitar sólo después de aprobar todas las comprobaciones, repetir el smoke público y emitir recibo `passed`.
+
+Production repite esa secuencia en otra invocación. Exige `-PreviewReceipt` apuntando al recibo verde de Preview, mismo SHA/cuenta/tenant/hashes, D1 distinta y antigüedad máxima de 24 horas. Además requiere escribir en consola la frase exacta de autorización que incluye el SHA. Production nunca es la fase por defecto ni se ejecuta automáticamente al terminar Preview. Un recibo es evidencia operativa local y debe preservarse íntegro; no sustituye la autorización del operador.
+
+Las rutas API y el flujo se basan en los contratos del repositorio. El comando oficial de [migraciones Wrangler](https://developers.cloudflare.com/d1/wrangler-commands/#d1-migrations-apply) aplica sólo los SQL pendientes de la configuración aislada. Los bookmarks se obtienen con la API oficial de [Time Travel](https://developers.cloudflare.com/api/resources/d1/subresources/database/subresources/time_travel/); la identidad de Pages se verifica mediante la [API de deployment](https://developers.cloudflare.com/api/resources/pages/subresources/projects/subresources/deployments/methods/get/).
+
+## Rollback e incidentes
+
+El rollback funcional pone `public_catalog_enabled=0` mediante el endpoint administrativo o la acción equivalente del panel. El runtime vuelve al catálogo local sin borrar snapshot, triage, vínculos, imágenes ni historia, y sin revertir migraciones. No restablece stock local ni habilita transacciones.
+
+Si una fase falla después de abrir la colección, el script intenta cerrar `public_catalog_enabled` y `snapshot_collection_enabled`, comprueba `public_cutover_enabled=0` y emite recibo `failed`. Si no puede verificar ese cierre, informa la incidencia y exige comprobación administrativa antes de continuar. Un fallo de sync no autoriza repetirlo: primero se inspecciona el run registrado y el estado remoto. El bookmark se conserva para recuperación extraordinaria de esquema/datos; el script no ejecuta restauraciones Time Travel ni revierte migraciones.
+
+Una fase ya finalizada deja colección y catálogo habilitados y cutover cerrado. Reejecutar el procedimiento de activación con controles abiertos se detiene; no modifica ese estado para simular un primer intento. Los recibos fallidos y exitosos se conservan por separado.
+
+## Evidencia de validación y límites
+
+Las pruebas locales, CI, deployment Pages y operaciones remotas son evidencias distintas. Los resultados de ejecución se incluyen en el informe final del commit publicado; este documento no acredita por sí solo un CI o deployment posterior a la base. La validación local del script no valida credenciales, permisos, acceso remoto o resultados de una migración real.
+
+Validación del script ejecutada el 2026-09-06: parser PowerShell sin errores y fase `Validate` aprobada. Además se ejecutaron siete escenarios con todos los accesos HTTP, Git, GitHub CLI, Wrangler y credenciales reemplazados por dobles locales, sin llamadas remotas:
+
+| Escenario local | Resultado observado |
+| --- | --- |
+| Preview completa | Imports dos veces, un único sync, rollback, reactivación y recibo `passed` |
+| Timeout de sync | Un único intento; cierre de catálogo y colección; recibo `failed` |
+| Tenant distinto | Detención anterior a migraciones o sync |
+| Production sin recibo Preview | Detención anterior a solicitudes HTTP o migraciones |
+| D1 del deployment distinta de la elegida | Detención anterior a migraciones o sync |
+| Conteo de precio inesperado | No activa catálogo; cierra colección; no repite sync |
+| Rollback remoto no verificable | No declara éxito; registra cierre fallido y emite aviso explícito |
+
+Estos siete controles se clasifican como **verificados con dobles locales**. La aplicación de migraciones, las importaciones y el sync reales, la autenticación administrativa y el smoke de activación se clasifican como **no ejecutados en remoto**. Las muestras y recibos de los dobles son temporales y no se incorporan al repositorio.
+
+En esta iteración no se ejecutan migraciones remotas, sincronización administrativa Dux, activación productiva, Mercado Libre, pedidos, reservas, pagos ni mutaciones de stock. La activación posterior queda pendiente del procedimiento y de su autorización explícita.

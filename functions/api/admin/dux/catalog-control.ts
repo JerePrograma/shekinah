@@ -1,4 +1,6 @@
 import { handleAdminRequest } from '../../../../server/admin-request';
+import { readDuxSnapshotMaxAgeSeconds } from '../../../../server/config';
+import { isDuxCatalogBootstrapPendingError, readDuxCatalogSnapshot } from '../../../../server/dux-catalog';
 import {
   readDuxCatalogControl,
   requireExpectedDuxCompany,
@@ -24,16 +26,32 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
   return handleAdminRequest(request, env, data, 'admin.dux.catalog-control', async (database) => {
     requireExpectedDuxCompany(env);
     if (request.method === 'GET') {
-      return jsonResponse({ control: await readDuxCatalogControl(database) });
+      const control = await readDuxCatalogControl(database);
+      try {
+        const snapshot = await readDuxCatalogSnapshot(database);
+        return jsonResponse({ control, snapshot: {
+          itemCount: snapshot.itemCount,
+          catalogVersion: snapshot.catalogVersion,
+          inventoryRunId: snapshot.inventoryRunId,
+          syncedAt: snapshot.syncedAt,
+          priceCounts: snapshot.priceCounts,
+          checkoutEligibleCount: 0,
+          stale: Date.now() - Date.parse(snapshot.syncedAt) > readDuxSnapshotMaxAgeSeconds(env) * 1000,
+        }, snapshotError: null });
+      } catch (error: unknown) {
+        if (!isDuxCatalogBootstrapPendingError(error) && !(error instanceof HttpError && error.code === 'DUX_CATALOG_SNAPSHOT_INVALID')) throw error;
+        return jsonResponse({ control, snapshot: null, snapshotError: error instanceof HttpError ? error.code : 'DUX_CATALOG_SNAPSHOT_UNAVAILABLE' });
+      }
     }
     assertSameOrigin(request, env);
     const body = await readJsonBody(request, 1_024);
     if (!isRecord(body)) {
       throw new HttpError(400, 'INVALID_REQUEST', 'La solicitud de control no es válida.');
     }
-    assertExactKeys(body, ['snapshotCollectionEnabled', 'publicCutoverEnabled']);
+    assertExactKeys(body, ['snapshotCollectionEnabled', 'publicCatalogEnabled', 'publicCutoverEnabled', 'confirmation']);
     if (
       !Object.hasOwn(body, 'snapshotCollectionEnabled') &&
+      !Object.hasOwn(body, 'publicCatalogEnabled') &&
       !Object.hasOwn(body, 'publicCutoverEnabled')
     ) {
       throw new HttpError(400, 'INVALID_REQUEST', 'Debe indicarse al menos un cambio de control.');
@@ -46,11 +64,19 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       body.publicCutoverEnabled,
       'publicCutoverEnabled',
     );
+    const publicCatalogEnabled = readOptionalBoolean(body.publicCatalogEnabled, 'publicCatalogEnabled');
+    if (publicCatalogEnabled === true && body.confirmation !== 'ENABLE_DUX_PUBLIC_CATALOG') {
+      throw new HttpError(400, 'DUX_CATALOG_CONFIRMATION_REQUIRED', 'Confirmá la publicación del catálogo Dux; los productos sin precio se mostrarán para consulta y las compras seguirán bloqueadas.');
+    }
+    if (body.confirmation !== undefined && (publicCatalogEnabled !== true || body.confirmation !== 'ENABLE_DUX_PUBLIC_CATALOG')) {
+      throw new HttpError(400, 'INVALID_REQUEST', 'La confirmación no corresponde al cambio solicitado.');
+    }
     const control = await updateDuxCatalogControl(
       database,
       data.adminIdentity?.actor ?? 'unknown',
       {
         ...(snapshotCollectionEnabled === undefined ? {} : { snapshotCollectionEnabled }),
+        ...(publicCatalogEnabled === undefined ? {} : { publicCatalogEnabled }),
         ...(publicCutoverEnabled === undefined ? {} : { publicCutoverEnabled }),
       },
     );

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { readDuxAnalysisPrice } from './dux-analysis-price.mjs';
 
 const PRICE_LIST = 'PRECIOS DEL NEGOCIO';
 const MAX_CANDIDATES = 5;
@@ -93,6 +94,7 @@ export function buildDuxCatalogMatchingAnalysis(input) {
         code: working.item.code,
         name: working.item.name,
         publicPrice: publicPrice(working.item),
+        priceStatus: readDuxAnalysisPrice(working.item.prices).status,
         categoryNames: Object.freeze([
           ...(working.item.category === null ? [] : [working.item.category.name]),
           ...(working.item.subcategory === null ? [] : [working.item.subcategory.name]),
@@ -146,10 +148,14 @@ export function buildDuxCatalogMatchingAnalysis(input) {
       authority: Object.freeze({
         existence: 'dux',
         name: 'dux',
+        sku: 'dux',
         price: 'dux',
+        priceStatus: 'dux',
         stock: 'dux',
+        categories: 'dux',
       }),
       local: 'editorial_enrichment_only',
+      automaticFields: Object.freeze(['images', 'description']),
       mercadoLibre: 'editorial_evidence_only',
       writesPerformed: false,
     }),
@@ -609,12 +615,7 @@ function localSummary(product) {
 }
 
 function publicPrice(item) {
-  const matches = item.prices.filter((price) =>
-    price.name.toLocaleUpperCase('es-AR') === PRICE_LIST);
-  const match = matches.length === 1 ? matches[0] : undefined;
-  return match !== undefined && Number.isFinite(match.amount) && match.amount > 0
-    ? match.amount
-    : null;
+  return readDuxAnalysisPrice(item.prices).amount;
 }
 
 function normalizeIdentifier(value) {

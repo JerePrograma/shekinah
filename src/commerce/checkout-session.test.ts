@@ -21,6 +21,7 @@ function item(id: string, quantity: number): CartItem {
     categorySlugs: [],
     categoryNames: [],
     price: { amount: 100, currency: 'ARS' },
+    priceStatus: 'usable',
   };
   return { product, quantity, unitPrice: 100, subtotal: quantity * 100 };
 }

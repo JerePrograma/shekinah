@@ -1,0 +1,637 @@
+{
+  "schemaVersion": 1,
+  "purpose": "historical_price_regression_only",
+  "sourceSha256": {
+    "summary": "5138118ee9ceeaa24bf79686eb60e2df50f411b7b577664c96cbfd28ba3fc9a1",
+    "priceBlockersCsv": "3f321363b8d9a2efabeb323803bc0508a390c0daf3a4c29b30468c78d1f38453"
+  },
+  "counts": {
+    "total": 747,
+    "usable": 592,
+    "placeholder": 87,
+    "missingOrZero": 68,
+    "nonUsable": 155
+  },
+  "blockers": [
+    {
+      "code": "799000091",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000110",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000111",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000113",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000127",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000138",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000142",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000144",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000147",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000153",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000154",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000155",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000207",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000212",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000214",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000223",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000252",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000265",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000274",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000279",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000285",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000291",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000301",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000306",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000314",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000319",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000321",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000327",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000353",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000355",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000360",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000373",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000377",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000381",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000386",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000387",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000393",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000398",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000406",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000420",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000422",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000428",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000429",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000458",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000461",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000496",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000497",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000498",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000500",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000505",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000507",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000508",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000517",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000518",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000519",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000523",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000535",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000536",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000537",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000538",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000539",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000540",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000541",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000542",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000543",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000544",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000545",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000546",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000547",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000548",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000549",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000550",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000551",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000552",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000553",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000554",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000555",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000556",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000634",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000635",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000636",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000639",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000664",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000667",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000669",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000670",
+      "status": "placeholder"
+    },
+    {
+      "code": "799000677",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000678",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000679",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000680",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000681",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000682",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000683",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000684",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000685",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000686",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000687",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000688",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000689",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000690",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000691",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000692",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000693",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000694",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000695",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000696",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000697",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000698",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000699",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000700",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000701",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000702",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000703",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000704",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000706",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000707",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000708",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000709",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000710",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000711",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000712",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000713",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000714",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000715",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000716",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000717",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000718",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000719",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000720",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000721",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000722",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000723",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000724",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000725",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000726",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000727",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000728",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000729",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000730",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000731",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000732",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000733",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000734",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000735",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000736",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000737",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000738",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000739",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000740",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000741",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000742",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000743",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000744",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000745",
+      "status": "missing_or_zero"
+    },
+    {
+      "code": "799000746",
+      "status": "placeholder"
+    }
+  ]
+}

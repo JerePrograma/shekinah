@@ -78,7 +78,7 @@ export function parseStoredCart(
     if (quantities.size >= MAX_CART_LINES) break;
     if (!isRecord(candidate) || typeof candidate.productId !== 'string') continue;
     const product = knownProducts.get(candidate.productId);
-    if (product === undefined) continue;
+    if (product === undefined || product.price === null || product.priceStatus !== 'usable') continue;
     const quantity = normalizeQuantity(candidate.quantity, MAX_CART_QUANTITY);
     if (quantity === null) continue;
     quantities.set(
@@ -200,7 +200,7 @@ export function summarizeCart(
   const productById = new Map(products.map((product) => [product.id, product]));
   const items = cart.items.flatMap((line): readonly CartItem[] => {
     const product = productById.get(line.productId);
-    if (product === undefined) return [];
+    if (product === undefined || product.price === null || product.priceStatus !== 'usable') return [];
     const unitPrice = (product.salePrice ?? product.price).amount;
     return [
       Object.freeze({

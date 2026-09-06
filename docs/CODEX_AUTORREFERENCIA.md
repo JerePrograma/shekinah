@@ -1,5 +1,13 @@
 # Shekinah — Autorreferencia operativa de Codex
 
+## Contrato vigente de catálogo completo — 2026-09-06
+
+La iteración iniciada en `60bdbb62db4e39f1639978f422db0516745cec9c` se rige por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md). Dux determina existencia, nombre, código/SKU, precio/estado, stock y categorías; el contenido local reutilizable se limita a imágenes y descripción mediante vínculos explícitos. Los productos sin precio usable, sin vínculo, pendientes o descartados editorialmente siguen visibles como Dux-only cuando el catálogo público está habilitado. Descartar enriquecimiento no descarta el producto Dux.
+
+`0017_dux_complete_public_catalog.sql` agrega snapshot v2 y `public_catalog_enabled`, con tres controles independientes que nacen en `0`. Colección permite snapshot; catálogo público selecciona el universo Dux y admite «Consultar precio»; `public_cutover_enabled` conserva el corte transaccional cerrado. El triage baseline tiene 135 auto-confirmados, 294 pendientes y 318 descartes; Mercado Libre aporta 0 evidencias observadas y no es autoridad. El tamaño público futuro depende del snapshot, no de 747 hardcodeado.
+
+En la iteración de código no se ejecutan D1 remoto, sync, activación, Mercado Libre, pagos, pedidos, reservas ni stock Dux. Después del commit, CI verde y deployment Pages verificado del mismo SHA, el procedimiento usa `scripts/finalize-dux-catalog.ps1`: `Validate` local por defecto; Preview explícita; Production sólo con recibo Preview verde y confirmación explícita. Rollback: `public_catalog_enabled=0`, conserva datos y vuelve al catálogo local sin revertir migraciones. Los estados y autorizaciones fechados que siguen son históricos y no amplían este contrato; el informe final acredita por separado pruebas, SHA, CI y deployment.
+
 ```yaml
 schema_version: 2
 project: shekinah

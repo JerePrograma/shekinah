@@ -828,7 +828,7 @@ function formFromProduct(product: CatalogProductDetail): ProductFormState {
     name: product.name,
     categorySlugs: product.categorySlugs,
     presentation: product.presentation ?? '',
-    price: String(product.price.amount),
+    price: product.price === null ? '' : String(product.price.amount),
     salePrice: product.salePrice === undefined ? '' : String(product.salePrice.amount),
     sku: product.sku ?? '',
     availability: product.availability === 'unavailable' ? 'unavailable' : 'available',
@@ -874,8 +874,13 @@ function productComparator(sort: ProductSort) {
       return categoryComparison || compareNames(left, right);
     }
     if (sort === 'price-asc' || sort === 'price-desc') {
-      const difference = (left.salePrice ?? left.price).amount -
-        (right.salePrice ?? right.price).amount;
+      const leftPrice = left.salePrice ?? left.price;
+      const rightPrice = right.salePrice ?? right.price;
+      if (leftPrice === null || rightPrice === null) {
+        if (leftPrice === null && rightPrice === null) return compareNames(left, right);
+        return leftPrice === null ? 1 : -1;
+      }
+      const difference = leftPrice.amount - rightPrice.amount;
       return (sort === 'price-desc' ? -difference : difference) || compareNames(left, right);
     }
     if (sort === 'stock-asc' || sort === 'stock-desc') {

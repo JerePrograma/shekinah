@@ -210,6 +210,7 @@ function product(
     name,
     categorySlugs: Object.freeze([]),
     categoryNames: Object.freeze([]),
+    priceStatus: 'usable',
     price: Object.freeze({
       amount: 1_000,
       currency: 'ARS' as const,

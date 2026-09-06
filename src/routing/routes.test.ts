@@ -89,6 +89,7 @@ describe('rutas de la aplicación', () => {
       categorySlugs: [],
       categoryNames: [],
       price: { amount: 1_000, currency: 'ARS' },
+      priceStatus: 'usable',
     })).toMatchObject({
       id: 'product',
       productSlug: 'producto-creado-desde-backoffice',

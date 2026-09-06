@@ -11,6 +11,7 @@ const product: Product = {
   categorySlugs: [],
   categoryNames: [],
   price: { amount: 1234, currency: 'ARS' },
+  priceStatus: 'usable',
 };
 const item: CartItem = { product, quantity: 2, unitPrice: 1234, subtotal: 2468 };
 const fulfillment: CheckoutFulfillment = {
