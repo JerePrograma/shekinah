@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { onRequest as importEndpoint } from '../functions/api/admin/dux/editorial-triage/import';
+import { onRequest as linksImportEndpoint } from '../functions/api/admin/dux/editorial-links/import';
 import { onRequest as reviewEndpoint } from '../functions/api/admin/dux/editorial-triage/review';
 import { onRequest as listEndpoint } from '../functions/api/admin/dux/editorial-triage';
 import type { CatalogProductDetail } from '../src/catalog/model';
@@ -213,6 +214,31 @@ describe('triage editorial Dux versionado y revisión', () => {
       expect((await reviewEndpoint(context(test.database, reviewRequest))).status).toBe(200);
       expect(test.sqlite.prepare('SELECT DISTINCT outcome_status FROM admin_audit ORDER BY outcome_status').all()).toEqual([{ outcome_status: 200 }, { outcome_status: 400 }, { outcome_status: 403 }, { outcome_status: 409 }, { outcome_status: 503 }]);
       expect(() => parseDuxTriageReview({ ...approval(), price: 10 })).toThrow();
+    } finally { test.close(); }
+  });
+
+  it.each([
+    ['editorial-links', linksImportEndpoint, 'DUX_EDITORIAL_IMPORT_BODY_NOT_ALLOWED'],
+    ['editorial-triage', importEndpoint, 'DUX_TRIAGE_IMPORT_BODY_NOT_ALLOWED'],
+  ] as const)('importación %s acepta streams vacíos y rechaza cualquier byte del cliente', async (path, endpoint, errorCode) => {
+    const test = database();
+    try {
+      const request = (body?: string) => new Request(`https://example.test/api/admin/dux/${path}/import`, {
+        method: 'POST', headers: { origin: 'https://example.test', 'content-type': 'application/x-www-form-urlencoded', 'content-length': '0' },
+        ...(body === undefined ? {} : { body }),
+      });
+      expect((await endpoint(context(test.database, request()))).status).toBe(200);
+      const empty = request('');
+      expect(empty.body).not.toBeNull();
+      const repeated = await endpoint(context(test.database, empty));
+      expect(repeated.status).toBe(200);
+      expect(await repeated.json()).toMatchObject({ created: 0, idempotent: true });
+      for (const body of ['{}', ' ', 'null', '\u0000']) {
+        const rejected = await endpoint(context(test.database, request(body)));
+        expect(rejected.status).toBe(400);
+        expect(await rejected.json()).toMatchObject({ error: { code: errorCode } });
+      }
+      expect(test.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally { test.close(); }
   });
 

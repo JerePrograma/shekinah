@@ -1,4 +1,26 @@
-import { assertSameOrigin, readJsonBody } from './validation';
+import { assertSameOrigin, readJsonBody, requestHasBodyBytes } from './validation';
+
+describe('detección de bytes en imports sin payload', () => {
+  it('corta y cancela al primer byte sin acumular el resto del stream', async () => {
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(0));
+        controller.enqueue(new Uint8Array([0]));
+        controller.enqueue(new Uint8Array(1_000_000));
+      }, cancel,
+    });
+    await expect(requestHasBodyBytes({ body: stream } as Request)).resolves.toBe(true);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+  });
+
+  it('rechaza una lectura fallida sin dejar el stream bloqueado', async () => {
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error('Stream failed')); } });
+    await expect(requestHasBodyBytes({ body: stream } as Request)).rejects.toThrow('Stream failed');
+    expect(stream.locked).toBe(false);
+  });
+});
 
 describe('lectura acotada de JSON', () => {
   it('acepta JSON dentro del límite sin Content-Length', async () => {

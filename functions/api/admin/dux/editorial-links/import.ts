@@ -6,7 +6,7 @@ import {
 } from '../../../../../server/dux-editorial-links';
 import { HttpError, jsonResponse, methodNotAllowedResponse } from '../../../../../server/http';
 import type { AdminContextData, Env, PagesFunction } from '../../../../../server/platform';
-import { assertSameOrigin } from '../../../../../server/validation';
+import { assertSameOrigin, requestHasBodyBytes } from '../../../../../server/validation';
 
 export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
   data,
@@ -22,7 +22,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
     'admin.dux.editorial-links.import',
     async (database) => {
       assertSameOrigin(request, env);
-      if (request.body !== null) {
+      if (await requestHasBodyBytes(request)) {
         throw new HttpError(
           400,
           'DUX_EDITORIAL_IMPORT_BODY_NOT_ALLOWED',

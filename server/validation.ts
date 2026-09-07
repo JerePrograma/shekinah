@@ -152,6 +152,22 @@ function parseConfiguredOrigin(value: string): string {
   return url.origin;
 }
 
+/** A zero-byte HTTP stream is equivalent to an absent body; headers are not evidence. */
+export async function requestHasBodyBytes(request: Request): Promise<boolean> {
+  if (request.body === null) return false;
+  const reader = request.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return false;
+      if (value.byteLength > 0) {
+        await reader.cancel().catch(() => undefined);
+        return true;
+      }
+    }
+  } finally { reader.releaseLock(); }
+}
+
 export async function readJsonBody(
   request: Request,
   maximumBytes = 32_768,
