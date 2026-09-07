@@ -21,6 +21,7 @@ it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real D
   expect(stock).toHaveTextContent('Reservado0,25');
   expect(stock).toHaveTextContent(availabilityState === 'out_of_stock' ? 'Disponible-0,5' : 'Disponible738,262345');
   expect(stock.querySelector('time')).toHaveAttribute('datetime', '2026-09-07T18:59:00.000Z');
+  expect(stock.querySelector('time')).toHaveTextContent('15:59:00');
   expect(stock).not.toHaveTextContent(/kilogramos|unidades/iu);
   if (availabilityState === 'updating') expect(stock).toHaveTextContent('necesita actualizarse');
   expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();

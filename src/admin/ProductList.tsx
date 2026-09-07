@@ -415,6 +415,8 @@ function formatDuxSyncedAt(syncedAt: string): string {
   return new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'short',
     timeStyle: 'medium',
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour12: false,
   }).format(new Date(syncedAt));
 }
 

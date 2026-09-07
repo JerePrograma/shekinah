@@ -13,7 +13,7 @@ export function DuxStock({ product }: Readonly<{ product: Product }>) {
       <div><dt>Reservado</dt><dd>{formatDuxStockQuantity(stock.reserved)}</dd></div>
       <div><dt>Disponible</dt><dd>{formatDuxStockQuantity(stock.available)}</dd></div>
     </dl>
-    <p>Última lectura: <time dateTime={inventory.stockSyncedAt ?? inventory.syncedAt}>{new Date(inventory.stockSyncedAt ?? inventory.syncedAt).toLocaleString('es-AR')}</time>.</p>
+    <p>Última lectura: <time dateTime={inventory.stockSyncedAt ?? inventory.syncedAt}>{new Date(inventory.stockSyncedAt ?? inventory.syncedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false })}</time> (Argentina).</p>
     {inventory.depositName === undefined ? null : <p>Depósito: {inventory.depositName}.</p>}
     {inventory.availabilityState === 'updating' || inventory.availabilityState === 'unavailable'
       ? <p>Esta lectura necesita actualizarse para confirmar las existencias actuales.</p> : null}
