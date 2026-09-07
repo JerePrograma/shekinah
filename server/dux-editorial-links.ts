@@ -81,11 +81,10 @@ type LinkRow = Readonly<{
   active: unknown;
 }>;
 
-const approvedManifest = parseApprovedManifest(approvedManifestJson);
-const approvedLinksInsertSql = buildApprovedLinksInsertSql(approvedManifest.links);
+let parsedApprovedManifest: ApprovedManifest | undefined;
 
 export function getApprovedDuxEditorialManifest(): ApprovedManifest {
-  return approvedManifest;
+  return parsedApprovedManifest ??= parseApprovedManifest(approvedManifestJson);
 }
 
 export async function importApprovedDuxEditorialLinks(
@@ -94,6 +93,7 @@ export async function importApprovedDuxEditorialLinks(
   actor: string,
   localProducts: readonly CatalogProductDetail[],
 ): Promise<DuxEditorialImportResult> {
+  const approvedManifest = getApprovedDuxEditorialManifest();
   requireExpectedDuxCompany(env);
   const control = await readDuxCatalogControl(database);
   if (!control.migrationApplied) throw editorialMigrationRequired();
@@ -132,7 +132,7 @@ export async function importApprovedDuxEditorialLinks(
       safeActor,
       now,
     ),
-    database.prepare(approvedLinksInsertSql).bind(safeActor, now),
+    database.prepare(buildApprovedLinksInsertSql(approvedManifest.links)).bind(safeActor, now),
   ];
 
   try {
@@ -359,6 +359,7 @@ async function readImport(database: D1Database, batchId: string): Promise<Import
 }
 
 function assertStoredImportMatches(row: ImportRow): void {
+  const approvedManifest = getApprovedDuxEditorialManifest();
   if (
     row.company_id !== approvedManifest.companyId ||
     row.source_manifest_sha256 !== DUX_EDITORIAL_SOURCE_MANIFEST_SHA256 ||
@@ -377,6 +378,7 @@ function assertStoredImportMatches(row: ImportRow): void {
 }
 
 async function assertStoredLinksMatch(database: D1Database): Promise<void> {
+  const approvedManifest = getApprovedDuxEditorialManifest();
   const result = await database
     .prepare(
       `SELECT cod_item, local_product_id, reuse_images, reuse_description,
@@ -409,6 +411,7 @@ async function assertStoredLinksMatch(database: D1Database): Promise<void> {
 }
 
 async function assertNoActiveConflicts(database: D1Database): Promise<void> {
+  const approvedManifest = getApprovedDuxEditorialManifest();
   let rows: readonly LinkRow[];
   try {
     const result = await database

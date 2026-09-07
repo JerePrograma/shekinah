@@ -35,15 +35,16 @@ export type DuxTriageReview = Readonly<{
   localProductId?: string; reuseImages?: boolean; reuseDescription?: boolean;
 }>;
 
-const manifest = parseManifest();
+let parsedManifest: ReturnType<typeof parseManifest> | undefined;
 
 export function getDuxEditorialTriageManifest(): Readonly<{
   companyId: string; batchId: string; items: readonly DuxTriageEvidence[];
 }> {
-  return manifest;
+  return parsedManifest ??= parseManifest();
 }
 
 export async function importDuxEditorialTriage(database: D1Database, env: Env, actor: string) {
+  const manifest = getDuxEditorialTriageManifest();
   requireExpectedDuxCompany(env);
   await requireVerifiedDuxCatalogTenant(database);
   const safeActor = readSafeText(actor, 'actor', 512);
@@ -308,7 +309,7 @@ async function assertStoredEvidence(database: D1Database): Promise<void> {
 }
 
 function evidenceForRow(row: Pick<TriageRow, 'cod_item' | 'evidence_json'>): DuxTriageEvidence {
-  const evidence = manifest.items.find((item) => item.duxCode === row.cod_item);
+  const evidence = getDuxEditorialTriageManifest().items.find((item) => item.duxCode === row.cod_item);
   if (evidence === undefined || JSON.stringify(JSON.parse(row.evidence_json)) !== JSON.stringify(evidence)) throw evidenceConflict();
   return evidence;
 }

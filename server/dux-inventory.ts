@@ -226,6 +226,18 @@ type PersistedMappingRow = Readonly<{
 
 type InventoryRow = Readonly<Record<string, unknown>>;
 
+// Display reads validate the complete public inventory unit without transferring
+// the large provider evidence payload, which is only used by reconciliation.
+const inventoryDisplayColumns = `inventory.inventory_key, inventory.cod_item,
+  inventory.id_det_item, inventory.codigo_externo, inventory.cod_barra, inventory.item_name,
+  inventory.local_product_id, inventory.mapping_status, inventory.mapping_source,
+  inventory.mapping_candidates_json, inventory.deposit_id, inventory.deposit_name,
+  inventory.stock_real, inventory.stock_reservado, inventory.stock_disponible,
+  inventory.units_per_package, inventory.unit_id, inventory.unit_name, inventory.unit_symbol,
+  inventory.is_weighable, inventory.allows_decimal, inventory.commercial_quantity_step,
+  inventory.quantity_semantics_status, inventory.checkout_eligible, inventory.catalog_version,
+  inventory.last_sync_status, inventory.last_sync_error_code, inventory.absent_since`;
+
 export function readDuxInventoryConfig(env: Env): DuxInventoryConfig {
   requireDuxApiEnabled(env);
   const accessToken = env.DUX_API_TOKEN;
@@ -395,7 +407,7 @@ export async function listDuxInventoryUnits(
   const nowMilliseconds = validDate(now, 'DUX_CLOCK_INVALID').getTime();
   const result = await database
     .prepare(
-      `SELECT inventory.*,
+      `SELECT ${inventoryDisplayColumns},
         COALESCE(tenant.verified_at, inventory.last_synced_at) AS snapshot_synced_at
        FROM dux_inventory_items AS inventory
        LEFT JOIN dux_tenant_context AS tenant ON tenant.id = 1
@@ -416,7 +428,7 @@ export async function getDuxInventoryUnitForDisplay(
   const safeProductId = requiredDatabaseText(localProductId, 180, 'DUX_PRODUCT_ID_INVALID');
   const result = await database
     .prepare(
-      `SELECT inventory.*,
+      `SELECT ${inventoryDisplayColumns},
         COALESCE(tenant.verified_at, inventory.last_synced_at) AS snapshot_synced_at
        FROM dux_inventory_items AS inventory
        LEFT JOIN dux_tenant_context AS tenant ON tenant.id = 1
@@ -437,6 +449,27 @@ export async function getDuxInventoryUnitForDisplay(
     readDuxSnapshotMaxAgeSeconds(env),
     validDate(now, 'DUX_CLOCK_INVALID').getTime(),
   );
+}
+
+export async function listDuxInventoryUnitsForItem(
+  database: D1Database,
+  env: Env,
+  itemCode: string,
+  now = new Date(),
+): Promise<readonly DuxInventoryUnit[]> {
+  const safeCode = requiredDatabaseText(itemCode, 300, 'DUX_ITEM_CODE_INVALID');
+  const maximumAgeSeconds = readDuxSnapshotMaxAgeSeconds(env);
+  const nowMilliseconds = validDate(now, 'DUX_CLOCK_INVALID').getTime();
+  const result = await database.prepare(
+    `SELECT ${inventoryDisplayColumns},
+      COALESCE(tenant.verified_at, inventory.last_synced_at) AS snapshot_synced_at
+     FROM dux_inventory_items AS inventory
+     LEFT JOIN dux_tenant_context AS tenant ON tenant.id = 1
+     WHERE inventory.cod_item = ?1
+     ORDER BY inventory.local_product_id, inventory.inventory_key`,
+  ).bind(safeCode).all<InventoryRow>();
+  return Object.freeze((result.results ?? []).map((row) =>
+    parseInventoryRow(row, maximumAgeSeconds, nowMilliseconds)));
 }
 
 export async function getDuxInventoryStatus(

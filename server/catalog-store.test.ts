@@ -8,6 +8,7 @@ import {
   getBaseCatalogCategories,
   getBaseCatalogProductDetail,
   getCatalogProductDetail,
+  getCatalogProductDetailsForIds,
   listCatalogProductDetails,
   listCatalogProducts,
   listRuntimeCatalogProductDetails,
@@ -32,6 +33,20 @@ const duxMigration = readFileSync(
 const actor = 'admin@example.test';
 
 describe('catálogo efectivo persistido en D1', () => {
+  it('consulta únicamente las fuentes editoriales pedidas y observa cambios y borrados de D1', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const base = requireBaseProduct('guayaba');
+      expect(await getCatalogProductDetailsForIds(testD1.database, [base.id, base.id, 'no-existe']))
+        .toEqual([base]);
+      const updated = await updateCatalogProduct(testD1.database, base.id, { ...base, name: 'Nombre actualizado' }, actor);
+      expect(await getCatalogProductDetailsForIds(testD1.database, [base.id])).toEqual([updated]);
+      await deleteCatalogProduct(testD1.database, base.id, actor);
+      expect(await getCatalogProductDetailsForIds(testD1.database, [base.id])).toEqual([]);
+      expect(await getCatalogProductDetailsForIds(testD1.database, [])).toEqual([]);
+    } finally { testD1.close(); }
+  });
+
   it('mantiene la colación española del catálogo local con mutaciones editoriales', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {

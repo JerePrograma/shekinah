@@ -297,6 +297,18 @@ export function projectDuxRuntimeCatalog(
   });
 }
 
+export function projectDuxRuntimeProduct(
+  snapshot: DuxCatalogSnapshot,
+  productId: string,
+  inventoryUnits: readonly DuxInventoryUnit[],
+): CatalogProductDetail | null {
+  const item = snapshot.items.find((candidate) => candidate.slug === productId);
+  if (item === undefined) return null;
+  const units = inventoryUnits.filter((unit) =>
+    unit.itemCode === item.code && unit.lastSyncStatus !== 'absent');
+  return projectProduct(item, snapshot, resolveProductMapping(units), productId);
+}
+
 function buildStoredPayload(
   sourceItems: readonly DuxCatalogSourceItem[],
 ): StoredDuxCatalogPayload {

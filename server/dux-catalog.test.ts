@@ -8,6 +8,7 @@ import {
   parseDuxCatalogSourceItems,
   persistDuxCatalogSnapshot,
   projectDuxRuntimeCatalog,
+  projectDuxRuntimeProduct,
   readDuxCatalogSnapshot,
 } from './dux-catalog';
 import type { DuxInventoryUnit } from './dux-inventory';
@@ -151,6 +152,11 @@ describe('catálogo público autoritativo de Dux', () => {
       ]);
 
       const mapped = projected.products.find(({ sku }) => sku === 'A');
+      for (const product of projected.products) {
+        expect(projectDuxRuntimeProduct(snapshot, product.id, [inventoryUnit('A', 'hierba-local')]))
+          .toEqual(product);
+      }
+      expect(projectDuxRuntimeProduct(snapshot, 'solo-local', [])).toBeNull();
       expect(mapped).toMatchObject({
         name: 'HIERBA DESDE DUX',
         price: { amount: 1_250, currency: 'ARS' },

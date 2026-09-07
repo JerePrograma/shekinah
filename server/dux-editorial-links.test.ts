@@ -19,7 +19,7 @@ import {
   getApprovedDuxEditorialManifest,
   importApprovedDuxEditorialLinks,
 } from './dux-editorial-links';
-import { readPublicCatalog } from './dux-public-catalog';
+import { getPublicCatalogProductDetail, readPublicCatalog } from './dux-public-catalog';
 
 const commerceMigration = migration('0001_commerce.sql');
 const catalogMigration = migration('0004_catalog_admin.sql');
@@ -326,9 +326,31 @@ describe('control y vínculos editoriales Dux', () => {
       expect(catalog.source).toBe('legacy-bootstrap');
       expect(catalog.products.length).toBeGreaterThan(100);
       expect(catalog.products.some(({ id }) => id === 'adobo-pizza-gourmet')).toBe(true);
+      const local = catalog.productDetails.find(({ id }) => id === 'adobo-pizza-gourmet');
+      expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, 'adobo-pizza-gourmet')).toEqual(local);
     } finally {
       testD1.close();
     }
+  });
+
+  it('el detalle acotado conserva el enriquecimiento explícito y coincide con el listado', async () => {
+    const testD1 = database();
+    try {
+      insertCompletedRun(testD1, 'dux_sync_scoped_detail');
+      enableSnapshotCollection(testD1);
+      insertRawSnapshot(testD1, 'dux_sync_scoped_detail', 3500, [rawItem('799000001', 'NOMBRE DUX', 3500)]);
+      const local = await listCatalogProductDetails(testD1.database);
+      await importApprovedDuxEditorialLinks(testD1.database, companyEnv, 'test', local);
+      await updateDuxCatalogControl(testD1.database, 'test', { publicCatalogEnabled: true });
+      const catalog = await readPublicCatalog(testD1.database, companyEnv);
+      const listed = catalog.productDetails[0];
+      if (listed === undefined) throw new Error('Falta la ficha Dux de prueba.');
+      const detail = await getPublicCatalogProductDetail(testD1.database, companyEnv, listed.id);
+      expect(detail).toEqual(listed);
+      const editorial = local.find((product) => product.id === 'adobo-pizza-gourmet');
+      expect(detail).toMatchObject({ name: 'NOMBRE DUX', sku: '799000001', price: { amount: 3500 },
+        description: editorial?.description, images: editorial?.images, commerce: { checkoutEligible: false } });
+    } finally { testD1.close(); }
   });
 
   it('public_catalog=1 publica sólo universo Dux y mantiene checkoutEligible=false', async () => {
@@ -351,6 +373,11 @@ describe('control y vínculos editoriales Dux', () => {
       expect(catalog.products.every(({ commerce }) =>
         commerce?.source === 'dux' && commerce.checkoutEligible === false,
       )).toBe(true);
+      for (const product of catalog.productDetails) {
+        expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, product.id)).toEqual(product);
+      }
+      expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, 'adobo-pizza-gourmet')).toBeNull();
+      expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, '@')).toBeNull();
     } finally {
       testD1.close();
     }

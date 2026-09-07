@@ -20,21 +20,30 @@ import { expireWhatsappReservations } from './stock-reservations';
 
 const baseCategories = parseCategories(categorySource);
 const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
-const baseProducts = parseProducts(catalogIndexSource, baseCategories);
-const baseDetailById = new Map(
-  baseProducts.map((product) => {
-    const rawDetails = (catalogDetailSource as Record<string, unknown>)[product.id];
-    if (rawDetails === undefined) {
-      throw new Error(`Falta el detalle canónico de "${product.id}".`);
-    }
-    return [product.id, parseProductDetail(product, rawDetails)] as const;
-  }),
-);
-const authorizedImagePaths = new Set(
-  [...baseDetailById.values()].flatMap((product) =>
-    product.images.map((image) => image.src),
-  ),
-);
+// Only compiled, immutable assets are memoized; D1 data is read on every request.
+let baseProducts: readonly Product[] | undefined;
+const baseDetailById = new Map<string, CatalogProductDetail>();
+let authorizedImagePaths: ReadonlySet<string> | undefined;
+
+function baseDetail(product: Product): CatalogProductDetail {
+  const existing = baseDetailById.get(product.id);
+  if (existing !== undefined) return existing;
+  const rawDetails = (catalogDetailSource as Record<string, unknown>)[product.id];
+  if (rawDetails === undefined) throw new Error(`Falta el detalle canónico de "${product.id}".`);
+  const detail = parseProductDetail(product, rawDetails);
+  baseDetailById.set(product.id, detail);
+  return detail;
+}
+
+function allBaseDetails(): ReadonlyMap<string, CatalogProductDetail> {
+  return new Map(getBaseCatalogProducts().map((product) => [product.id, baseDetail(product)]));
+}
+
+function isAuthorizedOriginalImage(path: string): boolean {
+  authorizedImagePaths ??= new Set([...allBaseDetails().values()].flatMap((product) =>
+    product.images.map((image) => image.src)));
+  return authorizedImagePaths.has(path);
+}
 
 export type CatalogMutationRow = Readonly<{
   product_id: string;
@@ -43,7 +52,7 @@ export type CatalogMutationRow = Readonly<{
 }>;
 
 export function getBaseCatalogProducts(): readonly Product[] {
-  return baseProducts;
+  return baseProducts ??= parseProducts(catalogIndexSource, baseCategories);
 }
 
 export function getBaseCatalogCategories() {
@@ -52,7 +61,13 @@ export function getBaseCatalogCategories() {
 
 export function getBaseCatalogProductDetail(productId: string): CatalogProductDetail | null {
   assertProductId(productId);
-  return baseDetailById.get(productId) ?? null;
+  const existing = baseDetailById.get(productId);
+  if (existing !== undefined) return existing;
+  const raw = catalogIndexSource.find((product) => product.id === productId);
+  if (raw === undefined) return null;
+  const product = parseProducts([raw], baseCategories)[0];
+  if (product === undefined) return null;
+  return baseDetail(product);
 }
 
 export async function listCatalogProducts(database: D1Database): Promise<readonly Product[]> {
@@ -100,7 +115,7 @@ export async function getRuntimeCatalogProductDetail(
 export async function listCatalogProductDetails(
   database: D1Database,
 ): Promise<readonly CatalogProductDetail[]> {
-  const merged = new Map(baseDetailById);
+  const merged = new Map(allBaseDetails());
   let rows: readonly CatalogMutationRow[];
   try {
     const result = await database
@@ -148,16 +163,46 @@ export async function getCatalogProductDetail(
       .first<CatalogMutationRow>();
   } catch (error: unknown) {
     if (isMissingCatalogTable(error)) {
-      return baseDetailById.get(productId) ?? null;
+      return getBaseCatalogProductDetail(productId);
     }
     throw error;
   }
 
   if (row === null) {
-    return baseDetailById.get(productId) ?? null;
+    return getBaseCatalogProductDetail(productId);
   }
   if (row.deleted === 1 || row.payload_json === null) return null;
   return parseStoredProduct(row.payload_json);
+}
+
+export async function getCatalogProductDetailsForIds(
+  database: D1Database,
+  productIds: readonly string[],
+): Promise<readonly CatalogProductDetail[]> {
+  const ids = [...new Set(productIds)];
+  ids.forEach(assertProductId);
+  if (ids.length === 0) return Object.freeze([]);
+  const merged = new Map<string, CatalogProductDetail>();
+  for (const id of ids) {
+    const product = getBaseCatalogProductDetail(id);
+    if (product !== null) merged.set(id, product);
+  }
+  let rows: readonly CatalogMutationRow[];
+  try {
+    const result = await database.prepare(
+      `SELECT product_id, payload_json, deleted FROM catalog_product_mutations
+       WHERE product_id IN (SELECT value FROM json_each(?1))`,
+    ).bind(JSON.stringify(ids)).all<CatalogMutationRow>();
+    rows = result.results ?? [];
+  } catch (error: unknown) {
+    if (isMissingCatalogTable(error)) return Object.freeze([...merged.values()]);
+    throw error;
+  }
+  for (const row of rows) {
+    if (row.deleted === 1 || row.payload_json === null) merged.delete(row.product_id);
+    else merged.set(row.product_id, parseStoredProduct(row.payload_json));
+  }
+  return Object.freeze([...merged.values()]);
 }
 
 export async function createCatalogProduct(
@@ -459,7 +504,7 @@ function parseWritableProduct(
     const detail = parseProductDetail(summary, writableValue);
     const unauthorizedImage = detail.images.find(
       (image) =>
-        !authorizedImagePaths.has(image.src) && !isManagedCatalogImagePath(image.src),
+        !isAuthorizedOriginalImage(image.src) && !isManagedCatalogImagePath(image.src),
     );
     if (unauthorizedImage !== undefined) {
       throw new InvalidProductError(

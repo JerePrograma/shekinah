@@ -18,6 +18,7 @@ import {
   getDuxInventoryUnitForDisplay,
   isDuxInventoryBootstrapPending,
   listDuxInventoryUnits,
+  listDuxInventoryUnitsForItem,
   readDuxInventoryConfig,
   syncDuxInventory,
   DUX_STAGING_JSON_MAX_BYTES,
@@ -48,6 +49,23 @@ const env: Env = Object.freeze({
 });
 
 describe('proyección autoritativa read-only de Dux', () => {
+  it('lee por código exacto conservando stock y frescura y sin mezclar otros productos', async () => {
+    const testD1 = database();
+    try {
+      await sync(testD1, reader([
+        item('A', 'Primero', [stock(3, 7.5)]),
+        item('B', 'Segundo', [stock(3, 2)]),
+      ]), [], 'dux_sync_exact_item', '2026-08-26T10:00:00.000Z');
+      const now = date('2026-08-26T10:01:00.000Z');
+      const all = await listDuxInventoryUnits(testD1.database, env, now);
+      expect(await listDuxInventoryUnitsForItem(testD1.database, env, 'A', now))
+        .toEqual(all.filter((unit) => unit.itemCode === 'A'));
+      expect(await listDuxInventoryUnitsForItem(testD1.database, env, "A' OR 1=1 --", now)).toEqual([]);
+      expect(await listDuxInventoryUnitsForItem(testD1.database, env, 'A', date('2026-08-26T10:10:00.000Z')))
+        .toEqual([expect.objectContaining({ itemCode: 'A', fresh: false, checkoutEligible: false })]);
+    } finally { testD1.close(); }
+  });
+
   it('detecta bootstrap pendiente con exactamente una consulta D1', async () => {
     const testD1 = database();
     try {

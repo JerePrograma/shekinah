@@ -4,12 +4,15 @@ import type {
   Product,
 } from '../src/catalog/model';
 import {
-  listCatalogProductDetails,
+  getCatalogProductDetail,
+  getCatalogProductDetailsForIds,
+  getRuntimeCatalogProductDetail,
   listRuntimeCatalogProductDetails,
   toProductSummary,
 } from './catalog-store';
 import {
   projectDuxRuntimeCatalog,
+  projectDuxRuntimeProduct,
   readDuxCatalogSnapshot,
 } from './dux-catalog';
 import {
@@ -20,7 +23,7 @@ import {
   applyDuxEditorialLinks,
   listActiveDuxEditorialLinks,
 } from './dux-editorial-links';
-import { listDuxInventoryUnits } from './dux-inventory';
+import { listDuxInventoryUnits, listDuxInventoryUnitsForItem } from './dux-inventory';
 import type { D1Database, Env } from './platform';
 
 const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
@@ -54,17 +57,18 @@ export async function readPublicCatalog(
 
   requireExpectedDuxCompany(env);
   const snapshot = await readDuxCatalogSnapshot(database);
-  let localProducts: readonly CatalogProductDetail[];
-  try {
-    localProducts = await listCatalogProductDetails(database);
-  } catch {
-    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
-    localProducts = Object.freeze([]);
-  }
   const [inventoryUnits, editorialLinks] = await Promise.all([
     listDuxInventoryUnits(database, env),
     listActiveDuxEditorialLinks(database),
   ]);
+  let localProducts: readonly CatalogProductDetail[];
+  try {
+    localProducts = await getCatalogProductDetailsForIds(database,
+      editorialLinks.map((link) => link.localProductId));
+  } catch {
+    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
+    localProducts = Object.freeze([]);
+  }
   const duxRuntime = projectDuxRuntimeCatalog(
     snapshot,
     Object.freeze([]),
@@ -89,8 +93,28 @@ export async function getPublicCatalogProductDetail(
   productId: string,
 ): Promise<CatalogProductDetail | null> {
   if (!/^[a-z0-9][a-z0-9-]{0,179}$/u.test(productId)) return null;
-  const catalog = await readPublicCatalog(database, env);
-  return catalog.productDetails.find((product) => product.id === productId) ?? null;
+  const control = await readDuxCatalogControl(database);
+  if (!control.publicCatalogEnabled) return getRuntimeCatalogProductDetail(database, env, productId);
+  requireExpectedDuxCompany(env);
+  // Keep full snapshot integrity checks while projecting only the requested item.
+  const snapshot = await readDuxCatalogSnapshot(database);
+  const item = snapshot.items.find((candidate) => candidate.slug === productId);
+  if (item === undefined) return null;
+  const [units, links] = await Promise.all([
+    listDuxInventoryUnitsForItem(database, env, item.code),
+    listActiveDuxEditorialLinks(database),
+  ]);
+  const product = projectDuxRuntimeProduct(snapshot, productId, units);
+  if (product === null) return null;
+  const link = links.find((candidate) => candidate.code === item.code);
+  if (link === undefined) return product;
+  try {
+    const local = await getCatalogProductDetail(database, link.localProductId);
+    if (local !== null) return applyDuxEditorialLinks([product], [local], [link])[0] ?? product;
+  } catch {
+    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
+  }
+  return product;
 }
 
 function buildCategories(
