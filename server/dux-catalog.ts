@@ -12,6 +12,7 @@ export const DUX_PUBLIC_PRICE_LIST_NAME = 'PRECIOS DEL NEGOCIO';
 
 export const DUX_CATALOG_SCHEMA_VERSION = 2;
 const DUX_CATALOG_SNAPSHOT_MAX_BYTES = 1_900_000;
+const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
 const DUX_PRODUCT_SLUG_MAX_BASE_LENGTH = 140;
 const DUX_SYNC_ID_PATTERN = /^dux_sync_[A-Za-z0-9._:-]{1,180}$/u;
 
@@ -290,7 +291,7 @@ export function projectDuxRuntimeCatalog(
 
   return Object.freeze({
     products: Object.freeze([...products].sort((left, right) =>
-      left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' }),
+      catalogNameCollator.compare(left.name, right.name),
     )),
     categories: buildRuntimeCategories(products),
   });
@@ -664,9 +665,7 @@ function buildRuntimeCategories(
       name: value.name,
       productCount: value.count,
     }))
-    .sort((left, right) => left.name.localeCompare(right.name, 'es-AR', {
-      sensitivity: 'base',
-    })));
+    .sort((left, right) => catalogNameCollator.compare(left.name, right.name)));
 }
 
 function isUsablePrice(value: number): boolean {

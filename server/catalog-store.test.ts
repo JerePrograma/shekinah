@@ -32,6 +32,20 @@ const duxMigration = readFileSync(
 const actor = 'admin@example.test';
 
 describe('catálogo efectivo persistido en D1', () => {
+  it('mantiene la colación española del catálogo local con mutaciones editoriales', async () => {
+    const testD1 = createTestD1(catalogMigration);
+    try {
+      const base = requireBaseProduct('guayaba');
+      await updateCatalogProduct(testD1.database, base.id, { ...base, name: 'Ñandú de prueba' }, actor);
+      const products = await listCatalogProductDetails(testD1.database);
+      const expected = [...products].sort((left, right) =>
+        left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' }));
+      expect(products).toEqual(expected);
+      expect(products).toHaveLength(510);
+      expect(products.find((product) => product.id === base.id)?.name).toBe('Ñandú de prueba');
+    } finally { testD1.close(); }
+  });
+
   it('lista los 510 productos base cuando no existen mutaciones', async () => {
     const testD1 = createTestD1(catalogMigration);
     try {

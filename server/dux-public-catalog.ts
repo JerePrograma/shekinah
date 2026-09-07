@@ -23,6 +23,8 @@ import {
 import { listDuxInventoryUnits } from './dux-inventory';
 import type { D1Database, Env } from './platform';
 
+const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
+
 export type PublicCatalog = Readonly<{
   products: readonly Product[];
   productDetails: readonly CatalogProductDetail[];
@@ -113,7 +115,5 @@ function buildCategories(
       name: value.name,
       productCount: value.count,
     }))
-    .sort((left, right) => left.name.localeCompare(right.name, 'es-AR', {
-      sensitivity: 'base',
-    })));
+    .sort((left, right) => catalogNameCollator.compare(left.name, right.name)));
 }

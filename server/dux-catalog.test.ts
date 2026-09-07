@@ -43,6 +43,27 @@ const runId = 'dux_sync_catalog_test';
 const syncedAt = '2026-09-02T20:00:00.000Z';
 
 describe('catálogo público autoritativo de Dux', () => {
+  it('conserva el orden español y los empates de nombres y categorías al reutilizar la colación', async () => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      const names = ['Zanahoria', 'Ñandú', 'naranja', 'Árbol', 'arbol', 'Ajo'];
+      const source = parseDuxCatalogSourceItems({ datos: names.map((name, index) => ({
+        cod_item: String(index), item: name, habilitado: true, precios: businessPrices(3500),
+        rubro: { id: index + 1, nombre: name },
+      })) });
+      await persistDuxCatalogSnapshot(testD1.database, runId, source, syncedAt);
+      const snapshot = await readDuxCatalogSnapshot(testD1.database);
+      const runtime = projectDuxRuntimeCatalog(snapshot, [], []);
+      const expected = ['Ajo', 'Árbol', 'arbol', 'naranja', 'Ñandú', 'Zanahoria'];
+      expect(runtime.products.map((product) => product.name)).toEqual(expected);
+      expect(runtime.categories.map((category) => category.name)).toEqual(expected);
+      expect(snapshot.items.map((item) => item.name)).toEqual(names);
+      expect(runtime.products.every((product) => product.commerce?.checkoutEligible === false)).toBe(true);
+    } finally { testD1.close(); }
+  });
+
   it('distingue el mismo ID de subrubro dentro de rubros distintos sin cambiar nombres Dux', async () => {
     const testD1 = completeTestDatabase();
     try {

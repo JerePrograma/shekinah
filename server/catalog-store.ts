@@ -19,6 +19,7 @@ import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
 const baseCategories = parseCategories(categorySource);
+const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
 const baseProducts = parseProducts(catalogIndexSource, baseCategories);
 const baseDetailById = new Map(
   baseProducts.map((product) => {
@@ -125,7 +126,7 @@ export async function listCatalogProductDetails(
 
   return Object.freeze(
     [...merged.values()].sort((left, right) =>
-      left.name.localeCompare(right.name, 'es-AR', { sensitivity: 'base' }),
+      catalogNameCollator.compare(left.name, right.name),
     ),
   );
 }
