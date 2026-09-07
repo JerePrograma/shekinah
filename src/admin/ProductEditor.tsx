@@ -9,7 +9,7 @@ import type {
   RefObject,
 } from 'react';
 
-import { authorizedCategories } from '../data/authorized-commercial-data';
+import { authorizedCategories } from '../data/authorized-categories';
 import { ProductImageField } from './ProductImageField';
 import type {
   PendingNavigation,

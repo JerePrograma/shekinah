@@ -60,7 +60,7 @@ Reglas:
 - Aplicación React, TypeScript estricto y Vite desplegada en Cloudflare Pages.
 - La interfaz pública conserva la SPA y la navegación mediante History API.
 - Las capacidades de servidor se implementan con Cloudflare Pages Functions y D1; no se requiere un VPS para la arquitectura prevista.
-- El catálogo canónico conserva 510 productos y 16 categorías.
+- Dux determina el universo de productos y categorías. Los 510 productos y 16 categorías compilados son evidencia histórica; tras el retiro manual registrado por 0018 no se publican ni se reconstruyen como fallback. Sólo se conservan las fotos y descripciones ya vinculadas a Dux.
 - No inventar productos, precios, stock, contacto, horarios, redes, promociones, testimonios, certificaciones ni afirmaciones sanitarias.
 - Dux Software es la única autoridad de inventario, unidades/medidas, depósitos y pedidos/reservas; Shekinah no usa stock local, Excel ni Mercado Libre como fallback para productos Dux.
 - En Checkout Pro integrado, el navegador no decide precios, moneda, totales ni estados de pago; el servidor recalcula y el webhook verifica al proveedor.

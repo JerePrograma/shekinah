@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Control = Readonly<{
+  manualCatalogRetired: boolean;
   migrationApplied: boolean;
   snapshotCollectionEnabled: boolean;
   publicCatalogEnabled: boolean;
@@ -83,7 +84,7 @@ export function DuxCatalogControls({ onUnauthorized, onOperationStateChange, dis
       cancel();
       await refresh();
       setMessage(body.publicCatalogEnabled === false
-        ? 'Catálogo local restaurado. El snapshot y los vínculos se conservaron.'
+        ? state?.control.manualCatalogRetired ? 'Catálogo público oculto. Los productos manuales siguen eliminados.' : 'Catálogo local restaurado. El snapshot y los vínculos se conservaron.'
         : 'Control actualizado. Las compras continúan bloqueadas.');
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : 'No se pudo actualizar el catálogo.');
@@ -113,7 +114,8 @@ export function DuxCatalogControls({ onUnauthorized, onOperationStateChange, dis
         <Metric label="Compras habilitadas" value={0} />
       </dl>
       <p>{snapshot === null ? 'Sin snapshot disponible.' : `Último snapshot: ${new Date(snapshot.syncedAt).toLocaleString('es-AR')}. ${snapshot.stale ? 'Obsoleto' : 'Fresco'}.`}</p>
-      {state.snapshotError === 'DUX_CATALOG_SNAPSHOT_INVALID' ? <p role="alert">El snapshot no superó la validación. Restaurá el catálogo local y revisá la sincronización.</p> : null}
+      {state.snapshotError === 'DUX_CATALOG_SNAPSHOT_INVALID' ? <p role="alert">El snapshot no superó la validación. Revisá la sincronización.</p> : null}
+      {state.control.manualCatalogRetired ? <p>Productos manuales eliminados. Sólo Dux puede aportar productos al catálogo.</p> : null}
       <p>La visibilidad del catálogo no habilita Checkout Pro ni pedidos por WhatsApp.</p>
       {!state.control.migrationApplied ? <p>La migración 0017 está pendiente. Los controles permanecen cerrados.</p> : <div className="admin-order-actions">
         <button className="button button-secondary" type="button" disabled={blocked}
@@ -122,7 +124,7 @@ export function DuxCatalogControls({ onUnauthorized, onOperationStateChange, dis
         </button>
         {state.control.publicCatalogEnabled
           ? <button className="button button-secondary" type="button" disabled={blocked}
-            onClick={() => void change({ publicCatalogEnabled: false })}>Restaurar catálogo local</button>
+            onClick={() => void change({ publicCatalogEnabled: false })}>{state.control.manualCatalogRetired ? 'Ocultar catálogo público' : 'Restaurar catálogo local'}</button>
           : <button className="button button-primary" type="button" ref={enableRef}
             disabled={blocked || snapshot === null || snapshot.itemCount === 0}
             onClick={() => setConfirming(true)}>Habilitar catálogo público Dux</button>}
@@ -162,7 +164,7 @@ function parseState(value: unknown): State {
       priceCounts: { usable: s.priceCounts.usable, placeholder: s.priceCounts.placeholder,
         missing_or_zero: s.priceCounts.missing_or_zero, invalid: s.priceCounts.invalid } };
   }
-  return { control: { migrationApplied: c.migrationApplied, snapshotCollectionEnabled: c.snapshotCollectionEnabled,
+  return { control: { manualCatalogRetired: c.manualCatalogRetired === true, migrationApplied: c.migrationApplied, snapshotCollectionEnabled: c.snapshotCollectionEnabled,
     publicCatalogEnabled: c.publicCatalogEnabled, publicCutoverEnabled: c.publicCutoverEnabled }, snapshot,
     snapshotError: typeof value.snapshotError === 'string' ? value.snapshotError : null };
 }

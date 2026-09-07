@@ -212,6 +212,8 @@ describe('catálogo público autoritativo de Dux', () => {
           mappingStatus: 'mapped',
           checkoutEligible: false,
           observedStock: { real: 5, reserved: 1, available: 4 },
+          availabilityState: 'verified',
+          stockSyncedAt: syncedAt,
         },
       });
       expect(mapped?.variants).toEqual([]);

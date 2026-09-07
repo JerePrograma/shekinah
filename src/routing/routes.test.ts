@@ -25,17 +25,13 @@ describe('rutas de la aplicación', () => {
     expect(normalizePathname('catalogo/')).toBe('/catalogo');
     expect(normalizePathname('//catalogo///')).toBe('/catalogo');
     expect(normalizePathname('/guayaba/?origen=prueba#detalle')).toBe('/guayaba');
-    expect(resolveRoute('/guayaba/?origen=prueba#detalle').id).toBe('product');
+    expect(resolveRoute('/guayaba/?origen=prueba#detalle').id).toBe('not-found');
   });
 
-  it('resuelve programáticamente los 510 paths de producto', () => {
-    expect(authorizedProducts).toHaveLength(510);
+  it('los 510 productos históricos requieren confirmación de la API y no son rutas publicadas', () => {
     for (const product of authorizedProducts) {
-      expect(resolveRoute(product.path)).toMatchObject({
-        id: 'product',
-        productSlug: product.slug,
-      });
-      expect(resolveRoute(product.path.replace(/\/$/u, '')).id).toBe('product');
+      expect(resolveRoute(product.path).id).toBe('not-found');
+      expect(getPotentialProductSlug(product.path)).toBe(product.slug);
     }
   });
 
@@ -49,19 +45,6 @@ describe('rutas de la aplicación', () => {
         `Explorá ${category.productCount} productos de la categoría ${category.name} en Shekinah.`,
       );
     }
-  });
-
-  it('produce metadatos comerciales para productos representativos', () => {
-    expect(resolveRoute('/guayaba/')).toMatchObject({
-      id: 'product',
-      title: 'Guayaba hojas x 50 gr | Shekinah',
-      description:
-        'Conocé Guayaba hojas x 50 gr, su presentación, precio y detalles en Shekinah.',
-    });
-    expect(resolveRoute('/melena-de-leon-futuro-fungi-50ml/').title).toBe(
-      'Melena de león Futuro fungi 50ml | Shekinah',
-    );
-    expect(resolveRoute('/artemisa-annua-agroecologica-x-50-gr/').id).toBe('product');
   });
 
   it('no presenta colisiones entre rutas estáticas, categorías y productos', () => {
@@ -100,7 +83,7 @@ describe('rutas de la aplicación', () => {
       path: '/ruta/inexistente',
       title: 'Página no encontrada | Shekinah',
     });
-    expect(isAppPath('/guayaba/')).toBe(true);
+    expect(isAppPath('/guayaba/')).toBe(false);
     expect(isAppPath('/tienda/categoria/hierbas-medicinales/')).toBe(true);
     expect(isAppPath('/enfoque')).toBe(false);
     expect(isAppPath('/otra-ruta')).toBe(false);

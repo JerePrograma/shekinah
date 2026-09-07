@@ -1,5 +1,10 @@
 # Continuación
 
+## Continuación del retiro manual — 2026-09-07
+
+El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.
+
+
 ## Activación autorizada desde `a18eb732` — 2026-09-07 UTC
 
 Aplicar [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md) usando el estado remoto real. Preview observado está vacío y requiere bootstrap por el único sync oficial antes de importar vínculos y triage; producción ya tiene tenant verificado. Pausar y comprobar el scheduler durante la operación, preservar todos los recibos y reabrir el gate sólo después del corte productivo verificado. La autorización de esta fase comprende Preview y producción; las restricciones de la iteración de código anterior no la cancelan. Mantener `public_cutover_enabled=0` y todos los controles transaccionales cerrados.

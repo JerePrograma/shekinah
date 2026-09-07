@@ -628,7 +628,7 @@ function projectProduct(
       ? 'updating' as const
       : observedStock.available <= 0
         ? 'out_of_stock' as const
-        : 'unavailable' as const;
+        : 'verified' as const;
   const depositNames = new Set(resolution.units.map((unit) => unit.depositName));
   const depositName = depositNames.size === 1 ? [...depositNames][0] : undefined;
   const images = Object.freeze([]);
@@ -654,6 +654,10 @@ function projectProduct(
       mappingStatus: resolution.status,
       quantitySemanticsStatus: 'unavailable_from_v2_items' as const,
       ...(observedStock === undefined ? {} : { observedStock }),
+      ...(resolution.units.length === 0 ? {} : {
+        stockSyncedAt: resolution.units.reduce((oldest, unit) =>
+          Date.parse(unit.lastSyncedAt) < Date.parse(oldest) ? unit.lastSyncedAt : oldest, resolution.units[0]!.lastSyncedAt),
+      }),
       ...(depositName === undefined ? {} : { depositName }),
     }),
     ...(description === undefined ? {} : { description }),

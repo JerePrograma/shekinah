@@ -1,4 +1,12 @@
 describe('catálogo runtime autoritativo', () => {
+  it('no carga una ficha manual desde archivos compilados aunque la API anterior declare legacy-bootstrap', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      schemaVersion: 2, source: 'legacy-bootstrap', products: [], categories: [],
+    }), { headers: { 'content-type': 'application/json' } })).mockResolvedValue(new Response(null, { status: 503 })));
+    const runtime = await import('./runtime-catalog');
+    await runtime.refreshRuntimeCatalog();
+    expect(await runtime.loadRuntimeProductDetail('guayaba')).toBeNull();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();

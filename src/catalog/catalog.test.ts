@@ -161,8 +161,8 @@ describe('modelo de producto', () => {
     expect(formatAvailability('available', 0)).toBe('Agotado');
     expect(formatAvailability('unavailable', 8)).toBe('No disponible');
     expect(formatAvailability('available', 8)).toBe('Disponibilidad pendiente de Dux');
-    expect(formatAvailability('available', 8, 'verified')).toBe('8 unidades disponibles');
-    expect(formatAvailability('available', 1, 'verified')).toBe('1 unidad disponible');
+    expect(formatAvailability('available', 8, 'verified')).toBe('Stock disponible en Dux: 8');
+    expect(formatAvailability('available', 1, 'verified')).toBe('Stock disponible en Dux: 1');
     expect(formatAvailability('unavailable', undefined, 'updating')).toBe('Actualizando disponibilidad');
     expect(formatAvailability('unavailable', undefined, 'unavailable')).toBe('Disponibilidad temporalmente no verificable');
     expect(formatAvailability(undefined)).toBeNull();

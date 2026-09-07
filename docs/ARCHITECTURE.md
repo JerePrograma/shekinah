@@ -1,5 +1,10 @@
 # Arquitectura
 
+## Catálogo tras el retiro manual — 2026-09-07
+
+El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.
+
+
 ## Catálogo Dux completo — contrato vigente 2026-09-06
 
 La proyección comercial y la visibilidad pública se rigen por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md). `public_catalog_enabled` selecciona exclusivamente el universo del snapshot Dux v2, con precio nullable y `priceStatus` obligatorio; no requiere vínculos editoriales ni precios usables para visibilidad. `snapshot_collection_enabled` sólo permite recolección y `public_cutover_enabled` conserva los guards transaccionales. Los tres nacen en `0` y el corte comercial sigue cerrado.

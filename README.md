@@ -1,5 +1,10 @@
 # Shekinah
 
+## Retiro manual y stock Dux — 2026-09-07
+
+El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](docs/DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.
+
+
 Aplicación comercial de hierbas, especias, alimentos y productos naturales construida con React, TypeScript estricto, Vite, Cloudflare Pages Functions y Cloudflare D1.
 
 ## Autoridades del sistema

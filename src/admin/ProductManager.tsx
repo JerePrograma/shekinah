@@ -10,11 +10,12 @@ import { normalizeSearchText } from '../catalog/catalog';
 import {
   InvalidProductError,
   isProductEffectivelyAvailable,
+  parseCategories,
   parseProductDetail,
   parseProducts,
 } from '../catalog/model';
-import type { CatalogProductDetail } from '../catalog/model';
-import { authorizedCategories } from '../data/authorized-commercial-data';
+import type { CatalogCategory, CatalogProductDetail } from '../catalog/model';
+import { authorizedCategories } from '../data/authorized-categories';
 import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { ProductEditor } from './ProductEditor';
 import { ProductList } from './ProductList';
@@ -70,6 +71,8 @@ export function ProductManager({
   onUnauthorized?: (() => void) | undefined;
 }>) {
   const [products, setProducts] = useState<readonly CatalogProductDetail[]>([]);
+  const [manualCatalogRetired, setManualCatalogRetired] = useState(false);
+  const [categories, setCategories] = useState<readonly CatalogCategory[]>(authorizedCategories);
   const [imageStorageConfigured, setImageStorageConfigured] = useState(false);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
   const [baseline, setBaseline] = useState<ProductFormState>(EMPTY_FORM);
@@ -101,7 +104,7 @@ export function ProductManager({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingNavigationReturnFocusRef = useRef<HTMLElement | null>(null);
 
-  const editorOpen = editingId !== undefined;
+  const editorOpen = !manualCatalogRetired && editingId !== undefined;
   const isDirty = editorOpen && (
     !formsEqual(form, baseline) || pendingImage !== null || removeImage
   );
@@ -242,6 +245,8 @@ export function ProductManager({
       );
       const catalog = parseAdminCatalog(payload);
       setProducts(catalog.products);
+      setManualCatalogRetired(catalog.manualCatalogRetired);
+      setCategories(catalog.categories);
       setImageStorageConfigured(catalog.imageStorageConfigured);
     } catch (loadError: unknown) {
       if (signal?.aborted === true) return;
@@ -555,16 +560,16 @@ export function ProductManager({
           <div className="section-heading">
             <p className="eyebrow">Administración</p>
             <h2 id="backoffice-title">Catálogo de productos</h2>
-            <p>Encontrá, actualizá y publicá productos sin perder de vista el catálogo.</p>
+            <p>{manualCatalogRetired ? 'Productos y existencias de Dux. Las fotos y descripciones vinculadas se conservan. Los cambios de productos y stock se realizan en Dux.' : 'Encontrá, actualizá y publicá productos sin perder de vista el catálogo.'}</p>
           </div>
-          <button
+          {manualCatalogRetired ? null : <button
             className="button button-primary"
             type="button"
             disabled={remoteBusy || loading || loadError !== ''}
             onClick={(event) => requestNew(event.currentTarget)}
           >
             Nuevo producto
-          </button>
+          </button>}
         </header>
 
         <section aria-labelledby="catalog-summary-title" hidden={loading || loadError !== ''}>
@@ -572,7 +577,7 @@ export function ProductManager({
           <dl className="admin-catalog-summary">
             <SummaryItem label="Productos" value={summary.total} />
             <SummaryItem label="Disponibles para venta" value={summary.available} tone="available" />
-            <SummaryItem label="Pausados manualmente" value={summary.manuallyUnavailable} tone="paused" />
+            {manualCatalogRetired ? <SummaryItem label="Productos manuales" value={0} /> : <SummaryItem label="Pausados manualmente" value={summary.manuallyUnavailable} tone="paused" />}
             <SummaryItem label="Sin stock" value={summary.outOfStock} tone="out" />
           </dl>
         </section>
@@ -592,6 +597,8 @@ export function ProductManager({
 
         <div className={`admin-catalog-workspace${editorOpen ? ' has-editor' : ''}`}>
           <ProductList
+            readOnly={manualCatalogRetired}
+            categories={categories}
             availabilityFilter={availabilityFilter}
             categoryFilter={categoryFilter}
             deleteCandidate={deleteCandidate}
@@ -908,6 +915,8 @@ function compareStock(left: number | undefined, right: number | undefined): numb
 function parseAdminCatalog(payload: unknown): Readonly<{
   products: readonly CatalogProductDetail[];
   imageStorageConfigured: boolean;
+  manualCatalogRetired: boolean;
+  categories: readonly CatalogCategory[];
 }> {
   if (
     !isRecord(payload) ||
@@ -918,8 +927,12 @@ function parseAdminCatalog(payload: unknown): Readonly<{
   }
   const rawProducts = payload.products;
   try {
-    const summaries = parseProducts(rawProducts, authorizedCategories);
+    if (payload.categories !== undefined && !Array.isArray(payload.categories)) throw new Error('Categorías inválidas.');
+    const categories = payload.categories === undefined ? authorizedCategories : parseCategories(payload.categories);
+    const summaries = parseProducts(rawProducts, categories);
     return Object.freeze({
+      categories,
+      manualCatalogRetired: payload.manualCatalogRetired === true,
       products: Object.freeze(
         summaries.map((summary, index) => parseProductDetail(summary, rawProducts[index])),
       ),

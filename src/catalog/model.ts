@@ -71,6 +71,7 @@ export type DuxCommerceSnapshot = Readonly<{
     symbol?: string;
   }>;
   depositName?: string;
+  stockSyncedAt?: string;
 }>;
 
 export type ProductCommerceSnapshot =
@@ -161,7 +162,7 @@ function parsePrice(value: unknown, field = 'price'): ProductPrice {
   return Object.freeze({ amount: value.amount, currency: value.currency });
 }
 
-function parseImage(value: unknown): ProductImage {
+export function parseImage(value: unknown): ProductImage {
   if (!isRecord(value)) {
     throw new InvalidProductError('La imagen debe ser un objeto válido.');
   }
@@ -387,6 +388,10 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
     : undefined;
   const unit = Object.hasOwn(value, 'unit') ? parseDuxUnit(value.unit) : undefined;
   const depositName = readOptionalText(value, 'depositName');
+  const stockSyncedAt = readOptionalText(value, 'stockSyncedAt');
+  if (stockSyncedAt !== undefined && !Number.isFinite(Date.parse(stockSyncedAt))) {
+    throw new InvalidProductError('La fecha del stock Dux no es válida.');
+  }
 
   if (
     value.checkoutEligible &&
@@ -410,6 +415,7 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
     ...(observedStock === undefined ? {} : { observedStock }),
     ...(unit === undefined ? {} : { unit }),
     ...(depositName === undefined ? {} : { depositName }),
+    ...(stockSyncedAt === undefined ? {} : { stockSyncedAt }),
   });
 }
 

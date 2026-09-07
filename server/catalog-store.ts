@@ -15,6 +15,7 @@ import {
   type DuxInventoryUnit,
 } from './dux-inventory';
 import { HttpError } from './http';
+import { assertManualCatalogWritable, isManualCatalogRetired, isPreservedDuxImageReferenced } from './manual-catalog-retirement';
 import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
@@ -115,6 +116,7 @@ export async function getRuntimeCatalogProductDetail(
 export async function listCatalogProductDetails(
   database: D1Database,
 ): Promise<readonly CatalogProductDetail[]> {
+  if (await isManualCatalogRetired(database)) return Object.freeze([]);
   const merged = new Map(allBaseDetails());
   let rows: readonly CatalogMutationRow[];
   try {
@@ -153,6 +155,7 @@ export async function getCatalogProductDetail(
 ): Promise<CatalogProductDetail | null> {
   assertProductId(productId);
   void excludedReservationOrderId;
+  if (await isManualCatalogRetired(database)) return null;
   let row: CatalogMutationRow | null;
   try {
     row = await database
@@ -179,6 +182,7 @@ export async function getCatalogProductDetailsForIds(
   database: D1Database,
   productIds: readonly string[],
 ): Promise<readonly CatalogProductDetail[]> {
+  if (await isManualCatalogRetired(database)) return Object.freeze([]);
   const ids = [...new Set(productIds)];
   ids.forEach(assertProductId);
   if (ids.length === 0) return Object.freeze([]);
@@ -318,6 +322,7 @@ export async function isCatalogImageReferenced(
   database: D1Database,
   source: string,
 ): Promise<boolean> {
+  if (await isManualCatalogRetired(database)) return isPreservedDuxImageReferenced(database, source);
   return (await listCatalogProductDetails(database)).some((product) =>
     product.images.some((image) => image.src === source),
   );
@@ -574,6 +579,7 @@ function assertNoDirectImageMutation(
 }
 
 async function ensureCatalogStorageReady(database: D1Database): Promise<void> {
+  await assertManualCatalogWritable(database);
   try {
     await expireWhatsappReservations(database);
     await database.prepare('SELECT 1 FROM catalog_product_mutations LIMIT 1').first();

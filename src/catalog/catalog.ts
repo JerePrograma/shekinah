@@ -126,8 +126,13 @@ export function formatAvailability(
   if (runtimeState === 'unavailable') return 'Disponibilidad temporalmente no verificable';
   if (runtimeState === 'out_of_stock' || observedDuxQuantity === 0) return 'Agotado';
   if (runtimeState === 'verified' && observedDuxQuantity !== undefined) {
-    return `${observedDuxQuantity.toLocaleString('es-AR')} ${observedDuxQuantity === 1 ? 'unidad disponible' : 'unidades disponibles'}`;
+    return `Stock disponible en Dux: ${formatDuxStockQuantity(observedDuxQuantity)}`;
   }
   if (value === 'unavailable') return 'No disponible';
   return value === 'available' ? 'Disponibilidad pendiente de Dux' : null;
+}
+
+export function formatDuxStockQuantity(value: number): string {
+  // Preserve the provider's decimal precision; do not assume pieces or kilograms.
+  return String(value).replace('.', ',');
 }

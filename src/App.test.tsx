@@ -13,6 +13,7 @@ import {
   authorizedCategories,
   authorizedContact,
   authorizedProducts,
+  loadAuthorizedProductDetail,
 } from './data/authorized-commercial-data';
 import { refreshRuntimeCatalog } from './data/runtime-catalog';
 
@@ -243,6 +244,10 @@ describe('App', () => {
   });
 
   it('carga una ficha comercial con detalle diferido y bloquea el CTA sin snapshot Dux', async () => {
+    const detail = await loadAuthorizedProductDetail('guayaba');
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(
+      requestUrl(input).endsWith('/api/catalog/guayaba') ? { product: detail } : { products: authorizedProducts },
+    ), { headers: { 'content-type': 'application/json' } })));
     window.history.replaceState(null, '', '/guayaba/');
     renderApp();
     expect(document.title).toBe('Guayaba hojas x 50 gr | Shekinah');

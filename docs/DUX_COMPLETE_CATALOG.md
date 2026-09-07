@@ -1,5 +1,9 @@
 # Catálogo Dux completo y publicación segura
 
+## Actualización posterior — retiro manual del 2026-09-07
+
+El usuario autorizó eliminar todos los productos manuales y conservar sólo sus fotos/descripciones ya vinculadas a Dux. Rige [DUX_MANUAL_CATALOG_RETIREMENT.md](DUX_MANUAL_CATALOG_RETIREMENT.md). Una vez registrado el retiro de 0018, deshabilitar la publicación devuelve un catálogo vacío; no restaura productos locales. El procedimiento de activación y rollback que sigue conserva su valor histórico y no debe reutilizarse para revertir el retiro.
+
 ## Alcance de esta iteración
 
 La iteración parte de `60bdbb62db4e39f1639978f422db0516745cec9c` (`feat: persist Dux editorial links safely`). Prepara código, pruebas, documentación y un procedimiento operativo. Su publicación Git y su deployment Pages no aplican migraciones D1 ni habilitan capacidades remotas.

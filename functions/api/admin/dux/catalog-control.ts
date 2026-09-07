@@ -1,4 +1,5 @@
 import { handleAdminRequest } from '../../../../server/admin-request';
+import { isManualCatalogRetired } from '../../../../server/manual-catalog-retirement';
 import { readDuxSnapshotMaxAgeSeconds } from '../../../../server/config';
 import { isDuxCatalogBootstrapPendingError, readDuxCatalogSnapshot } from '../../../../server/dux-catalog';
 import {
@@ -26,7 +27,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
   return handleAdminRequest(request, env, data, 'admin.dux.catalog-control', async (database) => {
     requireExpectedDuxCompany(env);
     if (request.method === 'GET') {
-      const control = await readDuxCatalogControl(database);
+      const control = { ...await readDuxCatalogControl(database), manualCatalogRetired: await isManualCatalogRetired(database) };
       try {
         const snapshot = await readDuxCatalogSnapshot(database);
         return jsonResponse({ control, snapshot: {

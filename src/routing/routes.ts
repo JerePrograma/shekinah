@@ -1,7 +1,4 @@
-import {
-  authorizedCategories,
-  authorizedProducts,
-} from '../data/authorized-commercial-data';
+import { authorizedCategories } from '../data/authorized-categories';
 import type { Product } from '../catalog/model';
 
 export const appPaths = {
@@ -145,13 +142,6 @@ for (const category of authorizedCategories) {
     title: `${category.name} | Catálogo Shekinah`,
     description: `Explorá ${category.productCount} productos de la categoría ${category.name} en Shekinah.`,
   });
-}
-for (const product of authorizedProducts) {
-  const productPath = normalizePathname(product.path);
-  if (routeByPath.has(productPath)) {
-    throw new Error(`Colisión de ruta de producto: ${product.path}.`);
-  }
-  routeByPath.set(productPath, createProductRoute(product));
 }
 
 export function resolveRoute(pathname: string): AppRoute {

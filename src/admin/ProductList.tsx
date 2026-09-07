@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { KeyboardEvent } from 'react';
 
 import { formatProductPrice } from '../catalog/catalog';
-import type { CatalogProductDetail } from '../catalog/model';
-import { authorizedCategories } from '../data/authorized-commercial-data';
+import type { CatalogCategory, CatalogProductDetail } from '../catalog/model';
+import { authorizedCategories } from '../data/authorized-categories';
 import {
   ALL_FILTERS,
   UNCATEGORIZED_FILTER,
@@ -16,6 +16,8 @@ import type {
 } from './product-management-types';
 
 export function ProductList({
+  readOnly = false,
+  categories = authorizedCategories,
   availabilityFilter,
   categoryFilter,
   deleteCandidate,
@@ -43,6 +45,8 @@ export function ProductList({
   totalProductCount,
   visibleProducts,
 }: Readonly<{
+  readOnly?: boolean;
+  categories?: readonly CatalogCategory[];
   availabilityFilter: AvailabilityFilter;
   categoryFilter: string;
   deleteCandidate: CatalogProductDetail | null;
@@ -122,7 +126,7 @@ export function ProductList({
           >
             <option value={ALL_FILTERS}>Todas</option>
             <option value={UNCATEGORIZED_FILTER}>Sin categoría</option>
-            {authorizedCategories.map((category) => (
+            {categories.map((category) => (
               <option value={category.slug} key={category.slug}>{category.name}</option>
             ))}
           </select>
@@ -214,8 +218,8 @@ export function ProductList({
       ) : (
         <ul className="admin-product-list">
           {visibleProducts.map((product) => {
-            const availabilityStatus = productAvailabilityLabel(product);
-            const stockStatus = productStockLabel(product);
+            const availabilityStatus = readOnly ? { label: 'Producto Dux', tone: 'available' } : productAvailabilityLabel(product);
+            const stockStatus = readOnly ? { label: product.commerce?.checkoutEligible ? 'Compra habilitada' : 'Compra no habilitada', tone: 'paused' } : productStockLabel(product);
             const duxInventory = product.commerce?.source === 'dux'
               ? product.commerce
               : undefined;
@@ -256,19 +260,20 @@ export function ProductList({
                     {duxInventory === undefined ? null : (
                       <div className="admin-context-note">
                         <strong>Inventario: Dux</strong>
-                        <span>Vínculo: {duxMappingLabel(duxInventory.mappingStatus)}</span>
+                        {readOnly ? null : <span>Vínculo: {duxMappingLabel(duxInventory.mappingStatus)}</span>}
                         <span>{duxObservedStockLabel(duxInventory.observedStock)}</span>
                         {duxInventory.unit === undefined ? null : (
                           <span>Unidad: {duxUnitLabel(duxInventory.unit)}</span>
                         )}
-                        <span>Última actualización: {formatDuxSyncedAt(duxInventory.syncedAt)}</span>
+                        <span>Última actualización: {formatDuxSyncedAt(duxInventory.stockSyncedAt ?? duxInventory.syncedAt)}</span>
+                        {duxInventory.availabilityState === 'updating' ? <span>Lectura pendiente de actualización.</span> : null}
                         {duxInventory.depositName === undefined ? null : (
                           <span>Depósito: {duxInventory.depositName}</span>
                         )}
                       </div>
                     )}
                   </div>
-                  <div className="admin-product-row-actions">
+                  {readOnly ? null : <div className="admin-product-row-actions">
                     <button
                       className="button button-secondary admin-compact-button"
                       type="button"
@@ -304,7 +309,7 @@ export function ProductList({
                     >
                       Quitar
                     </button>
-                  </div>
+                  </div>}
 
                   {deleteCandidate?.id === product.id ? (
                     <div

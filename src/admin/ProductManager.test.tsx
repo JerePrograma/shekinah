@@ -14,6 +14,20 @@ const LEGACY_IMAGE = `/images/original/catalog/${'a'.repeat(64)}.jpg`;
 const MANAGED_IMAGE = '/api/catalog-images/123e4567-e89b-42d3-a456-426614174000.webp';
 
 describe('gestión visual de productos', () => {
+  it('lista Dux y sus categorías con stock real y sin acciones manuales después del retiro', async () => {
+    const item = { ...product('dux-real', 'PRODUCTO REAL DUX', { commerce: duxCommerce(8), image: true }),
+      categorySlugs: ['dux-rubro-1'], categoryNames: ['RUBRO DUX'] };
+    vi.stubGlobal('fetch', () => Promise.resolve(json({ products: [item], imageStorageConfigured: true,
+      manualCatalogRetired: true, categories: [{ slug: 'dux-rubro-1', name: 'RUBRO DUX', path: '/tienda/categoria/dux-rubro-1/', productCount: 1 }] })));
+    render(<ProductManager />);
+    expect(await screen.findByRole('heading', { name: 'PRODUCTO REAL DUX' })).toBeVisible();
+    expect(summaryValue('Productos manuales')).toHaveTextContent('0');
+    expect(screen.getByRole('option', { name: 'RUBRO DUX' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar PRODUCTO REAL DUX' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Stock observado: real/)).toBeVisible();
+    expect(screen.queryByText('No disponible manualmente')).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     class TestURL extends URL {
       static override createObjectURL = vi.fn(() => 'blob:product-preview');
