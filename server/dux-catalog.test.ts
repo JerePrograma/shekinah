@@ -44,6 +44,50 @@ const runId = 'dux_sync_catalog_test';
 const syncedAt = '2026-09-02T20:00:00.000Z';
 
 describe('catálogo público autoritativo de Dux', () => {
+  it('reutiliza sólo el payload idéntico y lee nuevamente publicación, frescura y estado del run', async () => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog(), syncedAt);
+      const first = await readDuxCatalogSnapshot(testD1.database);
+      const nextRun = 'dux_sync_catalog_next';
+      const nextTime = '2026-09-02T20:10:00.000Z';
+      insertCompletedRun(testD1, nextRun);
+      await persistDuxCatalogSnapshot(testD1.database, nextRun, sourceCatalog(), nextTime);
+      const unchanged = await readDuxCatalogSnapshot(testD1.database);
+      expect(unchanged.items).toBe(first.items);
+      expect(unchanged).toMatchObject({ inventoryRunId: nextRun, syncedAt: nextTime });
+      expect(Object.isFrozen(unchanged.items)).toBe(true);
+      expect(Object.isFrozen(unchanged.items[0]?.categories)).toBe(true);
+      const changed = sourceCatalog().map((item) => ({ ...item, name: `${item.name} ACTUALIZADO` }));
+      await persistDuxCatalogSnapshot(testD1.database, nextRun, changed, nextTime);
+      const updated = await readDuxCatalogSnapshot(testD1.database);
+      expect(updated.catalogVersion).not.toBe(first.catalogVersion);
+      expect(updated.items[0]?.name).toBe('HIERBA DESDE DUX ACTUALIZADO');
+      testD1.sqlite.prepare("UPDATE dux_sync_runs SET status = 'failed' WHERE id = ?").run(nextRun);
+      await expect(readDuxCatalogSnapshot(testD1.database)).rejects.toMatchObject({ code: 'DUX_CATALOG_SNAPSHOT_INVALID' });
+      testD1.sqlite.prepare('DELETE FROM dux_catalog_snapshots_v2').run();
+      await expect(readDuxCatalogSnapshot(testD1.database)).rejects.toMatchObject({ code: 'DUX_CATALOG_SNAPSHOT_UNAVAILABLE' });
+    } finally { testD1.close(); }
+  });
+
+  it('rechaza un digest alterado aunque el JSON coincida con el payload previamente validado', async () => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog(), syncedAt);
+      const first = await readDuxCatalogSnapshot(testD1.database);
+      testD1.sqlite.prepare('UPDATE dux_catalog_snapshots_v2 SET catalog_version = ? WHERE id = 1')
+        .run('f'.repeat(64));
+      await expect(readDuxCatalogSnapshot(testD1.database)).rejects.toMatchObject({ code: 'DUX_CATALOG_SNAPSHOT_INVALID' });
+      testD1.sqlite.prepare('UPDATE dux_catalog_snapshots_v2 SET catalog_version = ? WHERE id = 1')
+        .run(first.catalogVersion);
+      expect(await readDuxCatalogSnapshot(testD1.database)).toEqual(first);
+    } finally { testD1.close(); }
+  });
+
   it('conserva el orden español y los empates de nombres y categorías al reutilizar la colación', async () => {
     const testD1 = completeTestDatabase();
     try {

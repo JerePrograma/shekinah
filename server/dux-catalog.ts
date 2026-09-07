@@ -63,6 +63,18 @@ type StoredDuxCatalogPayload = Readonly<{
   items: readonly StoredDuxCatalogItem[];
 }>;
 
+type ValidatedPayload = Readonly<{
+  text: string;
+  version: string;
+  payload: StoredDuxCatalogPayload;
+  priceCounts: Readonly<Record<ProductPriceStatus, number>>;
+}>;
+
+// A single bounded, immutable parse result, never a request, binding or response.
+// Every read still fetches D1. Reuse requires both the exact JSON text and digest;
+// controls, run status, timestamps, stock and editorial decisions are not cached.
+let validatedPayload: ValidatedPayload | undefined;
+
 export type DuxCatalogSnapshot = Readonly<{
   inventoryRunId: string;
   catalogVersion: string;
@@ -223,15 +235,9 @@ export async function readDuxCatalogSnapshot(
   }
 
   const payloadText = databaseJsonText(row.payload_json);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(payloadText) as unknown;
-  } catch {
-    throw invalidDatabaseProjection();
-  }
-  const payload = parseStoredPayload(parsed);
   const catalogVersion = databaseHexDigest(row.catalog_version);
-  if (await sha256Hex(payloadText) !== catalogVersion) throw invalidDatabaseProjection();
+  const validated = await validateStoredPayload(payloadText, catalogVersion);
+  const payload = validated.payload;
   const itemCount = nonNegativeInteger(row.item_count);
   if (itemCount !== payload.items.length) throw invalidDatabaseProjection();
   if (row.price_list_name !== DUX_PUBLIC_PRICE_LIST_NAME) {
@@ -243,10 +249,33 @@ export async function readDuxCatalogSnapshot(
     catalogVersion,
     priceListName: DUX_PUBLIC_PRICE_LIST_NAME,
     itemCount,
-    priceCounts: countPriceStatuses(payload.items),
+    priceCounts: validated.priceCounts,
     items: payload.items,
     syncedAt: timestamp(row.synced_at, invalidDatabaseProjection),
   });
+}
+
+async function validateStoredPayload(text: string, version: string): Promise<ValidatedPayload> {
+  if (validatedPayload?.text === text && validatedPayload.version === version) {
+    return validatedPayload;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw invalidDatabaseProjection();
+  }
+  const payload = parseStoredPayload(parsed);
+  if (await sha256Hex(text) !== version) throw invalidDatabaseProjection();
+  const result = Object.freeze({
+    text,
+    version,
+    payload,
+    priceCounts: countPriceStatuses(payload.items),
+  });
+  // Larger legacy rows can still be validated but cannot grow the retained cache.
+  if (text.length <= DUX_CATALOG_SNAPSHOT_MAX_BYTES) validatedPayload = result;
+  return result;
 }
 
 export function isDuxCatalogBootstrapPendingError(error: unknown): boolean {
