@@ -23,6 +23,7 @@ param(
     [string]$ExpectedDepositId,
     [string]$EvidenceDirectory,
     [string]$PreviewReceipt,
+    [Security.SecureString]$AdminSessionCookie,
     [string]$WranglerPath = 'wrangler',
     [string]$GitHubCliPath = 'gh',
     [ValidateRange(1, 100000)][int]$ExpectedItems = 747,
@@ -50,6 +51,7 @@ $session = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
 $cfHeaders = $null
 $mayNeedRollback = $false
 $loggedIn = $false
+$createdAdminSession = $false
 $syncAttempted = $false
 $bookmark = $null
 $ciRunId = $null
@@ -145,7 +147,7 @@ function Read-D1([string]$Sql) {
 
 function Invoke-Admin([string]$Path, [string]$Method = 'GET', $Body = $null) {
     $allowed = @(
-        '/api/admin/auth/login', '/api/admin/auth/logout', '/api/admin/dux/status',
+        '/api/admin/auth/login', '/api/admin/auth/logout', '/api/admin/auth/session', '/api/admin/dux/status',
         '/api/admin/dux/catalog-control', '/api/admin/dux/editorial-links/import',
         '/api/admin/dux/editorial-triage/import', '/api/admin/dux/sync'
     )
@@ -380,6 +382,42 @@ try {
     }
     Assert-Tenant -AllowBootstrap
     Record-Check 'deployment, binding, base y prerrequisito de tenant verificados'
+
+    # Autenticar antes de migrar. Una sesión reutilizada requiere autorización
+    # explícita del operador y la misma validación firmada que usa el navegador.
+    if ($null -ne $AdminSessionCookie) {
+        $cookieValue = $null
+        try {
+            $cookieValue = [Net.NetworkCredential]::new('', $AdminSessionCookie).Password
+            Assert-Check ($cookieValue.Length -le 4096 -and $cookieValue -cmatch '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$') 'formato de sesión administrativa explícita'
+            $cookie = [Net.Cookie]::new('__Host-shekinah-admin', $cookieValue, '/')
+            $cookie.Secure = $true
+            $cookie.HttpOnly = $true
+            $session.Cookies.Add($requestUri, $cookie)
+            $sessionResult = Invoke-Admin '/api/admin/auth/session'
+            Assert-Check ($sessionResult.authenticated -eq $true -and $sessionResult.identity.source -ceq 'password') 'sesión administrativa existente validada por el servidor del entorno'
+            $loggedIn = $true
+        } finally {
+            $cookieValue = $null
+            $cookie = $null
+        }
+    } else {
+        $username = Read-Host "Usuario administrativo de $environmentName"
+        $securePassword = Read-Host "Contraseña administrativa de $environmentName" -AsSecureString
+        $loginBody = $null
+        try {
+            $loginBody = @{ username = $username; password = [Net.NetworkCredential]::new('', $securePassword).Password }
+            $loginResult = Invoke-Admin '/api/admin/auth/login' 'POST' $loginBody
+            Assert-Check ($loginResult.authenticated -eq $true) 'sesión administrativa autenticada'
+            $loggedIn = $true
+            $createdAdminSession = $true
+        } finally {
+            if ($null -ne $loginBody) { $loginBody.password = $null }
+            $securePassword.Dispose()
+            $loginBody = $null
+        }
+    }
+    Record-Check 'administrador autenticado antes de migraciones'
     $applied = @(Read-D1 'SELECT name FROM d1_migrations ORDER BY name;').name
     $prior = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'migrations') -Filter '*.sql' | Where-Object Name -match '^00(0[1-9]|1[0-4])_' | Select-Object -ExpandProperty Name)
     Assert-Check ($prior.Count -eq 14) '14 migraciones previas versionadas'
@@ -409,19 +447,6 @@ try {
     Assert-Check ($flags.Count -eq 1 -and $flags[0].company_id -ceq $companyId -and $flags[0].snapshot_collection_enabled -eq 0 -and $flags[0].public_catalog_enabled -eq 0 -and $flags[0].public_cutover_enabled -eq 0) 'los tres controles comienzan en 0'
     Record-Check 'migraciones, claves foráneas y tres controles cerrados'
 
-    $username = Read-Host "Usuario administrativo de $environmentName"
-    $securePassword = Read-Host "Contraseña administrativa de $environmentName" -AsSecureString
-    $loginBody = $null
-    try {
-        $loginBody = @{ username = $username; password = [Net.NetworkCredential]::new('', $securePassword).Password }
-        $loginResult = Invoke-Admin '/api/admin/auth/login' 'POST' $loginBody
-        Assert-Check ($loginResult.authenticated -eq $true) 'sesión administrativa autenticada'
-        $loggedIn = $true
-    } finally {
-        if ($null -ne $loginBody) { $loginBody.password = $null }
-        $securePassword.Dispose()
-        $loginBody = $null
-    }
     $null = Assert-Control $false $false
     $legacy = Read-PublicCatalog
     Assert-Check ($legacy.source -ceq 'legacy-bootstrap') 'catálogo local anterior al corte'
@@ -483,7 +508,7 @@ try {
     Save-Receipt 'failed'
     throw
 } finally {
-    if ($loggedIn) {
+    if ($createdAdminSession) {
         try { $null = Invoke-Admin '/api/admin/auth/logout' 'POST' }
         catch { Write-Warning 'No se pudo confirmar logout; la cookie sólo permanece en la sesión de este proceso.' }
     }

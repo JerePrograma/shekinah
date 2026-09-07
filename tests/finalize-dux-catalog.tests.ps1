@@ -4,9 +4,9 @@ Pruebas locales del procedimiento operativo. Ejecutar con pwsh -NoProfile -File
 tests/finalize-dux-catalog.tests.ps1. Cada caso corre aislado, con HTTP, Git,
 Wrangler, GitHub CLI y credenciales completamente simulados. No consulta la red.
 #>
-param([ValidateSet('all','success','missing-tenant','missing-tenant-inventory','missing-tenant-after-sync','wrong-tenant','sync-failure','production-no-receipt','unsafe-target','price-mismatch','editorial-mismatch','rollback-failure','http-known-code','http-untrusted-code','production-canonical','production-expired-receipt','production-future-receipt','transport-production','transport-wrong-host','transport-preview-phase','transport-preview-deployment','transport-alias','transport-different-canonical','transport-no-credentials')][string]$Scenario='all')
+param([ValidateSet('all','success','missing-tenant','missing-tenant-inventory','missing-tenant-after-sync','wrong-tenant','sync-failure','production-no-receipt','unsafe-target','price-mismatch','editorial-mismatch','rollback-failure','http-known-code','http-untrusted-code','production-canonical','production-expired-receipt','production-future-receipt','transport-production','transport-wrong-host','transport-preview-phase','transport-preview-deployment','transport-alias','transport-different-canonical','transport-no-credentials','session-success','session-rejected','session-untrusted-identity','session-malformed')][string]$Scenario='all')
 $ErrorActionPreference='Stop'
-$scenarios=@('success','missing-tenant','missing-tenant-inventory','missing-tenant-after-sync','wrong-tenant','sync-failure','production-no-receipt','unsafe-target','price-mismatch','editorial-mismatch','rollback-failure','http-known-code','http-untrusted-code','production-canonical','production-expired-receipt','production-future-receipt','transport-production','transport-wrong-host','transport-preview-phase','transport-preview-deployment','transport-alias','transport-different-canonical','transport-no-credentials')
+$scenarios=@('success','missing-tenant','missing-tenant-inventory','missing-tenant-after-sync','wrong-tenant','sync-failure','production-no-receipt','unsafe-target','price-mismatch','editorial-mismatch','rollback-failure','http-known-code','http-untrusted-code','production-canonical','production-expired-receipt','production-future-receipt','transport-production','transport-wrong-host','transport-preview-phase','transport-preview-deployment','transport-alias','transport-different-canonical','transport-no-credentials','session-success','session-rejected','session-untrusted-identity','session-malformed')
 if($Scenario -eq 'all') {
  $pwshExecutable=Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})
  foreach($case in $scenarios) {
@@ -18,7 +18,7 @@ if($Scenario -eq 'all') {
 }
 $global:testRepoRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $env:CLOUDFLARE_API_TOKEN='mock-only-not-a-real-secret'
-$global:testState=@{ collection=$false; public=$false; migrations=$false; syncCount=0; imports=@{}; networkCount=0; postTenantVerified=$false; publicEnables=0; rollbacks=0; credentialPrompts=0; adminRequests=0; loginCount=0 }
+$global:testState=@{ collection=$false; public=$false; migrations=$false; syncCount=0; imports=@{}; networkCount=0; postTenantVerified=$false; publicEnables=0; rollbacks=0; credentialPrompts=0; adminRequests=0; loginCount=0; sessionChecks=0; sessionVerified=$false; logoutCount=0 }
 $global:testSha='a'*40
 $global:testDb='11111111-1111-1111-1111-111111111111'
 $global:testDeployment='33333333-3333-3333-3333-333333333333'
@@ -96,7 +96,17 @@ function global:Invoke-RestMethod {
  if($path.StartsWith('/api/admin/')) {
   $global:testState.adminRequests++
   if($Headers.Origin -cne $global:testRequestOrigin -or $null -eq $WebSession){throw 'Administrative origin or session missing'}
-  if($path -ne '/api/admin/auth/login' -and $global:testState.loginCount -ne 1){throw 'Administrative request inherited a session without login'}
+  if($path -notin @('/api/admin/auth/login','/api/admin/auth/session') -and $global:testState.loginCount -ne 1 -and -not $global:testState.sessionVerified){throw 'Administrative request inherited a session without login'}
+ }
+ if($path -eq '/api/admin/auth/session'){
+  $global:testState.sessionChecks++
+  $cookie=$WebSession.Cookies.GetCookies([Uri]$Uri)['__Host-shekinah-admin']
+  if($null -eq $cookie -or -not $cookie.Secure -or -not $cookie.HttpOnly -or $cookie.Path -cne '/' -or $cookie.Value -cne 'MOCK_SESSION_VALUE.SIGNATURE'){throw 'Session cookie missing or unsafe'}
+  if($global:testState.migrations -or $global:testState.credentialPrompts -ne 0 -or $global:testState.loginCount -ne 0){throw 'Reused session must validate before mutation without password prompts'}
+  if($global:testScenario -eq 'session-rejected'){throw 'SECRET_SESSION_REJECTION_MUST_NOT_LEAK'}
+  $source=if($global:testScenario -eq 'session-untrusted-identity'){'access'}else{'password'}
+  $global:testState.sessionVerified=$source -ceq 'password'
+  return @{authenticated=$true;identity=@{source=$source}}
  }
  if($path -eq '/api/admin/auth/login'){
   $global:testState.loginCount++
@@ -111,7 +121,7 @@ function global:Invoke-RestMethod {
   }
   return @{authenticated=$true}
  }
- if($path -eq '/api/admin/auth/logout'){return}
+ if($path -eq '/api/admin/auth/logout'){$global:testState.logoutCount++;return}
  if($path -eq '/api/admin/dux/catalog-control'){
   if($Method -eq 'POST'){$data=$Body|ConvertFrom-Json -AsHashtable;if($data.ContainsKey('publicCutoverEnabled')){throw 'Commercial flag mutation forbidden'};if($global:testScenario -eq 'rollback-failure' -and $data.ContainsKey('publicCatalogEnabled') -and -not $data.publicCatalogEnabled){throw 'Simulated rollback outage'};if($data.ContainsKey('snapshotCollectionEnabled')){$global:testState.collection=$data.snapshotCollectionEnabled};if($data.ContainsKey('publicCatalogEnabled')){if($data.publicCatalogEnabled){if($data.confirmation -ne 'ENABLE_DUX_PUBLIC_CATALOG'){throw 'Confirmation missing'};$global:testState.publicEnables++}else{if($global:testState.public){$global:testState.rollbacks++}};$global:testState.public=$data.publicCatalogEnabled}}
   $snapshot=if($global:testState.syncCount -gt 0){@{itemCount=3;stale=$false;checkoutEligibleCount=0;priceCounts=@{usable=1;placeholder=1;missing_or_zero=1;invalid=0};catalogVersion=('b'*64)}}else{$null}
@@ -164,11 +174,15 @@ if($phase -eq 'Production' -and $Scenario -ne 'production-no-receipt') {
  @{schemaVersion=1;phase='preview';status='passed';commit=$global:testSha;databaseId='22222222-2222-2222-2222-222222222222';databaseName='shekinah-commerce-preview';accountId=('a'*32);companyId='12862';recordedAt=$recordedAt.ToString('o');files=$hashes}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $optionalArguments.PreviewReceipt -Encoding utf8NoBOM
 }
 if($Scenario -eq 'transport-no-credentials'){$env:ADMIN_USERNAME='must-not-use-environment';$env:ADMIN_PASSWORD='must-not-use-environment'}
+if($Scenario -like 'session-*'){
+ $sessionValue=if($Scenario -eq 'session-malformed'){'SECRET_INVALID_COOKIE; injected=value'}else{'MOCK_SESSION_VALUE.SIGNATURE'}
+ $optionalArguments.AdminSessionCookie=ConvertTo-SecureString $sessionValue -AsPlainText -Force
+}
 $caught=$null
 try {
  & (Join-Path $global:testRepoRoot 'scripts/finalize-dux-catalog.ps1') -Phase $phase -ExpectedCommit $global:testSha -AccountId ('a'*32) -DatabaseId $global:testDb -DeploymentId $global:testDeployment -SiteOrigin $origin -ExpectedBranchId '1' -ExpectedDepositId '25566' -EvidenceDirectory $global:testDirectory -WranglerPath fakeWrangler -GitHubCliPath fakeGh -ExpectedItems 3 -ExpectedUsable 1 -ExpectedPlaceholder 1 -ExpectedMissingOrZero 1 -ExpectedInvalid 0 @optionalArguments
 }catch{$caught=$_.Exception.Message;Write-Host "EXPECTED/OBSERVED ERROR: $caught"}
-if($Scenario -in @('success','missing-tenant','production-canonical','transport-production')) {
+if($Scenario -in @('success','missing-tenant','production-canonical','transport-production','session-success')) {
  if($caught -or $global:testState.syncCount -ne 1 -or -not $global:testState.public -or -not $global:testState.collection){throw 'Successful phase failed its assertions'}
  if($global:testState.publicEnables -ne 2 -or $global:testState.rollbacks -ne 1 -or $global:testState.imports.Count -ne 2 -or @($global:testState.imports.Values|Where-Object {$_ -ne 2}).Count -ne 0){throw 'Imports, rollback and reactivation did not complete exactly once'}
  $receipt=Get-Content -Raw (Get-ChildItem -LiteralPath $global:testDirectory -Filter '*.json').FullName|ConvertFrom-Json
@@ -176,6 +190,11 @@ if($Scenario -in @('success','missing-tenant','production-canonical','transport-
  if($receipt.origin -cne $origin -or $receipt.requestOrigin -cne $global:testRequestOrigin){throw 'Receipt confused public origin and transport'}
  if($Scenario -eq 'production-canonical' -and -not $receipt.canonicalHttpsVerified){throw 'Direct canonical HTTPS verification missing'}
  if($Scenario -eq 'transport-production' -and ($receipt.canonicalHttpsVerified -or $receipt.canonicalVerification -cne 'pending_external' -or @($receipt.checks|Where-Object result -eq 'pending_external').Count -ne 1)){throw 'Alternate transport incorrectly certified canonical HTTPS'}
+ if($Scenario -eq 'session-success'){
+  if($global:testState.sessionChecks -ne 1 -or $global:testState.credentialPrompts -ne 0 -or $global:testState.logoutCount -ne 0 -or ($receipt|ConvertTo-Json -Depth 12) -like '*MOCK_SESSION_VALUE*'){throw 'Reused session leaked, prompted or ended the user session'}
+ }
+}elseif($Scenario -in @('session-rejected','session-untrusted-identity','session-malformed')){
+ if(-not $caught -or $caught -like '*SECRET_*' -or $global:testState.migrations -or $global:testState.syncCount -ne 0 -or $global:testState.credentialPrompts -ne 0 -or $global:testState.logoutCount -ne 0){throw 'Invalid session did not stop safely before migrations'}
 }elseif($Scenario -eq 'sync-failure'){
  if(-not $caught -or $global:testState.syncCount -ne 1 -or $global:testState.public -or $global:testState.collection){throw 'Failure did not close controls or retried sync'}
 }elseif($Scenario -in @('wrong-tenant','unsafe-target','missing-tenant-inventory')){

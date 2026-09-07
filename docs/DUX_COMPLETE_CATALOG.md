@@ -66,7 +66,7 @@ Requisitos para una futura fase remota:
 - PowerShell 7, Node exacto de `.node-version`, GitHub CLI autenticado y Wrangler ya disponible; se aceptan rutas explícitas de ambos ejecutables;
 - cuenta Cloudflare, UUID D1 y deployment concretos, origen HTTPS del entorno, sucursal y depósito verificados y directorio de evidencia fuera del repositorio;
 - token Cloudflare con lectura de Pages y acceso a la D1 elegida, tomado de `CLOUDFLARE_API_TOKEN` o solicitado con `Read-Host -AsSecureString`;
-- usuario y contraseña de la administración de ese entorno, solicitados en consola; no se guardan ni imprimen contraseña, cookies o tokens;
+- usuario y contraseña de la administración de ese entorno, solicitados en consola, o `-AdminSessionCookie` como `SecureString` de una sesión existente cuya reutilización haya autorizado el operador; no se guardan ni imprimen contraseña, cookies o tokens;
 - `DUX_API_ENABLED=true` ya autorizado en la configuración del entorno para permitir la lectura; el script comprueba tenant, binding `DB`, base separada y los cuatro flags de comercio/Mercado Libre en `false`;
 - migraciones `0001`–`0014` ya verificadas; un tenant existente debe coincidir exactamente con empresa, sucursal y depósito. Su ausencia sólo se admite con inventario vacío, para que el único sync oficial lo verifique y publique;
 - tres controles en `0` al iniciar y conteos esperados explícitamente revisados para la fecha de operación.
@@ -75,7 +75,9 @@ No usar transcripciones de consola que capturen secretos. El script guarda sólo
 
 Cada invocación realiza una sola fase. Preview utiliza `shekinah-commerce-preview` y una URL del deployment bajo `*.shekinah-7dl.pages.dev`; Production exige `shekinah-commerce` y `https://shekinah.ar`. La configuración temporal de Wrangler contiene únicamente la D1 seleccionada y copias exactas de `0015`, `0016` y `0017`, para impedir que se apliquen migraciones ajenas. Los archivos y el recibo quedan en el directorio de evidencia, fuera de Git.
 
-Si la red del operador intercepta el certificado canónico y no permite validarlo, Production admite `-RequestOrigin` con la URL HTTPS inmutable del **mismo deployment productivo canónico** verificado por Cloudflare. No admite otro deployment, alias de rama, otro entorno ni un dominio arbitrario. `SiteOrigin` conserva `https://shekinah.ar`; URL, cookie y encabezado `Origin` administrativos usan el transporte efectivo, sin alterar Host, SNI ni validación TLS. La autenticación corresponde a ese host y no se hereda de una sesión del navegador.
+Si la red del operador intercepta el certificado canónico y no permite validarlo, Production admite `-RequestOrigin` con la URL HTTPS inmutable del **mismo deployment productivo canónico** verificado por Cloudflare. No admite otro deployment, alias de rama, otro entorno ni un dominio arbitrario. `SiteOrigin` conserva `https://shekinah.ar`; URL, cookie y encabezado `Origin` administrativos usan el transporte efectivo, sin alterar Host, SNI ni validación TLS.
+
+El script no busca credenciales del navegador ni del entorno. La reutilización de una sesión requiere proporcionar explícitamente `-AdminSessionCookie` en memoria. Sólo crea la cookie `__Host-shekinah-admin`, Secure y HttpOnly, para el host verificado; consulta `/api/admin/auth/session` y exige una identidad autenticada mediante contraseña antes de cualquier migración. Una firma rechazada, sesión vencida, formato inválido o identidad diferente detiene el procedimiento sin solicitar otra contraseña ni mutar D1. La sesión reutilizada no se cierra al terminar; el proceso descarta su copia. El ingreso normal conserva `Read-Host -AsSecureString` y el cierre de la sesión que creó.
 
 El recibo diferencia el dominio público del transporte. Con transporte alternativo, el éxito de la fase operativa deja `canonicalHttpsVerified=false` y `canonicalVerification=pending_external`. Ese recibo no acredita el dominio canónico ni permite declarar producción finalizada. Después del corte debe comprobarse `https://shekinah.ar/api/catalog` desde un cliente estándar externo y compararse su versión y digest con D1; la evidencia del workflow y el informe final completan esa comprobación independiente.
 
@@ -83,9 +85,9 @@ El operador pasa `-Phase Preview`, `-ExpectedCommit`, `-AccountId`, `-DatabaseId
 
 La secuencia es:
 
-1. Verificar SHA, CI, deployment, entorno, D1 y cualquier tenant existente, y conservar un bookmark Time Travel previo. Si falta el tenant, exigir inventario vacío; nunca insertar una fila manualmente.
+1. Verificar SHA, CI, deployment, entorno, D1 y cualquier tenant existente; autenticar al administrador y conservar un bookmark Time Travel previo. Si falta el tenant, exigir inventario vacío; nunca insertar una fila manualmente.
 2. Aplicar sólo `0015`–`0017`; verificar su registro, `foreign_key_check` y los tres controles en `0`.
-3. Autenticarse; registrar los IDs del catálogo local para comprobar rollback.
+3. Verificar los controles mediante la sesión autenticada; registrar los IDs del catálogo local para comprobar rollback.
 4. Habilitar colección y ejecutar **una sola** sincronización administrativa Dux read-only. El bootstrap verifica el tenant contra Dux y lo publica mediante el flujo oficial. No hay reintento automático ante un fallo o timeout.
 5. Exigir tenant persistido correcto; verificar snapshot v2, frescura, run, códigos únicos, conteos de precio y `checkoutEligible=0`.
 6. Importar los 135 vínculos dos veces y el triage dos veces; verificar idempotencia y 135/294/318 sin decisiones inesperadas.
