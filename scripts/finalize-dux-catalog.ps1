@@ -1,4 +1,5 @@
 #requires -Version 7.0
+#requires -Modules Microsoft.PowerShell.Utility
 <#
 .SYNOPSIS
 Valida localmente o ejecuta UNA fase autorizada de publicación del catálogo Dux.
@@ -17,6 +18,7 @@ param(
     [string]$DatabaseId,
     [string]$DeploymentId,
     [string]$SiteOrigin,
+    [string]$RequestOrigin,
     [string]$ExpectedBranchId,
     [string]$ExpectedDepositId,
     [string]$EvidenceDirectory,
@@ -51,6 +53,7 @@ $loggedIn = $false
 $syncAttempted = $false
 $bookmark = $null
 $ciRunId = $null
+$canonicalHttpsVerified = $false
 $databaseName = if ($Phase -eq 'Production') { 'shekinah-commerce' } else { 'shekinah-commerce-preview' }
 $environmentName = $Phase.ToLowerInvariant()
 
@@ -74,6 +77,8 @@ function Save-Receipt([string]$Status) {
         deploymentId = $DeploymentId; ciRunId = $ciRunId; accountId = $AccountId
         databaseId = $DatabaseId; databaseName = $databaseName; companyId = $companyId
         origin = $SiteOrigin; bookmark = $bookmark; files = $fileHashes
+        requestOrigin = $RequestOrigin; canonicalHttpsVerified = $canonicalHttpsVerified
+        canonicalVerification = if ($Phase -ceq 'Production' -and $RequestOrigin -cne $SiteOrigin) { 'pending_external' } elseif ($canonicalHttpsVerified) { 'verified_https' } else { 'not_verified' }
         syncAttempted = $syncAttempted; checks = @($verificationLog.ToArray())
     } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
 }
@@ -90,7 +95,39 @@ function Invoke-Json([string]$Uri, [string]$Method = 'GET', $Body = $null, $Head
         $requestArguments.ContentType = 'application/json; charset=utf-8'
     }
     try { return Invoke-RestMethod @requestArguments }
-    catch { throw 'La solicitud HTTPS falló o intentó redirigir. Revisar el entorno sin repetir el sync.' }
+    catch {
+        $requestError = $_
+        $diagnostic = 'sin estado HTTP disponible'
+        try {
+            $status = [int]$requestError.Exception.Response.StatusCode
+            if ($status -ge 100 -and $status -le 599) { $diagnostic = "HTTP $status" }
+        } catch { }
+        # Nunca imprimir mensajes, headers, URL, cookies ni cuerpos del servidor.
+        $allowedCodes = @(
+            'ADMIN_CREDENTIALS_INVALID', 'ADMIN_SESSION_MISSING', 'ADMIN_SESSION_INVALID',
+            'ADMIN_AUTH_CONFIG_INVALID', 'ADMIN_AUTH_UNAVAILABLE', 'ADMIN_AUDIT_UNAVAILABLE',
+            'ACCESS_TOKEN_MISSING', 'ADMIN_LOGIN_RATE_LIMITED', 'ADMIN_RATE_LIMIT_CONFIG_MISSING',
+            'ADMIN_RATE_LIMIT_UNAVAILABLE', 'DUX_RATE_LIMITED', 'ORIGIN_REQUIRED', 'ORIGIN_REJECTED',
+            'DATABASE_UNAVAILABLE', 'INTERNAL_ERROR', 'DUX_API_DISABLED', 'DUX_TOKEN_INVALID',
+            'DUX_CONFIG_INVALID', 'DUX_UNAVAILABLE', 'DUX_RESPONSE_INVALID', 'DUX_SYNC_IN_PROGRESS',
+            'DUX_SYNC_COOLDOWN', 'DUX_SYNC_LEASE_LOST', 'DUX_D1_WRITE_BUDGET_EXHAUSTED',
+            'DUX_COMPANY_NOT_FOUND', 'DUX_BRANCH_NOT_FOUND', 'DUX_BRANCH_COMPANY_MISMATCH',
+            'DUX_DEPOSIT_NOT_FOUND', 'DUX_DEPOSIT_COMPANY_MISMATCH', 'DUX_DEPOSIT_DISABLED',
+            'DUX_CATALOG_TENANT_MISMATCH', 'DUX_CATALOG_COMPANY_MISMATCH',
+            'DUX_CATALOG_CONTROL_MIGRATION_REQUIRED', 'DUX_CATALOG_MIGRATION_REQUIRED',
+            'DUX_CATALOG_SNAPSHOT_INVALID', 'DUX_CATALOG_SNAPSHOT_UNAVAILABLE',
+            'DUX_CATALOG_PUBLIC_REQUIRES_SNAPSHOT', 'DUX_TRIAGE_MIGRATION_REQUIRED',
+            'DUX_TRIAGE_EVIDENCE_CONFLICT', 'DUX_EDITORIAL_LINK_CONFLICT'
+        )
+        try {
+            $errorBody = $requestError.ErrorDetails.Message
+            if ($errorBody.Length -le 65536) {
+                $errorCode = ($errorBody | ConvertFrom-Json).error.code
+                if ($errorCode -is [string] -and $errorCode -cin $allowedCodes) { $diagnostic += "; código $errorCode" }
+            }
+        } catch { }
+        throw "La solicitud HTTPS falló o intentó redirigir ($diagnostic). Revisar el entorno sin repetir el sync."
+    }
 }
 
 function Invoke-Cloudflare([string]$Path, [string]$Method = 'GET', $Body = $null) {
@@ -118,11 +155,13 @@ function Invoke-Admin([string]$Path, [string]$Method = 'GET', $Body = $null) {
         $script:syncAttempted = $true
         Save-Receipt 'running'
     }
-    return Invoke-Json "$SiteOrigin$Path" $Method $Body @{ Origin = $SiteOrigin; 'Cache-Control' = 'no-cache' } -Admin
+    return Invoke-Json "$RequestOrigin$Path" $Method $Body @{ Origin = $RequestOrigin; 'Cache-Control' = 'no-cache' } -Admin
 }
 
 function Read-PublicCatalog {
-    return Invoke-Json "$SiteOrigin/api/catalog" 'GET' $null @{ 'Cache-Control' = 'no-cache' }
+    $catalog = Invoke-Json "$RequestOrigin/api/catalog" 'GET' $null @{ 'Cache-Control' = 'no-cache' }
+    if ($Phase -ceq 'Production' -and $RequestOrigin -ceq $SiteOrigin) { $script:canonicalHttpsVerified = $true }
+    return $catalog
 }
 
 function Assert-Control([bool]$Collection, [bool]$PublicCatalog) {
@@ -135,8 +174,14 @@ function Assert-Control([bool]$Collection, [bool]$PublicCatalog) {
     return $response
 }
 
-function Assert-Tenant {
+function Assert-Tenant([switch]$AllowBootstrap) {
     $tenant = @(Read-D1 'SELECT company_id, branch_id, deposit_id FROM dux_tenant_context WHERE id = 1;')
+    if ($tenant.Count -eq 0 -and $AllowBootstrap) {
+        $inventory = @(Read-D1 'SELECT COUNT(*) AS amount FROM dux_inventory_items;')
+        Assert-Check ($inventory.Count -eq 1 -and $inventory[0].amount -eq 0) 'tenant ausente sólo permitido para inventario vacío'
+        Record-Check 'tenant ausente e inventario vacío; el único sync oficial debe verificar y publicar el tenant'
+        return
+    }
     Assert-Check ($tenant.Count -eq 1) 'tenant previamente verificado presente'
     Assert-Check ($tenant[0].company_id -ceq $companyId) 'empresa real coincide con manifiesto'
     Assert-Check ($tenant[0].branch_id -ceq $ExpectedBranchId) 'sucursal esperada'
@@ -154,8 +199,10 @@ function Assert-BaselineTriage {
         $actual = @($counts | Where-Object { $_.disposition -ceq $expected.disposition -and $_.review_state -ceq $expected.state })
         Assert-Check ($actual.Count -eq 1 -and $actual[0].amount -eq $expected.amount) "triage $($expected.disposition)"
     }
-    $links = @(Read-D1 "SELECT COUNT(*) AS amount FROM dux_editorial_links WHERE company_id = '$companyId' AND active = 1;")
-    Assert-Check ($links[0].amount -eq 135) '135 vínculos activos; ninguna aprobación implícita'
+    $links = @(Read-D1 "SELECT COUNT(*) AS amount, SUM(active) AS active_count, COUNT(DISTINCT cod_item) AS unique_dux_count, COUNT(DISTINCT local_product_id) AS unique_local_count, SUM(reuse_images) AS reuse_images_count, SUM(reuse_description) AS reuse_description_count FROM dux_editorial_links WHERE company_id = '$companyId';")
+    Assert-Check ($links.Count -eq 1 -and $links[0].amount -eq 135 -and $links[0].active_count -eq 135) '135 vínculos totales y activos; ninguna aprobación implícita'
+    Assert-Check ($links[0].unique_dux_count -eq 135 -and $links[0].unique_local_count -eq 135) '135 identidades Dux y locales únicas'
+    Assert-Check ($links[0].reuse_images_count -eq 134 -and $links[0].reuse_description_count -eq 127) 'reutilización autorizada: 134 imágenes y 127 descripciones'
 }
 
 function Assert-Snapshot {
@@ -245,6 +292,14 @@ Assert-Check ($siteUri.Scheme -ceq 'https' -and $siteUri.UserInfo -eq '' -and $s
 $SiteOrigin = $siteUri.GetLeftPart([UriPartial]::Authority)
 if ($Phase -eq 'Production') { Assert-Check ($SiteOrigin -ceq 'https://shekinah.ar') 'origen productivo canónico' }
 else { Assert-Check ($siteUri.Host.EndsWith('.shekinah-7dl.pages.dev', [StringComparison]::Ordinal)) 'origen preview aislado de producción' }
+if ([string]::IsNullOrWhiteSpace($RequestOrigin)) { $RequestOrigin = $SiteOrigin }
+$requestUri = [Uri]$RequestOrigin
+Assert-Check ($requestUri.Scheme -ceq 'https' -and $requestUri.UserInfo -eq '' -and $requestUri.AbsolutePath -eq '/' -and $requestUri.Query -eq '' -and $requestUri.Fragment -eq '' -and $requestUri.IsDefaultPort) 'transporte HTTPS sin credenciales, ruta, query o puerto alternativo'
+$RequestOrigin = $requestUri.GetLeftPart([UriPartial]::Authority)
+if ($RequestOrigin -cne $SiteOrigin) {
+    Assert-Check ($Phase -ceq 'Production') 'transporte distinto sólo permitido en Production'
+    Assert-Check ($requestUri.Host.EndsWith('.shekinah-7dl.pages.dev', [StringComparison]::Ordinal)) 'transporte alternativo pertenece al proyecto Pages'
+}
 Assert-Check (-not [string]::IsNullOrWhiteSpace($EvidenceDirectory)) 'directorio de evidencia explícito'
 $evidenceRoot = [IO.Path]::GetFullPath($EvidenceDirectory)
 Assert-Check (-not ($evidenceRoot -eq $repoRoot -or $evidenceRoot.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) 'evidencia fuera del repositorio'
@@ -254,7 +309,11 @@ if ($Phase -eq 'Production') {
     Assert-Check ($preview.schemaVersion -eq 1 -and $preview.phase -ceq 'preview' -and $preview.status -ceq 'passed' -and $preview.commit -ceq $ExpectedCommit) 'preview verde del mismo SHA'
     Assert-Check ($preview.databaseId -cne $DatabaseId -and $preview.databaseName -ceq 'shekinah-commerce-preview' -and $preview.accountId -ceq $AccountId -and $preview.companyId -ceq $companyId) 'aislamiento y tenant del preview'
     foreach ($relative in $fileHashes.Keys) { Assert-Check ($preview.files.$relative -ceq $fileHashes[$relative]) "hash preview $relative" }
-    $previewAgeHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($preview.recordedAt)).TotalHours
+    # PowerShell reciente convierte fechas JSON a DateTime; no volver a parsearlas según la cultura local.
+    $previewRecordedAt = if ($preview.recordedAt -is [DateTime] -or $preview.recordedAt -is [DateTimeOffset]) {
+        [DateTimeOffset]$preview.recordedAt
+    } else { [DateTimeOffset]::Parse($preview.recordedAt, [Globalization.CultureInfo]::InvariantCulture) }
+    $previewAgeHours = ([DateTimeOffset]::UtcNow - $previewRecordedAt).TotalHours
     Assert-Check ($previewAgeHours -ge 0 -and $previewAgeHours -le 24) 'preview verde en las últimas 24 horas'
     $confirmation = Read-Host "Escribí ACTIVAR CATALOGO PRODUCTION $ExpectedCommit para autorizar esta fase"
     Assert-Check ($confirmation -ceq "ACTIVAR CATALOGO PRODUCTION $ExpectedCommit") 'confirmación explícita de producción'
@@ -298,8 +357,20 @@ try {
     Assert-Check ($project.deployment_configs.preview.d1_databases.DB.id -cne $project.deployment_configs.production.d1_databases.DB.id) 'D1 preview y producción distintas'
     $database = Invoke-Cloudflare "d1/database/$DatabaseId"
     Assert-Check ($database.uuid -ceq $DatabaseId -and $database.name -ceq $databaseName) 'identidad D1 por API'
-    if ($Phase -eq 'Production') { Assert-Check ($project.canonical_deployment.id -ceq $DeploymentId) 'deployment canónico productivo' }
+    if ($Phase -eq 'Production') {
+        Assert-Check ($project.canonical_deployment.id -ceq $DeploymentId -and $project.canonical_deployment.deployment_trigger.metadata.commit_hash -ceq $ExpectedCommit) 'deployment canónico productivo del SHA exacto'
+    }
     else { Assert-Check ($SiteOrigin -cin @($deployment.url) + @($deployment.aliases)) 'URL preview pertenece al deployment' }
+    if ($RequestOrigin -cne $SiteOrigin) {
+        Assert-Check ($RequestOrigin -ceq $deployment.url) 'transporte igual a URL inmutable del deployment verificado; ningún alias'
+        Record-Check 'transporte HTTPS alternativo del mismo deployment productivo' @{ requestOrigin = $RequestOrigin; publicOrigin = $SiteOrigin }
+        $verificationLog.Add([ordered]@{
+            at = [DateTimeOffset]::UtcNow.ToString('o'); check = 'HTTPS y catálogo del dominio canónico requieren prueba funcional externa'
+            result = 'pending_external'; origin = $SiteOrigin
+        })
+        Save-Receipt 'running'
+        Write-Warning 'El transporte Pages no verifica HTTPS ni el funcionamiento de shekinah.ar. La prueba funcional canónica externa sigue siendo obligatoria.'
+    }
     foreach ($environmentVariables in @($config.env_vars, $deployment.env_vars)) {
         Assert-Check ($environmentVariables.DUX_COMPANY_ID.value -ceq $companyId -and $environmentVariables.DUX_BRANCH_ID.value -ceq $ExpectedBranchId -and $environmentVariables.DUX_DEPOSIT_ID.value -ceq $ExpectedDepositId) 'tenant configurado y desplegado en Pages'
         foreach ($flag in @('COMMERCE_ENABLED', 'VITE_COMMERCE_ENABLED', 'MERCADO_LIBRE_CATALOG_ENABLED', 'VITE_MERCADO_LIBRE_CATALOG_ENABLED')) {
@@ -307,8 +378,8 @@ try {
         }
         Assert-Check ($environmentVariables.DUX_API_ENABLED.value -ceq 'true') 'lectura Dux preparada y desplegada por configuración externa autorizada'
     }
-    Assert-Tenant
-    Record-Check 'deployment, binding, base y tenant verificados'
+    Assert-Tenant -AllowBootstrap
+    Record-Check 'deployment, binding, base y prerrequisito de tenant verificados'
     $applied = @(Read-D1 'SELECT name FROM d1_migrations ORDER BY name;').name
     $prior = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'migrations') -Filter '*.sql' | Where-Object Name -match '^00(0[1-9]|1[0-4])_' | Select-Object -ExpandProperty Name)
     Assert-Check ($prior.Count -eq 14) '14 migraciones previas versionadas'
@@ -355,6 +426,18 @@ try {
     $legacy = Read-PublicCatalog
     Assert-Check ($legacy.source -ceq 'legacy-bootstrap') 'catálogo local anterior al corte'
     $legacyIds = @($legacy.products.id | Sort-Object -CaseSensitive)
+    $status = Invoke-Admin '/api/admin/dux/status'
+    Assert-Check ($status.enabled -eq $true -and $status.lifecycleReady -eq $false -and $status.unitSemanticsReady -eq $false -and $status.counts.checkoutEligibleCount -eq 0) 'lectura Dux disponible y comercio bloqueado'
+    $mayNeedRollback = $true
+    $null = Invoke-Admin '/api/admin/dux/catalog-control' 'POST' @{ snapshotCollectionEnabled = $true }
+    $null = Assert-Control $true $false
+    $sync = Invoke-Admin '/api/admin/dux/sync' 'POST'
+    $syncRunId = $sync.summary.runId
+    Assert-Check ($syncRunId -match '^dux_sync_' -and $sync.catalog.inventoryRunId -ceq $syncRunId) 'única sincronización publica snapshot'
+    # El bootstrap del servidor verifica Dux y publica el tenant junto al inventario.
+    # Los imports que requieren tenant sólo pueden ejecutarse después de este control.
+    Assert-Tenant
+    $payload = Assert-Snapshot
     foreach ($import in @(
         @{ path = '/api/admin/dux/editorial-links/import'; count = 135 },
         @{ path = '/api/admin/dux/editorial-triage/import'; count = 747 }
@@ -366,19 +449,8 @@ try {
         Record-Check "importación fija dos veces: $($import.path)" @{ firstCreated = $first.created; secondCreated = $second.created }
     }
     Assert-BaselineTriage
-    $null = Assert-Control $false $false
-    Record-Check '135 auto-confirmados, 294 pendientes, 318 enriquecimientos descartados'
-    $status = Invoke-Admin '/api/admin/dux/status'
-    Assert-Check ($status.enabled -eq $true -and $status.lifecycleReady -eq $false -and $status.unitSemanticsReady -eq $false -and $status.counts.checkoutEligibleCount -eq 0) 'lectura Dux disponible y comercio bloqueado'
-    $mayNeedRollback = $true
-    $null = Invoke-Admin '/api/admin/dux/catalog-control' 'POST' @{ snapshotCollectionEnabled = $true }
     $null = Assert-Control $true $false
-    $sync = Invoke-Admin '/api/admin/dux/sync' 'POST'
-    $syncRunId = $sync.summary.runId
-    Assert-Check ($syncRunId -match '^dux_sync_' -and $sync.catalog.inventoryRunId -ceq $syncRunId) 'única sincronización publica snapshot'
-    Assert-Tenant
-    $payload = Assert-Snapshot
-    Assert-BaselineTriage
+    Record-Check '135 auto-confirmados, 294 pendientes, 318 enriquecimientos descartados'
     Enable-PublicCatalog
     Assert-PublicCatalog $payload
     $null = Invoke-Admin '/api/admin/dux/catalog-control' 'POST' @{ publicCatalogEnabled = $false }
@@ -394,7 +466,9 @@ try {
     Assert-PublicCatalog $payload
     $mayNeedRollback = $false
     Save-Receipt 'passed'
-    Write-Host "FASE $Phase COMPLETA. Recibo: $receiptPath"
+    if ($Phase -ceq 'Production' -and $RequestOrigin -cne $SiteOrigin) {
+        Write-Host "FASE OPERATIVA $Phase COMPLETA; COMPROBACIÓN CANÓNICA PENDIENTE. Recibo: $receiptPath"
+    } else { Write-Host "FASE $Phase COMPLETA. Recibo: $receiptPath" }
 } catch {
     if ($mayNeedRollback -and $loggedIn) {
         try {

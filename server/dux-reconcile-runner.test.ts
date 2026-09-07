@@ -43,6 +43,36 @@ describe('runner programado de reconciliación Dux', () => {
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toContain('integración está deshabilitada');
   });
+
+  it('confirma catálogo publicado por el mismo run sin equiparar productos con inventario cuantificado', () => {
+    const result = runScenario('catalog_published');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('procesadas=2');
+    expect(result.stdout).toContain('Catálogo Dux confirmado: run=dux_sync_runner_fixture productos=3');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
+  });
+
+  it.each([
+    'catalog_missing', 'catalog_disabled', 'catalog_pending_migration', 'catalog_run_mismatch',
+    'catalog_missing_run', 'catalog_invalid_version', 'catalog_wrong_price_list',
+    'catalog_invalid_count', 'catalog_time_mismatch', 'catalog_invalid_time',
+  ])('rechaza %s sin repetir una lectura Dux cuyo inventario ya respondió', (scenario) => {
+    const result = runScenario(scenario);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('DUX_CATALOG_PUBLICATION_UNCONFIRMED');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
+    expect(result.stdout).not.toContain('Reconciliación Dux completada');
+    expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+  });
+
+  it.each(['invalid_success_json', 'catalog_invalid_metric', 'catalog_partial_inventory'])(
+    'un éxito HTTP inconsistente %s requiere atención sin reintentar Dux', (scenario) => {
+      const result = runScenario(scenario);
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
+      expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+    },
+  );
 });
 
 function runScenario(scenario: string): SpawnSyncReturns<string> {

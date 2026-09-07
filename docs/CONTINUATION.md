@@ -1,5 +1,11 @@
 # Continuación
 
+## Activación autorizada desde `a18eb732` — 2026-09-07 UTC
+
+Aplicar [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md) usando el estado remoto real. Preview observado está vacío y requiere bootstrap por el único sync oficial antes de importar vínculos y triage; producción ya tiene tenant verificado. Pausar y comprobar el scheduler durante la operación, preservar todos los recibos y reabrir el gate sólo después del corte productivo verificado. La autorización de esta fase comprende Preview y producción; las restricciones de la iteración de código anterior no la cancelan. Mantener `public_cutover_enabled=0` y todos los controles transaccionales cerrados.
+
+Si hay cambios de código, publicar primero el fix con CI y deployments del SHA exacto. El workflow de reconciliación exige catálogo confirmado y su smoke manual verifica HTTPS canónico y fichas públicas mediante GET. No tomar el éxito histórico de inventario como evidencia de publicación v2. Consultar el informe operativo externo para conocer hasta qué fase se llegó y los IDs concretos antes de continuar; no repetir un sync incierto.
+
 ## Prioridad vigente desde 2026-09-06
 
 Continuar por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md) y el informe del SHA que implemente el catálogo completo desde `60bdbb62db4e39f1639978f422db0516745cec9c`. Verificar primero CI y deployment Pages de ese SHA. Durante la iteración de código no ejecutar D1 remoto, sync ni activación. La fase remota posterior usa únicamente `scripts/finalize-dux-catalog.ps1`: Preview completa primero; Production en invocación separada con recibo verde del mismo SHA y confirmación explícita.

@@ -38,3 +38,7 @@ jobs:
           SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile
           SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}
         run: node scripts/run-dux-reconcile.mjs
+
+      - name: Verify canonical public catalog and every product page
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: node scripts/verify-dux-public-catalog.mjs --all-details

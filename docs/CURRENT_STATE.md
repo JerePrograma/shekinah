@@ -1,5 +1,13 @@
 # Estado actual
 
+## Activación autorizada: diagnóstico remoto — 2026-09-07 UTC
+
+La ejecución parte de `a18eb73235fe6e5f7657c0acf404a276722abf35`, CI `34067956579` exitoso y deployment Pages de producción `89f1392c-8221-4c5b-aea2-9df087928464` del mismo SHA. La inspección remota comprobó Preview con migraciones `0001`–`0015`, sin tenant ni inventario, y producción con `0001`–`0014`, tenant `12862 / 1 / 25566` e inventario de 749 filas. No confundir estas filas con un catálogo v2 publicado: la API pública todavía respondió `legacy-bootstrap` en ese punto.
+
+El scheduler GitHub estaba habilitado y su última corrida observada había sincronizado inventario. Se pausó el gate antes de la operación controlada y se verificó ausencia de corridas pendientes. El runner anterior no exigía publicación de catálogo; la corrección exige evidencia del mismo run y no reintenta Dux ante una confirmación inconsistente. El script permite ahora el bootstrap oficial de Preview vacío, sin insertar tenant manual ni debilitar los guards del servidor.
+
+La autorización vigente permite completar Preview y después producción según [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md), con comercio cerrado. Esta sección acredita el diagnóstico inicial y las correcciones; migraciones, activación, recibos, SHA final y comprobación canónica se acreditan por separado en el informe operativo externo. Se conservan los estados históricos que siguen.
+
 ## Iteración de catálogo completo — 2026-09-06
 
 La base de esta iteración es `60bdbb62db4e39f1639978f422db0516745cec9c`. El código separa colección, catálogo público y corte comercial mediante tres controles que nacen en `0`; agrega `0017` y snapshot v2 con precios explícitamente no disponibles; conserva todos los códigos Dux habilitados y el triage 135/294/318. Los 318 descartan enriquecimiento local, nunca el producto Dux. Dux determina nombre, SKU, precio/estado, stock y categorías; local sólo imágenes/descripción autorizadas. Mercado Libre aporta cero evidencias en el baseline y no es autoridad.

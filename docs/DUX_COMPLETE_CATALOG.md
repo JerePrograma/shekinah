@@ -68,23 +68,27 @@ Requisitos para una futura fase remota:
 - token Cloudflare con lectura de Pages y acceso a la D1 elegida, tomado de `CLOUDFLARE_API_TOKEN` o solicitado con `Read-Host -AsSecureString`;
 - usuario y contraseña de la administración de ese entorno, solicitados en consola; no se guardan ni imprimen contraseña, cookies o tokens;
 - `DUX_API_ENABLED=true` ya autorizado en la configuración del entorno para permitir la lectura; el script comprueba tenant, binding `DB`, base separada y los cuatro flags de comercio/Mercado Libre en `false`;
-- migraciones `0001`–`0014` ya verificadas y tenant persistido; si faltan, se detiene antes de migrar;
+- migraciones `0001`–`0014` ya verificadas; un tenant existente debe coincidir exactamente con empresa, sucursal y depósito. Su ausencia sólo se admite con inventario vacío, para que el único sync oficial lo verifique y publique;
 - tres controles en `0` al iniciar y conteos esperados explícitamente revisados para la fecha de operación.
 
 No usar transcripciones de consola que capturen secretos. El script guarda sólo recibos sanitizados, hashes, IDs operativos, conteos y bookmark. El token se mantiene en memoria y en el entorno del proceso Wrangler durante la operación; después restaura los valores previos.
 
 Cada invocación realiza una sola fase. Preview utiliza `shekinah-commerce-preview` y una URL del deployment bajo `*.shekinah-7dl.pages.dev`; Production exige `shekinah-commerce` y `https://shekinah.ar`. La configuración temporal de Wrangler contiene únicamente la D1 seleccionada y copias exactas de `0015`, `0016` y `0017`, para impedir que se apliquen migraciones ajenas. Los archivos y el recibo quedan en el directorio de evidencia, fuera de Git.
 
+Si la red del operador intercepta el certificado canónico y no permite validarlo, Production admite `-RequestOrigin` con la URL HTTPS inmutable del **mismo deployment productivo canónico** verificado por Cloudflare. No admite otro deployment, alias de rama, otro entorno ni un dominio arbitrario. `SiteOrigin` conserva `https://shekinah.ar`; URL, cookie y encabezado `Origin` administrativos usan el transporte efectivo, sin alterar Host, SNI ni validación TLS. La autenticación corresponde a ese host y no se hereda de una sesión del navegador.
+
+El recibo diferencia el dominio público del transporte. Con transporte alternativo, el éxito de la fase operativa deja `canonicalHttpsVerified=false` y `canonicalVerification=pending_external`. Ese recibo no acredita el dominio canónico ni permite declarar producción finalizada. Después del corte debe comprobarse `https://shekinah.ar/api/catalog` desde un cliente estándar externo y compararse su versión y digest con D1; la evidencia del workflow y el informe final completan esa comprobación independiente.
+
 El operador pasa `-Phase Preview`, `-ExpectedCommit`, `-AccountId`, `-DatabaseId`, `-DeploymentId`, `-SiteOrigin`, `-ExpectedBranchId`, `-ExpectedDepositId`, `-EvidenceDirectory`, `-WranglerPath` y `-GitHubCliPath` con valores verificados. Los defaults de conteo corresponden exclusivamente al baseline 747/592/87/68/0; un cambio real en Dux exige revisar y proporcionar `-ExpectedItems`, `-ExpectedUsable`, `-ExpectedPlaceholder`, `-ExpectedMissingOrZero` y `-ExpectedInvalid`. Un conteo inesperado detiene la fase; el script no lo acepta silenciosamente ni descarta productos para ajustarlo.
 
 La secuencia es:
 
-1. Verificar SHA, CI, deployment, entorno, D1 y tenant, y conservar un bookmark Time Travel previo.
+1. Verificar SHA, CI, deployment, entorno, D1 y cualquier tenant existente, y conservar un bookmark Time Travel previo. Si falta el tenant, exigir inventario vacío; nunca insertar una fila manualmente.
 2. Aplicar sólo `0015`–`0017`; verificar su registro, `foreign_key_check` y los tres controles en `0`.
 3. Autenticarse; registrar los IDs del catálogo local para comprobar rollback.
-4. Importar los 135 vínculos dos veces y el triage dos veces; verificar idempotencia y 135/294/318 sin decisiones inesperadas.
-5. Habilitar colección y ejecutar **una sola** sincronización administrativa Dux read-only. No hay reintento automático ante un fallo o timeout.
-6. Verificar snapshot v2, tenant, frescura, run, códigos únicos, conteos de precio y `checkoutEligible=0`.
+4. Habilitar colección y ejecutar **una sola** sincronización administrativa Dux read-only. El bootstrap verifica el tenant contra Dux y lo publica mediante el flujo oficial. No hay reintento automático ante un fallo o timeout.
+5. Exigir tenant persistido correcto; verificar snapshot v2, frescura, run, códigos únicos, conteos de precio y `checkoutEligible=0`.
+6. Importar los 135 vínculos dos veces y el triage dos veces; verificar idempotencia y 135/294/318 sin decisiones inesperadas.
 7. Habilitar catálogo con confirmación; comprobar igualdad exacta entre universo público y snapshot, nombre/precio Dux y comercio cerrado.
 8. Deshabilitar catálogo; comprobar retorno al catálogo local, conservación de snapshot/triage/vínculos y claves foráneas.
 9. Rehabilitar sólo después de aprobar todas las comprobaciones, repetir el smoke público y emitir recibo `passed`.
@@ -100,6 +104,18 @@ El rollback funcional pone `public_catalog_enabled=0` mediante el endpoint admin
 Si una fase falla después de abrir la colección, el script intenta cerrar `public_catalog_enabled` y `snapshot_collection_enabled`, comprueba `public_cutover_enabled=0` y emite recibo `failed`. Si no puede verificar ese cierre, informa la incidencia y exige comprobación administrativa antes de continuar. Un fallo de sync no autoriza repetirlo: primero se inspecciona el run registrado y el estado remoto. El bookmark se conserva para recuperación extraordinaria de esquema/datos; el script no ejecuta restauraciones Time Travel ni revierte migraciones.
 
 Una fase ya finalizada deja colección y catálogo habilitados y cutover cerrado. Reejecutar el procedimiento de activación con controles abiertos se detiene; no modifica ese estado para simular un primer intento. Los recibos fallidos y exitosos se conservan por separado.
+
+## Continuidad y verificación canónica
+
+Antes de una operación controlada, inspeccionar y pausar el gate GitHub `DUX_RECONCILIATION_ENABLED` y comprobar que no sobrevivan corridas activas. Sólo reabrirlo después del sync administrativo productivo, catálogo verificado, `public_cutover_enabled=0` y presupuesto D1 disponible. El cron existente conserva sus límites y exclusión mutua; una expresión de 15 minutos no acredita esa cadencia efectiva en GitHub.
+
+El runner exige que el resultado incluya un catálogo publicado por el mismo `inventoryRunId`, hash válido, lista `PRECIOS DEL NEGOCIO`, cantidad entera y fecha del run. Inventario exitoso acompañado de catálogo `disabled`, `pending_migration` o inconsistente termina en fallo sin repetir Dux. El log de éxito contiene únicamente IDs, conteos, versión y fecha.
+
+Un `workflow_dispatch` del workflow existente agrega, después de reconciliar, `scripts/verify-dux-public-catalog.mjs --all-details`. Este paso sólo realiza GET públicos seriales a `https://shekinah.ar`, sin credenciales, con TLS normal y rechazo de redirecciones. Comprueba inicio, listado y todas las fichas, contrato v2, códigos e IDs únicos, categorías, estados de precio y comercio cerrado. Compara versión y digest comercial al comienzo y al final para detectar cambios durante la lectura. No hace llamadas Dux ni reintenta el sync ante un fallo del smoke.
+
+El digest público usa filas ordenadas por SKU: `[sku, name, priceStatus, amount|null, [[categorySlug, categoryName], ...]]`. Compararlo con el snapshot D1 permite comprobar todos los campos comerciales desde un cliente externo estándar cuando la red local intercepta TLS. Comprobar el presupuesto de lecturas D1 antes del recorrido exhaustivo; una ficha reconstruye la proyección completa. La ejecución programada conserva sólo la reconciliación, sin repetir ese recorrido.
+
+Las pruebas reproducibles del procedimiento están en `tests/finalize-dux-catalog.tests.ps1`, ejecutadas también por CI con PowerShell. Cubren bootstrap vacío, tenant incorrecto o ausente después del sync, imports, rollback, timeout sin reintento y saneamiento de errores HTTP mediante dobles locales. No requieren credenciales ni red.
 
 ## Evidencia de validación y límites
 

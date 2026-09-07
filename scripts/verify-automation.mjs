@@ -85,9 +85,31 @@ if (actionReferences.length !== allowedActions.size) fail('La cantidad de accion
 for (const action of actionReferences) {
   if (action === undefined || !allowedActions.has(action)) fail(`Acción no autorizada o no fijada a SHA: ${action}`);
 }
+// The only permitted PowerShell step runs repository-owned tests with mocked I/O.
+// Keep the general shell/network prohibition for every other CI command.
+const localDuxMockStep = '\n' + [
+  '      - name: Verify Dux activation procedure with local mocks',
+  '        shell: pwsh',
+  '        run: ./tests/finalize-dux-catalog.tests.ps1',
+].join('\n') + '\n';
+const normalizedWorkflow = workflow.replaceAll('\r\n', '\n');
+if (normalizedWorkflow.split(localDuxMockStep).length !== 2) {
+  fail('CI debe ejecutar exactamente una vez las pruebas Dux locales autorizadas.');
+}
+const afterDuxMockStep = normalizedWorkflow
+  .slice(normalizedWorkflow.indexOf(localDuxMockStep) + localDuxMockStep.length)
+  .split('\n')
+  .find((line) => line.trim() !== '' && !line.trimStart().startsWith('#'));
+if (afterDuxMockStep !== undefined && !/^ {0,6}\S/u.test(afterDuxMockStep)) {
+  fail('El paso de pruebas Dux no admite comandos continuados ni propiedades adicionales.');
+}
+const remainingCiSteps = normalizedWorkflow.replace(localDuxMockStep, '');
+if (/\b(?:powershell|pwsh|Invoke-WebRequest)\b/iu.test(remainingCiSteps)) {
+  fail('PowerShell en CI sólo está autorizado para las pruebas Dux locales exactas.');
+}
 for (const forbidden of [
   /\bwrite\b/iu, /pull_request_target/iu, /\bsecrets\./iu, /cloudflare\//iu,
-  /\bcurl\b/iu, /\bwget\b/iu, /\b(?:powershell|pwsh|Invoke-WebRequest)\b/iu,
+  /\bcurl\b/iu, /\bwget\b/iu,
   /github-script/iu, /repository_dispatch/iu,
 ]) {
   if (forbidden.test(workflow)) fail(`Contenido prohibido en CI: ${forbidden}`);

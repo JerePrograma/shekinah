@@ -32,6 +32,11 @@ if (result.status === 'disabled') {
   if (result.summary.status !== 'succeeded' || result.summary.failed > 0) {
     throw new Error('La reconciliación Dux requiere atención operativa.');
   }
+  console.log(
+    `Catálogo Dux confirmado: run=${result.catalog.inventoryRunId} ` +
+    `productos=${result.catalog.itemCount} versión=${result.catalog.catalogVersion} ` +
+    `publicado=${result.catalog.syncedAt}.`,
+  );
 }
 
 async function reconcileWithRetry(url, schedulerSecret) {
@@ -83,29 +88,32 @@ async function reconcileWithRetry(url, schedulerSecret) {
 }
 
 async function readResponse(response) {
+  const ValidationError = response.ok ? NonRetryableReconciliationError : Error;
   const text = await response.text();
   if (text.length > 32_768) {
-    throw new Error('La respuesta de reconciliación Dux excede el límite permitido.');
+    throw new ValidationError('La respuesta de reconciliación Dux excede el límite permitido.');
   }
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`La reconciliación Dux respondió ${response.status} con un cuerpo inválido.`);
+    throw new ValidationError(`La reconciliación Dux respondió ${response.status} con un cuerpo inválido.`);
   }
 }
 
 function parseResult(value) {
-  if (!isRecord(value)) throw new Error('La reconciliación Dux devolvió un resultado inválido.');
+  if (!isRecord(value)) throw new NonRetryableReconciliationError('La reconciliación Dux devolvió un resultado inválido.');
   if (value.status === 'disabled') return { status: 'disabled' };
   if (
     value.status !== 'completed' || !isRecord(value.summary) ||
     !['succeeded', 'partial', 'failed'].includes(value.summary.status) ||
     !isMetric(value.summary.processed) || !isMetric(value.summary.failed)
   ) {
-    throw new Error('La reconciliación Dux devolvió un resultado inválido.');
+    throw new NonRetryableReconciliationError('La reconciliación Dux devolvió un resultado inválido.');
   }
+  const catalog = parseCatalogPublication(value.catalog, value.summary);
   return {
     status: 'completed',
+    catalog,
     summary: {
       status: value.summary.status,
       processed: value.summary.processed,
@@ -115,6 +123,33 @@ function parseResult(value) {
       ambiguous: optionalMetric(value.summary.ambiguous),
     },
   };
+}
+
+function parseCatalogPublication(value, summary) {
+  if (
+    !isRecord(value) || value.status !== undefined ||
+    typeof summary.runId !== 'string' || !/^dux_sync_[A-Za-z0-9._:-]{1,180}$/u.test(summary.runId) ||
+    value.inventoryRunId !== summary.runId ||
+    typeof value.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/u.test(value.catalogVersion) ||
+    value.priceListName !== 'PRECIOS DEL NEGOCIO' || !isMetric(value.itemCount) ||
+    !isTimestamp(summary.completedAt) || value.syncedAt !== summary.completedAt
+  ) {
+    throw new NonRetryableReconciliationError(
+      'El inventario respondió, pero no se confirmó una publicación válida del catálogo Dux ' +
+      'asociada al mismo ciclo (DUX_CATALOG_PUBLICATION_UNCONFIRMED). No se reintentará Dux.',
+    );
+  }
+  return {
+    inventoryRunId: value.inventoryRunId,
+    catalogVersion: value.catalogVersion,
+    itemCount: value.itemCount,
+    syncedAt: value.syncedAt,
+  };
+}
+
+function isTimestamp(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value;
 }
 
 function parseTarget(value) {
@@ -150,7 +185,7 @@ function errorCode(value) {
 
 function optionalMetric(value) {
   if (value === undefined) return undefined;
-  if (!isMetric(value)) throw new Error('La reconciliación Dux devolvió una métrica inválida.');
+  if (!isMetric(value)) throw new NonRetryableReconciliationError('La reconciliación Dux devolvió una métrica inválida.');
   return value;
 }
 
