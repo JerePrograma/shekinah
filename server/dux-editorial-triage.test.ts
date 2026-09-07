@@ -140,6 +140,23 @@ describe('triage editorial Dux versionado y revisión', () => {
     } finally { test.close(); }
   });
 
+  it('los triggers bloquean SQL directo sin vínculo aprobado o incremento de versión', async () => {
+    const test = database();
+    try {
+      await importDuxEditorialTriage(test.database, env, 'admin');
+      expect(() => test.sqlite.prepare("UPDATE dux_editorial_triage SET review_state = 'approved', review_version = 1 WHERE cod_item = ?")
+        .run(manualCode)).toThrow('DUX_EDITORIAL_TRIAGE_APPROVAL_INVALID');
+      expect(() => test.sqlite.prepare("UPDATE dux_editorial_triage SET review_state = 'rejected' WHERE cod_item = ?")
+        .run(manualCode)).toThrow('DUX_EDITORIAL_TRIAGE_ACTIVE_LINK_CONFLICT');
+      expect(test.sqlite.prepare('SELECT review_state, review_version FROM dux_editorial_triage WHERE cod_item = ?')
+        .get(manualCode)).toEqual({ review_state: 'pending', review_version: 0 });
+      test.sqlite.prepare("UPDATE dux_editorial_triage SET review_state = 'rejected', review_version = 1 WHERE cod_item = ?")
+        .run(manualCode);
+      expect(test.sqlite.prepare('SELECT review_state, review_version FROM dux_editorial_triage WHERE cod_item = ?')
+        .get(manualCode)).toEqual({ review_state: 'rejected', review_version: 1 });
+    } finally { test.close(); }
+  });
+
   it('links previos de un caso pendiente o descartado nunca enriquecen el runtime', async () => {
     const test = database();
     try {

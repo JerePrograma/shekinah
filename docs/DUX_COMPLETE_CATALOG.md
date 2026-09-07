@@ -101,6 +101,8 @@ Las rutas API y el flujo se basan en los contratos del repositorio. El comando o
 
 ## Rollback e incidentes
 
+En Preview, el intento remoto del 2026-09-07 aplicó `0016` y rechazó `0017` con `incomplete input: SQLITE_ERROR` (7500). No se ejecutó el sync ni se activaron controles; la inspección confirmó que `0017` no dejó objetos parciales. Los dos triggers de resolución usaban `SELECT CASE ... END` sin paréntesis, una forma afectada por el [separador de sentencias de D1](https://github.com/cloudflare/workers-sdk/issues/4727). Se sustituyen por `SELECT RAISE(...) WHERE ...`, conservando condiciones y errores. Las pruebas verifican también SQL directo inválido, versión de revisión y resolución válida. Los recibos fallidos, bookmarks y copias originales de las migraciones se conservan fuera del repositorio; este registro no acredita la aplicación remota del SQL corregido.
+
 El rollback funcional pone `public_catalog_enabled=0` mediante el endpoint administrativo o la acción equivalente del panel. El runtime vuelve al catálogo local sin borrar snapshot, triage, vínculos, imágenes ni historia, y sin revertir migraciones. No restablece stock local ni habilita transacciones.
 
 Si una fase falla después de abrir la colección, el script intenta cerrar `public_catalog_enabled` y `snapshot_collection_enabled`, comprueba `public_cutover_enabled=0` y emite recibo `failed`. Si no puede verificar ese cierre, informa la incidencia y exige comprobación administrativa antes de continuar. Un fallo de sync no autoriza repetirlo: primero se inspecciona el run registrado y el estado remoto. El bookmark se conserva para recuperación extraordinaria de esquema/datos; el script no ejecuta restauraciones Time Travel ni revierte migraciones.

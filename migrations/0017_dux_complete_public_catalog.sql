@@ -215,7 +215,8 @@ CREATE TRIGGER dux_editorial_triage_approval_guard
 BEFORE UPDATE OF review_state ON dux_editorial_triage
 WHEN NEW.review_state = 'approved'
 BEGIN
-  SELECT CASE WHEN OLD.review_state <> 'pending'
+  SELECT RAISE(ABORT, 'DUX_EDITORIAL_TRIAGE_APPROVAL_INVALID')
+  WHERE OLD.review_state <> 'pending'
     OR NEW.review_version <> OLD.review_version + 1
     OR NOT EXISTS (SELECT 1 FROM json_each(OLD.evidence_json, '$.candidates') candidate
       WHERE json_extract(candidate.value, '$.localProductId') = NEW.selected_local_product_id)
@@ -223,16 +224,15 @@ BEGIN
       WHERE link.id = NEW.link_id AND link.company_id = NEW.company_id AND link.cod_item = NEW.cod_item
         AND link.local_product_id = NEW.selected_local_product_id AND link.active = 1
         AND link.reuse_images = NEW.reuse_images AND link.reuse_description = NEW.reuse_description
-        AND link.decision_method = 'manual_review')
-    THEN RAISE(ABORT, 'DUX_EDITORIAL_TRIAGE_APPROVAL_INVALID') END;
+        AND link.decision_method = 'manual_review');
 END;
 
 CREATE TRIGGER dux_editorial_triage_resolution_guard
 BEFORE UPDATE OF review_state ON dux_editorial_triage
 WHEN NEW.review_state <> 'approved'
 BEGIN
-  SELECT CASE WHEN NEW.review_version <> OLD.review_version + 1
+  SELECT RAISE(ABORT, 'DUX_EDITORIAL_TRIAGE_ACTIVE_LINK_CONFLICT')
+  WHERE NEW.review_version <> OLD.review_version + 1
     OR EXISTS (SELECT 1 FROM dux_editorial_links link
-      WHERE link.company_id = NEW.company_id AND link.cod_item = NEW.cod_item AND link.active = 1)
-    THEN RAISE(ABORT, 'DUX_EDITORIAL_TRIAGE_ACTIVE_LINK_CONFLICT') END;
+      WHERE link.company_id = NEW.company_id AND link.cod_item = NEW.cod_item AND link.active = 1);
 END;
