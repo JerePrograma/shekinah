@@ -43,6 +43,47 @@ const runId = 'dux_sync_catalog_test';
 const syncedAt = '2026-09-02T20:00:00.000Z';
 
 describe('catálogo público autoritativo de Dux', () => {
+  it('distingue el mismo ID de subrubro dentro de rubros distintos sin cambiar nombres Dux', async () => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      const sources = sourceCatalog().map((item, index) => ({
+        ...item,
+        category: { id: index === 0 ? 10 : 20, name: index === 0 ? 'Frutos secos' : 'Envasados' },
+        subcategory: { id: 4, name: index === 0 ? 'Elaboración propia' : 'Agroecológico' },
+      }));
+      const first = await persistDuxCatalogSnapshot(testD1.database, runId, sources, syncedAt);
+      const snapshot = await readDuxCatalogSnapshot(testD1.database);
+      expect(snapshot.items.map((item) => item.categories)).toEqual([
+        [{ slug: 'dux-rubro-10', name: 'Frutos secos' }, { slug: 'dux-rubro-10-subrubro-4', name: 'Elaboración propia' }],
+        [{ slug: 'dux-rubro-20', name: 'Envasados' }, { slug: 'dux-rubro-20-subrubro-4', name: 'Agroecológico' }],
+      ]);
+      const runtime = projectDuxRuntimeCatalog(snapshot, [], []);
+      expect(runtime.categories).toHaveLength(4);
+      expect(runtime.products.every((product) => product.commerce?.checkoutEligible === false)).toBe(true);
+      runtime.products.forEach((product) => parseProductDetail(parseProduct(product), product));
+      const reordered = await persistDuxCatalogSnapshot(testD1.database, runId, [...sources].reverse(), syncedAt);
+      expect(reordered.catalogVersion).toBe(first.catalogVersion);
+    } finally { testD1.close(); }
+  });
+
+  it.each(['category', 'subcategory'] as const)('rechaza nombres contradictorios de %s en el mismo ámbito y conserva el snapshot', async (field) => {
+    const testD1 = completeTestDatabase();
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      const first = await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog(), syncedAt);
+      const conflicting = sourceCatalog().map((item, index) => ({
+        ...item, [field]: { id: 10, name: index === 0 ? 'Nombre uno' : 'Nombre incompatible' },
+      }));
+      await expect(persistDuxCatalogSnapshot(testD1.database, runId, conflicting, syncedAt))
+        .rejects.toMatchObject({ code: 'DUX_CATALOG_CATEGORY_CONFLICT' });
+      expect((await readDuxCatalogSnapshot(testD1.database)).catalogVersion).toBe(first.catalogVersion);
+      expect(testD1.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally { testD1.close(); }
+  });
+
   it('publica todos los ítems Dux sin enriquecer por mapping de inventario', async () => {
     const testD1 = createTestD1(
       commerceMigration,

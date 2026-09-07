@@ -35,6 +35,8 @@ Un error de precio conserva el producto dentro del snapshot. Una identidad crít
 
 La evidencia histórica tiene 592 precios usables, 87 placeholders y 68 ausentes/cero: 155 no usables entre 747 productos. Es una comparación de regresión, nunca una semilla de precios ni un límite fijo para snapshots futuros.
 
+Los subrubros se identifican dentro de su rubro Dux: `dux-rubro-{rubroId}-subrubro-{subrubroId}`. Dux puede reutilizar un ID de subrubro en rubros distintos; los nombres se conservan literalmente. Si no hay rubro, se conserva `dux-subrubro-{subrubroId}`. Nombres contradictorios para la misma identidad completa siguen bloqueando una fotografía nueva sin reemplazar la anterior.
+
 ## Triage editorial
 
 El manifiesto determinista `catalog/internal/dux-editorial-triage-v1.json` procede del directorio de evidencia original validado. Conserva los hashes de fuente, los códigos y los candidatos permitidos como evidencia editorial; sus nombres y conteos históricos no gobiernan el runtime comercial.
@@ -100,6 +102,8 @@ Production repite esa secuencia en otra invocación. Exige `-PreviewReceipt` apu
 Las rutas API y el flujo se basan en los contratos del repositorio. El comando oficial de [migraciones Wrangler](https://developers.cloudflare.com/d1/wrangler-commands/#d1-migrations-apply) aplica sólo los SQL pendientes de la configuración aislada. Los bookmarks se obtienen con la API oficial de [Time Travel](https://developers.cloudflare.com/api/resources/d1/subresources/database/subresources/time_travel/); la identidad de Pages se verifica mediante la [API de deployment](https://developers.cloudflare.com/api/resources/pages/subresources/projects/subresources/deployments/methods/get/).
 
 ## Rollback e incidentes
+
+El segundo intento Preview del 2026-09-07 aplicó `0017` correctamente. El run `dux_sync_0a73d854-20c7-43ed-8175-2a67722cd5b8` completó el inventario y verificó el tenant, pero la publicación del catálogo respondió HTTP 502. La reproducción local con la lectura ya obtenida identificó `DUX_CATALOG_CATEGORY_CONFLICT`: el subrubro `4` significa `ELABORACION PROPIA` bajo el rubro `272741` y `AGROECOLOGICO` bajo `271978`. Se corrige la identidad del subrubro incorporando su rubro, coherente con la [consulta Dux de subrubros por rubro](https://developers.duxsoftware.com.ar/reference/listar_sub_rubros). El cierre automático dejó los tres controles en `0`, preservó 749 registros de inventario y no creó snapshot v2 ni vínculos. No se repite Dux antes de validar y desplegar la corrección; el recibo fallido y su bookmark se conservan fuera del repositorio.
 
 En Preview, el intento remoto del 2026-09-07 aplicó `0016` y rechazó `0017` con `incomplete input: SQLITE_ERROR` (7500). No se ejecutó el sync ni se activaron controles; la inspección confirmó que `0017` no dejó objetos parciales. Los dos triggers de resolución usaban `SELECT CASE ... END` sin paréntesis, una forma afectada por el [separador de sentencias de D1](https://github.com/cloudflare/workers-sdk/issues/4727). Se sustituyen por `SELECT RAISE(...) WHERE ...`, conservando condiciones y errores. Las pruebas verifican también SQL directo inválido, versión de revisión y resolución válida. Los recibos fallidos, bookmarks y copias originales de las migraciones se conservan fuera del repositorio; este registro no acredita la aplicación remota del SQL corregido.
 

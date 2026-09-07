@@ -446,7 +446,8 @@ function sourceCategories(
   const categories: StoredCatalogReference[] = [];
   for (const [prefix, reference] of [
     ['dux-rubro', item.category],
-    ['dux-subrubro', item.subcategory],
+    // Dux reuses sub-rubro IDs across rubros; the parent is part of the identity.
+    [item.category === null ? 'dux-subrubro' : `dux-rubro-${item.category.id}-subrubro`, item.subcategory],
   ] as const) {
     if (reference === null) continue;
     const slug = `${prefix}-${reference.id}`;
