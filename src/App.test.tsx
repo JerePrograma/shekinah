@@ -113,7 +113,9 @@ describe('App', () => {
         name: 'Producto creado desde backoffice',
       }),
     ).toBeVisible();
-    expect(document.title).toBe('Producto creado desde backoffice | Shekinah');
+    await waitFor(() => {
+      expect(document.title).toBe('Producto creado desde backoffice | Shekinah');
+    });
     expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
     expect(fetchMock.mock.calls.filter(([input]) =>
       requestUrl(input) === '/api/catalog')).toHaveLength(1);
