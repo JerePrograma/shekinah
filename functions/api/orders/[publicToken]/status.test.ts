@@ -70,6 +70,7 @@ describe('estado público del pedido', () => {
 
       const response = await onRequest(context(database, publicToken));
       expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
       const body = await response.json() as Record<string, unknown>;
       expect(body).toEqual({
         status: 'approved',
@@ -77,6 +78,7 @@ describe('estado público del pedido', () => {
         totalMinor: 123_400,
         itemCount: 2,
         updatedAt: now,
+        payment: { status: 'none', requiresReview: false, updatedAt: null },
       });
       expect(body).not.toHaveProperty('id');
       expect(JSON.stringify(body)).not.toContain('ord_private_internal');

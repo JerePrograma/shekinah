@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
 import { getPublicOrderStatus } from '../commerce/api';
+import { parseOrderPaymentState, paymentStateLabel, paymentStatePresentation } from '../commerce/payment-state';
 import {
   clearRememberedCheckoutOrder,
   readRememberedCheckoutOrder,
@@ -55,10 +56,11 @@ export function PaymentReturnPage({
       try {
         const next = await getPublicOrderStatus(publicToken, controller.signal);
         if (controller.signal.aborted) return;
+        if (next.payment !== undefined) parseOrderPaymentState(next.payment);
         setStatus(next);
         setError('');
         if (
-          next.status === 'approved' &&
+          (next.payment?.status ?? next.status) === 'approved' &&
           clearedToken.current !== publicToken &&
           shouldClearCartAfterApproval(itemsRef.current, publicToken)
         ) {
@@ -66,7 +68,8 @@ export function PaymentReturnPage({
           clear();
           clearRememberedCheckoutOrder();
         }
-        if (isPendingStatus(next.status)) {
+        if (next.payment === undefined ? isPendingStatus(next.status) :
+          next.payment.status === 'pending' || (next.payment.status === 'none' && isPendingStatus(next.status))) {
           if (pollCount < MAX_POLLS) {
             pollCount += 1;
             setPhase('polling');
@@ -96,7 +99,7 @@ export function PaymentReturnPage({
 
   const presentation = statusPresentation(status, expected, phase, error);
   const busy = phase === 'checking' || phase === 'polling';
-  const canRetry = publicToken !== null && (phase === 'error' || phase === 'exhausted');
+  const canRetry = publicToken !== null && (phase === 'error' || phase === 'exhausted' || (!busy && status?.payment?.requiresReview === true));
   return (
     <section
       className="payment-return section"
@@ -116,9 +119,15 @@ export function PaymentReturnPage({
         {status === null ? null : (
           <dl className="payment-summary">
             <div>
-              <dt>Estado verificado</dt>
+              <dt>Estado del pedido</dt>
               <dd>{humanStatus(status.status)}</dd>
             </div>
+            {status.payment === undefined ? null : (
+              <div>
+                <dt>Estado del pago</dt>
+                <dd>{paymentStateLabel(status.payment.status)}</dd>
+              </div>
+            )}
             <div>
               <dt>Total</dt>
               <dd>
@@ -183,9 +192,19 @@ function statusPresentation(
     };
   }
   if (phase === 'error' || error !== '') {
+    if (status?.payment?.status === 'approved' || status?.payment?.status === 'refunded') {
+      const recorded = paymentStatePresentation(status.payment);
+      return { title: recorded.title, message: `${recorded.message} No pudimos actualizar la consulta: ${error}` };
+    }
     return { title: 'No pudimos verificar el pedido', message: error };
   }
   if (status === null) return { title: 'Estado no disponible', message: 'No hay información verificable del pedido.' };
+  if (status.payment !== undefined) {
+    const recorded = paymentStatePresentation(status.payment);
+    return phase === 'exhausted'
+      ? { ...recorded, message: `${recorded.message} Las verificaciones automáticas terminaron por ahora. Podés reintentar la consulta.` }
+      : recorded;
+  }
   switch (status.status) {
     case 'approved':
       return { title: 'Pago aprobado', message: 'Mercado Pago confirmó el pago y el pedido quedó aprobado.' };

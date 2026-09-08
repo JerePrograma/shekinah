@@ -1,3 +1,4 @@
+import type { OrderPaymentState } from './payment-state';
 import type { CheckoutFulfillment } from './fulfillment';
 
 export const MAX_CART_LINES = 50;
@@ -65,6 +66,7 @@ export type PublicOrderStatus =
 
 export type PublicOrderStatusResponse = Readonly<{
   status: PublicOrderStatus;
+  payment?: OrderPaymentState;
   currency: 'ARS';
   totalMinor: number;
   itemCount: number;

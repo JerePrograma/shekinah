@@ -6,7 +6,7 @@ import {
   requireDatabase,
   responseFromError,
 } from '../../../../server/http';
-import { getOrderByPublicTokenHash } from '../../../../server/orders';
+import { getPublicOrderState } from '../../../../server/order-payment-state';
 import type { PagesFunction } from '../../../../server/platform';
 
 export const onRequest: PagesFunction = async ({ env, params, request }) => {
@@ -19,15 +19,9 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
     }
     const database = requireDatabase(env);
     const tokenHash = await sha256Hex(token.toLocaleLowerCase('en'));
-    const order = await getOrderByPublicTokenHash(database, tokenHash);
+    const order = await getPublicOrderState(database, tokenHash);
     if (order === null) throw notFound();
-    return jsonResponse({
-      status: order.status,
-      currency: order.currency,
-      totalMinor: order.total_minor,
-      itemCount: order.item_count,
-      updatedAt: order.updated_at,
-    });
+    return jsonResponse(order);
   } catch (error: unknown) {
     return responseFromError(error);
   }
