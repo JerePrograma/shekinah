@@ -14,7 +14,12 @@ const receipt: WebRequestReceipt = { reference: 'WEB-abcdefghijklmnopqrstuvwx', 
   paymentStatus: 'not_requested', reservationStatus: 'not_reserved', totalMinor: null };
 const fulfillment = { method: 'coordinated_pickup' as const, fullName: 'Cliente prueba', phone: '1234567890', address: '', locality: '', province: '', postalCode: '' };
 // El componente sólo transporta las líneas al cliente API doble; no decide precios ni catálogo.
-const items = [{}] as readonly CartItem[];
+const items: readonly CartItem[] = [{
+  product: { id: 'producto-prueba', slug: 'producto-prueba', path: '/producto-prueba/',
+    name: 'Producto de prueba', categorySlugs: [], categoryNames: [],
+    price: { amount: 10, currency: 'ARS' }, priceStatus: 'usable' },
+  quantity: 1, unitPrice: 10, subtotal: 10,
+}];
 function component() { return <WebOrderRequestSection items={items} fulfillment={fulfillment} disabled={false} onBusyChange={vi.fn()} onActiveChange={vi.fn()} />; }
 
 beforeEach(() => {
