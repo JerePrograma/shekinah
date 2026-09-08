@@ -1,0 +1,9 @@
+.web-request-panel {
+  overflow-wrap: anywhere;
+}
+
+.web-request-panel button,
+.web-request-panel a {
+  max-inline-size: 100%;
+  white-space: normal;
+}

@@ -14,6 +14,9 @@ export async function listCommerceAttention(database: D1Database, offset = 0) {
       CASE
         WHEN financial.approved_count > 1 THEN 'duplicate_payment'
         WHEN (${orderPaymentReviewSql}) = 1 THEN 'payment_review'
+        WHEN financial.approved_count > 0 AND d.reservation_state = 'released' THEN 'payment_review'
+        WHEN COALESCE(financial.approved_count, 0) = 0 AND d.reservation_state = 'confirmed'
+          AND (financial.refunded_count > 0 OR o.status IN ('rejected', 'cancelled')) THEN 'release_review'
         WHEN d.reservation_state IN ('pending', 'uncertain') THEN 'reconcile'
         WHEN d.reservation_state = 'compensation_pending' THEN 'release_review'
         WHEN financial.approved_count > 0 AND d.reservation_state = 'confirmed' THEN 'finalize'

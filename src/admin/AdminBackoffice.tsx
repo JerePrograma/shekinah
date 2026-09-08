@@ -12,6 +12,7 @@ import type { AdminSection } from '../pages/AdminPage';
 import type { Navigate } from '../routing/routes';
 import { DuxPanel } from './DuxPanel';
 import { CommerceAttentionPanel } from './CommerceAttentionPanel';
+import { WebOrderRequestsPanel } from './WebOrderRequestsPanel';
 import { ProductManager } from './ProductManager';
 import type { ProductInteractionState } from './ProductManager';
 
@@ -318,6 +319,7 @@ export function AdminBackoffice({
           onUnauthorized={handleUnauthorized}
         />
       </div>
+      {section === 'orders' ? <WebOrderRequestsPanel onUnauthorized={handleUnauthorized} onBusyChange={handleOrderInteractionChange} /> : null}
       {section === 'orders' ? <CommerceAttentionPanel onUnauthorized={handleUnauthorized} /> : null}
       <AdminPage
         navigate={navigate}

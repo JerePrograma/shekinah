@@ -1,5 +1,11 @@
 # Reactivación comercial e idempotencia
 
+## Continuaciones implementadas — 2026-09-08
+
+La [visibilidad financiera y bandeja de pendientes](COMMERCE_PAYMENT_VISIBILITY.md) separa el pago del estado comercial y permite consultar incidencias sin alterar stock. El [registro de solicitudes web](WEB_ORDER_REQUESTS.md) reutiliza `checkout_intents`, incorpora protección persistente entre pestañas y permite revisión administrativa sin exigir WhatsApp. Requiere la migración aditiva 0020 y controles explícitos antes de su activación.
+
+Una solicitud aceptada no es un pago, una reserva ni una orden cobrable. La conversión coordinada a pedido Dux y Checkout Pro sigue pendiente; esta etapa no la simula ni acredita activación remota. Los apartados anteriores que describían estas lecturas y el registro web como pendientes conservan el estado histórico; consultar los documentos enlazados para distinguir código, pruebas y operación efectiva.
+
 ## Contrato vigente — 2026-09-08
 
 El usuario autorizó implementar Checkout Pro, pedidos registrados en la propia web, idempotencia persistente y gestión asistida en Dux cuando no exista una operación pública automatizable y verificada. Esta autorización sustituye el objetivo histórico de mantener todas las ventas cerradas; no demuestra que el circuito ya esté implementado, desplegado o activado.

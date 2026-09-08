@@ -152,4 +152,23 @@ describe('lectura financiera y pendientes comerciales', () => {
       expect(await getPublicOrderState(db, 'missing')).toBeNull();
     } finally { db.close(); }
   });
+  it('mantiene visible un cobro posterior a liberación aunque el pedido esté aprobado', async () => {
+    const db = new SqliteD1(migration);
+    try {
+      const item = await order(db, 'approved');
+      await link(db, item.id, 'released'); await pay(db, item.id);
+      expect((await listCommerceAttention(db)).rows[0]?.next_action).toBe('payment_review');
+      expect((await db.prepare('SELECT reservation_state FROM dux_order_links').first())?.reservation_state).toBe('released');
+    } finally { db.close(); }
+  });
+
+  it('un reintegro ya proyectado con reserva confirmada sigue requiriendo revisión', async () => {
+    const db = new SqliteD1(migration);
+    try {
+      const item = await order(db, 'refunded');
+      await link(db, item.id, 'confirmed'); await pay(db, item.id, 'refunded');
+      expect((await listCommerceAttention(db)).rows[0]?.next_action).toBe('release_review');
+    } finally { db.close(); }
+  });
+
 });

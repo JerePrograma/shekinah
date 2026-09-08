@@ -4,6 +4,7 @@ import type { ChangeEvent } from 'react';
 import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
+import { WebOrderRequestSection } from '../commerce/WebOrderRequestSection';
 import { getProductCartLimit } from '../cart/model';
 import { createCheckoutPreference, createWhatsappOrder } from '../commerce/api';
 import {
@@ -62,6 +63,8 @@ type WhatsappOrderResult = Readonly<{
 
 export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, liveMessage, remove, setQuantity, total } = useCart();
+  const [webRequestPending, setWebRequestPending] = useState(false);
+  const [webRequestActive, setWebRequestActive] = useState(false);
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [whatsappOrderPending, setWhatsappOrderPending] = useState(false);
   const [whatsappOrderResult, setWhatsappOrderResult] =
@@ -80,11 +83,16 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const cancelClearRef = useRef<HTMLButtonElement>(null);
   const whatsappResultTitleRef = useRef<HTMLHeadingElement>(null);
   const whatsappOrderPendingRef = useRef(false);
+  const webRequestsEnabled = import.meta.env.VITE_WEB_ORDERS_ENABLED === 'true';
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const commerceEnabled = isCommerceClientEnabled();
   const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
   const quote = useMemo(
-    () => calculateShippingQuote(
+    () => webRequestsEnabled && items.some(({ product }) => product.commerce?.source === 'dux')
+      ? fulfillmentDraft.method === 'correo_argentino'
+        ? Object.freeze({ kind: 'manual' as const, tier: 'manual_unknown_weight' as const, shippingMinor: 0 as const, totalWeightGrams: null })
+        : Object.freeze({ kind: 'online' as const, tier: 'coordinated_pickup' as const, shippingMinor: 0, totalWeightGrams: null })
+      : calculateShippingQuote(
       items.map(({ product, quantity }) => ({
         name: product.name,
         ...(product.presentation === undefined ? {} : { presentation: product.presentation }),
@@ -92,11 +100,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       })),
       fulfillmentDraft.method === '' ? 'coordinated_pickup' : fulfillmentDraft.method,
     ),
-    [fulfillmentDraft.method, items],
+    [fulfillmentDraft.method, items, webRequestsEnabled],
   );
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
-  const cartOperationPending = checkoutPending || whatsappOrderPending;
+  const cartOperationPending = checkoutPending || whatsappOrderPending || webRequestPending;
   const cartHasAvailabilityConflict = items.some(({ product, quantity }) =>
     quantity > getProductCartLimit(product));
   const addressRequired = requiresDeliveryAddress(fulfillmentDraft.method);
@@ -140,7 +148,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }, [whatsappOrderResult]);
 
   async function startCheckout() {
-    if (items.length === 0 || cartOperationPending || !commerceEnabled) return;
+    if (items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
     setShowErrors(true);
     setCheckoutError('');
     if (validation.value === null) {
@@ -210,11 +218,12 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   async function registerWhatsappOrder(): Promise<void> {
     if (
+      webRequestsEnabled ||
       whatsappNumber === null ||
       items.length === 0 ||
       whatsappOrderResult !== null ||
       whatsappOrderPendingRef.current ||
-      checkoutPending ||
+      checkoutPending || webRequestPending || webRequestActive ||
       !whatsappConsent
     ) return;
 
@@ -355,6 +364,14 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             </a>
           </div>
         )}
+
+        <WebOrderRequestSection
+          items={items}
+          fulfillment={validation.value}
+          disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null}
+          onBusyChange={setWebRequestPending}
+          onActiveChange={setWebRequestActive}
+        />
 
         {items.length === 0 ? (
           <div className="empty-state">
@@ -517,15 +534,15 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
               <h2 id="cart-summary-title">Resumen</h2>
               <dl className="cart-totals">
-                <div><dt>Productos</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
+                <div><dt>{webRequestsEnabled ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
                 <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
-                <div className="cart-total"><dt>Total</dt><dd>{quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
+                <div className="cart-total"><dt>Total</dt><dd>{webRequestsEnabled || quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
               </dl>
               {fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
                 <p className="cart-disclaimer">Peso calculado: {formatWeight(quote.totalWeightGrams)}.</p>
               ) : null}
               {quote.kind === 'manual' ? (
-                <p className="form-error" role="status">{manualQuoteMessage(quote.tier)}</p>
+                <p className="form-error" role="status">{webRequestsEnabled ? 'El envío requiere cotización. No se cobrará un total sin confirmación previa.' : manualQuoteMessage(quote.tier)}</p>
               ) : null}
               <p className="cart-disclaimer">
                 El servidor vuelve a validar productos, precios, disponibilidad, envío y total antes de registrar el pedido o iniciar el pago integrado.
@@ -534,7 +551,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 <button
                   className="button button-primary"
                   type="button"
-                  disabled={cartOperationPending || quote.kind === 'manual' || cartHasAvailabilityConflict}
+                  disabled={cartOperationPending || webRequestActive || quote.kind === 'manual' || cartHasAvailabilityConflict}
                   onClick={() => void startCheckout()}
                 >
                   {checkoutPending ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
@@ -546,12 +563,12 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   </button>
                   <p className="cart-configuration-note">
                     {quote.kind === 'manual'
-                      ? 'El pago se habilita cuando el envío tenga un total definido. Solicitá la cotización por WhatsApp.'
+                      ? webRequestsEnabled ? 'El pago requiere un total definitivo. Podés registrar una solicitud web para su revisión.' : 'El pago se habilita cuando el envío tenga un total definido. Solicitá la cotización por WhatsApp.'
                       : 'El pago estará disponible cuando el comercio esté habilitado.'}
                   </p>
                 </>
               )}
-              {whatsappOrderResult === null ? (
+              {!webRequestsEnabled && whatsappOrderResult === null ? (
                 <>
                   <label className="whatsapp-consent" htmlFor="whatsapp-consent">
                     <input
@@ -578,7 +595,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     className="button button-secondary"
                     type="button"
                     aria-describedby="whatsapp-readiness"
-                    disabled={cartOperationPending || whatsappNumber === null || !whatsappReady || cartHasAvailabilityConflict}
+                    disabled={cartOperationPending || webRequestActive || whatsappNumber === null || !whatsappReady || cartHasAvailabilityConflict}
                     onClick={() => void registerWhatsappOrder()}
                   >
                     {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
