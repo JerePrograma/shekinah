@@ -425,7 +425,9 @@ function isValidDateString(value: unknown): value is string {
 
 function formatDate(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'fecha no disponible' : date.toLocaleString('es-AR');
+  return Number.isNaN(date.getTime()) ? 'fecha no disponible' : date.toLocaleString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires', hour12: false,
+  });
 }
 
 function errorMessage(error: unknown): string {

@@ -113,7 +113,7 @@ export function DuxCatalogControls({ onUnauthorized, onOperationStateChange, dis
         <Metric label="Precios inválidos" value={snapshot?.priceCounts.invalid ?? 0} />
         <Metric label="Compras habilitadas" value={0} />
       </dl>
-      <p>{snapshot === null ? 'Sin snapshot disponible.' : `Último snapshot: ${new Date(snapshot.syncedAt).toLocaleString('es-AR')}. ${snapshot.stale ? 'Obsoleto' : 'Fresco'}.`}</p>
+      <p>{snapshot === null ? 'Sin snapshot disponible.' : `Último snapshot: ${new Date(snapshot.syncedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false })}. ${snapshot.stale ? 'Obsoleto' : 'Fresco'}.`}</p>
       {state.snapshotError === 'DUX_CATALOG_SNAPSHOT_INVALID' ? <p role="alert">El snapshot no superó la validación. Revisá la sincronización.</p> : null}
       {state.control.manualCatalogRetired ? <p>Productos manuales eliminados. Sólo Dux puede aportar productos al catálogo.</p> : null}
       <p>La visibilidad del catálogo no habilita Checkout Pro ni pedidos por WhatsApp.</p>

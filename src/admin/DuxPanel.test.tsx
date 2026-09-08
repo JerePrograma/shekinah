@@ -31,6 +31,7 @@ describe('panel administrativo Dux', () => {
     expect(metric('Vínculos ambiguos')).toHaveTextContent('2');
     expect(metric('Semántica de unidades')).toHaveTextContent('Pendiente');
     expect(metric('Ciclo de reservas')).toHaveTextContent('Bloqueado');
+    expect(screen.getByText(/Último ciclo completado:/)).toHaveTextContent('26/8/2026, 13:05:00');
     expect(screen.getByRole('heading', { level: 3, name: 'Bloqueos de activación' })).toBeVisible();
     expect(screen.getByText('Upgrade Dux a PRO/FULL + token API requerido')).toBeVisible();
     expect(screen.getByText('La semántica de unidades y cantidades no está verificada.')).toBeVisible();
@@ -155,7 +156,7 @@ function enabledStatus() {
       status: 'succeeded',
       processed: 12,
       failed: 0,
-      completedAt: '2026-08-26T12:05:00.000Z',
+      completedAt: '2026-08-26T16:05:00.000Z',
     },
     counts: {
       inventoryCount: 12,
