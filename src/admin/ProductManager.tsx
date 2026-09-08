@@ -71,7 +71,7 @@ export function ProductManager({
   onUnauthorized?: (() => void) | undefined;
 }>) {
   const [products, setProducts] = useState<readonly CatalogProductDetail[]>([]);
-  const [manualCatalogRetired, setManualCatalogRetired] = useState(false);
+  const manualCatalogRetired = true;
   const [categories, setCategories] = useState<readonly CatalogCategory[]>(authorizedCategories);
   const [imageStorageConfigured, setImageStorageConfigured] = useState(false);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
@@ -245,7 +245,7 @@ export function ProductManager({
       );
       const catalog = parseAdminCatalog(payload);
       setProducts(catalog.products);
-      setManualCatalogRetired(catalog.manualCatalogRetired);
+      if (!catalog.manualCatalogRetired) throw new Error('El catálogo administrativo requiere productos Dux.');
       setCategories(catalog.categories);
       setImageStorageConfigured(catalog.imageStorageConfigured);
     } catch (loadError: unknown) {
@@ -928,7 +928,10 @@ function parseAdminCatalog(payload: unknown): Readonly<{
   const rawProducts = payload.products;
   try {
     if (payload.categories !== undefined && !Array.isArray(payload.categories)) throw new Error('Categorías inválidas.');
-    const categories = payload.categories === undefined ? authorizedCategories : parseCategories(payload.categories);
+    if (payload.manualCatalogRetired !== true || !Array.isArray(payload.categories) ||
+      !rawProducts.every((value: unknown) => isRecord(value) && typeof value.sku === 'string' && value.sku.trim() !== '' &&
+        isRecord(value.commerce) && value.commerce.source === 'dux')) throw new Error('Identidad Dux requerida.');
+    const categories = parseCategories(payload.categories);
     const summaries = parseProducts(rawProducts, categories);
     return Object.freeze({
       categories,

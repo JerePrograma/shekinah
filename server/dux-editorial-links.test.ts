@@ -316,18 +316,16 @@ describe('control y vínculos editoriales Dux', () => {
     expect(enriched?.categoryNames).not.toEqual(local.categoryNames);
   });
 
-  it('public_catalog=0 conserva catálogo local aunque exista snapshot Dux', async () => {
+  it('public_catalog=0 mantiene vacío el catálogo aunque existan archivos locales históricos', async () => {
     const testD1 = database();
     try {
       insertCompletedRun(testD1, 'dux_sync_local_runtime');
       enableSnapshotCollection(testD1);
       insertRawSnapshot(testD1, 'dux_sync_local_runtime', 4_500);
       const catalog = await readPublicCatalog(testD1.database, companyEnv);
-      expect(catalog.source).toBe('legacy-bootstrap');
-      expect(catalog.products.length).toBeGreaterThan(100);
-      expect(catalog.products.some(({ id }) => id === 'adobo-pizza-gourmet')).toBe(true);
-      const local = catalog.productDetails.find(({ id }) => id === 'adobo-pizza-gourmet');
-      expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, 'adobo-pizza-gourmet')).toEqual(local);
+      expect(catalog.source).toBe('dux');
+      expect(catalog.products).toEqual([]);
+      expect(await getPublicCatalogProductDetail(testD1.database, companyEnv, 'adobo-pizza-gourmet')).toBeNull();
     } finally {
       testD1.close();
     }
@@ -341,6 +339,10 @@ describe('control y vínculos editoriales Dux', () => {
       insertRawSnapshot(testD1, 'dux_sync_scoped_detail', 3500, [rawItem('799000001', 'NOMBRE DUX', 3500)]);
       const local = await listCatalogProductDetails(testD1.database);
       await importApprovedDuxEditorialLinks(testD1.database, companyEnv, 'test', local);
+      const preserved = local.find(product => product.id === 'adobo-pizza-gourmet')!;
+      testD1.sqlite.exec('CREATE TABLE dux_editorial_content (company_id TEXT,cod_item TEXT,source_link_id INTEGER,images_json TEXT,description TEXT)');
+      testD1.sqlite.prepare("INSERT INTO dux_editorial_content SELECT company_id,cod_item,id,?,? FROM dux_editorial_links WHERE cod_item='799000001'")
+        .run(JSON.stringify(preserved.images),preserved.description??null);
       await updateDuxCatalogControl(testD1.database, 'test', { publicCatalogEnabled: true });
       const catalog = await readPublicCatalog(testD1.database, companyEnv);
       const listed = catalog.productDetails[0];

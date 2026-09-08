@@ -62,8 +62,9 @@ const workflowFiles = listFiles(workflowRoot);
 if (JSON.stringify(workflowFiles) !== JSON.stringify([
   '.github/workflows/ci.yml',
   '.github/workflows/dux-reconcile.yml',
+  '.github/workflows/ml-editorial.yml',
 ])) {
-  fail('Sólo están autorizados CI y la reconciliación read-only de Dux.');
+  fail('Sólo se permiten CI, Dux y la lectura editorial autorizada.');
 }
 for (const workflowFile of workflowFiles) {
   const content = read(join(root, workflowFile));
@@ -72,6 +73,16 @@ for (const workflowFile of workflowFiles) {
   }
 }
 const workflow = read(join(root, '.github', 'workflows', 'ci.yml'));
+const editorialWorkflow = read(join(workflowRoot, 'ml-editorial.yml'));
+for (const required of ["cron: '23 7 * * *'", "vars.ML_EDITORIAL_ENABLED == 'true'", 'contents: read',
+  'persist-credentials: false', 'cancel-in-progress: false', 'timeout-minutes: 50', 'node-version-file: .node-version',
+  'secrets.MERCADO_LIBRE_EDITORIAL_SCHEDULER_SECRET', 'run: node scripts/run-ml-editorial.mjs']) {
+  if (!editorialWorkflow.includes(required)) fail(`Falta control editorial: ${required}`);
+}
+for (const match of editorialWorkflow.matchAll(/^\s*uses:\s*([^\s#]+)/gmu)) {
+  if (!allowedActions.has(match[1])) fail('Acción editorial no autorizada.');
+}
+if (/pull_request_target|contents:\s*write|run-dux-reconcile|DUX_SCHEDULER_SECRET|\/mercadolibre\/reconcile/u.test(editorialWorkflow)) fail('El workflow editorial debe permanecer separado del inventario.');
 for (const fragment of [
   'name: CI', 'push:', '- main', 'pull_request:', 'workflow_dispatch:',
   'contents: read', 'persist-credentials: false', 'node-version-file: .node-version',
@@ -144,10 +155,10 @@ for (const action of reconciliationActions) {
 }
 
 const duxRunner = read(join(root, 'scripts', 'run-dux-reconcile.mjs'));
-if (/^\s*schedule:/mu.test(reconciliationWorkflow)) fail('Dux debe tener un único reloj automático: Cloudflare Cron.');
+if (!reconciliationWorkflow.includes("cron: '2-57/5 * * * *'")) fail('Dux requiere una única programación GitHub cada cinco minutos.');
 const cronConfig = JSON.parse(read(join(root, 'config', 'dux-cron.jsonc')));
-if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify(['*/5 * * * *']) || cronConfig.workers_dev !== false) {
-  fail('El cron Dux debe ejecutar cada cinco minutos sin una ruta HTTP pública.');
+if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify([]) || cronConfig.workers_dev !== false) {
+  fail('El relay Cloudflare debe permanecer sin cron y sin una ruta HTTP pública para evitar superposición.');
 }
 const cronWorker = read(join(root, 'server', 'dux-cron.ts'));
 if (!cronWorker.includes("https://shekinah.ar/api/internal/dux/reconcile") || !cronWorker.includes("redirect: 'error'") || /mercadolibre|MERCADO_LIBRE/u.test(cronWorker)) {

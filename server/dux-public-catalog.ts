@@ -1,160 +1,47 @@
-import type {
-  CatalogCategory,
-  CatalogProductDetail,
-  Product,
-} from '../src/catalog/model';
-import {
-  getCatalogProductDetail,
-  getCatalogProductDetailsForIds,
-  getRuntimeCatalogProductDetail,
-  listRuntimeCatalogProductDetails,
-  toProductSummary,
-} from './catalog-store';
-import {
-  projectDuxRuntimeCatalog,
-  projectDuxRuntimeProduct,
-  readDuxCatalogSnapshot,
-} from './dux-catalog';
-import {
-  readDuxCatalogControl,
-  requireExpectedDuxCompany,
-} from './dux-catalog-control';
-import {
-  applyDuxEditorialLinks,
-  listActiveDuxEditorialLinks,
-} from './dux-editorial-links';
+import type { CatalogCategory, CatalogProductDetail, Product } from '../src/catalog/model';
+import { toProductSummary } from './catalog-store';
+import { projectDuxRuntimeCatalog, projectDuxRuntimeProduct, readDuxCatalogSnapshot } from './dux-catalog';
+import { readDuxCatalogControl, requireExpectedDuxCompany } from './dux-catalog-control';
 import { listDuxInventoryUnits, listDuxInventoryUnitsForItem } from './dux-inventory';
+import { applyPreservedDuxEditorial } from './manual-catalog-retirement';
+import { applyMercadoLibreEditorial } from './mercado-libre-editorial-public';
+import { readDuxSnapshotMaxAgeSeconds } from './config';
 import type { D1Database, Env } from './platform';
-import { applyPreservedDuxEditorial, isManualCatalogRetired } from './manual-catalog-retirement';
-
-const catalogNameCollator = new Intl.Collator('es-AR', { sensitivity: 'base' });
 
 export type PublicCatalog = Readonly<{
-  products: readonly Product[];
-  productDetails: readonly CatalogProductDetail[];
-  categories: readonly CatalogCategory[];
-  source: 'dux' | 'legacy-bootstrap';
+  products: readonly Product[]; productDetails: readonly CatalogProductDetail[];
+  categories: readonly CatalogCategory[]; source: 'dux';
 }>;
 
-/**
- * El control de publicación es independiente de las compras. Una vez retirado
- * el catálogo manual, apagar la publicación deja el catálogo vacío; nunca
- * reconstruye productos históricos ni los utiliza ante errores de Dux.
- */
-export async function readPublicCatalog(
-  database: D1Database,
-  env: Env,
-): Promise<PublicCatalog> {
+/** Recovery and publication flags never reintroduce the retired catalog. */
+export async function readPublicCatalog(database: D1Database, env: Env): Promise<PublicCatalog> {
   const control = await readDuxCatalogControl(database);
-  if (!control.publicCatalogEnabled) {
-    if (await isManualCatalogRetired(database)) {
-      return Object.freeze({ products: [], productDetails: [], categories: [], source: 'dux' as const });
-    }
-    const productDetails = await listRuntimeCatalogProductDetails(database, env);
-    return Object.freeze({
-      products: Object.freeze(productDetails.map(toProductSummary)),
-      productDetails,
-      categories: buildCategories(productDetails),
-      source: 'legacy-bootstrap' as const,
-    });
-  }
+  if (!control.publicCatalogEnabled) return Object.freeze({ products: [], productDetails: [], categories: [], source: 'dux' });
   return readDuxCatalog(database, env);
 }
 
 export async function readDuxCatalog(database: D1Database, env: Env): Promise<PublicCatalog> {
   requireExpectedDuxCompany(env);
   const snapshot = await readDuxCatalogSnapshot(database);
-  if (await isManualCatalogRetired(database)) {
-    const runtime = projectDuxRuntimeCatalog(snapshot, [], await listDuxInventoryUnits(database, env));
-    const productDetails = await applyPreservedDuxEditorial(database, runtime.products);
-    return Object.freeze({ products: Object.freeze(productDetails.map(toProductSummary)),
-      productDetails, categories: runtime.categories, source: 'dux' as const });
-  }
-  const [inventoryUnits, editorialLinks] = await Promise.all([
-    listDuxInventoryUnits(database, env),
-    listActiveDuxEditorialLinks(database),
-  ]);
-  let localProducts: readonly CatalogProductDetail[];
-  try {
-    localProducts = await getCatalogProductDetailsForIds(database,
-      editorialLinks.map((link) => link.localProductId));
-  } catch {
-    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
-    localProducts = Object.freeze([]);
-  }
-  const duxRuntime = projectDuxRuntimeCatalog(
-    snapshot,
-    Object.freeze([]),
-    inventoryUnits,
-  );
-  const productDetails = applyDuxEditorialLinks(
-    duxRuntime.products,
-    localProducts,
-    editorialLinks,
-  );
-  return Object.freeze({
-    products: Object.freeze(productDetails.map(toProductSummary)),
-    productDetails,
-    categories: duxRuntime.categories,
-    source: 'dux' as const,
-  });
+  // Modern snapshots contain the exact warehouse observations of their own completed run.
+  // Avoid reparsing a second full inventory generation, which can exceed Workers Free CPU
+  // and can race with a newer inventory publication. Old Dux snapshots retain compatibility.
+  const inventory = snapshot.items.every(item => item.warehouseStocks !== undefined)
+    ? [] : await listDuxInventoryUnits(database, env);
+  const runtime = projectDuxRuntimeCatalog(snapshot, [], inventory, readDuxSnapshotMaxAgeSeconds(env));
+  const productDetails = await applyMercadoLibreEditorial(database, env, await applyPreservedDuxEditorial(database, runtime.products));
+  return Object.freeze({ products: Object.freeze(productDetails.map(toProductSummary)),
+    productDetails, categories: runtime.categories, source: 'dux' });
 }
 
-export async function getPublicCatalogProductDetail(
-  database: D1Database,
-  env: Env,
-  productId: string,
-): Promise<CatalogProductDetail | null> {
+export async function getPublicCatalogProductDetail(database: D1Database, env: Env, productId: string): Promise<CatalogProductDetail | null> {
   if (!/^[a-z0-9][a-z0-9-]{0,179}$/u.test(productId)) return null;
-  const control = await readDuxCatalogControl(database);
-  if (!control.publicCatalogEnabled) return getRuntimeCatalogProductDetail(database, env, productId);
+  if (!(await readDuxCatalogControl(database)).publicCatalogEnabled) return null;
   requireExpectedDuxCompany(env);
-  // Keep full snapshot integrity checks while projecting only the requested item.
   const snapshot = await readDuxCatalogSnapshot(database);
-  const item = snapshot.items.find((candidate) => candidate.slug === productId);
+  const item = snapshot.items.find(candidate => candidate.slug === productId);
   if (item === undefined) return null;
-  if (await isManualCatalogRetired(database)) {
-    const product = projectDuxRuntimeProduct(snapshot, productId, await listDuxInventoryUnitsForItem(database, env, item.code));
-    return product === null ? null : (await applyPreservedDuxEditorial(database, [product]))[0] ?? null;
-  }
-  const [units, links] = await Promise.all([
-    listDuxInventoryUnitsForItem(database, env, item.code),
-    listActiveDuxEditorialLinks(database),
-  ]);
-  const product = projectDuxRuntimeProduct(snapshot, productId, units);
-  if (product === null) return null;
-  const link = links.find((candidate) => candidate.code === item.code);
-  if (link === undefined) return product;
-  try {
-    const local = await getCatalogProductDetail(database, link.localProductId);
-    if (local !== null) return applyDuxEditorialLinks([product], [local], [link])[0] ?? product;
-  } catch {
-    console.warn('dux_catalog_local_enrichment_unavailable', { version: 2 });
-  }
-  return product;
-}
-
-function buildCategories(
-  products: readonly CatalogProductDetail[],
-): readonly CatalogCategory[] {
-  const categories = new Map<string, { name: string; count: number }>();
-  for (const product of products) {
-    product.categorySlugs.forEach((slug, index) => {
-      const name = product.categoryNames[index];
-      if (name === undefined) return;
-      const current = categories.get(slug);
-      categories.set(slug, {
-        name,
-        count: (current?.count ?? 0) + 1,
-      });
-    });
-  }
-  return Object.freeze([...categories.entries()]
-    .map(([slug, value]) => Object.freeze({
-      slug,
-      path: `/tienda/categoria/${slug}/`,
-      name: value.name,
-      productCount: value.count,
-    }))
-    .sort((left, right) => catalogNameCollator.compare(left.name, right.name)));
+  const inventory = item.warehouseStocks === undefined ? await listDuxInventoryUnitsForItem(database, env, item.code) : [];
+  const product = projectDuxRuntimeProduct(snapshot, productId, inventory, readDuxSnapshotMaxAgeSeconds(env));
+  return product === null ? null : (await applyMercadoLibreEditorial(database, env, await applyPreservedDuxEditorial(database, [product])))[0] ?? null;
 }

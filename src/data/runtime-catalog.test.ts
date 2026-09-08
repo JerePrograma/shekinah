@@ -23,6 +23,15 @@ describe('catálogo runtime autoritativo', () => {
     expect(runtimeCatalog.isRuntimeCatalogResolved()).toBe(false);
   });
 
+  it.each(['legacy-bootstrap','manual'])('rechaza productos manuales de una respuesta %s incluso con SKU y precio',async source=>{
+    const product={id:'manual',slug:'manual',path:'/manual/',name:'Manual retirado',sku:'OLD',price:{amount:1000,currency:'ARS'},priceStatus:'usable',categorySlugs:[],categoryNames:[],images:[],variants:[]};
+    window.localStorage.setItem('catalog',JSON.stringify([product]));
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({schemaVersion:2,source,products:[product],product,categories:[]})));
+    const runtime=await import('./runtime-catalog');
+    expect(await runtime.refreshRuntimeCatalog()).toEqual([]);expect(await runtime.loadRuntimeProductDetail('manual')).toBeNull();
+    window.localStorage.removeItem('catalog');
+  });
+
   it.each([
     { schemaVersion: 2, priceStatus: 'missing_or_zero', expected: 1 },
     { schemaVersion: 2, priceStatus: undefined, expected: 0 },
@@ -30,7 +39,7 @@ describe('catálogo runtime autoritativo', () => {
   ])('valida versión $schemaVersion y estado $priceStatus del contrato nullable', async ({ schemaVersion, priceStatus, expected }) => {
     const product = {
       id: 'dux-nuevo', slug: 'dux-nuevo', path: '/dux-nuevo/', name: 'NUEVO EN DUX',
-      categorySlugs: [], categoryNames: [], price: null, priceStatus, images: [], variants: [],
+      categorySlugs: [], categoryNames: [], price: null, priceStatus, sku: 'DUX-NUEVO', images: [], variants: [],
       commerce: { source: 'dux', catalogVersion: 'b'.repeat(64), syncedAt: '2026-09-06T12:00:00.000Z',
         availabilityState: 'unavailable', checkoutEligible: false, mappingStatus: 'unmapped',
         quantitySemanticsStatus: 'unavailable_from_v2_items' },
@@ -61,6 +70,7 @@ describe('catálogo runtime autoritativo', () => {
       categorySlugs: [category.slug],
       categoryNames: [category.name],
       price: { amount: 1_250, currency: 'ARS' },
+      priceStatus: 'usable',
       sku: '799000179',
       availability: 'unavailable',
       commerce: {
@@ -74,7 +84,7 @@ describe('catálogo runtime autoritativo', () => {
       },
     };
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
-      products: [product],
+      schemaVersion: 2, products: [product],
       categories: [category],
       source: 'dux',
     }), {
@@ -95,7 +105,7 @@ describe('catálogo runtime autoritativo', () => {
     const product = {
       id: 'dux-categoria-nueva', slug: 'dux-categoria-nueva', path: '/dux-categoria-nueva/', name: 'PRODUCTO DUX',
       categorySlugs: ['dux-rubro-123'], categoryNames: ['RUBRO DUX NUEVO'],
-      price: null, priceStatus: 'placeholder', images: [], variants: [],
+      price: null, priceStatus: 'placeholder', sku: 'DUX-NUEVA-CATEGORIA', images: [], variants: [],
       commerce: { source: 'dux', catalogVersion: 'c'.repeat(64), syncedAt: '2026-09-06T12:00:00.000Z',
         availabilityState: 'unavailable', checkoutEligible: false, mappingStatus: 'unmapped',
         quantitySemanticsStatus: 'unavailable_from_v2_items' },

@@ -1,5 +1,4 @@
 import { handleAdminRequest } from '../../../../server/admin-request';
-import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { isDuxCatalogMigrationRequiredError } from '../../../../server/dux-catalog';
 import { persistDuxCatalogSnapshotWhenEnabled } from '../../../../server/dux-catalog-control';
 import {
@@ -27,7 +26,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       data.adminIdentity?.actor ?? 'unknown',
       {
         kind: bootstrapPending ? 'initial' : 'manual',
-        localProducts: await listCatalogProductDetails(database),
+        localProducts: [],
         client: reader,
       },
     );

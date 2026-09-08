@@ -307,6 +307,7 @@ export function projectDuxRuntimeCatalog(
   snapshot: DuxCatalogSnapshot,
   localProducts: readonly CatalogProductDetail[],
   inventoryUnits: readonly DuxInventoryUnit[],
+  maximumAgeSeconds = 900,
 ): DuxRuntimeCatalog {
   void localProducts;
   const unitsByCode = groupInventoryUnitsByCode(inventoryUnits);
@@ -324,7 +325,7 @@ export function projectDuxRuntimeCatalog(
     const productId = item.slug;
     if (productIds.has(productId)) throw invalidDatabaseProjection();
     productIds.add(productId);
-    return projectProduct(item, snapshot, resolution, productId);
+    return projectProduct(item, snapshot, resolution, productId, maximumAgeSeconds);
   });
 
   return Object.freeze({
@@ -339,12 +340,13 @@ export function projectDuxRuntimeProduct(
   snapshot: DuxCatalogSnapshot,
   productId: string,
   inventoryUnits: readonly DuxInventoryUnit[],
+  maximumAgeSeconds = 900,
 ): CatalogProductDetail | null {
   const item = snapshot.items.find((candidate) => candidate.slug === productId);
   if (item === undefined) return null;
   const units = inventoryUnits.filter((unit) =>
     unit.itemCode === item.code && unit.lastSyncStatus !== 'absent');
-  return projectProduct(item, snapshot, resolveProductMapping(units), productId);
+  return projectProduct(item, snapshot, resolveProductMapping(units), productId, maximumAgeSeconds);
 }
 
 function buildStoredPayload(
@@ -629,15 +631,17 @@ function projectProduct(
   snapshot: DuxCatalogSnapshot,
   resolution: ProductMappingResolution,
   productId: string,
+  maximumAgeSeconds: number,
 ): CatalogProductDetail {
   const stockRows = item.warehouseStocks;
   const single = stockRows?.length === 1 ? stockRows[0] : undefined;
   const observedStock = stockRows === undefined ? aggregateObservedStock(resolution.units)
     : single !== undefined && single.real !== null && single.reserved !== null && single.available !== null
       ? Object.freeze({ real: single.real, reserved: single.reserved, available: single.available }) : undefined;
-  const allFresh = resolution.units.length > 0 && resolution.units.every((unit) =>
-    unit.lastSyncStatus === 'ok' && unit.fresh,
-  );
+  const readingAge = Date.now() - Date.parse(snapshot.stockReadAt ?? snapshot.syncedAt);
+  const allFresh = stockRows === undefined
+    ? resolution.units.length > 0 && resolution.units.every((unit) => unit.lastSyncStatus === 'ok' && unit.fresh)
+    : readingAge >= 0 && readingAge <= maximumAgeSeconds * 1000;
   const availabilityState = observedStock === undefined
     ? 'unavailable' as const
     : !allFresh
@@ -646,7 +650,7 @@ function projectProduct(
         ? 'out_of_stock' as const
         : 'verified' as const;
   const depositNames = new Set(resolution.units.map((unit) => unit.depositName));
-  const depositName = depositNames.size === 1 ? [...depositNames][0] : undefined;
+  const depositName = single?.depositName ?? (depositNames.size === 1 ? [...depositNames][0] : undefined);
   const images = Object.freeze([]);
   const description = item.description ?? undefined;
 

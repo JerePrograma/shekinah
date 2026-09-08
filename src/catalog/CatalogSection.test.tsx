@@ -1,3 +1,4 @@
+import { duxApiFixture } from '../test/dux-api-fixture';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
@@ -155,9 +156,9 @@ describe('CatalogSection', () => {
       },
     };
     const runtimeProducts = [product, ...authorizedProducts.slice(1)];
-    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify(duxApiFixture({
       products: runtimeProducts,
-    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    })), { status: 200, headers: { 'content-type': 'application/json' } })));
     await act(async () => {
       await refreshRuntimeCatalog();
     });

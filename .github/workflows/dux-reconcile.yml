@@ -1,7 +1,9 @@
 name: Dux inventory reconciliation
 
 on:
-  # Automatic runs now use config/dux-cron.jsonc; do not enable a second clock.
+  # Single active clock. The Cloudflare relay remains unscheduled after its incident.
+  schedule:
+    - cron: '2-57/5 * * * *'
   workflow_dispatch:
 
 permissions:

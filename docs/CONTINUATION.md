@@ -1,5 +1,11 @@
 # Continuación
 
+## Dependencias operativas pendientes — 2026-09-08
+
+Usar el informe externo de esta ejecución y [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md) para determinar el SHA y estado remoto real. El usuario confirmó falta de acceso al titular de HERBOLARIOMDP; no solicitarle nuevamente un login que no puede proporcionar. El titular debe configurar y autorizar la aplicación oficial Mercado Libre. Mantener el flag editorial cerrado hasta completar en Preview conexión, vendedor, importación total, idempotencia, presupuesto Free y revisión real; después habilitar producción y el gate diario. Ningún error permite reconstruir catálogo manual ni habilitar compras.
+
+La observación del nuevo cron Dux requiere cuatro ejecuciones automáticas acreditadas. El intento Cloudflare no registró eventos dentro de los plazos observados y se preparó su desactivación coordinada con el retorno de GitHub cada cinco minutos. Comprobar los recibos remotos antes de asumir cuál está activo. Los recibos de configuración, re-publicación o refresco manual no sustituyen esa evidencia. No contratar un plan ni afirmar cumplimiento de 15 minutos por la expresión cron.
+
 ## Depósitos y frescura — 2026-09-08
 
 Continuar según [DUX_STOCK_ALL_WAREHOUSES.md](DUX_STOCK_ALL_WAREHOUSES.md): publicar sólo tras validación, respaldar D1, probar Preview y después producción, coordinar el retiro del cron GitHub con Cloudflare y observar cuatro ejecuciones automáticas. Acreditar por separado cada operación. La lectura editorial Mercado Libre autorizada para HERBOLARIOMDP todavía debe verificarse; sus permisos de inventario, comercio y reservas permanecen bloqueados. Las prioridades históricas que siguen no autorizan restaurar productos manuales.

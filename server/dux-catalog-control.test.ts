@@ -39,7 +39,7 @@ function request(db: ReturnType<typeof database>, body?: unknown, data = actor, 
 }
 
 describe('catálogo completo y controles separados 0017', () => {
-  it.each([14, 16])('el deployment previo a 0017 conserva local con migraciones hasta %i', async (count) => {
+  it.each([14, 16])('una restauración con migraciones hasta %i no publica productos manuales', async (count) => {
     const db = createTestD1(...migrations.slice(0, count));
     try {
       await expect(readDuxCatalogControl(db.database)).resolves.toEqual({
@@ -47,8 +47,8 @@ describe('catálogo completo y controles separados 0017', () => {
         publicCatalogEnabled: false, publicCutoverEnabled: false,
       });
       const catalog = await readPublicCatalog(db.database, env);
-      expect(catalog.source).toBe('legacy-bootstrap');
-      expect(catalog.products).toHaveLength(510);
+      expect(catalog.source).toBe('dux');
+      expect(catalog.products).toEqual([]);
       await expect(updateDuxCatalogControl(db.database, 'operator', { publicCatalogEnabled: true }))
         .rejects.toMatchObject({ code: 'DUX_CATALOG_CONTROL_MIGRATION_REQUIRED' });
     } finally { db.close(); }
@@ -85,7 +85,7 @@ describe('catálogo completo y controles separados 0017', () => {
     } finally { db.close(); }
   });
 
-  it('publica sin precio, deja comercio cerrado y rollback restaura local sin borrar datos', async () => {
+  it('publica sin precio, deja comercio cerrado y rollback oculta sin borrar datos', async () => {
     const db = database();
     try {
       const local = await readPublicCatalog(db.database, env);
@@ -138,7 +138,7 @@ describe('catálogo completo y controles separados 0017', () => {
       expect((await request(db, { snapshotCollectionEnabled: false })).status).toBe(200);
       await expect(readDuxCatalogControl(db.database)).resolves.toMatchObject({ snapshotCollectionEnabled: false, publicCatalogEnabled: true });
       expect((await request(db, { publicCatalogEnabled: false })).status).toBe(200);
-      expect((await readPublicCatalog(db.database, env)).source).toBe('legacy-bootstrap');
+      expect(await readPublicCatalog(db.database, env)).toMatchObject({source:'dux',products:[]});
     } finally { db.close(); }
   });
 });

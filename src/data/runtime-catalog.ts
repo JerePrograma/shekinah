@@ -12,7 +12,6 @@ import type {
   CatalogProductDetail,
   Product,
 } from '../catalog/model';
-import { authorizedCategories } from './authorized-categories';
 
 let catalogResolved = false;
 let cachedProducts: readonly Product[] = Object.freeze([]);
@@ -100,8 +99,7 @@ export async function loadRuntimeProductDetail(
     if (!isRecord(payload) || !isRecord(payload.product)) {
       throw new Error('El catálogo dinámico devolvió un producto inválido.');
     }
-    if (!compatibleCatalogSchema(payload) ||
-      (payload.schemaVersion === CATALOG_API_SCHEMA_VERSION && !Object.hasOwn(payload.product, 'priceStatus'))) return null;
+    if (!compatibleCatalogSchema(payload) || !duxIdentity(payload.product)) return null;
     // La ficha puede responder antes que el listado, o después de un nuevo
     // snapshot. Sus categorías Dux no dependen del catálogo guardado en memoria.
     const summary = parseProduct(payload.product);
@@ -123,22 +121,10 @@ async function loadCatalog(): Promise<RuntimeCatalogState> {
     if (!isRecord(payload) || !Array.isArray(payload.products)) {
       return failClosedState();
     }
-    if (!compatibleCatalogSchema(payload) ||
-      (payload.schemaVersion === CATALOG_API_SCHEMA_VERSION && (
-        !Array.isArray(payload.categories) ||
-        (payload.source !== 'dux' && payload.source !== 'legacy-bootstrap') ||
-        !payload.products.every((product: unknown) => isRecord(product) && Object.hasOwn(product, 'priceStatus'))
-      ))) return failClosedState();
-    // Compatibilidad exclusiva con dobles de prueba y respuestas anteriores:
-    // producción nueva siempre publica `categories` junto con los productos Dux.
+    if (!compatibleCatalogSchema(payload) || !Array.isArray(payload.categories) ||
+      payload.source !== 'dux' || !payload.products.every(duxIdentity)) return failClosedState();
     const productValues: readonly unknown[] = payload.products;
-    let categories: readonly CatalogCategory[];
-    if (Array.isArray(payload.categories)) {
-      const categoryValues: readonly unknown[] = payload.categories;
-      categories = parseCategories(categoryValues);
-    } else {
-      categories = authorizedCategories;
-    }
+    const categories = parseCategories(payload.categories);
     const products = parseProducts(productValues, categories);
     catalogResolved = true;
     return Object.freeze({ products, categories });
@@ -167,5 +153,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function compatibleCatalogSchema(value: Record<string, unknown>): boolean {
-  return value.schemaVersion === undefined || value.schemaVersion === CATALOG_API_SCHEMA_VERSION;
+  return value.schemaVersion === CATALOG_API_SCHEMA_VERSION;
+}
+
+function duxIdentity(value: unknown): boolean {
+  return isRecord(value) && Object.hasOwn(value, 'priceStatus') &&
+    typeof value.sku === 'string' && value.sku.trim() !== '' &&
+    isRecord(value.commerce) && value.commerce.source === 'dux';
 }

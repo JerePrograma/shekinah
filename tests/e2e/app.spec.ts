@@ -1,3 +1,4 @@
+import { duxApiFixture } from '../../src/test/dux-api-fixture';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
@@ -46,7 +47,7 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ products: publicCatalogProducts }),
+        body: JSON.stringify(duxApiFixture({ products: publicCatalogProducts })),
       });
       return;
     }
@@ -66,12 +67,12 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ product: { ...summary, ...detail } }),
+      body: JSON.stringify(duxApiFixture({ product: { ...summary, ...detail } })),
     });
   });
 });
 
-test('presenta navegación, carrito y los 510 productos compilados', async ({ page }) => {
+test('presenta navegación, carrito y 510 productos de la API Dux simulada', async ({ page }) => {
   const observation = observePage(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
@@ -185,14 +186,14 @@ test('resuelve un producto dinámico confirmado en acceso directo, refresh y Bac
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ product: dynamicProduct }),
+        body: JSON.stringify(duxApiFixture({ product: dynamicProduct })),
       });
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ products: [dynamicProduct] }),
+      body: JSON.stringify(duxApiFixture({ products: [dynamicProduct] })),
     });
   });
 

@@ -1,3 +1,4 @@
+import { duxApiFixture } from './test/dux-api-fixture';
 import {
   act,
   fireEvent,
@@ -91,12 +92,12 @@ describe('App', () => {
     const fetchMock = vi.fn<typeof fetch>((input) => {
       const path = requestUrl(input);
       if (path === '/api/catalog') {
-        return Promise.resolve(new Response(JSON.stringify({
+        return Promise.resolve(new Response(JSON.stringify(duxApiFixture({
           products: [...authorizedProducts, dynamicProduct],
-        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+        })), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       if (path.endsWith('/api/catalog/producto-creado-desde-backoffice')) {
-        return Promise.resolve(new Response(JSON.stringify({ product: dynamicProduct }), {
+        return Promise.resolve(new Response(JSON.stringify(duxApiFixture({ product: dynamicProduct })), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }));
@@ -137,12 +138,12 @@ describe('App', () => {
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const path = requestUrl(input);
       if (path === '/api/catalog') {
-        return Promise.resolve(new Response(JSON.stringify({
+        return Promise.resolve(new Response(JSON.stringify(duxApiFixture({
           products: [...authorizedProducts, reservedProduct],
-        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+        })), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       if (path.endsWith('/api/catalog/producto-totalmente-reservado')) {
-        return Promise.resolve(new Response(JSON.stringify({ product: reservedProduct }), {
+        return Promise.resolve(new Response(JSON.stringify(duxApiFixture({ product: reservedProduct })), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }));
@@ -167,9 +168,9 @@ describe('App', () => {
   });
 
   it('convierte en 404 la URL de un producto canónico con tombstone runtime', async () => {
-    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify(duxApiFixture({
       products: authorizedProducts.filter(({ id }) => id !== 'guayaba'),
-    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    })), { status: 200, headers: { 'content-type': 'application/json' } })));
     await act(async () => {
       await refreshRuntimeCatalog();
     });
@@ -225,9 +226,9 @@ describe('App', () => {
         ? { ...product, availability: 'available' as const, commerce: verifiedDuxCommerce(3) }
         : product,
     );
-    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify(duxApiFixture({
       products: runtimeProducts,
-    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    })), { status: 200, headers: { 'content-type': 'application/json' } })));
     await act(async () => {
       await refreshRuntimeCatalog();
     });
@@ -246,7 +247,7 @@ describe('App', () => {
   it('carga una ficha comercial con detalle diferido y bloquea el CTA sin snapshot Dux', async () => {
     const detail = await loadAuthorizedProductDetail('guayaba');
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(
-      requestUrl(input).endsWith('/api/catalog/guayaba') ? { product: detail } : { products: authorizedProducts },
+      duxApiFixture(requestUrl(input).endsWith('/api/catalog/guayaba') ? { product: detail } : { products: authorizedProducts }),
     ), { headers: { 'content-type': 'application/json' } })));
     window.history.replaceState(null, '', '/guayaba/');
     renderApp();
@@ -347,9 +348,9 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 async function restoreRuntimeCatalog(): Promise<void> {
-  vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({
+  vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify(duxApiFixture({
     products: authorizedProducts,
-  }), { status: 200, headers: { 'content-type': 'application/json' } })));
+  })), { status: 200, headers: { 'content-type': 'application/json' } })));
   await act(async () => {
     await refreshRuntimeCatalog();
     await refreshRuntimeCatalog();

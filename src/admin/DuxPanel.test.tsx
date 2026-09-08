@@ -4,6 +4,7 @@ import { DuxPanel } from './DuxPanel';
 
 vi.mock('./DuxCatalogControls', () => ({ DuxCatalogControls: () => null }));
 vi.mock('./DuxEditorialReviewPanel', () => ({ DuxEditorialReviewPanel: () => null }));
+vi.mock('./MercadoLibreEditorialPanel', () => ({ MercadoLibreEditorialPanel: () => null }));
 
 describe('panel administrativo Dux', () => {
   afterEach(() => {

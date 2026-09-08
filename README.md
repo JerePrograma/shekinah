@@ -2,7 +2,9 @@
 
 ## Depósitos y frescura Dux — 2026-09-08
 
-El contrato de [todos los depósitos y antigüedad del inventario](docs/DUX_STOCK_ALL_WAREHOUSES.md) incorpora descubrimiento por empresa, cantidades ausentes explícitas, fecha conservadora de lectura y programación Cloudflare cada cinco minutos. La configuración no acredita por sí sola su activación ni el objetivo de quince minutos: las ejecuciones remotas se registran por separado. El retiro manual de 0018 y el cierre de compras continúan vigentes.
+El contrato de [todos los depósitos y antigüedad del inventario](docs/DUX_STOCK_ALL_WAREHOUSES.md) incorpora descubrimiento por empresa, cantidades ausentes explícitas y fecha conservadora de lectura. Tras no observar eventos del relay Cloudflare, la programación vuelve a GitHub cada cinco minutos como único reloj activo, sujeta a comprobar las ejecuciones reales y sus posibles demoras. La configuración no acredita el objetivo de quince minutos. El retiro manual de 0018 y el cierre de compras continúan vigentes.
+
+La [lectura editorial de Mercado Libre](docs/MERCADO_LIBRE_EDITORIAL.md) está preparada exclusivamente para HERBOLARIOMDP y permanece deshabilitada hasta que su titular autorice una aplicación oficial y se valide la importación en Preview. El contenido local ya vinculado a Dux se conserva por campo. No hay autorización editorial operativa acreditada.
 
 ## Retiro manual y stock Dux — 2026-09-07
 

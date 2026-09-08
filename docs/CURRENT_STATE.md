@@ -1,5 +1,15 @@
 # Estado actual
 
+## Catálogo Dux exclusivo y preparación editorial — 2026-09-08
+
+La programación Dux vuelve a GitHub cada cinco minutos después de que el intento Cloudflare no registrara eventos dentro de los plazos observados. El relay se conserva sin programación; la transición operativa debe confirmar primero cero crons Cloudflare y después abrir el gate GitHub. La frecuencia efectiva y la muestra de cuatro ejecuciones siguen requiriendo evidencia independiente.
+
+La observación productiva del 2026-09-08 detectó respuestas HTTP 503 de Cloudflare con código 1102 al leer el catálogo completo. El lector público de snapshots que ya incluyen cantidades por depósito evita releer y analizar toda la generación de inventario: usa las cantidades y fecha del mismo snapshot Dux completo. La compatibilidad con snapshots Dux anteriores conserva la lectura de inventario, sin catálogo manual. La corrección debe acreditarse en remoto dentro de Workers Free; no equivale por sí sola a cumplir el cron.
+
+El listado público y sus fichas no admiten bootstrap local aunque falte el marcador de retiro. El administrador permanece en lectura y las rutas de creación, edición, stock e imágenes manuales rechazan operaciones con autenticación, origen y auditoría intactos. El navegador exige schema 2, identidad Dux y categorías explícitas. Los archivos y pruebas históricas se conservan en Git; las pruebas operativas de alta/edición se sustituyen por rechazo y lectura Dux. Sólo las fotos y descripciones preservadas por 0018 pueden aportar contenido local.
+
+La incorporación editorial está implementada detrás de un flag cerrado conforme a [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md). El titular de HERBOLARIOMDP debe autorizar una aplicación oficial; el usuario confirmó que no tiene acceso a esa cuenta. Las importaciones, asociaciones nuevas, administración conectada, cuota real y ejecución diaria no están acreditadas. No confundir las pruebas simuladas con acceso al proveedor. El informe externo registra por separado la migración, CI y deployments finales.
+
 ## Implementación de depósitos y frescura — 2026-09-08
 
 El código sigue el contrato de [todos los depósitos y antigüedad del inventario](DUX_STOCK_ALL_WAREHOUSES.md). Descubre depósitos habilitados de la empresa, conserva cantidades parciales sin inventar totales y distingue inicio de lectura y publicación. La programación prevista se traslada a Cloudflare cada cinco minutos, con inventario y retiro manual protegidos. Esta sección describe implementación; CI, deployments, activación y cuatro ejecuciones automáticas consecutivas requieren evidencia operativa aparte. El acceso editorial Mercado Libre sigue pendiente de acreditación y no se reactiva su inventario.

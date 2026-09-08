@@ -152,7 +152,7 @@ describe('middleware administrativo unificado', () => {
     });
   });
 
-  it('impide una mutación sin sesión y la permite atravesando el middleware', async () => {
+  it('exige sesión y mantiene rechazada la escritura manual después de autenticar', async () => {
     const testD1 = createTestD1(commerceMigration, catalogMigration);
     const env: Env = {
       ...authEnv,
@@ -186,10 +186,10 @@ describe('middleware administrativo unificado', () => {
           waitUntil: () => undefined,
         }),
       ));
-      expect(accepted.status).toBe(201);
+      expect(accepted.status).toBe(409);
       expect(testD1.sqlite.prepare(
         'SELECT product_id, deleted FROM catalog_product_mutations',
-      ).get()).toEqual({ product_id: 'producto-middleware-auth', deleted: 0 });
+      ).get()).toBeUndefined();
     } finally {
       testD1.close();
     }

@@ -1,4 +1,3 @@
-import { listCatalogProductDetails } from '../../../../server/catalog-store';
 import { isEnabledFlag } from '../../../../server/config';
 import { constantTimeEqual } from '../../../../server/crypto';
 import { isDuxCatalogMigrationRequiredError } from '../../../../server/dux-catalog';
@@ -59,7 +58,7 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       fromCloudflare ? 'scheduler:cloudflare-cron' : 'scheduler:github-actions',
       {
         kind: 'scheduled',
-        localProducts: await listCatalogProductDetails(database),
+        localProducts: [],
         client: reader,
       },
     );

@@ -97,7 +97,7 @@ describe('autenticación del backoffice', () => {
     expect(storageSnapshot()).not.toContain(FIXTURE_PASSWORD);
   });
 
-  it('navega por secciones, preserva una edición de producto y vuelve al login', async () => {
+  it('navega por secciones, mantiene productos en lectura y vuelve al login', async () => {
     let authenticated = false;
     const confirmLogout = vi.spyOn(window, 'confirm')
       .mockReturnValueOnce(false)
@@ -146,28 +146,12 @@ describe('autenticación del backoffice', () => {
     expect(screen.queryByText('Autorizar cuenta vendedora')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre' }), {
-      target: { value: 'Edición todavía no guardada' },
-    });
+    expect(screen.queryByRole('button', {name:'Nuevo producto'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Analítica' }));
     expect(await screen.findByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Analítica' })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(screen.getByRole('button', { name: 'Productos · cambios sin guardar' }));
-    expect(screen.getByRole('textbox', { name: 'Nombre' })).toHaveValue('Edición todavía no guardada');
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeEnabled();
-
+    fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
+    expect(screen.queryByRole('textbox', {name:'Nombre'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'La sesión sigue abierta y los cambios continúan sin guardar.',
-    );
-    expect(authenticated).toBe(true);
-    expect(
-      fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/auth/logout'),
-    ).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
-
     const username = await screen.findByRole('textbox', { name: 'Usuario' });
     await waitFor(() => expect(username).toHaveFocus());
     expect(screen.queryByText('Catálogo de productos')).not.toBeInTheDocument();
@@ -175,7 +159,7 @@ describe('autenticación del backoffice', () => {
     expect(
       fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/auth/logout'),
     ).toHaveLength(1);
-    expect(confirmLogout).toHaveBeenCalledTimes(2);
+    expect(confirmLogout).not.toHaveBeenCalled();
     expect(storageSnapshot()).not.toContain(FIXTURE_PASSWORD);
   }, 10_000);
 
@@ -212,7 +196,8 @@ function authenticatedSession(): Response {
 }
 
 function protectedAdminResponse(path: string): Response {
-  if (path === '/api/admin/products') return json({ products: [], imageStorageConfigured: false });
+  if (path === '/api/admin/products') return json({ products: [], categories: [], manualCatalogRetired: true, imageStorageConfigured: false });
+  if (path === '/api/admin/mercadolibre/editorial/status') return json({enabled:false,configured:false,connection:{connected:false},latest:null});
   if (path === '/api/admin/dux/status') return json(duxStatus());
   if (path === '/api/admin/orders' || path === '/api/admin/audit') return json({ rows: [] });
   if (path.startsWith('/api/admin/orders?') || path.startsWith('/api/admin/audit?')) {

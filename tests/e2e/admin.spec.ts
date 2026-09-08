@@ -1,3 +1,4 @@
+import { duxApiFixture } from '../../src/test/dux-api-fixture';
 import { expect, test } from '@playwright/test';
 import type { Locator, Page, Route } from '@playwright/test';
 
@@ -5,8 +6,6 @@ import { formatOrderNumber } from '../../src/commerce/contracts';
 
 const FIXTURE_USERNAME = 'admin-e2e-ficticio';
 const FIXTURE_PASSWORD = 'Clave-E2E-totalmente-ficticia-2026!';
-const TECHNICAL_PRODUCT_NAME = 'Producto técnico E2E 2026';
-const TECHNICAL_PRODUCT_ID = 'producto-tecnico-e2e-2026';
 const MANAGED_IMAGE_PATH =
   '/api/catalog-images/123e4567-e89b-42d3-a456-426614174000.png';
 const TECHNICAL_PNG = Buffer.from(
@@ -165,178 +164,19 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
 });
 
-test('gestiona el catálogo con inventario Dux de solo lectura, disponibilidad e imagen', async ({ page }) => {
-  test.setTimeout(60_000);
-  const api = await installStatefulAdminApi(page, [
-    product('aceite-inicial-e2e', 'Aceite inicial E2E', {
-      categoryName: 'Aceites',
-      categorySlug: 'aceites',
-      price: 1_500,
-      sku: 'ACE-E2E-1',
-      duxStock: { real: 4, reserved: 0, available: 4 },
-    }),
-    product('producto-pausado-e2e', 'Producto pausado E2E', {
-      availability: 'unavailable',
-      categoryName: 'Agroecologicos',
-      categorySlug: 'agroecologicos',
-      price: 2_000,
-    }),
-  ]);
-
-  await page.goto('/admin');
-  await loginWithFixture(page);
-  await expect(page.getByRole('heading', { level: 4, name: 'Aceite inicial E2E' })).toBeVisible();
-  await page.getByRole('button', { name: 'Pausar Aceite inicial E2E' }).click();
-  await expect(page.getByText('Aceite inicial E2E quedó pausado manualmente.')).toBeVisible();
-  expect(requiredProduct(api.products(), 'aceite-inicial-e2e').availability).toBe('unavailable');
-  await page.getByRole('button', { name: 'Reactivar Aceite inicial E2E' }).click();
-  await expect(page.getByText('Aceite inicial E2E quedó disponible para venta.')).toBeVisible();
-  expect(requiredProduct(api.products(), 'aceite-inicial-e2e').availability).toBe('available');
-
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill('ace-e2e-1');
-  await page.getByRole('combobox', { name: 'Categoría', exact: true }).selectOption('aceites');
-  await page.getByRole('combobox', { name: 'Disponibilidad', exact: true }).selectOption('available');
-  await page.getByRole('combobox', { name: 'Stock', exact: true }).selectOption('in-stock');
-  await expect(page.getByText('1 producto encontrado')).toBeVisible();
-  await expect(page.getByRole('heading', { level: 4, name: 'Aceite inicial E2E' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 4, name: 'Producto pausado E2E' })).toHaveCount(0);
-
-  await page.getByRole('link', { name: 'Catálogo' }).first().click();
-  await expect(page).toHaveURL(/\/catalogo$/u);
-  await page.goBack();
-  await expect(page).toHaveURL(/\/admin$/u);
-  await page.getByRole('button', { name: 'Productos' }).click();
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill('ace-e2e-1');
-
-  await page.getByRole('button', { name: 'Editar Aceite inicial E2E' }).click();
-  await expect(page.getByRole('heading', { level: 3, name: 'Editar Aceite inicial E2E' })).toBeVisible();
-  await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('1750.25');
-  page.once('dialog', async (dialog) => {
-    expect(dialog.type()).toBe('confirm');
-    expect(dialog.message()).toContain('Hay cambios de producto sin guardar');
-    await dialog.dismiss();
-  });
-  await page.getByRole('link', { name: 'Shekinah, ir al inicio' }).click();
-  await expect(page).toHaveURL(/\/admin$/u);
-  await expect(page.getByRole('alert')).toHaveText(
-    'Los cambios siguen sin guardar. Permanecés en Administración.',
-  );
-  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
-  const forwardDialogPromise = page.waitForEvent('dialog');
-  await page.evaluate(() => window.history.forward());
-  const forwardDialog = await forwardDialogPromise;
-  expect(forwardDialog.message()).toContain('Hay cambios de producto sin guardar');
-  await forwardDialog.dismiss();
-  await expect(page).toHaveURL(/\/admin$/u);
-  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
-  await page.getByRole('button', { name: 'Resumen' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
-  await page.getByRole('button', { name: 'Productos' }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('1750.25');
-  await page.getByRole('button', { name: 'Guardar cambios' }).click();
-  await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
-  await expect(page.getByText('Los cambios siguen sin guardar. Permanecés en Administración.'))
-    .toHaveCount(0);
-  expect(requiredProduct(api.products(), 'aceite-inicial-e2e').price.amount).toBe(1_750.25);
-
-  await page.getByRole('button', { name: 'Nuevo producto' }).click();
-  await expect(page.getByRole('heading', { level: 3, name: 'Nuevo producto' })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Nombre' }).fill(TECHNICAL_PRODUCT_NAME);
-  await expect(page.getByText(`Dirección pública: /${TECHNICAL_PRODUCT_ID}/`)).toBeVisible();
-  await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9876.54');
-  await page.getByRole('checkbox', { name: 'Aceites', exact: true }).check();
-  await expect(page.getByText(/Inventario: Dux\. Shekinah no guarda ni permite editar stock/u))
-    .toBeVisible();
-  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveCount(0);
-  await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).uncheck();
-  await expect(page.getByText(/Estado efectivo: No disponible manualmente/u)).toBeVisible();
-
-  await page.getByLabel('Seleccionar imagen').setInputFiles({
-    name: 'producto-tecnico.png',
-    mimeType: 'image/png',
-    buffer: TECHNICAL_PNG,
-  });
-  await expect(page.getByText(/producto-tecnico\.png/u)).toBeVisible();
-  const preview = page.getByRole('img', {
-    name: `Vista previa de ${TECHNICAL_PRODUCT_NAME}`,
-  });
-  await expect(preview).toBeVisible();
-  await expect.poll(() => preview.evaluate((element) => (
-    element as HTMLImageElement
-  ).naturalWidth)).toBeGreaterThan(0);
-
-  await page.getByRole('button', { name: 'Crear producto' }).click();
-  await expect(page.getByText('Producto creado correctamente.')).toBeVisible();
-  await expect(page.getByRole('heading', {
-    level: 3,
-    name: `Editar ${TECHNICAL_PRODUCT_NAME}`,
-  })).toBeVisible();
-
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill(TECHNICAL_PRODUCT_NAME);
-  const createdRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
-  await expect(createdRow).toBeVisible();
-  await expect(createdRow.getByText('No disponible manualmente')).toBeVisible();
-  await expect(createdRow.getByRole('img', { name: TECHNICAL_PRODUCT_NAME })).toHaveAttribute(
-    'src',
-    MANAGED_IMAGE_PATH,
-  );
-  expect(requiredProduct(api.products(), TECHNICAL_PRODUCT_ID)).toMatchObject({
-    availability: 'unavailable',
-    price: { amount: 9_876.54, currency: 'ARS' },
-  });
-  expect(Object.hasOwn(requiredProduct(api.products(), TECHNICAL_PRODUCT_ID), 'stockQuantity'))
-    .toBe(false);
-
-  await page.getByRole('button', { name: 'Cerrar editor' }).click();
-  await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
-  await page.getByRole('checkbox', { name: /Disponible manualmente para venta/u }).check();
-  await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('9999');
-  await page.getByRole('button', { name: 'Guardar cambios' }).click();
-  await expect(page.getByText('Cambios guardados correctamente.')).toBeVisible();
-
-  // La recarga fuerza una nueva lectura GET del estado simulado y comprueba persistencia.
-  await page.reload();
-  await page.getByRole('button', { name: 'Productos' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
-  await page.getByRole('searchbox', { name: 'Buscar' }).fill(TECHNICAL_PRODUCT_ID);
-  const persistedRow = page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME });
-  await expect(persistedRow).toBeVisible();
-  await expect(persistedRow.getByText('Disponible manualmente')).toBeVisible();
-  await expect(persistedRow).toContainText('Sin snapshot Dux verificable · venta bloqueada');
-  await expect(persistedRow.getByRole('img', { name: TECHNICAL_PRODUCT_NAME })).toHaveAttribute(
-    'src',
-    MANAGED_IMAGE_PATH,
-  );
-  await page.getByRole('button', { name: `Editar ${TECHNICAL_PRODUCT_NAME}` }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Precio en pesos' })).toHaveValue('9999');
-  await expect(page.getByRole('spinbutton', { name: 'Stock físico' })).toHaveCount(0);
-  await expect(page.getByRole('checkbox', {
-    name: /Disponible manualmente para venta/u,
-  })).toBeChecked();
-
-  await page.getByRole('button', { name: 'Cerrar editor' }).click();
-  await page.getByRole('button', {
-    name: `Quitar ${TECHNICAL_PRODUCT_NAME} del catálogo`,
-  }).click();
-  await expect(page.getByRole('dialog', {
-    name: `¿Quitar ${TECHNICAL_PRODUCT_NAME}?`,
-  })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cancelar' })).toBeFocused();
-  await page.getByRole('button', { name: 'Confirmar baja' }).click();
-  await expect(page.getByText(`${TECHNICAL_PRODUCT_NAME} fue quitado del catálogo público.`)).toBeVisible();
-  await expect(page.getByRole('article', { name: TECHNICAL_PRODUCT_NAME })).toHaveCount(0);
-  await expect(page.getByText('0 productos encontrados')).toBeVisible();
-  expect(api.products().some(({ id }) => id === TECHNICAL_PRODUCT_ID)).toBe(false);
-
-  expect(api.requests.some(({ method, pathname }) => (
-    method === 'POST' && pathname === '/api/admin/products'
-  ))).toBe(true);
-  expect(api.requests.some(({ method, pathname }) => (
-    method === 'PUT' && pathname === `/api/admin/products/${TECHNICAL_PRODUCT_ID}/image`
-  ))).toBe(true);
-  expect(api.requests.some(({ method, pathname }) => (
-    method === 'DELETE' && pathname === `/api/admin/products/${TECHNICAL_PRODUCT_ID}`
-  ))).toBe(true);
+test('catálogo administrativo Dux sin creación, edición, pausa ni stock manual', async ({ page }) => {
+  const api=await installStatefulAdminApi(page,[product('dux-readonly','Producto Dux E2E',{
+    categoryName:'Rubro Dux',categorySlug:'dux-rubro-1',price:1500,sku:'DUX-E2E-1',duxStock:{real:2.375,reserved:0.125,available:2.25}})]);
+  await page.goto('/admin');await loginWithFixture(page);
+  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Nuevo producto'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Editar Producto|Pausar Producto|Quitar Producto/u})).toHaveCount(0);
+  await expect(page.getByText('Stock real',{exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Buscar'}).fill('DUX-E2E-1');
+  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
+  await page.reload();await page.getByRole('button',{name:'Productos',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
+  expect(api.requests.filter(request=>request.pathname.startsWith('/api/admin/products')&&request.method!=='GET')).toEqual([]);
 });
 
 test('abre bajo demanda un detalle completo de pedido sin controles financieros', async ({ page }) => {
@@ -499,7 +339,8 @@ test('confirma el rechazo sin mutar el snapshot autoritativo Dux', async ({ page
 
   await page.getByRole('button', { name: 'Productos' }).click();
   const productRow = page.getByRole('article', { name: 'Producto liberado E2E' });
-  await expect(productRow).toContainText('Stock observado: real 5 · reservado 2 · disponible 3');
+  await expect(productRow).toContainText('Disponible3Stock real5Reservado2');
+  await expect(productRow).toContainText('Fecha de lectura del inventario no disponible.');
 });
 
 test('ante un conflicto 409 refresca el estado autoritativo del pedido', async ({ page }) => {
@@ -529,54 +370,17 @@ test('ante un conflicto 409 refresca el estado autoritativo del pedido', async (
   expect(detailRequests(api.requests, orderId)).toHaveLength(2);
 });
 
-test('mantiene listado y editor dentro del viewport en desktop, notebook, tablet y móvil', async ({ page }, testInfo) => {
-  await installStatefulAdminApi(page, [
-    product('responsive-e2e', 'Producto responsive E2E', {
-      categoryName: 'Aceites',
-      categorySlug: 'aceites',
-      price: 1_500,
-      duxStock: { real: 9, reserved: 0, available: 9 },
-    }),
-  ]);
-  await page.goto('/admin');
-  await loginWithFixture(page);
-  await page.getByRole('button', { name: 'Editar Producto responsive E2E' }).click();
-  await page.getByRole('spinbutton', { name: 'Precio en pesos' }).fill('');
-  await page.getByRole('button', { name: 'Guardar cambios' }).click();
-  const feedback = page.locator('.admin-feedback');
-  await expect(feedback).toBeVisible();
-
-  const viewports = [
-    { width: 1_440, height: 900 },
-    { width: 1_024, height: 768 },
-    { width: 768, height: 1_024 },
-    { width: 390, height: 844 },
-  ] as const;
-
-  for (const viewport of viewports) {
+test('mantiene el catálogo Dux dentro del viewport en desktop, notebook, tablet y móvil', async ({ page },testInfo) => {
+  await installStatefulAdminApi(page,[product('responsive-e2e','Producto responsive E2E',{
+    categoryName:'Rubro Dux',categorySlug:'dux-rubro-1',price:1500,duxStock:{real:9,reserved:0,available:9}})]);
+  await page.goto('/admin');await loginWithFixture(page);
+  for(const viewport of [{width:1440,height:900},{width:1024,height:768},{width:768,height:1024},{width:390,height:844}]){
     await page.setViewportSize(viewport);
-    if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({
-        path: testInfo.outputPath(`admin-${viewport.width}-top.png`),
-      });
-    }
-    const editorTitle = page.getByRole('heading', {
-      level: 3,
-      name: 'Editar Producto responsive E2E',
-    });
-    await editorTitle.scrollIntoViewIfNeeded();
-    await expect(editorTitle).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Guardar cambios' })).toBeVisible();
+    await expect(page.getByRole('heading',{name:'Producto responsive E2E'})).toBeVisible();
     await expectNoGlobalHorizontalOverflow(page);
-    await expectHorizontallyInsideViewport(page.getByRole('button', { name: 'Guardar cambios' }), viewport.width);
-    await expectHorizontallyInsideViewport(page.getByRole('button', { name: 'Cerrar editor' }), viewport.width);
-    await expect(feedback).toHaveCSS('position', viewport.width <= 700 ? 'static' : 'sticky');
-    if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
-      await page.screenshot({
-        path: testInfo.outputPath(`admin-${viewport.width}-editor.png`),
-      });
-    }
+    await expectHorizontallyInsideViewport(page.getByRole('searchbox',{name:'Buscar'}),viewport.width);
+    await expect(page.getByRole('button',{name:'Nuevo producto'})).toHaveCount(0);
+    if(process.env.ADMIN_VISUAL_REVIEW==='true')await page.screenshot({path:testInfo.outputPath('admin-readonly-'+viewport.width+'.png')});
   }
 });
 
@@ -805,7 +609,7 @@ async function installStatefulAdminApi(
     }
 
     if (pathname === '/api/admin/products' && method === 'GET') {
-      await json(route, { imageStorageConfigured: true, products });
+      await json(route, duxApiFixture({ imageStorageConfigured: true, products }));
       return;
     }
     if (pathname === '/api/admin/products' && method === 'POST') {

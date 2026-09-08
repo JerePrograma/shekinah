@@ -44,6 +44,26 @@ const runId = 'dux_sync_catalog_test';
 const syncedAt = '2026-09-02T20:00:00.000Z';
 
 describe('catálogo público autoritativo de Dux', () => {
+  it('usa el depósito del snapshot completo y su fecha sin mezclar otra generación de inventario', async () => {
+    const testD1 = completeTestDatabase();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(syncedAt) + 900_000);
+    try {
+      insertCompletedRun(testD1, runId);
+      await updateDuxCatalogControl(testD1.database, 'test', { snapshotCollectionEnabled: true });
+      const stocks = [{depositId:25566,depositName:'Depósito Dux',variantId:null,barcode:null,color:null,size:null,real:1.25,reserved:2,available:-0.75}];
+      await persistDuxCatalogSnapshot(testD1.database, runId, sourceCatalog().map(item => ({...item,warehouseStocks:stocks})), syncedAt);
+      await updateDuxCatalogControl(testD1.database, 'test', { publicCatalogEnabled: true });
+      const prepare = vi.spyOn(testD1.database, 'prepare');
+      const catalog = await readPublicCatalog(testD1.database, {DUX_COMPANY_ID:'12862',DUX_SNAPSHOT_MAX_AGE_SECONDS:'900'});
+      expect(prepare.mock.calls.some(([query]) => query.includes('FROM dux_inventory_items'))).toBe(false);
+      const product = catalog.productDetails[0]!;
+      expect(product.commerce).toMatchObject({stockSyncedAt:syncedAt,observedStock:{real:1.25,reserved:2,available:-0.75},availabilityState:'out_of_stock',checkoutEligible:false});
+      clock.mockReturnValue(Date.parse(syncedAt) + 900_001);
+      const stale = await readPublicCatalog(testD1.database, {DUX_COMPANY_ID:'12862',DUX_SNAPSHOT_MAX_AGE_SECONDS:'900'});
+      expect(stale.productDetails[0]!.commerce).toMatchObject({stockSyncedAt:syncedAt,availabilityState:'updating',observedStock:{real:1.25,reserved:2,available:-0.75}});
+    } finally { clock.mockRestore(); testD1.close(); }
+  });
+
   it('reutiliza sólo el payload idéntico y lee nuevamente publicación, frescura y estado del run', async () => {
     const testD1 = completeTestDatabase();
     try {
@@ -243,7 +263,7 @@ describe('catálogo público autoritativo de Dux', () => {
     }
   });
 
-  it('reemplaza el catálogo público local sólo después del cutover explícito', async () => {
+  it('mantiene vacío el catálogo oculto y publica únicamente Dux al habilitarlo', async () => {
     const testD1 = createTestD1(
       commerceMigration,
       catalogMigration,
@@ -268,8 +288,8 @@ describe('catálogo público autoritativo de Dux', () => {
         DUX_COMPANY_ID: '12862',
         DUX_SNAPSHOT_MAX_AGE_SECONDS: '1800',
       });
-      expect(beforeCutover.source).toBe('legacy-bootstrap');
-      expect(beforeCutover.products.some(({ id }) => id === 'guayaba')).toBe(true);
+      expect(beforeCutover.source).toBe('dux');
+      expect(beforeCutover.products).toEqual([]);
 
       await updateDuxCatalogControl(testD1.database, 'test', {
         publicCatalogEnabled: true,
@@ -406,7 +426,7 @@ describe('catálogo público autoritativo de Dux', () => {
     }
   });
 
-  it('publica nuevos Dux-only, retira ausentes/deshabilitados y revierte a local sin borrar datos', async () => {
+  it('publica nuevos Dux-only, retira ausentes/deshabilitados y oculta sin reconstruir productos locales', async () => {
     const testD1 = completeTestDatabase();
     const env = { DUX_COMPANY_ID: '12862' };
     try {

@@ -109,6 +109,14 @@ for (const asset of assetManifest.images) {
   }
 }
 
+const editorialPolicy = await readFile(join(projectRoot, 'server', 'mercado-libre-editorial-policy.ts'), 'utf8');
+const editorialImages = await readFile(join(projectRoot, 'server', 'mercado-libre-editorial-images.ts'), 'utf8');
+for (const requirement of ["EDITORIAL_SELLER_ID = '445638367'", "status === 'active' || status === 'paused'", "url.protocol !== 'https:'", "http2.mlstatic.com"]) {
+  if (!editorialPolicy.includes(requirement)) throw new Error(`Falta control de fuente editorial: ${requirement}`);
+}
+for (const requirement of ["redirect: 'error'", 'readCatalogImageUpload', 'digestBytes', 'bucket.head', 'bucket.put', '/api/catalog-images/']) {
+  if (!editorialImages.includes(requirement)) throw new Error(`Falta control de medios editoriales: ${requirement}`);
+}
 console.log(
   `Activos verificados: logo y favicon exactos, más ${assetManifest.images.length} imágenes de catálogo declaradas, referenciadas y sin huérfanos.`,
 );

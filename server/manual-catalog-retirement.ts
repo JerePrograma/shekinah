@@ -18,11 +18,18 @@ export async function assertManualCatalogWritable(database: D1Database): Promise
   }
 }
 
+/** Operational routes remain read-only even when a restored database lacks the marker. */
+export function rejectManualCatalogOperation(): never {
+  throw new HttpError(409, 'MANUAL_CATALOG_RETIRED', 'Administrá los productos y las existencias exclusivamente en Dux.');
+}
+
 export async function applyPreservedDuxEditorial(
   database: D1Database,
   products: readonly CatalogProductDetail[],
 ): Promise<readonly CatalogProductDetail[]> {
   if (products.length === 0) return products;
+  let content: readonly { cod_item: string; images_json: string; description: string | null }[] = [];
+  try {
   const rows = await database.prepare(
     `SELECT c.cod_item, c.images_json, c.description FROM dux_editorial_content c
      JOIN dux_editorial_links l ON l.id = c.source_link_id AND l.company_id = c.company_id AND l.cod_item = c.cod_item
@@ -31,16 +38,21 @@ export async function applyPreservedDuxEditorial(
   ).bind(JSON.stringify(products.map((product) => product.sku))).all<{
     cod_item: string; images_json: string; description: string | null;
   }>();
-  const byCode = new Map((rows.results ?? []).map((row) => [row.cod_item, row]));
+  content = rows.results ?? [];
+  } catch (error: unknown) {
+    if (!(error instanceof Error && error.message.includes('no such table: dux_editorial_content'))) throw error;
+  }
+  const byCode = new Map(content.map((row) => [row.cod_item, row]));
   return Object.freeze(products.map((product) => {
     const row = product.sku === undefined ? undefined : byCode.get(product.sku);
-    if (row === undefined) return product;
-    const rawImages: unknown = JSON.parse(row.images_json);
+    const { primaryImage: _image, description: _description, ...identity } = product;
+    void _image; void _description;
+    const rawImages: unknown = row === undefined ? [] : JSON.parse(row.images_json);
     if (!Array.isArray(rawImages)) throw new Error('Contenido editorial Dux inválido.');
     const images = Object.freeze(rawImages.map((image: unknown) => parseImage(image)));
-    return Object.freeze({ ...product, images,
+    return Object.freeze({ ...identity, images,
       ...(images[0] === undefined ? {} : { primaryImage: images[0] }),
-      ...(row.description === null ? {} : { description: row.description }),
+      ...(row?.description == null ? {} : { description: row.description }),
     });
   }));
 }

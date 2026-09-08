@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuxCatalogControls } from './DuxCatalogControls';
 import { DuxEditorialReviewPanel } from './DuxEditorialReviewPanel';
+import { MercadoLibreEditorialPanel } from './MercadoLibreEditorialPanel';
 
 type DuxTenant = Readonly<{
   companyId: string;
@@ -219,7 +220,8 @@ export function DuxPanel({
         {error === '' ? null : <p role="alert" className="form-error">{error}</p>}
         {status === null ? null : <>
           <DuxCatalogControls disabled={busy || editorialBusy} onOperationStateChange={catalogOperation} onUnauthorized={onUnauthorized} />
-          <DuxEditorialReviewPanel disabled={busy || catalogBusy} onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
+          <MercadoLibreEditorialPanel onUnauthorized={onUnauthorized} />
+          <DuxEditorialReviewPanel disabled onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
         </>}
       </div>
     </section>

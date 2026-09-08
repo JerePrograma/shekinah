@@ -1,3 +1,4 @@
+import { duxApiFixture } from '../../src/test/dux-api-fixture';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
@@ -35,7 +36,7 @@ test.beforeEach(async ({ context, page }) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ products: duxCatalogProducts }),
+        body: JSON.stringify(duxApiFixture({ products: duxCatalogProducts })),
       });
       return;
     }
@@ -55,7 +56,7 @@ test.beforeEach(async ({ context, page }) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ product: { ...summary, ...detail } }),
+      body: JSON.stringify(duxApiFixture({ product: { ...summary, ...detail } })),
     });
   });
 });

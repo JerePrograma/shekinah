@@ -1,23 +1,18 @@
-import { createCatalogProduct, listRuntimeCatalogProductDetails } from '../../../server/catalog-store';
 import { handleAdminRequest } from '../../../server/admin-request';
 import { jsonResponse, methodNotAllowedResponse } from '../../../server/http';
 import type { AdminContextData, Env, PagesFunction } from '../../../server/platform';
-import { assertSameOrigin, readJsonBody } from '../../../server/validation';
-import { isManualCatalogRetired } from '../../../server/manual-catalog-retirement';
+import { assertSameOrigin } from '../../../server/validation';
+import { rejectManualCatalogOperation } from '../../../server/manual-catalog-retirement';
 import { readDuxCatalog } from '../../../server/dux-public-catalog';
+
 export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({ data, env, request }) => {
-  if (request.method === 'GET') return handleAdminRequest(request, env, data, 'catalog.products.list', async (database) => {
-    if (await isManualCatalogRetired(database)) {
-      const catalog = await readDuxCatalog(database, env);
-      return jsonResponse({ imageStorageConfigured: env.CATALOG_IMAGES !== undefined,
-        products: catalog.productDetails, categories: catalog.categories, manualCatalogRetired: true });
-    }
+  if (request.method === 'GET') return handleAdminRequest(request, env, data, 'catalog.products.list', async database => {
+    const catalog = await readDuxCatalog(database, env);
     return jsonResponse({ imageStorageConfigured: env.CATALOG_IMAGES !== undefined,
-      products: await listRuntimeCatalogProductDetails(database, env), manualCatalogRetired: false });
+      products: catalog.productDetails, categories: catalog.categories, manualCatalogRetired: true });
   });
-  if (request.method === 'POST') return handleAdminRequest(request, env, data, 'catalog.products.create', async (database) => {
-    assertSameOrigin(request, env); const body = await readJsonBody(request, 131_072); const actor = data.adminIdentity?.actor ?? 'unknown';
-    return jsonResponse({ product: await createCatalogProduct(database, body, actor) }, 201);
+  if (request.method === 'POST') return handleAdminRequest(request, env, data, 'catalog.products.create', () => {
+    assertSameOrigin(request, env); return rejectManualCatalogOperation();
   }, { type: 'catalog_product' });
   return methodNotAllowedResponse(['GET', 'POST']);
 };

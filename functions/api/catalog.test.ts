@@ -21,7 +21,7 @@ describe('API pública del catálogo', () => {
       const payload = await response.json() as { schemaVersion: number; products: Array<{ id?: unknown; priceStatus?: unknown }> };
       expect(payload.schemaVersion).toBe(2);
       expect(payload.products.every(({ priceStatus }) => priceStatus === 'usable')).toBe(true);
-      expect(payload.products.some(({ id }) => id === 'guayaba')).toBe(true);
+      expect(payload.products).toEqual([]);
 
       const methodResponse = await listCatalog(context('/api/catalog', testD1.database, 'POST'));
       expect(methodResponse.status).toBe(405);
@@ -41,19 +41,19 @@ describe('API pública del catálogo', () => {
     await expect(detail.json()).resolves.toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
   });
 
-  it('conserva los 510 productos base si todavía falta la tabla 0004', async () => {
+  it('no reconstruye productos compilados cuando faltan las tablas de un respaldo antiguo', async () => {
     const testD1 = createTestD1();
     try {
       const listResponse = await listCatalog(context('/api/catalog', testD1.database));
       const listPayload = await listResponse.json() as { products: unknown[] };
       expect(listResponse.status).toBe(200);
-      expect(listPayload.products).toHaveLength(510);
+      expect(listPayload.products).toEqual([]);
 
       const detailResponse = await getCatalogProduct(
         detailContext('guayaba', testD1.database),
       );
-      expect(detailResponse.status).toBe(200);
-      expect(await detailResponse.json()).toMatchObject({ schemaVersion: 2, product: { priceStatus: 'usable' } });
+      expect(detailResponse.status).toBe(404);
+      expect(await detailResponse.json()).toMatchObject({ error: { code: 'PRODUCT_NOT_FOUND' } });
     } finally {
       testD1.close();
     }

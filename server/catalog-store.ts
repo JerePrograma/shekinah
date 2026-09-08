@@ -16,6 +16,7 @@ import {
 } from './dux-inventory';
 import { HttpError } from './http';
 import { assertManualCatalogWritable, isManualCatalogRetired, isPreservedDuxImageReferenced } from './manual-catalog-retirement';
+import { isMercadoLibreEditorialImageReferenced } from './mercado-libre-editorial-public';
 import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
@@ -322,6 +323,7 @@ export async function isCatalogImageReferenced(
   database: D1Database,
   source: string,
 ): Promise<boolean> {
+  if (await isMercadoLibreEditorialImageReferenced(database, source)) return true;
   if (await isManualCatalogRetired(database)) return isPreservedDuxImageReferenced(database, source);
   return (await listCatalogProductDetails(database)).some((product) =>
     product.images.some((image) => image.src === source),

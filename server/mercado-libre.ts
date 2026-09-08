@@ -53,6 +53,12 @@ export type MercadoLibreConnectionStatus = Readonly<{
   lastVerifiedAt?: string;
 }>;
 
+export class MercadoLibreProviderError extends HttpError {
+  constructor(readonly providerStatus: number, status: number, code: string, message: string) {
+    super(status, code, message);
+  }
+}
+
 export async function createMercadoLibreAuthorization(
   database: D1Database,
   env: Env,
@@ -223,6 +229,7 @@ export async function mercadoLibreApiJson(
       if (init.body !== undefined) headers.set('content-type', 'application/json');
       const response = await fetch(new URL(path, API_ORIGIN), {
         method,
+        redirect: 'error',
         headers,
         signal: controller.signal,
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
@@ -233,7 +240,8 @@ export async function mercadoLibreApiJson(
         await delay(retryDelay(response.headers, attempt));
         continue;
       }
-      throw new HttpError(
+      throw new MercadoLibreProviderError(
+        response.status,
         response.status === 401 ? 503 : response.status === 429 ? 503 : 502,
         response.status === 401
           ? 'MERCADO_LIBRE_AUTH_FAILED'
@@ -349,6 +357,7 @@ async function tokenRequest(
   try {
     const response = await fetch(`${API_ORIGIN}/oauth/token`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
       signal: controller.signal,
@@ -493,8 +502,24 @@ function providerShapeError(): HttpError {
 }
 
 async function readProviderJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (text.length > 2_000_000) throw providerShapeError();
+  const limit = 2_000_000;
+  const declared = response.headers.get('content-length');
+  if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > limit)) throw providerShapeError();
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  let text = '', bytes = 0;
+  if (reader !== undefined) {
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > limit) { await reader.cancel(); throw providerShapeError(); }
+        text += decoder.decode(chunk.value, { stream: true });
+      }
+      text += decoder.decode();
+    } finally { reader.releaseLock(); }
+  }
   try {
     return text === '' ? null : JSON.parse(text) as unknown;
   } catch {

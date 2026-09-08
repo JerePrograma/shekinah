@@ -211,7 +211,7 @@ describe('triage editorial Dux versionado y revisión', () => {
       const crossOriginReview = reviewRequest.clone();
       crossOriginReview.headers.set('origin', 'https://evil.test');
       expect((await reviewEndpoint(context(test.database, crossOriginReview))).status).toBe(403);
-      expect((await reviewEndpoint(context(test.database, reviewRequest))).status).toBe(200);
+      expect((await reviewEndpoint(context(test.database, reviewRequest))).status).toBe(409);
       expect(test.sqlite.prepare('SELECT DISTINCT outcome_status FROM admin_audit ORDER BY outcome_status').all()).toEqual([{ outcome_status: 200 }, { outcome_status: 400 }, { outcome_status: 403 }, { outcome_status: 409 }, { outcome_status: 503 }]);
       expect(() => parseDuxTriageReview({ ...approval(), price: 10 })).toThrow();
     } finally { test.close(); }

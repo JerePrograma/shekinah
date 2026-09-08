@@ -2,7 +2,15 @@
 
 ## Imágenes de Mercado Libre
 
-La sincronización puede almacenar en D1 la URL comercial principal como dato de proveedor y trazabilidad. Esa URL no autoriza por sí sola a incorporar un binario remoto al inventario visual público. Mientras no exista autorización documental adicional, la UI continúa usando únicamente los activos locales/R2 ya autorizados; no descarga imágenes de Mercado Libre durante build ni runtime del navegador.
+El encargo del 2026-09-08 autoriza expresamente imágenes y descripciones de publicaciones activas o pausadas de HERBOLARIOMDP, vendedor `445638367`, vinculadas inequívocamente o mediante revisión administrativa a una identidad Dux vigente. Esta autorización sustituye la prohibición editorial anterior, que queda conservada en el historial Git y los informes históricos. No autoriza inventario, precios, productos, pedidos, reservas ni pagos de Mercado Libre.
+
+La prioridad se aplica por campo: imágenes válidas de Mercado Libre o galería local autorizada o ninguna imagen; descripción válida de Mercado Libre o descripción local autorizada o campo vacío. Una galería válida del proveedor no se completa con fotos locales. El contenido local preservado mantiene su procedencia y disponibilidad para recuperación editorial.
+
+Las descargas editoriales se realizan exclusivamente en servidor después de comprobar vendedor, publicación, presentación y variante. Se conservan los bytes originales, su orden y hash; no se modifican fotos ni marcas de agua. Sólo se aceptan JPEG, PNG y WebP de hasta 4 MiB, con tipo y firma coherentes, desde URLs HTTPS validadas de los hosts de imágenes documentados de Mercado Libre. Se rechazan redirecciones, hosts arbitrarios, contenido activo y respuestas fuera del presupuesto. Los objetos usan R2 y la ruta first-party existente `/api/catalog-images/*`; no se incorporan binarios importados a Git ni se descarga contenido durante el build. No se descargan galerías de publicaciones sin asociación aprobada.
+
+La descripción original, las líneas comerciales retiradas y la versión de transformación se conservan para auditoría. Las referencias comerciales mezcladas con información del producto se llevan a revisión; no se eliminan instrucciones, advertencias o características por coincidencias superficiales. El navegador sigue usando únicamente rutas de imágenes first-party validadas.
+
+La implementación, el acceso efectivo, la importación y la publicación se acreditan por separado. Esta política no afirma que una conexión externa esté operativa.
 
 ## Logo de Shekinah
 
@@ -39,9 +47,9 @@ El manifiesto registra para cada archivo su ruta, SHA-256, extensión, tamaño, 
 
 `scripts/verify-assets.mjs` aplica una allowlist exacta compuesta por el logo, el favicon y el manifiesto. Falla ante cambios de hash o tamaño, firmas y extensiones incoherentes, contenido activo o externo en el favicon, archivos inesperados, huérfanos, referencias externas o faltantes.
 
-## Imágenes administrativas candidatas
+## Imágenes administrativas históricas preservadas
 
-La autorización para imágenes cargadas por un administrador es separada del inventario versionado:
+La autorización histórica para imágenes cargadas por un administrador fue separada del inventario versionado. Tras el retiro manual, se conserva el contenido ya vinculado a Dux; no se usa este mecanismo para reconstruir productos manuales. Sus controles originales fueron:
 
 - formatos JPEG, PNG y WebP;
 - máximo 4 MiB por objeto;
@@ -59,10 +67,10 @@ Estado externo: R2 está activo, ambos buckets conservan clase Standard/default 
 
 No están autorizados:
 
-- imágenes remotas;
+- imágenes remotas ajenas a la excepción editorial de Mercado Libre descrita arriba;
 - el logo como reemplazo de productos sin imagen;
 - fotografías, iconos, fuentes o videos no declarados;
-- recursos generados, redibujados o descargados nuevamente fuera de una adaptación institucional expresamente autorizada y documentada;
+- recursos generados, redibujados o descargados fuera de una autorización institucional o editorial expresa y documentada;
 - recursos institucionales legacy.
 
 La incorporación de otro activo requiere autorización explícita, procedencia documentada y actualización deliberada del manifiesto y los verificadores.
