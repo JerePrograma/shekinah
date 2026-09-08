@@ -11,6 +11,43 @@ const env: Env = Object.freeze({
 });
 
 describe('reader cuantitativo de inventario Dux', () => {
+  it('lee el directorio completo y conserva depósitos, variantes y cantidades ausentes en el catálogo', async () => {
+    const reader = createDuxInventoryReader(env, input => {
+      const url = inputUrl(input);
+      if (url.pathname.endsWith('/v2/depositos')) {
+        expect(url.searchParams.has('id_deposito')).toBe(false);
+        return Promise.resolve(jsonResponse({datos: [
+          {id_deposito:3, id_empresa:1, deposito:'Central', habilitado:true},
+          {id_deposito:4, id_empresa:1, deposito:'Sucursal', habilitado:true},
+          {id_deposito:5, id_empresa:1, deposito:'Inactivo', habilitado:false},
+          {id_deposito:6, id_empresa:2, deposito:'Otra empresa', habilitado:true},
+        ]}));
+      }
+      expect(url.searchParams.has('id_deposito')).toBe(false);
+      return Promise.resolve(jsonResponse(page([
+        item('DOS-DEPOSITOS', [stock(3, -1.25), {...stock(4, 2.5), stock_reservado:null}, stock(5, 99), stock(6, 99)]),
+        item('SIN-CANTIDAD', []),
+      ])));
+    });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await reader.listDepositos();
+      const quantified = await reader.listItems({enabled:true});
+      expect(quantified[0]?.stocks).toHaveLength(1);
+      expect(quantified[0]?.stocks[0]?.availableQuantity).toBe(-1.25);
+      const catalog = reader.takeCatalogItems();
+      expect(catalog).toHaveLength(2);
+      expect(catalog[0]?.warehouseStocks).toMatchObject([
+        {depositId:3, depositName:'Central', available:-1.25},
+        {depositId:4, depositName:'Sucursal', available:2.5, reserved:null},
+      ]);
+      expect(catalog[1]?.warehouseStocks).toMatchObject([
+        {depositId:3, real:null, reserved:null, available:null},
+        {depositId:4, real:null, reserved:null, available:null},
+      ]);
+    } finally { warning.mockRestore(); }
+  });
+
   it('excluye triple null sin convertirlo a cero y conserva un faltante real para fail-closed', async () => {
     const excludedSentinel = 'provider-unquantified-name-never-log';
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -144,7 +181,6 @@ describe('reader cuantitativo de inventario Dux', () => {
   });
 
   it.each([
-    ['null parcial', { ...unquantifiedStock(3), stock_reservado: 0 }],
     ['id inválido', { ...unquantifiedStock(3), id: '3' }],
     ['texto numérico', { ...stock(3, 5), stock_disponible: '5' }],
   ])('mantiene fail-closed ante %s', async (_caseName, invalidStock) => {

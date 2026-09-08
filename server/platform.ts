@@ -86,6 +86,7 @@ export type Env = Readonly<{
   DUX_DEPOSIT_ID?: string;
   DUX_SNAPSHOT_MAX_AGE_SECONDS?: string;
   DUX_SCHEDULER_SECRET?: string;
+  DUX_CRON_SECRET?: string;
   ORDER_TOKEN_SECRET?: string;
   ANALYTICS_HMAC_SECRET?: string;
   ADMIN_USERNAME?: string;

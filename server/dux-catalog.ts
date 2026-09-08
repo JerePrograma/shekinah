@@ -4,6 +4,7 @@ import type {
   ProductPriceStatus,
 } from '../src/catalog/model';
 import { sha256Hex } from './crypto';
+import { parseDuxWarehouseStocks, type DuxWarehouseStock } from '../src/catalog/model';
 import type { DuxInventoryUnit } from './dux-inventory';
 import { HttpError } from './http';
 import type { D1Database } from './platform';
@@ -29,6 +30,7 @@ type DuxCatalogReference = Readonly<{
 }>;
 
 export type DuxCatalogSourceItem = Readonly<{
+  warehouseStocks?: readonly DuxWarehouseStock[];
   code: string;
   name: string;
   enabled: boolean;
@@ -46,6 +48,7 @@ type StoredCatalogReference = Readonly<{
 }>;
 
 type StoredDuxCatalogItem = Readonly<{
+  warehouseStocks?: readonly DuxWarehouseStock[];
   slug: string;
   code: string;
   name: string;
@@ -76,6 +79,7 @@ type ValidatedPayload = Readonly<{
 let validatedPayload: ValidatedPayload | undefined;
 
 export type DuxCatalogSnapshot = Readonly<{
+  stockReadAt?: string;
   inventoryRunId: string;
   catalogVersion: string;
   priceListName: typeof DUX_PUBLIC_PRICE_LIST_NAME;
@@ -99,6 +103,7 @@ export type DuxRuntimeCatalog = Readonly<{
 }>;
 
 type DuxCatalogSnapshotRow = Readonly<{
+  stock_read_at?: unknown;
   inventory_run_id: unknown;
   catalog_version: unknown;
   price_list_name: unknown;
@@ -141,7 +146,10 @@ export async function persistDuxCatalogSnapshot(
 ): Promise<DuxCatalogSyncSummary> {
   const safeRunId = syncRunId(inventoryRunId);
   const safeSyncedAt = timestamp(syncedAt, invalidInternalInput);
-  const payload = buildStoredPayload(sourceItems);
+  let previousItems: DuxCatalogSnapshot['items'] = [];
+  try { previousItems = (await readDuxCatalogSnapshot(database)).items; }
+  catch (error: unknown) { if (!isDuxCatalogBootstrapPendingError(error)) throw error; }
+  const payload = buildStoredPayload(sourceItems, new Map(previousItems.map(item => [item.code, item.slug])));
   const serializedPayload = JSON.stringify(payload);
   if (new TextEncoder().encode(serializedPayload).byteLength > DUX_CATALOG_SNAPSHOT_MAX_BYTES) {
     throw new HttpError(
@@ -213,7 +221,7 @@ export async function readDuxCatalogSnapshot(
         `SELECT catalog.inventory_run_id, catalog.catalog_version,
                 catalog.price_list_name, catalog.item_count,
                 catalog.payload_json, catalog.synced_at,
-                run.status AS source_run_status
+                run.status AS source_run_status, run.started_at AS stock_read_at
          FROM dux_catalog_snapshots_v2 AS catalog
          INNER JOIN dux_sync_runs AS run ON run.id = catalog.inventory_run_id
          WHERE catalog.id = 1`,
@@ -252,6 +260,7 @@ export async function readDuxCatalogSnapshot(
     priceCounts: validated.priceCounts,
     items: payload.items,
     syncedAt: timestamp(row.synced_at, invalidDatabaseProjection),
+    ...(row.stock_read_at === undefined ? {} : { stockReadAt: timestamp(row.stock_read_at, invalidDatabaseProjection) }),
   });
 }
 
@@ -340,6 +349,7 @@ export function projectDuxRuntimeProduct(
 
 function buildStoredPayload(
   sourceItems: readonly DuxCatalogSourceItem[],
+  previousSlugs: ReadonlyMap<string, string>,
 ): StoredDuxCatalogPayload {
   const codes = new Set<string>();
   const slugs = new Set<string>();
@@ -355,7 +365,7 @@ function buildStoredPayload(
   const items = sourceItems
     .filter((item) => item.enabled)
     .map((item) => {
-      const slug = createDuxProductSlug(item.name, item.code);
+      const slug = previousSlugs.get(item.code) ?? createDuxProductSlug(item.name, item.code);
       if (slugs.has(slug)) {
         throw new HttpError(
           502,
@@ -373,6 +383,7 @@ function buildStoredPayload(
         unitsPerPackage: item.unitsPerPackage,
         imageUrl: normalizeProviderImageUrl(item.imageUrl),
         description: item.description,
+        ...(item.warehouseStocks === undefined ? {} : { warehouseStocks: parseDuxWarehouseStocks(item.warehouseStocks) }),
       });
     })
     .sort((left, right) => left.code.localeCompare(right.code, 'en'));
@@ -428,6 +439,7 @@ function parseStoredPayload(value: unknown): StoredDuxCatalogPayload {
       unitsPerPackage: nullableFiniteDatabaseNumber(candidate.unitsPerPackage),
       imageUrl: nullableDatabaseText(candidate.imageUrl, 2_048),
       description: nullableDatabaseText(candidate.description, 20_000),
+      ...(candidate.warehouseStocks === undefined ? {} : { warehouseStocks: parseDuxWarehouseStocks(candidate.warehouseStocks) }),
     });
   });
   return Object.freeze({
@@ -618,7 +630,11 @@ function projectProduct(
   resolution: ProductMappingResolution,
   productId: string,
 ): CatalogProductDetail {
-  const observedStock = aggregateObservedStock(resolution.units);
+  const stockRows = item.warehouseStocks;
+  const single = stockRows?.length === 1 ? stockRows[0] : undefined;
+  const observedStock = stockRows === undefined ? aggregateObservedStock(resolution.units)
+    : single !== undefined && single.real !== null && single.reserved !== null && single.available !== null
+      ? Object.freeze({ real: single.real, reserved: single.reserved, available: single.available }) : undefined;
   const allFresh = resolution.units.length > 0 && resolution.units.every((unit) =>
     unit.lastSyncStatus === 'ok' && unit.fresh,
   );
@@ -659,6 +675,7 @@ function projectProduct(
           Date.parse(unit.lastSyncedAt) < Date.parse(oldest) ? unit.lastSyncedAt : oldest, resolution.units[0]!.lastSyncedAt),
       }),
       ...(depositName === undefined ? {} : { depositName }),
+      ...(stockRows === undefined ? {} : { warehouseStocks: stockRows, stockSyncedAt: snapshot.stockReadAt ?? snapshot.syncedAt }),
     }),
     ...(description === undefined ? {} : { description }),
     images,
@@ -669,7 +686,8 @@ function projectProduct(
 function aggregateObservedStock(
   units: readonly DuxInventoryUnit[],
 ): Readonly<{ real: number; reserved: number; available: number }> | undefined {
-  if (units.length === 0) return undefined;
+  // v2/items does not establish comparable units across warehouses or variants.
+  if (units.length !== 1) return undefined;
   const total = units.reduce(
     (current, unit) => ({
       real: current.real + unit.observedStock.real,

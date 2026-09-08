@@ -1,5 +1,9 @@
 # Estado actual
 
+## Implementación de depósitos y frescura — 2026-09-08
+
+El código sigue el contrato de [todos los depósitos y antigüedad del inventario](DUX_STOCK_ALL_WAREHOUSES.md). Descubre depósitos habilitados de la empresa, conserva cantidades parciales sin inventar totales y distingue inicio de lectura y publicación. La programación prevista se traslada a Cloudflare cada cinco minutos, con inventario y retiro manual protegidos. Esta sección describe implementación; CI, deployments, activación y cuatro ejecuciones automáticas consecutivas requieren evidencia operativa aparte. El acceso editorial Mercado Libre sigue pendiente de acreditación y no se reactiva su inventario.
+
 ## Prioridad vigente: retiro manual — 2026-09-07
 
 El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.

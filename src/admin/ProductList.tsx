@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
 import { formatProductPrice } from '../catalog/catalog';
+import { DuxStockDetails } from '../catalog/DuxStock';
 import type { CatalogCategory, CatalogProductDetail } from '../catalog/model';
 import { authorizedCategories } from '../data/authorized-categories';
 import {
@@ -78,6 +79,11 @@ export function ProductList({
   const deleteTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const listTitleRef = useRef<HTMLHeadingElement | null>(null);
   const previousDeleteCandidateIdRef = useRef<string | null>(null);
+  const [stockObservedAt, setStockObservedAt] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setStockObservedAt(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const candidateId = deleteCandidate?.id ?? null;
@@ -202,7 +208,7 @@ export function ProductList({
           <h4>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h4>
           <p>
             {totalProductCount === 0
-              ? 'Usá Nuevo producto para cargar el primero.'
+              ? readOnly ? 'Todavía no hay una lectura completa del catálogo Dux.' : 'Usá Nuevo producto para cargar el primero.'
               : 'Probá otra búsqueda o limpiá los filtros.'}
           </p>
           {totalProductCount === 0 ? null : (
@@ -257,7 +263,7 @@ export function ProductList({
                         {stockStatus.label}
                       </span>
                     </div>
-                    {duxInventory === undefined ? null : (
+                    {duxInventory === undefined ? null : readOnly ? <DuxStockDetails product={product} now={stockObservedAt} /> : (
                       <div className="admin-context-note">
                         <strong>Inventario: Dux</strong>
                         {readOnly ? null : <span>Vínculo: {duxMappingLabel(duxInventory.mappingStatus)}</span>}

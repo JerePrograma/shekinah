@@ -65,6 +65,7 @@ describe('catálogo público autoritativo de Dux', () => {
       const updated = await readDuxCatalogSnapshot(testD1.database);
       expect(updated.catalogVersion).not.toBe(first.catalogVersion);
       expect(updated.items[0]?.name).toBe('HIERBA DESDE DUX ACTUALIZADO');
+      expect(updated.items[0]?.slug).toBe(first.items[0]?.slug);
       testD1.sqlite.prepare("UPDATE dux_sync_runs SET status = 'failed' WHERE id = ?").run(nextRun);
       await expect(readDuxCatalogSnapshot(testD1.database)).rejects.toMatchObject({ code: 'DUX_CATALOG_SNAPSHOT_INVALID' });
       testD1.sqlite.prepare('DELETE FROM dux_catalog_snapshots_v2').run();

@@ -1,8 +1,7 @@
 name: Dux inventory reconciliation
 
 on:
-  schedule:
-    - cron: '7,22,37,52 * * * *'
+  # Automatic runs now use config/dux-cron.jsonc; do not enable a second clock.
   workflow_dispatch:
 
 permissions:

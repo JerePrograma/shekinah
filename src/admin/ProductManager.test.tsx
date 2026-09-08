@@ -25,7 +25,9 @@ describe('gestión visual de productos', () => {
     expect(screen.getByRole('option', { name: 'RUBRO DUX' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar PRODUCTO REAL DUX' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Stock observado: real/)).toBeVisible();
+    expect(screen.getByText('Stock real')).toBeVisible();
+    expect(screen.getByText('Reservado')).toBeVisible();
+    expect(screen.getByText('Disponible', {selector:'strong'})).toBeVisible();
     expect(screen.queryByText('No disponible manualmente')).not.toBeInTheDocument();
   });
   beforeEach(() => {

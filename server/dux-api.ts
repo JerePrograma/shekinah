@@ -878,7 +878,13 @@ function parseReferencePage<T>(
   parseEntry: (candidate: unknown) => T,
 ): DuxPage<T> {
   const record = requiredRecord(value);
-  if (record.paginacion !== undefined) return parsePage(value, parseEntry);
+  if (record.paginacion !== undefined) {
+    const page = parsePage(value, parseEntry);
+    // These reference endpoints have no documented pagination parameters.
+    // An incomplete directory cannot establish warehouse/company ownership.
+    if (page.pagination.offset !== 0 || page.pagination.hasMore || page.pagination.total !== page.data.length) throw invalidProviderResponse();
+    return page;
+  }
   if (!Array.isArray(record.datos)) throw invalidProviderResponse();
   const data = Object.freeze(record.datos.map(parseEntry));
   return Object.freeze({

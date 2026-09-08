@@ -11,6 +11,7 @@ import {
   type DuxWarehouse,
 } from './dux-api';
 import { HttpError } from './http';
+import { authorizedDuxWarehouses } from './dux-stock-observation';
 import type { D1Database, D1PreparedStatement, Env } from './platform';
 
 const SYNC_LEASE_MAX_AGE_MINUTES = 30;
@@ -65,6 +66,7 @@ export type DuxTenantContext = Readonly<{
   depositId: string;
   depositName: string;
   verifiedAt: string;
+  warehouses?: readonly DuxWarehouse[];
 }>;
 
 export type DuxInventoryUnit = Readonly<{
@@ -295,13 +297,14 @@ export async function syncDuxInventory(
     await beginInventoryGeneration(database, runId, startedAt);
     await assertDuxSyncCooldown(database, validNow(now));
     const tenant = await verifyTenant(client, config, startedAt);
-    const items = await client.listItems({ warehouseId: config.depositId, enabled: true });
+    const items = await client.listItems({ enabled: true });
     const mappedItems = await mapInventoryItems(
       database,
       config,
       items,
       options.localProducts,
       kind === 'initial',
+      tenant.warehouses,
     );
     if (mappedItems.units.length > DUX_MAX_ITEMS_PER_SYNC) {
       throw new HttpError(
@@ -546,8 +549,10 @@ async function verifyTenant(
   if (branch.companyId !== config.companyId) {
     throw new HttpError(503, 'DUX_BRANCH_COMPANY_MISMATCH', 'La sucursal Dux no pertenece a la empresa configurada.');
   }
-  const warehouses = await client.listDepositos(config.depositId);
-  const warehouse = uniqueById(warehouses, config.depositId, 'DUX_DEPOSIT_NOT_FOUND');
+  const warehouses = await client.listDepositos();
+  const scope = authorizedDuxWarehouses(warehouses, config.companyId);
+  const warehouse = scope.find(w => w.id === config.depositId) ?? scope[0];
+  if (warehouse === undefined) throw new HttpError(503, 'DUX_DEPOSIT_NOT_FOUND', 'Dux no informó depósitos habilitados para la empresa.');
   if (warehouse.companyId !== config.companyId) {
     throw new HttpError(503, 'DUX_DEPOSIT_COMPANY_MISMATCH', 'El depósito Dux no pertenece a la empresa configurada.');
   }
@@ -563,6 +568,7 @@ async function verifyTenant(
     depositId: String(warehouse.id),
     depositName: warehouse.name,
     verifiedAt,
+    warehouses: scope,
   });
 }
 
@@ -586,6 +592,7 @@ async function mapInventoryItems(
   items: readonly DuxItem[],
   localProducts: readonly CatalogProductDetail[],
   bootstrapRequested: boolean,
+  warehouses?: readonly DuxWarehouse[],
 ): Promise<MappedInventoryItems> {
   const existingMappings = await readPersistedMappings(database);
   const allowExactNameBootstrap = bootstrapRequested &&
@@ -603,11 +610,11 @@ async function mapInventoryItems(
   for (const item of items) {
     let selectedStockCount = 0;
     for (const stock of item.stocks) {
-      if (stock.warehouseId !== config.depositId) continue;
+      if (!(warehouses?.some(w => w.id === stock.warehouseId) ?? stock.warehouseId === config.depositId)) continue;
       selectedStockCount += 1;
       const inventoryKey = buildDuxInventoryKey(
         config.companyId,
-        config.depositId,
+        stock.warehouseId,
         item.code,
         stock.variantDetailId,
       );
@@ -986,7 +993,7 @@ async function persistableUnit(
   const snapshot = {
     apiVersion: DUX_API_VERSION,
     companyId: tenant.companyId,
-    depositId: tenant.depositId,
+    depositId: String(unit.stock.warehouseId),
     item: {
       code: unit.item.code,
       externalCode: unit.item.externalCode,
@@ -1065,7 +1072,7 @@ function inventoryPublicationPayload(row: PersistableInventoryUnit): InventoryPu
     mappingStatus: row.mapping.status,
     mappingSource: row.mapping.source,
     mappingCandidatesJson: JSON.stringify(row.mapping.candidates),
-    depositId: row.tenant.depositId,
+    depositId: String(row.stock.warehouseId),
     depositName: row.stock.warehouseName,
     stockReal: row.stock.realQuantity,
     stockReserved: row.stock.reservedQuantity,
@@ -1475,7 +1482,7 @@ function tenantPublication(
       tenant.branchName,
       tenant.depositId,
       tenant.depositName,
-      updatedAt,
+      tenant.verifiedAt,
       updatedAt,
     );
 }

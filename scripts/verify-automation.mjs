@@ -117,7 +117,7 @@ for (const forbidden of [
 
 const reconciliationWorkflow = read(join(root, '.github', 'workflows', 'dux-reconcile.yml'));
 for (const fragment of [
-  'name: Dux inventory reconciliation', "cron: '7,22,37,52 * * * *'", 'workflow_dispatch:',
+  'name: Dux inventory reconciliation', 'workflow_dispatch:',
   'contents: read', 'cancel-in-progress: false', 'timeout-minutes: 20',
   "if: ${{ vars.DUX_RECONCILIATION_ENABLED == 'true' }}",
   'name: cloudflare-pages-production', 'deployment: false', 'persist-credentials: false',
@@ -144,6 +144,15 @@ for (const action of reconciliationActions) {
 }
 
 const duxRunner = read(join(root, 'scripts', 'run-dux-reconcile.mjs'));
+if (/^\s*schedule:/mu.test(reconciliationWorkflow)) fail('Dux debe tener un único reloj automático: Cloudflare Cron.');
+const cronConfig = JSON.parse(read(join(root, 'config', 'dux-cron.jsonc')));
+if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify(['*/5 * * * *']) || cronConfig.workers_dev !== false) {
+  fail('El cron Dux debe ejecutar cada cinco minutos sin una ruta HTTP pública.');
+}
+const cronWorker = read(join(root, 'server', 'dux-cron.ts'));
+if (!cronWorker.includes("https://shekinah.ar/api/internal/dux/reconcile") || !cronWorker.includes("redirect: 'error'") || /mercadolibre|MERCADO_LIBRE/u.test(cronWorker)) {
+  fail('El relay Dux sólo puede invocar la reconciliación Dux autorizada.');
+}
 for (const fragment of [
   "const expectedPath = '/api/internal/dux/reconcile'",
   "errorCode(payload) === 'DUX_SYNC_IN_PROGRESS'",

@@ -5,6 +5,7 @@ import {
   DuxApiError,
   type DuxFetch,
   type DuxItem,
+  type DuxWarehouse,
 } from './dux-api';
 import {
   parseDuxCatalogSourceItems,
@@ -15,6 +16,7 @@ import {
   type DuxInventoryReader,
 } from './dux-inventory';
 import type { Env } from './platform';
+import { authorizedDuxWarehouses, captureDuxWarehouseStocks } from './dux-stock-observation';
 
 const ITEM_PAGE_LIMIT = 50;
 const MAX_ITEM_PAGES = DUX_MAX_ITEMS_PER_SYNC / ITEM_PAGE_LIMIT;
@@ -57,10 +59,14 @@ export function createDuxInventoryReader(
   return Object.freeze({
     listEmpresas: () => client.listEmpresas(),
     listSucursales: (companyId: number) => client.listSucursales(companyId),
-    listDepositos: (warehouseId?: number) => client.listDepositos(warehouseId),
+    listDepositos: async (warehouseId?: number) => {
+      const warehouses = await client.listDepositos(warehouseId);
+      if (warehouseId === undefined) filter.warehouses = authorizedDuxWarehouses(warehouses, config.companyId);
+      return warehouses;
+    },
     listItems: async (options = {}) => {
-      const warehouseId = options.warehouseId ?? config.depositId;
-      if (warehouseId !== config.depositId) {
+      const warehouseId = options.warehouseId ?? (filter.warehouses === null ? config.depositId : undefined);
+      if (warehouseId !== undefined && warehouseId !== config.depositId) {
         throw new DuxApiError(
           500,
           'DUX_QUERY_INVALID',
@@ -92,6 +98,7 @@ export function createDuxInventoryReader(
 }
 
 class DuxInventoryResponseFilter {
+  warehouses: readonly DuxWarehouse[] | null = null;
   private readonly warehouseId: number;
   private readonly upstreamFetch: DuxFetch;
   private readonly observations = new Map<number, InventoryPageObservation>();
@@ -119,7 +126,7 @@ class DuxInventoryResponseFilter {
     if (
       url.pathname !== DUX_ITEMS_PATH ||
       !response.ok ||
-      queryIdentifier(url, 'id_deposito') !== this.warehouseId
+      (this.warehouses === null && queryIdentifier(url, 'id_deposito') !== this.warehouseId)
     ) {
       return response;
     }
@@ -135,8 +142,15 @@ class DuxInventoryResponseFilter {
     } catch {
       return rebuiltResponse(response, raw);
     }
-    const catalogItems = parseDuxCatalogSourceItems(value);
-    const transformed = transformItemsResponse(value, this.warehouseId);
+    const sourceItems = parseDuxCatalogSourceItems(value);
+    const rawItems = isRecord(value) && Array.isArray(value.datos) ? value.datos as unknown[] : [];
+    const scope = this.warehouses;
+    const catalogItems = scope === null ? sourceItems : Object.freeze(sourceItems.map((item, index) => {
+      const rawItem = rawItems[index];
+      if (!isRecord(rawItem)) throw invalidProviderResponse();
+      return Object.freeze({...item, warehouseStocks: captureDuxWarehouseStocks(rawItem.stock, scope)});
+    }));
+    const transformed = transformItemsResponse(value, this.warehouseId, scope);
     this.observations.set(offset, Object.freeze({
       ...transformed.observation,
       catalogItems,
@@ -148,7 +162,7 @@ class DuxInventoryResponseFilter {
 async function listQuantifiedInventoryItems(
   client: DuxApiClient,
   filter: DuxInventoryResponseFilter,
-  warehouseId: number,
+  warehouseId: number | undefined,
   enabled?: boolean,
 ): Promise<QuantifiedInventoryRead> {
   const items: DuxItem[] = [];
@@ -161,7 +175,7 @@ async function listQuantifiedInventoryItems(
 
   for (let pageNumber = 0; pageNumber < MAX_ITEM_PAGES; pageNumber += 1) {
     const page = await client.listItemsPage({
-      warehouseId,
+      ...(warehouseId === undefined ? {} : { warehouseId }),
       ...(enabled === undefined ? {} : { enabled }),
       offset,
       limit: ITEM_PAGE_LIMIT,
@@ -218,6 +232,7 @@ async function listQuantifiedInventoryItems(
 function transformItemsResponse(
   value: unknown,
   warehouseId: number,
+  warehouses: readonly DuxWarehouse[] | null,
 ): Readonly<{
   value: unknown;
   observation: Omit<InventoryPageObservation, 'catalogItems'>;
@@ -240,6 +255,7 @@ function transformItemsResponse(
     let configuredWarehouseWasUnquantified = false;
     const stock: readonly unknown[] = candidate.stock;
     const filteredStock = stock.filter((entry) => {
+      if (warehouses !== null && isRecord(entry) && !warehouses.some(w => w.id === entry.id)) return false;
       if (!isSafeUnquantifiedStock(entry)) return true;
       unquantifiedStockEntries += 1;
       if (entry.id === warehouseId) configuredWarehouseWasUnquantified = true;
@@ -248,7 +264,7 @@ function transformItemsResponse(
     const hasRemainingConfiguredWarehouse = filteredStock.some((entry) => (
       isRecord(entry) && entry.id === warehouseId
     ));
-    if (configuredWarehouseWasUnquantified && !hasRemainingConfiguredWarehouse) {
+    if ((warehouses !== null && filteredStock.length === 0) || (warehouses === null && configuredWarehouseWasUnquantified && !hasRemainingConfiguredWarehouse)) {
       excludedItemIndices.push(itemIndex);
     }
     return { ...candidate, stock: filteredStock };
@@ -266,9 +282,8 @@ function transformItemsResponse(
 function isSafeUnquantifiedStock(value: unknown): value is Readonly<Record<string, unknown>> {
   if (!isRecord(value)) return false;
   if (
-    value.stock_real !== null ||
-    value.stock_reservado !== null ||
-    value.stock_disponible !== null
+    ![value.stock_real, value.stock_reservado, value.stock_disponible].some(q => q === null || q === undefined) ||
+    ![value.stock_real, value.stock_reservado, value.stock_disponible].every(q => q === null || q === undefined || (typeof q === 'number' && Number.isFinite(q)))
   ) {
     return false;
   }

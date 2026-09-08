@@ -525,7 +525,7 @@ describe('proyección autoritativa read-only de Dux', () => {
         date('2026-08-26T10:11:01.000Z'),
       )).toMatchObject([{
         itemCode: 'ESTABLE',
-        lastSyncedAt: '2026-08-26T10:11:00.000Z',
+        lastSyncedAt: '2026-08-26T10:10:00.000Z',
         fresh: true,
       }]);
 

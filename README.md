@@ -1,5 +1,9 @@
 # Shekinah
 
+## Depósitos y frescura Dux — 2026-09-08
+
+El contrato de [todos los depósitos y antigüedad del inventario](docs/DUX_STOCK_ALL_WAREHOUSES.md) incorpora descubrimiento por empresa, cantidades ausentes explícitas, fecha conservadora de lectura y programación Cloudflare cada cinco minutos. La configuración no acredita por sí sola su activación ni el objetivo de quince minutos: las ejecuciones remotas se registran por separado. El retiro manual de 0018 y el cierre de compras continúan vigentes.
+
 ## Retiro manual y stock Dux — 2026-09-07
 
 El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](docs/DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.

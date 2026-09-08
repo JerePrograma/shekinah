@@ -1,3 +1,52 @@
+/** Quantities are observations from Dux, never inferred units or local stock. */
+export type DuxWarehouseStock = Readonly<{
+  depositId: number;
+  depositName: string;
+  variantId: number | null;
+  barcode: string | null;
+  size: string | null;
+  color: string | null;
+  real: number | null;
+  reserved: number | null;
+  available: number | null;
+}>;
+
+export function parseDuxWarehouseStocks(value: unknown): readonly DuxWarehouseStock[] {
+  if (!Array.isArray(value) || value.length > 1000) throw new Error('Stock Dux no válido.');
+  const seen = new Set<string>();
+  return Object.freeze(value.map((row: unknown) => {
+    if (typeof row !== 'object' || row === null || Array.isArray(row)) throw new Error('Stock Dux no válido.');
+    const r = row as Record<string, unknown>;
+    const depositId = identifier(r.depositId);
+    const variantId = r.variantId === null ? null : identifier(r.variantId);
+    const depositName = text(r.depositName);
+    const barcode = nullableText(r.barcode);
+    const size = nullableText(r.size);
+    const color = nullableText(r.color);
+    const key = JSON.stringify([depositId, variantId]);
+    if (seen.has(key)) throw new Error('Identidad de stock Dux duplicada.');
+    seen.add(key);
+    return Object.freeze({depositId, depositName, variantId, barcode, size, color,
+      real: quantity(r.real), reserved: quantity(r.reserved), available: quantity(r.available)});
+  }));
+}
+
+function identifier(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw new Error('Depósito o variante Dux no válido.');
+  return value;
+}
+function text(value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 300) throw new Error('Identidad de stock Dux no válida.');
+  return value;
+}
+function nullableText(value: unknown): string | null { return value === null ? null : text(value); }
+function quantity(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Cantidad Dux no válida.');
+  return value;
+}
+
+
 export const CATALOG_API_SCHEMA_VERSION = 2;
 
 export type ProductPrice = Readonly<{
@@ -72,6 +121,7 @@ export type DuxCommerceSnapshot = Readonly<{
   }>;
   depositName?: string;
   stockSyncedAt?: string;
+  warehouseStocks?: readonly DuxWarehouseStock[];
 }>;
 
 export type ProductCommerceSnapshot =
@@ -416,6 +466,7 @@ function parseCommerceSnapshot(value: unknown): NonNullable<Product['commerce']>
     ...(unit === undefined ? {} : { unit }),
     ...(depositName === undefined ? {} : { depositName }),
     ...(stockSyncedAt === undefined ? {} : { stockSyncedAt }),
+    ...(value.warehouseStocks === undefined ? {} : { warehouseStocks: parseDuxWarehouseStocks(value.warehouseStocks) }),
   });
 }
 

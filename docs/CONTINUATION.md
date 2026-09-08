@@ -1,5 +1,9 @@
 # Continuación
 
+## Depósitos y frescura — 2026-09-08
+
+Continuar según [DUX_STOCK_ALL_WAREHOUSES.md](DUX_STOCK_ALL_WAREHOUSES.md): publicar sólo tras validación, respaldar D1, probar Preview y después producción, coordinar el retiro del cron GitHub con Cloudflare y observar cuatro ejecuciones automáticas. Acreditar por separado cada operación. La lectura editorial Mercado Libre autorizada para HERBOLARIOMDP todavía debe verificarse; sus permisos de inventario, comercio y reservas permanecen bloqueados. Las prioridades históricas que siguen no autorizan restaurar productos manuales.
+
 ## Continuación del retiro manual — 2026-09-07
 
 El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.
