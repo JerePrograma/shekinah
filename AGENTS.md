@@ -6,6 +6,12 @@ Este archivo rige todo el repositorio `JerePrograma/shekinah`.
 
 El repositorio, su historial, sus pruebas y su configuración son la única fuente de verdad. No completar huecos con recuerdos, conversaciones anteriores ni supuestos.
 
+## Reactivación comercial autorizada — 2026-09-08
+
+Leer también [docs/COMMERCE_REACTIVATION.md](docs/COMMERCE_REACTIVATION.md), que actualiza el contrato comercial y la conservación de pagos frente a los cierres históricos. Se autorizó avanzar con pedidos web, Checkout Pro, idempotencia y pasos Dux asistidos y verificables. No equivale a una activación productiva ni permite cobrar sin compromiso real de stock, unidad, total y controles acreditados.
+
+`updateOrderFromPayment` conserva la evidencia financiera antes de intentar la transición del pedido. Mantener los guards Dux existentes hasta sustituirlos por un coordinador validado; nunca volver a hacer que un fallo de inventario borre un pago verificado. La cola administrativa y el estado público de pago con incidencia siguen pendientes de implementación.
+
 ## Orden de lectura
 
 Antes de editar:

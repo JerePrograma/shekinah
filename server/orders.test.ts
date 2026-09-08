@@ -431,7 +431,7 @@ describe('pedidos e idempotencia D1', () => {
   });
 
   it.each(['approved', 'rejected', 'refunded'] as const)(
-    'bloquea la transición de pago %s para un pedido vinculado a Dux',
+    'conserva el pago %s sin transicionar un pedido vinculado a Dux',
     async (mappedStatus) => {
       const database = new SqliteD1(migration);
       try {
@@ -484,15 +484,39 @@ describe('pedidos e idempotencia D1', () => {
         });
         await expect(database.prepare(
           'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
-        ).bind(orderId).first()).resolves.toEqual({ count: 0 });
+        ).bind(orderId).first()).resolves.toEqual({ count: 1 });
+        await expect(database.prepare(`SELECT mapped_status, amount_minor, currency,
+          external_reference FROM payments WHERE order_id = ?`)
+          .bind(orderId).first()).resolves.toEqual({
+          mapped_status: mappedStatus,
+          amount_minor: 75_000,
+          currency: 'ARS',
+          external_reference: orderId,
+        });
+        const retries = await Promise.allSettled(Array.from({ length: 4 }, () =>
+          updateOrderFromPayment(database, order, {
+            id: `payment-${mappedStatus}`, status: mappedStatus, statusDetail: null,
+            amountMinor: 75_000, currency: 'ARS', externalReference: orderId,
+            approvedAt: mappedStatus === 'approved' ? now : null, updatedAt: now,
+          }, mappedStatus, `event-${mappedStatus}`),
+        ));
+        expect(retries.filter(({ status }) => status === 'rejected')).toHaveLength(4);
+        await expect(database.prepare(
+          'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
+        ).bind(orderId).first()).resolves.toEqual({ count: 1 });
         expect((await getOrderById(database, orderId))?.status).toBe('pending');
+        await expect(database.prepare(`SELECT reservation_state, confirmed_at,
+          released_at, finalized_at FROM dux_order_links WHERE order_id = ?`)
+          .bind(orderId).first()).resolves.toEqual({
+          reservation_state: 'blocked', confirmed_at: null, released_at: null, finalized_at: null,
+        });
       } finally {
         database.close();
       }
     },
   );
 
-  it('pone en cuarentena una preferencia histórica si su producto ahora pertenece a Dux', async () => {
+  it('conserva el pago de una preferencia histórica y mantiene su cuarentena Dux', async () => {
     const database = new SqliteD1(migration);
     try {
       const orderId = 'ord_historic_dux_payment_1234567890';
@@ -558,8 +582,96 @@ describe('pedidos e idempotencia D1', () => {
       });
       await expect(database.prepare(
         'SELECT COUNT(*) AS count FROM payments WHERE order_id = ?',
-      ).bind(orderId).first()).resolves.toEqual({ count: 0 });
+      ).bind(orderId).first()).resolves.toEqual({ count: 1 });
+      await expect(database.prepare('SELECT mapped_status FROM payments WHERE order_id = ?')
+        .bind(orderId).first()).resolves.toEqual({ mapped_status: 'approved' });
       expect((await getOrderById(database, orderId))?.status).toBe('preference_pending');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('conserva el pago si la proyección SQL falla y recupera sin duplicar al reintentar', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      const payment = {
+        id: 'projection-retry-payment', status: 'approved', statusDetail: 'accredited',
+        amountMinor: prepared.order.total_minor, currency: 'ARS',
+        externalReference: prepared.order.id, approvedAt: '2026-09-08T12:00:00.000Z',
+        updatedAt: '2026-09-08T12:00:00.000Z',
+      } as const;
+      // Sólo se agrega y retira el fallo inyectado en esta base de prueba.
+      database.database.exec(`CREATE TRIGGER test_payment_projection_failure
+        BEFORE UPDATE OF status ON orders
+        BEGIN SELECT RAISE(ABORT, 'TEST_PAYMENT_PROJECTION_FAILURE'); END;`);
+      await expect(updateOrderFromPayment(
+        database, prepared.order, payment, 'approved', 'projection-event',
+      )).rejects.toThrow('TEST_PAYMENT_PROJECTION_FAILURE');
+      await expect(database.prepare(`SELECT provider_payment_id, mapped_status,
+        amount_minor, external_reference FROM payments WHERE order_id = ?`)
+        .bind(prepared.order.id).first()).resolves.toEqual({
+        provider_payment_id: payment.id, mapped_status: 'approved',
+        amount_minor: payment.amountMinor, external_reference: prepared.order.id,
+      });
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('preference_pending');
+      expect((await getOrderById(database, prepared.order.id))?.stock_consumed_at).toBeNull();
+      database.database.exec('DROP TRIGGER test_payment_projection_failure');
+      await Promise.all(Array.from({ length: 4 }, () => updateOrderFromPayment(
+        database, prepared.order, payment, 'approved', 'projection-event',
+      )));
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('approved');
+      await expect(database.prepare('SELECT COUNT(*) AS count FROM payments WHERE order_id = ?')
+        .bind(prepared.order.id).first()).resolves.toEqual({ count: 1 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('no transiciona el pedido cuando falla la escritura financiera', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      database.database.exec(`CREATE TRIGGER test_payment_write_failure
+        BEFORE INSERT ON payments
+        BEGIN SELECT RAISE(ABORT, 'TEST_PAYMENT_WRITE_FAILURE'); END;`);
+      await expect(updateOrderFromPayment(database, prepared.order, {
+        id: 'write-failed-payment', status: 'approved', statusDetail: null,
+        amountMinor: prepared.order.total_minor, currency: 'ARS',
+        externalReference: prepared.order.id, approvedAt: null, updatedAt: null,
+      }, 'approved', 'write-failed-event')).rejects.toThrow('TEST_PAYMENT_WRITE_FAILURE');
+      await expect(database.prepare('SELECT COUNT(*) AS count FROM payments').first())
+        .resolves.toEqual({ count: 0 });
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('preference_pending');
+      expect((await getOrderById(database, prepared.order.id))?.stock_consumed_at).toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
+  it('preserva evidencia financiera aunque falte el esquema Dux sin omitir el guard', async () => {
+    const duxMigration = readFileSync(resolve(
+      process.cwd(), 'migrations', '0012_dux_authoritative_inventory.sql',
+    ), 'utf8');
+    const database = new SqliteD1(migration.replace(duxMigration, ''));
+    try {
+      const prepared = await prepareOrder({
+        cart: cart(), database, idempotencyKey: crypto.randomUUID(), tokenSecret: 'o'.repeat(40),
+      });
+      await expect(updateOrderFromPayment(database, prepared.order, {
+        id: 'missing-dux-schema-payment', status: 'approved', statusDetail: null,
+        amountMinor: prepared.order.total_minor, currency: 'ARS',
+        externalReference: prepared.order.id, approvedAt: null, updatedAt: null,
+      }, 'approved', 'missing-dux-schema-event')).rejects.toMatchObject({
+        status: 503, code: 'DUX_INVENTORY_MIGRATION_REQUIRED',
+      });
+      await expect(database.prepare('SELECT mapped_status FROM payments WHERE order_id = ?')
+        .bind(prepared.order.id).first()).resolves.toEqual({ mapped_status: 'approved' });
+      expect((await getOrderById(database, prepared.order.id))?.status).toBe('preference_pending');
     } finally {
       database.close();
     }

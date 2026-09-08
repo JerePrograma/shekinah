@@ -356,12 +356,11 @@ export async function updateOrderFromPayment(
     );
   }
 
-  await assertDuxOrderLifecycleUnlinked(database, order.id);
-
+  // La evidencia financiera se persiste antes de cualquier guard o transición
+  // de inventario. Un rollback del pedido no puede borrar un pago verificado.
   const now = new Date().toISOString();
   try {
-    await database.batch([
-    database
+    await database
       .prepare(
         `INSERT INTO payments (
           provider_payment_id, order_id, mapped_status, provider_status,
@@ -401,8 +400,46 @@ export async function updateOrderFromPayment(
         eventKey,
         now,
         now,
-      ),
-    database
+      )
+      .run();
+  } catch (error: unknown) {
+    throwOrderStorageError(error);
+  }
+
+  const persisted = await database
+    .prepare(
+      `SELECT order_id, amount_minor, currency, external_reference
+       FROM payments
+       WHERE provider_payment_id = ?
+       LIMIT 1`,
+    )
+    .bind(payment.id)
+    .first<Readonly<{
+      order_id: string;
+      amount_minor: number;
+      currency: string;
+      external_reference: string;
+    }>>();
+  if (
+    persisted === null ||
+    persisted.order_id !== order.id ||
+    persisted.amount_minor !== payment.amountMinor ||
+    persisted.currency !== payment.currency ||
+    persisted.external_reference !== payment.externalReference
+  ) {
+    throw new HttpError(
+      409,
+      'PAYMENT_IDENTITY_CONFLICT',
+      'El identificador del pago ya está asociado a otro pedido.',
+    );
+  }
+
+  await assertDuxOrderLifecycleUnlinked(database, order.id);
+
+  // Esta proyección es reintentable: vuelve a leer todos los pagos persistidos.
+  // Si falla, el webhook conserva su estado fallido y la evidencia permanece.
+  try {
+    await database
       .prepare(
         `UPDATE orders
          SET status = CASE
@@ -490,38 +527,10 @@ export async function updateOrderFromPayment(
         payment.amountMinor,
         payment.currency,
         payment.externalReference,
-      ),
-    ]);
+      )
+      .run();
   } catch (error: unknown) {
     throwOrderStorageError(error);
-  }
-
-  const persisted = await database
-    .prepare(
-      `SELECT order_id, amount_minor, currency, external_reference
-       FROM payments
-       WHERE provider_payment_id = ?
-       LIMIT 1`,
-    )
-    .bind(payment.id)
-    .first<Readonly<{
-      order_id: string;
-      amount_minor: number;
-      currency: string;
-      external_reference: string;
-    }>>();
-  if (
-    persisted === null ||
-    persisted.order_id !== order.id ||
-    persisted.amount_minor !== payment.amountMinor ||
-    persisted.currency !== payment.currency ||
-    persisted.external_reference !== payment.externalReference
-  ) {
-    throw new HttpError(
-      409,
-      'PAYMENT_IDENTITY_CONFLICT',
-      'El identificador del pago ya está asociado a otro pedido.',
-    );
   }
 }
 
