@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { parseProduct, parseProductDetail } from '../catalog/model';
 import { ProductPage } from './ProductPage';
 
-it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real Dux con decimales, reservas y fecha (%s) sin habilitar compras', async (availabilityState) => {
+it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real Dux con decimales, reservas y fecha (%s) y deriva el carrito de la última cantidad observada', async (availabilityState) => {
   const summary = parseProduct({
     id: 'dux-stock-real', slug: 'dux-stock-real', path: '/dux-stock-real/', name: 'DUX CON STOCK',
     categorySlugs: [], categoryNames: [], price: { amount: 100, currency: 'ARS' }, priceStatus: 'usable', sku: 'REAL',
@@ -23,8 +23,13 @@ it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real D
   expect(stock.querySelector('time')).toHaveAttribute('datetime', '2026-09-07T18:59:00.000Z');
   expect(stock.querySelector('time')).toHaveTextContent('15:59:00');
   expect(stock).not.toHaveTextContent(/kilogramos|unidades/iu);
+  expect(stock).toHaveTextContent('Las compras todavía no están habilitadas.');
   if (availabilityState === 'updating') expect(stock).toHaveTextContent('necesita actualizarse');
-  expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
+  if (availabilityState === 'out_of_stock') {
+    expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
+  } else {
+    expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
+  }
 });
 
 const { loadDetail, add } = vi.hoisted(() => ({ loadDetail: vi.fn(), add: vi.fn() }));
