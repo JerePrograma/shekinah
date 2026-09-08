@@ -46,7 +46,7 @@ async function transaction(write: boolean,
     const timer = window.setTimeout(() => { try { tx.abort(); } catch { /* La transacción pudo haber terminado. */ } }, 5000);
     const close = () => { window.clearTimeout(timer); db.close(); };
     tx.oncomplete = () => { close(); resolve(result); };
-    tx.onabort = tx.onerror = () => { close(); reject(error ?? storageError()); };
+    tx.onabort = tx.onerror = () => { close(); reject(error instanceof Error ? error : storageError()); };
     const store = tx.objectStore(STORE);
     const request = store.get(KEY);
     request.onsuccess = () => {

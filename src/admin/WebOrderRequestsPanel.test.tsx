@@ -12,8 +12,9 @@ afterEach(() => { vi.unstubAllGlobals(); });
 it('consulta bajo demanda y exige confirmar la aceptación sin convertirla en pago', async () => {
   let status = 'submitted';
   const fetchMock = vi.fn<typeof fetch>((input) => {
-    if (String(input).endsWith('/resolve')) { status = 'accepted'; return Promise.resolve(Response.json({ ...detail, status })); }
-    return Promise.resolve(Response.json(String(input).includes('?offset=') ? list(status) : { ...detail, status }));
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith('/resolve')) { status = 'accepted'; return Promise.resolve(Response.json({ ...detail, status })); }
+    return Promise.resolve(Response.json(url.includes('?offset=') ? list(status) : { ...detail, status }));
   });
   vi.stubGlobal('fetch', fetchMock);
   const busy = vi.fn();

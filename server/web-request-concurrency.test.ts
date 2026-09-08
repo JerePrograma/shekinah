@@ -46,7 +46,11 @@ class Connection implements D1Database {
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   constructor(path: string) {
     this.worker = new Worker(workerCode, { eval: true, workerData: { path } });
-    this.worker.on('error', (error) => { for (const waiter of this.pending.values()) waiter.reject(error); this.pending.clear(); });
+    this.worker.on('error', (error: unknown) => {
+      const failure = error instanceof Error ? error : new Error('El worker de prueba falló.');
+      for (const waiter of this.pending.values()) waiter.reject(failure);
+      this.pending.clear();
+    });
     this.ready = new Promise((resolve, reject) => {
       this.worker.once('error', reject);
       this.worker.on('message', (message: { ready?: boolean; id: number; value: unknown; error?: string }) => {
