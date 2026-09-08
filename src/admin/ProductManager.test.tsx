@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ProductManager } from './ProductManager';
 import { duxApiFixture } from '../test/dux-api-fixture';
 
@@ -8,7 +8,21 @@ const product={id:'dux-test',slug:'dux-test',path:'/dux-test/',name:'Producto Du
     availabilityState:'unavailable',checkoutEligible:false,mappingStatus:'unmapped',quantitySemanticsStatus:'unavailable_from_v2_items',
     observedStock:{real:2.375,reserved:0.125,available:2.25},depositName:'Principal'}};
 const payload=duxApiFixture({products:[product],imageStorageConfigured:true});
-afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
+afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
+
+it('actualiza el aviso del catálogo al vencer la lectura sin refrescar stock ni cambiar su fecha',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-09-08T12:14:59.000Z'));
+  const request=vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload));vi.stubGlobal('fetch',request);
+  await act(async()=>{render(<ProductManager/>);await vi.advanceTimersByTimeAsync(0);});
+  expect(screen.getByRole('heading',{name:'Producto Dux'})).toBeVisible();
+  expect(screen.queryByText(/El stock supera el objetivo/)).not.toBeInTheDocument();
+  await act(()=>vi.advanceTimersByTime(1000));
+  expect(screen.queryByText(/El stock supera el objetivo/)).not.toBeInTheDocument();
+  await act(()=>vi.advanceTimersByTime(1));
+  expect(screen.getByText(/El stock supera el objetivo/)).toBeVisible();
+  expect(document.querySelector('time')).toHaveAttribute('datetime',product.commerce.stockSyncedAt);
+  expect(request).toHaveBeenCalledTimes(1);
+});
 
 it('muestra identidad Dux y cantidades sin habilitar creación, edición ni stock manual',async()=>{
   const request=vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload));vi.stubGlobal('fetch',request);

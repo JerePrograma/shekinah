@@ -81,9 +81,22 @@ export function ProductList({
   const previousDeleteCandidateIdRef = useRef<string | null>(null);
   const [stockObservedAt, setStockObservedAt] = useState(Date.now);
   useEffect(() => {
-    const timer = window.setInterval(() => setStockObservedAt(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+    let timer: number | undefined;
+    const refresh = () => {
+      const now = Date.now();
+      setStockObservedAt(now);
+      // Only the freshness boundary changes while a snapshot is displayed.
+      // Re-rendering the entire Dux universe every second blocks large lists.
+      const nextExpiry = visibleProducts.reduce((earliest, product) => {
+        const readAt = product.commerce?.source === 'dux' ? product.commerce.stockSyncedAt : undefined;
+        const expiresAt = readAt === undefined ? Number.NaN : Date.parse(readAt) + 900_001;
+        return expiresAt > now ? Math.min(earliest, expiresAt) : earliest;
+      }, Number.POSITIVE_INFINITY);
+      if (Number.isFinite(nextExpiry)) timer = window.setTimeout(refresh, Math.min(nextExpiry - now, 2_147_483_647));
+    };
+    refresh();
+    return () => window.clearTimeout(timer);
+  }, [visibleProducts]);
 
   useEffect(() => {
     const candidateId = deleteCandidate?.id ?? null;
