@@ -1,4 +1,3 @@
-import { isProductEffectivelyAvailable } from '../catalog/model';
 import type { Product } from '../catalog/model';
 import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../commerce/contracts';
 
@@ -35,19 +34,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function getObservedDuxCartStock(product: Product): number | null {
+  const commerce = product.commerce;
+  if (
+    product.priceStatus !== 'usable' ||
+    product.price === null ||
+    commerce?.source !== 'dux' ||
+    commerce.observedStock === undefined ||
+    commerce.availabilityState === 'out_of_stock' ||
+    commerce.availabilityState === 'unavailable'
+  ) {
+    return null;
+  }
+
+  const available = commerce.observedStock.available;
+  return Number.isFinite(available) && available >= 1 ? available : null;
+}
+
+/**
+ * El carrito es una selección reversible y no una autorización de checkout.
+ * Puede usar la última cantidad Dux observada mientras una lectura se actualiza;
+ * pagos, pedidos y reservas conservan sus gates y validaciones server-side.
+ */
 export function isProductAvailable(product: Product): boolean {
-  return isProductEffectivelyAvailable(product);
+  return getObservedDuxCartStock(product) !== null;
 }
 
 export function getProductCartLimit(product: Product): number {
-  if (!isProductAvailable(product)) return 0;
-  const available = product.commerce?.source === 'dux'
-    ? product.commerce.observedStock?.available
-    : undefined;
-  if (typeof available !== 'number' || !Number.isSafeInteger(available) || available < 1) {
-    return 0;
-  }
-  return Math.min(MAX_CART_QUANTITY, available);
+  const available = getObservedDuxCartStock(product);
+  if (available === null) return 0;
+  return Math.min(MAX_CART_QUANTITY, Math.floor(available));
 }
 
 function normalizeQuantity(value: unknown, maximum = MAX_CART_QUANTITY): number | null {

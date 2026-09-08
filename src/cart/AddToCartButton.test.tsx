@@ -13,16 +13,16 @@ const { product, trackAnalyticsEvent } = vi.hoisted(() => ({
     categoryNames: Object.freeze([]),
     price: Object.freeze({ amount: 1_000, currency: 'ARS' as const }),
     priceStatus: 'usable' as const,
-    availability: 'available' as const,
+    availability: 'unavailable' as const,
     commerce: Object.freeze({
       source: 'dux' as const,
       catalogVersion: 'd'.repeat(64),
       syncedAt: '2026-09-01T12:00:00.000Z',
-      availabilityState: 'verified' as const,
-      checkoutEligible: true,
-      mappingStatus: 'mapped' as const,
-      quantitySemanticsStatus: 'verified' as const,
-      observedStock: Object.freeze({ real: 2, reserved: 0, available: 2 }),
+      availabilityState: 'updating' as const,
+      checkoutEligible: false,
+      mappingStatus: 'unmapped' as const,
+      quantitySemanticsStatus: 'unavailable_from_v2_items' as const,
+      observedStock: Object.freeze({ real: 2.5, reserved: 0, available: 2.5 }),
     }),
   }),
   trackAnalyticsEvent: vi.fn(() => Promise.resolve()),
@@ -40,7 +40,7 @@ describe('AddToCartButton', () => {
     trackAnalyticsEvent.mockClear();
   });
 
-  it('confirma visualmente cada agregado y deshabilita el CTA al alcanzar el stock real', () => {
+  it('confirma cada agregado y limita el carrito con el último stock Dux observado', () => {
     render(
       <CartProvider>
         <AddToCartButton
