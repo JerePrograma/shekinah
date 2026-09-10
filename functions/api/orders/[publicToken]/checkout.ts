@@ -31,7 +31,12 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
       throw new HttpError(400, 'ASSISTED_CHECKOUT_BODY_NOT_ALLOWED', 'Este checkout no acepta carrito ni importes enviados por el navegador.');
     }
     const rawToken = params.publicToken;
-    const publicToken = typeof rawToken === 'string' ? rawToken.toLocaleLowerCase('en') : rawToken[0]?.toLocaleLowerCase('en');
+    const firstToken = typeof rawToken === 'string'
+      ? rawToken
+      : Array.isArray(rawToken)
+        ? rawToken[0]
+        : undefined;
+    const publicToken = firstToken?.toLocaleLowerCase('en');
     if (publicToken === undefined || !/^[a-f0-9]{64}$/u.test(publicToken)) {
       throw new HttpError(404, 'ORDER_NOT_FOUND', 'No se encontró el pedido.');
     }
