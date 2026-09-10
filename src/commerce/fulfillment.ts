@@ -24,9 +24,10 @@ export type FulfillmentValidation = Readonly<{
   errors: Readonly<Partial<Record<FulfillmentField, string>>>;
 }>;
 export type ShippingLine = Readonly<{ name: string; presentation?: string; quantity: number }>;
-export type ShippingTier = 'coordinated_pickup' | 'correo_up_to_1kg' | 'correo_up_to_5kg' | 'manual_unknown_weight' | 'manual_over_5kg';
+export type PersistedShippingTier = 'coordinated_pickup' | 'correo_up_to_1kg' | 'correo_up_to_5kg' | 'correo_manual_quote';
+export type ShippingTier = PersistedShippingTier | 'manual_unknown_weight' | 'manual_over_5kg';
 export type ShippingQuote =
-  | Readonly<{ kind: 'online'; tier: Exclude<ShippingTier, 'manual_unknown_weight' | 'manual_over_5kg'>; shippingMinor: number; totalWeightGrams: number | null }>
+  | Readonly<{ kind: 'online'; tier: Exclude<PersistedShippingTier, 'correo_manual_quote'>; shippingMinor: number; totalWeightGrams: number | null }>
   | Readonly<{ kind: 'manual'; tier: 'manual_unknown_weight' | 'manual_over_5kg'; shippingMinor: 0; totalWeightGrams: number | null }>;
 
 export const CORREO_UP_TO_1KG_MINOR = 1_900_000;
