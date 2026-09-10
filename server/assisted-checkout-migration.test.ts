@@ -145,16 +145,6 @@ function insertOperation(database: DatabaseSync, action: 'reserve' | 'release' |
     );
 }
 
-function seedAssistedCheckout(database: DatabaseSync): void {
-  seedAuthority(database);
-  seedRequest(database);
-  insertAssistedOrder(database);
-  insertAssistedLine(database);
-  insertPickup(database);
-  insertAssistedLink(database);
-  insertOperation(database, 'reserve');
-}
-
 describe('0021 assisted Dux checkout', () => {
   it('preserva fulfillment histórico y admite cotización manual sólo para correo', () => {
     const database = new DatabaseSync(':memory:');
