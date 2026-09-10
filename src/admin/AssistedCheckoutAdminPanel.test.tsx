@@ -98,8 +98,12 @@ it('una sesión vencida no expone estado administrativo', async () => {
   expect(screen.queryByText(/Precio Dux actual:/u)).not.toBeInTheDocument();
 });
 
-function parseRequestBody(call: [RequestInfo | URL, RequestInit?] | undefined): unknown {
-  const body = call?.[1]?.body;
+function parseRequestBody(call: readonly unknown[] | undefined): unknown {
+  const init = call?.[1];
+  if (typeof init !== 'object' || init === null || !('body' in init)) {
+    throw new Error('El request de prueba no contiene opciones válidas.');
+  }
+  const body = init.body;
   if (typeof body !== 'string') throw new Error('El request de prueba no contiene un body JSON string.');
   return JSON.parse(body) as unknown;
 }
