@@ -174,7 +174,8 @@ function Read-Property {
     param([object]$Value, [string]$Name)
     if ($null -eq $Value) { return $null }
     $property = $Value.PSObject.Properties[$Name]
-    return if ($null -eq $property) { $null } else { $property.Value }
+    if ($null -eq $property) { return $null }
+    return $property.Value
 }
 
 function D1-Rows {
