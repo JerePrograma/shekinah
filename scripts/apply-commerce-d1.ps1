@@ -10,6 +10,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$env:NO_COLOR = '1'
+$env:FORCE_COLOR = '0'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ConfigPath = Join-Path $RepoRoot 'wrangler.jsonc'
@@ -45,6 +47,42 @@ $RequiredIntentColumns = @(
 $RequiredOrderColumns = @('web_request_id', 'assisted_checkout_fingerprint')
 $RequiredLinkColumns = @('verification_method', 'verification_actor', 'verification_note')
 
+function Convert-WranglerJsonText {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    $trimmed = $Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmed)) {
+        throw 'Wrangler no devolvió contenido JSON.'
+    }
+
+    try {
+        return $trimmed | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        # npx puede anteponer avisos aunque Wrangler use --json. Sólo aceptamos
+        # un sufijo que sea JSON completo y válido; cualquier otra salida aborta.
+    }
+
+    $lines = @($Text -split "`r?`n")
+    for ($start = 0; $start -lt $lines.Count; $start++) {
+        $first = $lines[$start].TrimStart()
+        if (-not ($first.StartsWith('{') -or $first.StartsWith('['))) {
+            continue
+        }
+        for ($end = $lines.Count - 1; $end -ge $start; $end--) {
+            $candidate = (@($lines[$start..$end]) -join "`n").Trim()
+            try {
+                return $candidate | ConvertFrom-Json -Depth 100
+            }
+            catch {
+                continue
+            }
+        }
+    }
+
+    throw 'No se pudo interpretar la salida JSON de Wrangler.'
+}
+
 function Invoke-Native {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -62,17 +100,12 @@ function Invoke-Native {
     if ([string]::IsNullOrWhiteSpace($text)) {
         throw "El comando no devolvió JSON: $FilePath $($Arguments -join ' ')"
     }
-    try {
-        return $text | ConvertFrom-Json -Depth 100
-    }
-    catch {
-        throw 'No se pudo interpretar la salida JSON de Wrangler.'
-    }
+    return Convert-WranglerJsonText $text
 }
 
 function Wrangler-Args {
     param([string]$Environment, [string[]]$Command)
-    $args = @('wrangler') + $Command + @('--config', $ConfigPath)
+    $args = @('--yes', 'wrangler@4.131.0') + $Command + @('--config', $ConfigPath)
     if ($Environment -eq 'production') {
         $args += @('--env', 'production')
     }
