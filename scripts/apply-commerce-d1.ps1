@@ -1,0 +1,288 @@
+[CmdletBinding()]
+param(
+    [ValidateSet('preview', 'production', 'both')]
+    [string]$Target = 'both',
+
+    [switch]$Apply,
+
+    [string]$ExpectedCommit = ''
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$ConfigPath = Join-Path $RepoRoot 'wrangler.jsonc'
+$MigrationRoot = Join-Path $RepoRoot 'migrations'
+$EvidenceRoot = Join-Path $RepoRoot '.wrangler\commerce-d1-rollout'
+$ExpectedNewMigrations = @(
+    '0020_web_order_requests.sql',
+    '0021_assisted_dux_checkout.sql',
+    '0022_assisted_dux_order_number_unique.sql',
+    '0023_assisted_dux_lifecycle_financial_guard.sql'
+)
+$RequiredObjects = @(
+    'idx_web_request_id',
+    'idx_web_request_token',
+    'web_request_initial_guard',
+    'web_request_snapshot_immutable',
+    'web_request_resolution_guard',
+    'web_request_preserve_history',
+    'idx_orders_web_request_id',
+    'web_request_checkout_order_insert_guard',
+    'web_request_checkout_source_immutable',
+    'assisted_order_items_require_dux_catalog_snapshot',
+    'dux_order_link_assisted_guard',
+    'idx_dux_assisted_order_number_unique',
+    'dux_assisted_release_financial_guard',
+    'dux_assisted_finalize_financial_guard'
+)
+$RequiredIntentColumns = @(
+    'intent_kind', 'web_request_id', 'web_request_token_hash', 'web_request_owner_hash',
+    'web_request_fingerprint', 'web_request_json', 'web_request_status',
+    'web_request_updated_at', 'web_request_resolved_at', 'web_request_resolved_by'
+)
+$RequiredOrderColumns = @('web_request_id', 'assisted_checkout_fingerprint')
+$RequiredLinkColumns = @('verification_method', 'verification_actor', 'verification_note')
+
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [switch]$Json
+    )
+    $output = & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falló: $FilePath $($Arguments -join ' ')"
+    }
+    if (-not $Json) {
+        return @($output)
+    }
+    $text = @($output) -join "`n"
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        throw "El comando no devolvió JSON: $FilePath $($Arguments -join ' ')"
+    }
+    try {
+        return $text | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        throw "No se pudo interpretar la salida JSON de Wrangler."
+    }
+}
+
+function Wrangler-Args {
+    param([string]$Environment, [string[]]$Command)
+    $args = @('wrangler') + $Command + @('--config', $ConfigPath)
+    if ($Environment -eq 'production') {
+        $args += @('--env', 'production')
+    }
+    return $args
+}
+
+function Invoke-WranglerJson {
+    param([string]$Environment, [string[]]$Command)
+    return Invoke-Native -FilePath 'npx' -Arguments (Wrangler-Args $Environment ($Command + @('--json'))) -Json
+}
+
+function Invoke-Wrangler {
+    param([string]$Environment, [string[]]$Command)
+    Invoke-Native -FilePath 'npx' -Arguments (Wrangler-Args $Environment $Command) | Out-Host
+}
+
+function D1-Rows {
+    param([object]$Payload)
+    $rows = @()
+    foreach ($entry in @($Payload)) {
+        if ($null -ne $entry -and $null -ne $entry.results) {
+            $rows += @($entry.results)
+        }
+        elseif ($null -ne $entry -and $null -ne $entry.result) {
+            foreach ($nested in @($entry.result)) {
+                if ($null -ne $nested -and $null -ne $nested.results) {
+                    $rows += @($nested.results)
+                }
+            }
+        }
+    }
+    return @($rows)
+}
+
+function Query-D1 {
+    param([string]$Environment, [string]$Sql)
+    $payload = Invoke-WranglerJson $Environment @('d1', 'execute', 'DB', '--remote', '--command', $Sql)
+    return D1-Rows $payload
+}
+
+function Assert-GitState {
+    Push-Location $RepoRoot
+    try {
+        $branch = (@(Invoke-Native 'git' @('branch', '--show-current')) -join '').Trim()
+        if ($branch -ne 'main') { throw "La rama activa debe ser main; actual: $branch" }
+        Invoke-Native 'git' @('fetch', 'origin') | Out-Null
+        $head = (@(Invoke-Native 'git' @('rev-parse', 'HEAD')) -join '').Trim()
+        $remote = (@(Invoke-Native 'git' @('rev-parse', 'origin/main')) -join '').Trim()
+        if ($head -ne $remote) { throw 'HEAD no coincide con origin/main. Ejecutá git pull --ff-only origin main.' }
+        $dirty = @(& git status --porcelain --untracked-files=no)
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo comprobar git status.' }
+        if ($dirty.Count -ne 0) { throw 'Hay cambios tracked locales. Preservalos y dejá el árbol limpio antes de migrar D1.' }
+        if ($ExpectedCommit -ne '' -and $head -ne $ExpectedCommit) {
+            throw "HEAD $head no coincide con -ExpectedCommit $ExpectedCommit."
+        }
+        Write-Host "Git verificado en main: $head"
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Assert-LocalMigrations {
+    $migrations = @(Get-ChildItem -LiteralPath $MigrationRoot -Filter '*.sql' -File | Sort-Object Name)
+    foreach ($required in $ExpectedNewMigrations) {
+        if (-not (Test-Path -LiteralPath (Join-Path $MigrationRoot $required) -PathType Leaf)) {
+            throw "Falta la migración requerida: $required"
+        }
+    }
+    $newer = @($migrations | Where-Object {
+        $_.Name -match '^(\d{4})_' -and [int]$Matches[1] -gt 23
+    })
+    if ($newer.Count -ne 0) {
+        throw "Hay migraciones posteriores a 0023. Este script no las aplicará implícitamente: $($newer.Name -join ', ')"
+    }
+}
+
+function Assert-ConfigIdentity {
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw 'No existe wrangler.jsonc local. No se puede identificar preview y producción.'
+    }
+    $config = Get-Content -LiteralPath $ConfigPath -Raw
+    $ids = @([regex]::Matches($config, '"database_id"\s*:\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+    $names = @([regex]::Matches($config, '"database_name"\s*:\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+    $bindings = @([regex]::Matches($config, '"binding"\s*:\s*"DB"'))
+    if ($ids.Count -ne 2 -or $names.Count -ne 2 -or $bindings.Count -lt 2) {
+        throw 'wrangler.jsonc debe definir exactamente una D1 DB para preview y otra para env.production, ambas con binding DB.'
+    }
+    if ($ids[0] -eq $ids[1] -or $names[0] -eq $names[1]) {
+        throw 'Preview y producción apuntan a la misma D1. Migración abortada.'
+    }
+    if (($ids + $names | Where-Object { $_ -match 'REEMPLAZAR|CHANGE_ME|PLACEHOLDER' }).Count -ne 0) {
+        throw 'wrangler.jsonc todavía contiene placeholders de D1.'
+    }
+}
+
+function Get-AppliedMigrationNames {
+    param([string]$Environment)
+    $rows = Query-D1 $Environment 'SELECT name FROM d1_migrations ORDER BY id;'
+    return @($rows | ForEach-Object { [string]$_.name })
+}
+
+function Assert-MigrationState {
+    param([string]$Environment)
+    $applied = @(Get-AppliedMigrationNames $Environment)
+    $allLocalThrough19 = @(Get-ChildItem -LiteralPath $MigrationRoot -Filter '*.sql' -File |
+        Where-Object { $_.Name -match '^(\d{4})_' -and [int]$Matches[1] -le 19 } |
+        Sort-Object Name |
+        ForEach-Object Name)
+    foreach ($required in $allLocalThrough19) {
+        if ($applied -notcontains $required) {
+            throw "$Environment no tiene aplicada la base histórica requerida: $required"
+        }
+    }
+    $newApplied = @($ExpectedNewMigrations | Where-Object { $applied -contains $_ })
+    for ($index = 0; $index -lt $newApplied.Count; $index++) {
+        if ($newApplied[$index] -ne $ExpectedNewMigrations[$index]) {
+            throw "$Environment tiene un estado salteado de 0020-0023. Revisión manual requerida."
+        }
+    }
+    $firstMissing = $ExpectedNewMigrations.Count
+    for ($index = 0; $index -lt $ExpectedNewMigrations.Count; $index++) {
+        if ($applied -notcontains $ExpectedNewMigrations[$index]) {
+            $firstMissing = $index
+            break
+        }
+    }
+    for ($index = $firstMissing; $index -lt $ExpectedNewMigrations.Count; $index++) {
+        if ($applied -contains $ExpectedNewMigrations[$index]) {
+            throw "$Environment tiene un estado no contiguo de migraciones. Revisión manual requerida."
+        }
+    }
+    return @($ExpectedNewMigrations | Where-Object { $applied -notcontains $_ })
+}
+
+function Save-Bookmark {
+    param([string]$Environment, [string]$Directory)
+    $payload = Invoke-WranglerJson $Environment @('d1', 'time-travel', 'info', 'DB')
+    $path = Join-Path $Directory "$Environment-before.json"
+    $payload | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    Write-Host "Bookmark Time Travel guardado: $path"
+}
+
+function Assert-Columns {
+    param([string]$Environment, [string]$Table, [string[]]$Required)
+    $rows = Query-D1 $Environment "PRAGMA table_info($Table);"
+    $names = @($rows | ForEach-Object { [string]$_.name })
+    foreach ($column in $Required) {
+        if ($names -notcontains $column) { throw "$Environment: falta $Table.$column" }
+    }
+}
+
+function Verify-Environment {
+    param([string]$Environment)
+    $pending = @(Assert-MigrationState $Environment)
+    if ($pending.Count -ne 0) {
+        throw "$Environment sigue con migraciones pendientes: $($pending -join ', ')"
+    }
+    $quoted = $RequiredObjects | ForEach-Object { "'$_'" }
+    $objects = Query-D1 $Environment "SELECT name FROM sqlite_schema WHERE name IN ($($quoted -join ','));"
+    $names = @($objects | ForEach-Object { [string]$_.name })
+    foreach ($required in $RequiredObjects) {
+        if ($names -notcontains $required) { throw "$Environment: falta objeto crítico $required" }
+    }
+    Assert-Columns $Environment 'checkout_intents' $RequiredIntentColumns
+    Assert-Columns $Environment 'orders' $RequiredOrderColumns
+    Assert-Columns $Environment 'dux_order_links' $RequiredLinkColumns
+    $foreignKeys = @(Query-D1 $Environment 'PRAGMA foreign_key_check;')
+    if ($foreignKeys.Count -ne 0) {
+        throw "$Environment: PRAGMA foreign_key_check devolvió $($foreignKeys.Count) incidencia(s)."
+    }
+    Write-Host "$Environment verificado: 0020-0023 aplicadas, objetos críticos presentes y foreign keys válidas."
+}
+
+function Process-Environment {
+    param([string]$Environment, [string]$EvidenceDirectory)
+    Write-Host "`n=== $Environment ==="
+    $pending = @(Assert-MigrationState $Environment)
+    if ($pending.Count -eq 0) {
+        Write-Host '0020-0023 ya están aplicadas; se ejecutará sólo la verificación.'
+        Verify-Environment $Environment
+        return
+    }
+    Write-Host "Pendientes: $($pending -join ', ')"
+    if (-not $Apply) {
+        Write-Host 'Dry-run: no se aplicaron migraciones. Volvé a ejecutar con -Apply.'
+        return
+    }
+    Save-Bookmark $Environment $EvidenceDirectory
+    Invoke-Wrangler $Environment @('d1', 'migrations', 'apply', 'DB', '--remote')
+    Verify-Environment $Environment
+}
+
+Assert-GitState
+Assert-LocalMigrations
+Assert-ConfigIdentity
+
+$timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmssZ')
+$evidenceDirectory = Join-Path $EvidenceRoot $timestamp
+New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
+
+$targets = if ($Target -eq 'both') { @('preview', 'production') } else { @($Target) }
+foreach ($environment in $targets) {
+    Process-Environment $environment $evidenceDirectory
+}
+
+if (-not $Apply) {
+    Write-Host "`nDry-run completado. No se modificó D1."
+    Write-Host 'Para aplicar: ./scripts/apply-commerce-d1.ps1 -Target both -Apply -ExpectedCommit <SHA_COMPLETO>'
+}
+else {
+    Write-Host "`nMigración D1 finalizada para: $($targets -join ', '). Evidencia local: $evidenceDirectory"
+}
