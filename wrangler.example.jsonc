@@ -12,6 +12,8 @@
     "ANALYTICS_ENABLED": "true",
     "ANALYTICS_RETENTION_DAYS": "730",
     "COMMERCE_ENABLED": "false",
+    "WEB_ORDERS_ENABLED": "false",
+    "ASSISTED_CHECKOUT_ENABLED": "false",
     "DUX_API_ENABLED": "false",
     "DUX_COMPANY_ID": "REEMPLAZAR_ID_EMPRESA_DUX_PREVIEW",
     "DUX_BRANCH_ID": "REEMPLAZAR_ID_SUCURSAL_DUX_PREVIEW",
@@ -22,6 +24,7 @@
     "PUBLIC_SITE_URL": "https://mp-sandbox.shekinah-7dl.pages.dev",
     "VITE_ANALYTICS_ENABLED": "true",
     "VITE_COMMERCE_ENABLED": "false",
+    "VITE_WEB_ORDERS_ENABLED": "false",
     "VITE_MERCADO_LIBRE_CATALOG_ENABLED": "false"
   },
   // Cargar ADMIN_USERNAME, ADMIN_PASSWORD_HASH, ADMIN_SESSION_SECRET,
@@ -53,6 +56,8 @@
         "ANALYTICS_ENABLED": "true",
         "ANALYTICS_RETENTION_DAYS": "730",
         "COMMERCE_ENABLED": "false",
+        "WEB_ORDERS_ENABLED": "false",
+        "ASSISTED_CHECKOUT_ENABLED": "false",
         "DUX_API_ENABLED": "false",
         "DUX_COMPANY_ID": "REEMPLAZAR_ID_EMPRESA_DUX_PRODUCTION",
         "DUX_BRANCH_ID": "REEMPLAZAR_ID_SUCURSAL_DUX_PRODUCTION",
@@ -63,6 +68,7 @@
         "PUBLIC_SITE_URL": "https://shekinah.ar",
         "VITE_ANALYTICS_ENABLED": "true",
         "VITE_COMMERCE_ENABLED": "false",
+        "VITE_WEB_ORDERS_ENABLED": "false",
         "VITE_MERCADO_LIBRE_CATALOG_ENABLED": "false"
       },
       "d1_databases": [
