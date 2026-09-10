@@ -124,7 +124,7 @@ export async function createOrRecoverAssistedPreference(
   const attemptToken = await claimPreferenceAttempt(database, order.id);
   if (attemptToken === null) {
     const current = await getOrderById(database, order.id);
-    if (current?.mp_preference_id !== null && current?.mp_checkout_url !== null) {
+    if (current !== null && current.mp_preference_id !== null && current.mp_checkout_url !== null) {
       return Object.freeze({ checkoutUrl: current.mp_checkout_url, orderId: current.id, totalMinor: current.total_minor, created: false });
     }
     throw new HttpError(409, 'PREFERENCE_ATTEMPT_IN_PROGRESS', 'Ya existe un intento de pago en curso para este pedido.');
