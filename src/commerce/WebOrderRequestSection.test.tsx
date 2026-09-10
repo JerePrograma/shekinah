@@ -13,22 +13,19 @@ const receipt: WebRequestReceipt = { reference: 'WEB-abcdefghijklmnopqrstuvwx', 
   createdAt: '2026-09-08T12:00:00.000Z', updatedAt: '2026-09-08T12:00:00.000Z', publicToken: 'a'.repeat(64),
   paymentStatus: 'not_requested', reservationStatus: 'not_reserved', totalMinor: null };
 const fulfillment = { method: 'coordinated_pickup' as const, fullName: 'Cliente prueba', phone: '1234567890', address: '', locality: '', province: '', postalCode: '' };
-// El componente sólo transporta las líneas al cliente API doble; no decide precios ni catálogo.
 const items: readonly CartItem[] = [{
   product: { id: 'producto-prueba', slug: 'producto-prueba', path: '/producto-prueba/',
     name: 'Producto de prueba', categorySlugs: [], categoryNames: [],
     price: { amount: 10, currency: 'ARS' }, priceStatus: 'usable' },
   quantity: 1, unitPrice: 10, subtotal: 10,
 }];
-function component() { return <WebOrderRequestSection items={items} fulfillment={fulfillment} disabled={false} onBusyChange={vi.fn()} onActiveChange={vi.fn()} />; }
+function component(registrationEnabled = true) { return <WebOrderRequestSection registrationEnabled={registrationEnabled} items={items} fulfillment={fulfillment} disabled={false} onBusyChange={vi.fn()} onActiveChange={vi.fn()} />; }
 
 beforeEach(() => {
-  vi.stubEnv('VITE_WEB_ORDERS_ENABLED', 'true');
   window.history.replaceState(null, '', '/carrito');
   for (const mock of Object.values(doubles)) mock.mockReset();
   doubles.read.mockResolvedValue(null); doubles.create.mockResolvedValue(identity); doubles.submit.mockResolvedValue(receipt);
 });
-afterEach(() => { vi.unstubAllEnvs(); });
 
 it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita doble clic', async () => {
   render(component());
@@ -53,17 +50,24 @@ it('una respuesta perdida conserva la identidad y se recupera sin reenviar la cr
 });
 
 it('las altas cerradas no impiden recuperar la solicitud del navegador', async () => {
-  vi.stubEnv('VITE_WEB_ORDERS_ENABLED', 'false'); doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
-  render(component());
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  render(component(false));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+  expect(doubles.submit).not.toHaveBeenCalled();
+});
+
+it('sin alta habilitada ni intento previo no presenta una falsa capacidad', async () => {
+  render(component(false));
+  await waitFor(() => expect(doubles.read).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('heading', { name: 'Solicitud desde la página' })).not.toBeInTheDocument();
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
 it('un enlace protegido no requiere el almacenamiento privado de otro navegador', async () => {
   window.history.replaceState(null, '', `/carrito#solicitud=${receipt.publicToken}`);
   doubles.read.mockRejectedValue(new Error('Sin almacenamiento.')); doubles.token.mockResolvedValue(receipt);
-  render(component());
+  render(component(false));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
   expect(doubles.token).toHaveBeenCalledWith(receipt.publicToken); expect(doubles.read).not.toHaveBeenCalled();
 });

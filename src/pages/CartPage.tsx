@@ -5,6 +5,7 @@ import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
 import { WebOrderRequestSection } from '../commerce/WebOrderRequestSection';
+import { useWebOrderRegistrationEnabled } from '../commerce/web-order-capability-client';
 import { getProductCartLimit } from '../cart/model';
 import { createCheckoutPreference, createWhatsappOrder } from '../commerce/api';
 import {
@@ -83,7 +84,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const cancelClearRef = useRef<HTMLButtonElement>(null);
   const whatsappResultTitleRef = useRef<HTMLHeadingElement>(null);
   const whatsappOrderPendingRef = useRef(false);
-  const webRequestsEnabled = import.meta.env.VITE_WEB_ORDERS_ENABLED === 'true';
+  const webRequestsEnabled = useWebOrderRegistrationEnabled();
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const commerceEnabled = isCommerceClientEnabled();
   const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
@@ -366,6 +367,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
         )}
 
         <WebOrderRequestSection
+          registrationEnabled={webRequestsEnabled}
           items={items}
           fulfillment={validation.value}
           disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null}

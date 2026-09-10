@@ -9,11 +9,10 @@ import { webRequestStatusLabel } from './web-order-contracts';
 import { readWebRequest, recoverWebRequest, submitWebRequest } from './web-request-api';
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
-export function WebOrderRequestSection({ items, fulfillment, disabled, onBusyChange, onActiveChange }: Readonly<{
-  items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
+export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange }: Readonly<{
+  registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
   onBusyChange: (busy: boolean) => void; onActiveChange: (active: boolean) => void;
 }>) {
-  const enabled = import.meta.env.VITE_WEB_ORDERS_ENABLED === 'true';
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const [identity, setIdentity] = useState<WebRequestIdentity | null>(null);
   const [receipt, setReceipt] = useState<WebRequestReceipt | null>(null);
@@ -72,7 +71,7 @@ export function WebOrderRequestSection({ items, fulfillment, disabled, onBusyCha
           : identity !== null ? await recoverWebRequest(identity) : null;
         if (mounted.current && current !== null) { focusReceipt.current = true; setReceipt(current); }
       } else {
-        if (!enabled || items.length === 0 || fulfillment === null || receipt !== null || linkedToken !== null) return;
+        if (!registrationEnabled || items.length === 0 || fulfillment === null || receipt !== null || linkedToken !== null) return;
         const saved = await getOrCreateWebRequestIdentity();
         if (mounted.current) { setIdentity(saved); onActiveChange(true); }
         const result = await submitWebRequest(saved, items, fulfillment);
@@ -84,7 +83,7 @@ export function WebOrderRequestSection({ items, fulfillment, disabled, onBusyCha
       if (mounted.current) { setBusy(false); onBusyChange(false); }
     }
   }
-  if (!enabled && identity === null && linkedToken === null) return null;
+  if (!registrationEnabled && identity === null && linkedToken === null) return null;
   return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy}>
     <h2 id="web-request-title">Solicitud desde la página</h2>
     <p>El comercio revisará presentación, cantidad, disponibilidad y total antes de confirmar la compra. Registrar esta solicitud no reserva stock ni inicia un cobro. No necesitás abrir WhatsApp.</p>
@@ -100,14 +99,14 @@ export function WebOrderRequestSection({ items, fulfillment, disabled, onBusyCha
       </a>}
     </> : null}
     {error !== '' ? <p role="alert">{error}</p> : null}
-    {receipt === null && linkedToken === null && enabled ? <>
+    {receipt === null && linkedToken === null && registrationEnabled ? <>
       <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : 'El envío por correo y el total quedan sujetos a confirmación; no se presuponen gratuitos.'}</p>
       <button className="button button-primary" type="button" disabled={disabled || busy || fulfillment === null || items.length === 0}
         onClick={() => void operate('create')}>{busy ? 'Registrando solicitud…' : identity === null ? 'Registrar solicitud web' : 'Reenviar el mismo intento'}</button>
     </> : null}
     {identity !== null || linkedToken !== null ? <button className="button button-secondary" type="button" disabled={disabled || busy}
       onClick={() => void operate('recover')}>Consultar estado de la solicitud</button> : null}
-    {linkedToken === null && receipt !== null && receipt.status !== 'submitted' && identity !== null && enabled ? <button className="text-button" type="button" disabled={disabled || busy}
+    {linkedToken === null && receipt !== null && receipt.status !== 'submitted' && identity !== null && registrationEnabled ? <button className="text-button" type="button" disabled={disabled || busy}
       onClick={() => void operate('new')}>Preparar otra solicitud</button> : null}
   </section>;
 }
