@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -12,7 +13,16 @@ const migrations = readdirSync(resolve(process.cwd(), 'migrations'))
   .join('\n');
 
 const now = '2026-09-10T14:00:00.000Z';
-const version = 'a'.repeat(64);
+const catalogPayload = JSON.stringify({
+  schemaVersion: 2,
+  priceListName: 'PRECIOS DEL NEGOCIO',
+  items: [{
+    slug: 'dux-producto-a-0000000000000001', code: 'A-001', name: 'Producto A',
+    priceAmount: 12.5, priceStatus: 'usable', categories: [], unitsPerPackage: null,
+    imageUrl: null, description: null,
+  }],
+});
+const version = createHash('sha256').update(catalogPayload).digest('hex');
 const env: Env = {
   DUX_COMPANY_ID: '12862',
   DUX_BRANCH_ID: '1',
@@ -34,20 +44,11 @@ function seedAuthority(database: SqliteD1): void {
     ambiguous_count, absent_count, failed_count, started_at, completed_at, created_at, updated_at
   ) VALUES ('dux_sync_assisted_runtime', 'manual', 'succeeded', 'test', 1, 0, 1, 0, 0, 0,
     ?, ?, ?, ?)`).run(now, now, now, now);
-  const payload = JSON.stringify({
-    schemaVersion: 2,
-    priceListName: 'PRECIOS DEL NEGOCIO',
-    items: [{
-      slug: 'dux-producto-a-0000000000000001', code: 'A-001', name: 'Producto A',
-      priceAmount: 12.5, priceStatus: 'usable', categories: [], unitsPerPackage: null,
-      imageUrl: null, description: null,
-    }],
-  });
   db.prepare(`INSERT INTO dux_catalog_snapshots_v2 (
     id, inventory_run_id, catalog_version, price_list_name, item_count,
     payload_json, synced_at, created_at, updated_at
   ) VALUES (1, 'dux_sync_assisted_runtime', ?, 'PRECIOS DEL NEGOCIO', 1, ?, ?, ?, ?)`)
-    .run(version, payload, now, now, now);
+    .run(version, catalogPayload, now, now, now);
   db.prepare(`UPDATE dux_catalog_control SET public_catalog_enabled = 1,
     updated_by = 'test', updated_at = ? WHERE company_id = '12862'`).run(now);
 }
