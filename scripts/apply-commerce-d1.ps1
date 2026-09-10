@@ -5,7 +5,9 @@ param(
 
     [switch]$Apply,
 
-    [string]$ExpectedCommit = ''
+    [string]$ExpectedCommit = '',
+
+    [switch]$SelfTestJsonParser
 )
 
 Set-StrictMode -Version Latest
@@ -47,10 +49,28 @@ $RequiredIntentColumns = @(
 $RequiredOrderColumns = @('web_request_id', 'assisted_checkout_fingerprint')
 $RequiredLinkColumns = @('verification_method', 'verification_actor', 'verification_note')
 
+function Remove-TerminalNoise {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    $clean = $Text.TrimStart([char]0xFEFF)
+    $escape = [string][char]27
+    $escapedEscape = [regex]::Escape($escape)
+    $oscPattern = $escapedEscape + '\].*?(?:\x07|' + $escapedEscape + '\\)'
+    $csiPattern = $escapedEscape + '\[[0-?]*[ -/]*[@-~]'
+    $clean = [regex]::Replace(
+        $clean,
+        $oscPattern,
+        '',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline
+    )
+    return [regex]::Replace($clean, $csiPattern, '')
+}
+
 function Convert-WranglerJsonText {
     param([Parameter(Mandatory = $true)][string]$Text)
 
-    $trimmed = $Text.Trim()
+    $clean = Remove-TerminalNoise $Text
+    $trimmed = $clean.Trim()
     if ([string]::IsNullOrWhiteSpace($trimmed)) {
         throw 'Wrangler no devolvió contenido JSON.'
     }
@@ -59,18 +79,21 @@ function Convert-WranglerJsonText {
         return $trimmed | ConvertFrom-Json -Depth 100
     }
     catch {
-        # npx puede anteponer avisos aunque Wrangler use --json. Sólo aceptamos
-        # un sufijo que sea JSON completo y válido; cualquier otra salida aborta.
+        # Wrangler/npm pueden contaminar stdout aun con --json. El fallback no
+        # acepta texto arbitrario: busca un documento JSON completo y válido.
     }
 
-    $lines = @($Text -split "`r?`n")
-    for ($start = 0; $start -lt $lines.Count; $start++) {
-        $first = $lines[$start].TrimStart()
-        if (-not ($first.StartsWith('{') -or $first.StartsWith('['))) {
+    for ($start = 0; $start -lt $clean.Length; $start++) {
+        $first = $clean[$start]
+        if ($first -ne '{' -and $first -ne '[') {
             continue
         }
-        for ($end = $lines.Count - 1; $end -ge $start; $end--) {
-            $candidate = (@($lines[$start..$end]) -join "`n").Trim()
+        for ($end = $clean.Length - 1; $end -gt $start; $end--) {
+            $last = $clean[$end]
+            if ($last -ne '}' -and $last -ne ']') {
+                continue
+            }
+            $candidate = $clean.Substring($start, $end - $start + 1).Trim()
             try {
                 return $candidate | ConvertFrom-Json -Depth 100
             }
@@ -83,13 +106,32 @@ function Convert-WranglerJsonText {
     throw 'No se pudo interpretar la salida JSON de Wrangler.'
 }
 
+function Save-WranglerJsonDiagnostic {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $hash = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData($bytes)
+    ).ToLowerInvariant()
+    $path = Join-Path $EvidenceRoot 'last-wrangler-json-failure.txt'
+    @(
+        "captured_at=$((Get-Date).ToUniversalTime().ToString('o'))"
+        "length=$($Text.Length)"
+        "sha256=$hash"
+        '--- raw output ---'
+        $Text
+    ) | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    return $path
+}
+
 function Invoke-Native {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
         [switch]$Json
     )
-    $output = & $FilePath @Arguments
+    $output = @(& $FilePath @Arguments 2>&1 | ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) {
         throw "Falló: $FilePath $($Arguments -join ' ')"
     }
@@ -100,7 +142,13 @@ function Invoke-Native {
     if ([string]::IsNullOrWhiteSpace($text)) {
         throw "El comando no devolvió JSON: $FilePath $($Arguments -join ' ')"
     }
-    return Convert-WranglerJsonText $text
+    try {
+        return Convert-WranglerJsonText $text
+    }
+    catch {
+        $diagnosticPath = Save-WranglerJsonDiagnostic $text
+        throw "$($_.Exception.Message) Salida cruda guardada localmente en: $diagnosticPath"
+    }
 }
 
 function Wrangler-Args {
@@ -148,6 +196,41 @@ function D1-Rows {
         }
     }
     return @($rows)
+}
+
+function Test-WranglerJsonParser {
+    $json = '[{"results":[{"name":"0019_test.sql"}],"success":true}]'
+    $escape = [string][char]27
+    $bell = [string][char]7
+    $bom = [string][char]0xFEFF
+    $samples = @(
+        $json,
+        "npm notice wrapper`n$json",
+        "Proxy environment variables detected. $json trailing notice",
+        ($bom + $json),
+        ($escape + '[32m' + $json + $escape + '[0m'),
+        ($escape + ']0;wrangler' + $bell + $json)
+    )
+
+    foreach ($sample in $samples) {
+        $payload = @(Convert-WranglerJsonText $sample)
+        $rows = @(D1-Rows $payload)
+        if ($rows.Count -ne 1 -or [string]$rows[0].name -ne '0019_test.sql') {
+            throw 'Self-test del parser JSON de Wrangler falló.'
+        }
+    }
+
+    $invalidRejected = $false
+    try {
+        Convert-WranglerJsonText 'salida sin JSON válido' | Out-Null
+    }
+    catch {
+        $invalidRejected = $true
+    }
+    if (-not $invalidRejected) {
+        throw 'Self-test del parser aceptó texto inválido.'
+    }
+    Write-Host "Parser JSON de Wrangler verificado: $($samples.Count) variantes válidas y rechazo de texto inválido."
 }
 
 function Query-D1 {
@@ -309,6 +392,11 @@ function Process-Environment {
     Save-Bookmark $Environment $EvidenceDirectory
     Invoke-Wrangler $Environment @('d1', 'migrations', 'apply', 'DB', '--remote')
     Verify-Environment $Environment
+}
+
+if ($SelfTestJsonParser) {
+    Test-WranglerJsonParser
+    return
 }
 
 Assert-GitState
