@@ -11,7 +11,7 @@ vi.mock('../analytics/client', () => ({ trackAnalyticsEvent: vi.fn() }));
 const identity = { idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64) };
 const receipt: WebRequestReceipt = { reference: 'WEB-abcdefghijklmnopqrstuvwx', status: 'submitted',
   createdAt: '2026-09-08T12:00:00.000Z', updatedAt: '2026-09-08T12:00:00.000Z', publicToken: 'a'.repeat(64),
-  paymentStatus: 'not_requested', reservationStatus: 'not_reserved', totalMinor: null };
+  paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved', checkoutAvailable: false, totalMinor: null };
 const fulfillment = { method: 'coordinated_pickup' as const, fullName: 'Cliente prueba', phone: '1234567890', address: '', locality: '', province: '', postalCode: '' };
 const items: readonly CartItem[] = [{
   product: { id: 'producto-prueba', slug: 'producto-prueba', path: '/producto-prueba/',
