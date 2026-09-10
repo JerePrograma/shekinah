@@ -87,8 +87,7 @@ describe('handler de lifecycle Dux asistido', () => {
       expect(response.status).toBe(200);
       expect(doubles.reconcile).toHaveBeenCalledWith(database, orderId, 'access-token-for-tests-only', 'sandbox');
       expect(doubles.confirm).toHaveBeenCalledTimes(1);
-      const reconciliationArgument = doubles.confirm.mock.calls[0]?.[4];
-      expect(reconciliationArgument).toBeInstanceOf(Date);
+      expect(doubles.confirm.mock.calls[0]?.[4]).toBeInstanceOf(Date);
       expect(doubles.confirm.mock.calls[0]?.[3]).toBe('admin@example.test');
     } finally { database.close(); }
   });
