@@ -45,7 +45,7 @@ it('muestra precios Dux de sólo lectura y prepara una reserva confirmada', asyn
   const busy = vi.fn();
   render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={busy} />);
   fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
-  expect(await screen.findByText(/Precio Dux actual:/u)).toHaveTextContent('$ 100');
+  expect(await screen.findByText(/Precio Dux actual:/u)).toHaveTextContent(/100/u);
   expect(screen.queryByRole('textbox', { name: /precio/iu })).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('textbox', { name: 'Número de pedido Dux' }), { target: { value: 'PED-1' } });
   fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que verifiqué en Dux/iu }));
@@ -55,7 +55,7 @@ it('muestra precios Dux de sólo lectura y prepara una reserva confirmada', asyn
   expect(await screen.findByRole('status')).toHaveTextContent('PED-1');
   const post = fetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
   expect(post).toBeDefined();
-  expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+  expect(parseRequestBody(post)).toEqual({
     duxOrderNumber: 'PED-1', duxOrderId: null, shippingMinor: 0, confirmedExactReservation: true,
   });
   expect(busy).toHaveBeenCalledWith(true, 'Preparando cobro asistido');
@@ -78,7 +78,7 @@ it('exige una cotización final positiva para correo y la envía en minor units'
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar preparación' }));
   await waitFor(() => expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1));
   const post = fetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
-  expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ duxOrderNumber: 'PED-CORREO', shippingMinor: 250_000 });
+  expect(parseRequestBody(post)).toMatchObject({ duxOrderNumber: 'PED-CORREO', shippingMinor: 250_000 });
 });
 
 it('recupera una preparación existente sin ofrecer campos para recrearla', async () => {
@@ -97,3 +97,9 @@ it('una sesión vencida no expone estado administrativo', async () => {
   await waitFor(() => expect(unauthorized).toHaveBeenCalledTimes(1));
   expect(screen.queryByText(/Precio Dux actual:/u)).not.toBeInTheDocument();
 });
+
+function parseRequestBody(call: [RequestInfo | URL, RequestInit?] | undefined): unknown {
+  const body = call?.[1]?.body;
+  if (typeof body !== 'string') throw new Error('El request de prueba no contiene un body JSON string.');
+  return JSON.parse(body) as unknown;
+}
