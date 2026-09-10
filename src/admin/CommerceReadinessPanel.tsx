@@ -302,10 +302,13 @@ function nullableNonNegativeInteger(value: unknown): number | null {
   return nonNegativeInteger(value);
 }
 function stringArray(value: unknown): readonly string[] {
-  if (!Array.isArray(value) || value.length > 50 || value.some((entry) => typeof entry !== 'string' || entry.length > 128)) {
-    throw invalidResponse();
+  if (!Array.isArray(value) || value.length > 50) throw invalidResponse();
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry.length > 128) throw invalidResponse();
+    result.push(entry);
   }
-  return Object.freeze([...value]);
+  return Object.freeze(result);
 }
 function invalidResponse(): Error {
   return new Error('El servidor devolvió un diagnóstico comercial inválido.');
