@@ -34,6 +34,8 @@ export type OrderRow = Readonly<{
   stock_reserved_at: string | null;
   stock_reservation_expires_at: string | null;
   stock_consumed_at: string | null;
+  web_request_id?: string | null;
+  assisted_checkout_fingerprint?: string | null;
 }>;
 
 export type PreparedOrder = Readonly<{
@@ -539,11 +541,15 @@ export async function assertDuxOrderLifecycleUnlinked(
   orderId: string,
 ): Promise<void> {
   try {
+    // SELECT * mantiene compatibilidad con esquemas 0012–0020, donde la columna
+    // verification_method todavía no existe. Sólo 0021 puede acreditar el modo
+    // asistido; cualquier otro vínculo conserva el bloqueo histórico.
     const link = await database
-      .prepare('SELECT reservation_state FROM dux_order_links WHERE order_id = ? LIMIT 1')
+      .prepare('SELECT * FROM dux_order_links WHERE order_id = ? LIMIT 1')
       .bind(orderId)
-      .first<Readonly<{ reservation_state: string }>>();
+      .first<Readonly<{ reservation_state: string; verification_method?: unknown }>>();
     if (link !== null) {
+      if (link.verification_method === 'assisted_admin') return;
       throw new HttpError(
         503,
         'DUX_ORDER_LIFECYCLE_UNAVAILABLE',
