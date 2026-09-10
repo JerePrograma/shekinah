@@ -21,6 +21,7 @@ vi.mock('../../../../server/web-request-rate-limit', () => ({
 
 const migration = readFileSync(resolve(process.cwd(), 'migrations', '0001_commerce.sql'), 'utf8');
 const token = 'a'.repeat(64);
+const mercadoPagoAccessToken = 'TEST-' + '1'.repeat(20);
 
 function context(
   database: SqliteD1,
@@ -41,7 +42,7 @@ function context(
       ASSISTED_CHECKOUT_ENABLED: 'true',
       ORDER_TOKEN_SECRET: 'o'.repeat(40),
       MERCADO_PAGO_CHECKOUT_MODE: 'sandbox',
-      MERCADO_PAGO_ACCESS_TOKEN: 'TEST-12345678901234567890',
+      MERCADO_PAGO_ACCESS_TOKEN: mercadoPagoAccessToken,
       MERCADO_PAGO_WEBHOOK_SECRET: 'w'.repeat(40),
       ...changes,
     },
@@ -74,7 +75,7 @@ describe('checkout público de solicitud asistida', () => {
         totalMinor: 123400,
       });
       expect(doubles.checkout).toHaveBeenCalledWith(database, token, {
-        accessToken: 'TEST-12345678901234567890',
+        accessToken: mercadoPagoAccessToken,
         mode: 'sandbox',
         siteUrl: new URL('https://example.test'),
       });
