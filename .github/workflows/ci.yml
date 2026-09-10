@@ -57,6 +57,7 @@ jobs:
             $errors | ForEach-Object { $_.Message | Out-Host }
             exit 1
           }
+          & $path -SelfTestJsonParser
 
       - name: Verify Dux activation procedure with local mocks
         shell: pwsh
