@@ -233,7 +233,7 @@ const gitignore = read(join(root, '.gitignore'));
 if (!gitignore.split(/\r?\n/u).includes('server/generated/catalog.json')) {
   fail('El catálogo generado de Functions debe permanecer fuera de Git.');
 }
-const routes = JSON.parse(read(join(root, 'public', '_routes.json'));
+const routes = JSON.parse(read(join(root, 'public', '_routes.json')));
 if (JSON.stringify(routes) !== JSON.stringify({ version: 1, include: ['/api/*', '/admin', '/admin/*'], exclude: ['/assets/*', '/images/*'] })) {
   fail('public/_routes.json no coincide con las rutas serverless autorizadas.');
 }
