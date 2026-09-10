@@ -2,6 +2,8 @@ import { validateFulfillment } from './fulfillment';
 import type { CheckoutFulfillment } from './fulfillment';
 
 export type WebRequestStatus = 'submitted' | 'accepted' | 'rejected';
+export type WebRequestPaymentStatus = 'not_requested' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
+export type WebRequestReservationStatus = 'not_reserved' | 'confirmed' | 'released' | 'finalized' | 'requires_review';
 export type WebRequestIdentity = Readonly<{ idempotencyKey: string; ownerSecret: string }>;
 export type WebRequestLine = Readonly<{ productId: string; quantity: number; catalogVersion: string }>;
 export type WebRequestInput = WebRequestIdentity & Readonly<{
@@ -22,7 +24,9 @@ export type WebRequestSnapshot = Readonly<{
 }>;
 export type WebRequestPublic = Readonly<{
   reference: string; status: WebRequestStatus; createdAt: string; updatedAt: string;
-  paymentStatus: 'not_requested'; reservationStatus: 'not_reserved'; totalMinor: null;
+  paymentStatus: WebRequestPaymentStatus; paymentRequiresReview: boolean;
+  reservationStatus: WebRequestReservationStatus; checkoutAvailable: boolean;
+  totalMinor: number | null;
 }>;
 export type WebRequestReceipt = WebRequestPublic & Readonly<{ publicToken: string }>;
 
@@ -37,17 +41,50 @@ export function webRequestStatusLabel(status: WebRequestStatus): string {
 export function parseWebRequestReceipt(value: unknown): WebRequestReceipt {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid();
   const row = value as Record<string, unknown>;
+  const paymentStatus = readPaymentStatus(row.paymentStatus);
+  const reservationStatus = readReservationStatus(row.reservationStatus);
+  const totalMinor = row.totalMinor === null
+    ? null
+    : typeof row.totalMinor === 'number' && Number.isSafeInteger(row.totalMinor) && row.totalMinor > 0
+      ? row.totalMinor
+      : invalidValue();
   if (typeof row.reference !== 'string' || !/^WEB-[A-Za-z0-9_-]{20,128}$/u.test(row.reference) ||
       (row.status !== 'submitted' && row.status !== 'accepted' && row.status !== 'rejected') ||
       typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt)) ||
       typeof row.updatedAt !== 'string' || !Number.isFinite(Date.parse(row.updatedAt)) ||
-      row.paymentStatus !== 'not_requested' || row.reservationStatus !== 'not_reserved' || row.totalMinor !== null ||
+      typeof row.paymentRequiresReview !== 'boolean' || typeof row.checkoutAvailable !== 'boolean' ||
       typeof row.publicToken !== 'string' || !/^[a-f0-9]{64}$/u.test(row.publicToken)) throw invalid();
-  return Object.freeze({ reference: row.reference, status: row.status, createdAt: row.createdAt,
-    updatedAt: row.updatedAt, paymentStatus: 'not_requested', reservationStatus: 'not_reserved',
-    totalMinor: null, publicToken: row.publicToken });
+  if (
+    (paymentStatus !== 'not_requested' && totalMinor === null) ||
+    (reservationStatus !== 'not_reserved' && totalMinor === null) ||
+    (row.checkoutAvailable && (
+      reservationStatus !== 'confirmed' || totalMinor === null ||
+      paymentStatus === 'pending' || paymentStatus === 'approved' || paymentStatus === 'refunded'
+    ))
+  ) throw invalid();
+  return Object.freeze({
+    reference: row.reference,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    paymentStatus,
+    paymentRequiresReview: row.paymentRequiresReview,
+    reservationStatus,
+    checkoutAvailable: row.checkoutAvailable,
+    totalMinor,
+    publicToken: row.publicToken,
+  });
 }
 
+function readPaymentStatus(value: unknown): WebRequestPaymentStatus {
+  if (value === 'not_requested' || value === 'pending' || value === 'approved' || value === 'rejected' || value === 'cancelled' || value === 'refunded') return value;
+  throw invalid();
+}
+function readReservationStatus(value: unknown): WebRequestReservationStatus {
+  if (value === 'not_reserved' || value === 'confirmed' || value === 'released' || value === 'finalized' || value === 'requires_review') return value;
+  throw invalid();
+}
+function invalidValue(): never { throw invalid(); }
 function invalid(): Error { return new Error('El servidor devolvió una solicitud web inválida.'); }
 
 export type AdminWebRequestDetail = Readonly<{

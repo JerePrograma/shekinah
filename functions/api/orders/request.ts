@@ -1,3 +1,4 @@
+import { assistedCheckoutConfigured } from '../../../server/assisted-checkout-capability';
 import { readDuxCatalogSnapshot } from '../../../server/dux-catalog';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../server/http';
 import type { PagesFunction } from '../../../server/platform';
@@ -21,11 +22,19 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     if (input !== null && !(await webOrderRegistrationEnabled(database, env))) {
       throw new HttpError(503, 'WEB_ORDERS_UNAVAILABLE', 'El registro de solicitudes no está disponible temporalmente.');
     }
-    const secret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de solicitudes no está configurada.');
+    const secret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de solicitudes no está configurada.', 32);
     const now = new Date();
     const seconds = Math.floor(now.getTime() / 1000);
     await consumeWebRequestAccess(database, await webRequestLimits(request, secret, seconds, false), seconds);
-    if (input === null) return jsonResponse(await recoverWebOrderRequest(database, identity, secret));
+    if (input === null) {
+      return jsonResponse(await recoverWebOrderRequest(
+        database,
+        identity,
+        secret,
+        assistedCheckoutConfigured(env),
+        now.getTime(),
+      ));
+    }
     const result = await createWebOrderRequest(database, input, secret,
       () => readDuxCatalogSnapshot(database), await webRequestLimits(request, secret, seconds, true), now);
     return jsonResponse(result.receipt, result.created ? 201 : 200);

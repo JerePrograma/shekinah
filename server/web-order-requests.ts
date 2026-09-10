@@ -1,10 +1,20 @@
-import { MAX_CART_LINES, MAX_CART_QUANTITY } from '../src/commerce/contracts';
+import { CHECKOUT_IDEMPOTENCY_WINDOW_MS, MAX_CART_LINES, MAX_CART_QUANTITY } from '../src/commerce/contracts';
 import { fulfillmentCanonicalValue, validateFulfillment } from '../src/commerce/fulfillment';
-import type { WebRequestIdentity, WebRequestInput, WebRequestPublic, WebRequestReceipt, WebRequestSnapshot, WebRequestStatus } from '../src/commerce/web-order-contracts';
+import type {
+  WebRequestIdentity,
+  WebRequestInput,
+  WebRequestPaymentStatus,
+  WebRequestPublic,
+  WebRequestReceipt,
+  WebRequestReservationStatus,
+  WebRequestSnapshot,
+  WebRequestStatus,
+} from '../src/commerce/web-order-contracts';
 import { webRequestReference } from '../src/commerce/web-order-contracts';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import type { DuxCatalogSnapshot } from './dux-catalog';
 import { HttpError } from './http';
+import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database } from './platform';
 import { assertExactKeys, assertUuid, isRecord, readInteger, readSafeText } from './validation';
 import { prepareWebRequestLimit, throwWebRequestStorageError } from './web-request-rate-limit';
@@ -17,6 +27,22 @@ type RequestRow = Readonly<{
   web_request_owner_hash: string; web_request_fingerprint: string; web_request_token_hash: string;
   web_request_status: WebRequestStatus; created_at: string; web_request_updated_at: string;
 }>;
+
+type AssistedPublicRow = Readonly<{
+  id: string;
+  status: string;
+  total_minor: number;
+  updated_at: string;
+  mp_preference_id: string | null;
+  mp_checkout_url: string | null;
+  mp_preference_attempted_at: string | null;
+  verification_method: string | null;
+  reservation_state: string | null;
+  reserve_count: number;
+  release_count: number;
+  finalize_count: number;
+}>;
+
 const requestColumns = `intent_kind, checkout_idempotency_key, web_request_id, web_request_owner_hash,
   web_request_fingerprint, web_request_token_hash, web_request_status, created_at, web_request_updated_at`;
 
@@ -116,21 +142,66 @@ export function buildWebRequestSnapshot(input: WebRequestInput, snapshot: WebReq
     quantityStatus: 'requires_confirmation' });
 }
 
-export async function recoverWebOrderRequest(database: D1Database, identity: WebRequestIdentity, secret: string): Promise<WebRequestReceipt> {
+export async function recoverWebOrderRequest(
+  database: D1Database,
+  identity: WebRequestIdentity,
+  secret: string,
+  checkoutConfigured = false,
+  nowMilliseconds = Date.now(),
+): Promise<WebRequestReceipt> {
   const row = await findRequest(database, identity.idempotencyKey);
   if (row === null) throw notFound();
   assertOwner(row, await sha256Hex(identity.ownerSecret));
-  return receiptFor(row, identity, secret);
+  const publicToken = await deriveRequestToken(identity, secret);
+  if (await sha256Hex(publicToken) !== row.web_request_token_hash) {
+    throw new HttpError(503, 'WEB_REQUEST_TOKEN_UNAVAILABLE', 'No se pudo recuperar la protección de la solicitud.');
+  }
+  return Object.freeze({
+    ...(await getWebRequestByToken(database, publicToken, checkoutConfigured, nowMilliseconds)),
+    publicToken,
+  });
 }
 
-export async function getWebRequestByToken(database: D1Database, publicToken: string): Promise<WebRequestPublic> {
+export async function getWebRequestByToken(
+  database: D1Database,
+  publicToken: string,
+  checkoutConfigured = false,
+  nowMilliseconds = Date.now(),
+): Promise<WebRequestPublic> {
   if (!/^[a-f0-9]{64}$/u.test(publicToken)) throw notFound();
   let row: RequestRow | null;
-  try { row = await database.prepare(`SELECT ${requestColumns} FROM checkout_intents
-    WHERE intent_kind = 'web_request' AND web_request_token_hash = ?`).bind(await sha256Hex(publicToken)).first<RequestRow>(); }
-  catch (error: unknown) { throwWebRequestStorageError(error); }
+  try {
+    row = await database.prepare(`SELECT ${requestColumns} FROM checkout_intents
+      WHERE intent_kind = 'web_request' AND web_request_token_hash = ?`)
+      .bind(await sha256Hex(publicToken)).first<RequestRow>();
+  } catch (error: unknown) { throwWebRequestStorageError(error); }
   if (row === null) throw notFound();
-  return publicStatus(row);
+  const base = publicStatus(row);
+  const assisted = await readAssistedPublicOrder(database, row.web_request_id);
+  if (assisted === null) return base;
+  if (!Number.isSafeInteger(assisted.total_minor) || assisted.total_minor <= 0) {
+    throw new HttpError(503, 'WEB_REQUEST_STATUS_INVALID', 'El estado comercial no puede verificarse.');
+  }
+  const payment = await getOrderPaymentState(database, assisted.id);
+  const reservationStatus = readReservationStatus(assisted);
+  const paymentStatus: WebRequestPaymentStatus = payment.status === 'none' ? 'not_requested' : payment.status;
+  const lifecycleNeedsReview =
+    (payment.status === 'approved' && reservationStatus !== 'confirmed' && reservationStatus !== 'finalized') ||
+    (payment.status === 'refunded' && reservationStatus !== 'released');
+  return Object.freeze({
+    ...base,
+    updatedAt: latestTimestamp(base.updatedAt, assisted.updated_at, payment.updatedAt),
+    paymentStatus,
+    paymentRequiresReview: payment.requiresReview || lifecycleNeedsReview,
+    reservationStatus,
+    checkoutAvailable:
+      checkoutConfigured &&
+      reservationStatus === 'confirmed' &&
+      payment.status !== 'pending' && payment.status !== 'approved' && payment.status !== 'refunded' &&
+      assisted.status !== 'approved' && assisted.status !== 'refunded' &&
+      preferenceAttemptCanContinue(assisted, nowMilliseconds),
+    totalMinor: assisted.total_minor,
+  });
 }
 
 export async function listWebOrderRequests(database: D1Database, offset = 0) {
@@ -181,6 +252,63 @@ export async function resolveWebOrderRequest(database: D1Database, id: string, s
   } catch (error: unknown) { throwWebRequestStorageError(error); }
 }
 
+async function readAssistedPublicOrder(database: D1Database, requestId: string): Promise<AssistedPublicRow | null> {
+  try {
+    const result = await database.prepare(`SELECT o.id, o.status, o.total_minor, o.updated_at,
+      o.mp_preference_id, o.mp_checkout_url, o.mp_preference_attempted_at,
+      d.verification_method, d.reservation_state,
+      (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id
+        AND op.action = 'reserve' AND op.status = 'confirmed'
+        AND op.idempotency_key = 'assisted-reserve:' || o.id) AS reserve_count,
+      (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id
+        AND op.action = 'release' AND op.status = 'confirmed'
+        AND op.idempotency_key = 'assisted-release:' || o.id) AS release_count,
+      (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id
+        AND op.action = 'finalize' AND op.status = 'confirmed'
+        AND op.idempotency_key = 'assisted-finalize:' || o.id) AS finalize_count
+      FROM orders o LEFT JOIN dux_order_links d ON d.order_id = o.id
+      WHERE o.web_request_id = ? AND o.channel = 'checkout_pro' LIMIT 2`)
+      .bind(requestId).all<AssistedPublicRow>();
+    const rows = result.results ?? [];
+    if (rows.length > 1) throw new HttpError(503, 'WEB_REQUEST_STATUS_AMBIGUOUS', 'El estado comercial requiere revisión.');
+    return rows[0] ?? null;
+  } catch (error: unknown) {
+    if (error instanceof Error && /no such column:/iu.test(error.message)) return null;
+    if (error instanceof HttpError) throw error;
+    throwWebRequestStorageError(error);
+  }
+}
+
+function readReservationStatus(row: AssistedPublicRow): WebRequestReservationStatus {
+  if (row.verification_method !== 'assisted_admin') return 'requires_review';
+  if (row.reservation_state === 'confirmed') return row.reserve_count === 1 ? 'confirmed' : 'requires_review';
+  if (row.reservation_state === 'released') return row.release_count === 1 ? 'released' : 'requires_review';
+  if (row.reservation_state === 'finalized') return row.finalize_count === 1 ? 'finalized' : 'requires_review';
+  return 'requires_review';
+}
+
+function preferenceAttemptCanContinue(row: AssistedPublicRow, nowMilliseconds: number): boolean {
+  if (!Number.isFinite(nowMilliseconds)) return false;
+  if ((row.mp_preference_id === null) !== (row.mp_checkout_url === null)) return false;
+  if (row.mp_preference_attempted_at === null) return row.mp_preference_id === null;
+  const attemptedAt = Date.parse(row.mp_preference_attempted_at);
+  return Number.isFinite(attemptedAt) && attemptedAt <= nowMilliseconds &&
+    nowMilliseconds - attemptedAt < CHECKOUT_IDEMPOTENCY_WINDOW_MS;
+}
+
+function latestTimestamp(...values: readonly (string | null)[]): string {
+  let latest: string | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value === null) continue;
+    const time = Date.parse(value);
+    if (!Number.isFinite(time)) throw new HttpError(503, 'WEB_REQUEST_STATUS_INVALID', 'El estado comercial no puede verificarse.');
+    if (time > latestTime) { latest = value; latestTime = time; }
+  }
+  if (latest === null) throw new HttpError(503, 'WEB_REQUEST_STATUS_INVALID', 'El estado comercial no puede verificarse.');
+  return latest;
+}
+
 async function findRequest(database: D1Database, key: string): Promise<RequestRow | null> {
   try { return await database.prepare(`SELECT ${requestColumns} FROM checkout_intents WHERE checkout_idempotency_key = ?`).bind(key).first<RequestRow>(); }
   catch (error: unknown) { throwWebRequestStorageError(error); }
@@ -198,9 +326,12 @@ async function receiptFor(row: RequestRow, identity: WebRequestIdentity, secret:
   return Object.freeze({ ...publicStatus(row), publicToken });
 }
 function publicStatus(row: RequestRow): WebRequestPublic {
-  return Object.freeze({ reference: webRequestReference(row.web_request_id), status: row.web_request_status,
+  return Object.freeze({
+    reference: webRequestReference(row.web_request_id), status: row.web_request_status,
     createdAt: row.created_at, updatedAt: row.web_request_updated_at,
-    paymentStatus: 'not_requested', reservationStatus: 'not_reserved', totalMinor: null });
+    paymentStatus: 'not_requested', paymentRequiresReview: false,
+    reservationStatus: 'not_reserved', checkoutAvailable: false, totalMinor: null,
+  });
 }
 function assertRequestId(id: string): void {
   if (!/^req_[A-Za-z0-9_-]{20,128}$/u.test(id)) throw notFound();
