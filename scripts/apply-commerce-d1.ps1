@@ -226,7 +226,7 @@ function Assert-Columns {
     $rows = Query-D1 $Environment "PRAGMA table_info($Table);"
     $names = @($rows | ForEach-Object { [string]$_.name })
     foreach ($column in $Required) {
-        if ($names -notcontains $column) { throw "$Environment: falta $Table.$column" }
+        if ($names -notcontains $column) { throw "${Environment}: falta $Table.$column" }
     }
 }
 
@@ -240,14 +240,14 @@ function Verify-Environment {
     $objects = Query-D1 $Environment "SELECT name FROM sqlite_schema WHERE name IN ($($quoted -join ','));"
     $names = @($objects | ForEach-Object { [string]$_.name })
     foreach ($required in $RequiredObjects) {
-        if ($names -notcontains $required) { throw "$Environment: falta objeto crítico $required" }
+        if ($names -notcontains $required) { throw "${Environment}: falta objeto crítico $required" }
     }
     Assert-Columns $Environment 'checkout_intents' $RequiredIntentColumns
     Assert-Columns $Environment 'orders' $RequiredOrderColumns
     Assert-Columns $Environment 'dux_order_links' $RequiredLinkColumns
     $foreignKeys = @(Query-D1 $Environment 'PRAGMA foreign_key_check;')
     if ($foreignKeys.Count -ne 0) {
-        throw "$Environment: PRAGMA foreign_key_check devolvió $($foreignKeys.Count) incidencia(s)."
+        throw "${Environment}: PRAGMA foreign_key_check devolvió $($foreignKeys.Count) incidencia(s)."
     }
     Write-Host "$Environment verificado: 0020-0023 aplicadas, objetos críticos presentes y foreign keys válidas."
 }
@@ -292,7 +292,7 @@ foreach ($environment in $targets) {
     else {
         $preflight[$environment] -join ', '
     }
-    Write-Host "Preflight $environment: pendientes $pendingLabel"
+    Write-Host "Preflight ${environment}: pendientes $pendingLabel"
 }
 
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmssZ')
