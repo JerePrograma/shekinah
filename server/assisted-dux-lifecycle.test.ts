@@ -10,11 +10,16 @@ import {
 import type { Env } from './platform';
 import { SqliteD1 } from './test/sqlite-d1';
 
-const migrations = readdirSync(resolve(process.cwd(), 'migrations'))
-  .filter((name) => /^\d{4}_.*\.sql$/u.test(name) && name <= '0023_assisted_dux_lifecycle_financial_guard.sql')
-  .sort()
-  .map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8'))
-  .join('\n');
+function migrationsThrough(lastName: string): string {
+  return readdirSync(resolve(process.cwd(), 'migrations'))
+    .filter((name) => /^\d{4}_.*\.sql$/u.test(name) && name <= lastName)
+    .sort()
+    .map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8'))
+    .join('\n');
+}
+
+const migrations = migrationsThrough('0023_assisted_dux_lifecycle_financial_guard.sql');
+const migrationsBeforeFinancialGuard = migrationsThrough('0022_assisted_dux_order_number_unique.sql');
 const env: Env = {
   DUX_COMPANY_ID: '12862', DUX_BRANCH_ID: '1', DUX_DEPOSIT_ID: '25566', DUX_SNAPSHOT_MAX_AGE_SECONDS: '900',
 };
@@ -89,6 +94,21 @@ function addPayment(database: SqliteD1, orderId: string, status: 'pending' | 'ap
 }
 
 describe('lifecycle Dux asistido', () => {
+  it('falla cerrado si 0023 todavía no está aplicada', async () => {
+    const database = new SqliteD1(migrationsBeforeFinancialGuard);
+    try {
+      await expect(inspectAssistedDuxLifecycle(
+        database,
+        `ord_${'m'.repeat(24)}`,
+        'release',
+      )).rejects.toMatchObject({
+        status: 503,
+        code: 'ASSISTED_DUX_LIFECYCLE_MIGRATION_REQUIRED',
+      });
+      expect((await database.prepare('SELECT COUNT(*) AS count FROM dux_order_operations').first())?.count).toBe(0);
+    } finally { database.close(); }
+  });
+
   it('libera sin consultar pagos cuando nunca existió un intento Mercado Pago y el replay es idempotente', async () => {
     const database = new SqliteD1(migrations);
     const now = new Date();
