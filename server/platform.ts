@@ -66,6 +66,7 @@ export type Env = Readonly<{
   CATALOG_IMAGES?: R2Bucket;
   COMMERCE_ENABLED?: string;
   WEB_ORDERS_ENABLED?: string;
+  ASSISTED_CHECKOUT_ENABLED?: string;
   ANALYTICS_ENABLED?: string;
   PUBLIC_SITE_URL?: string;
   ALLOWED_SITE_ORIGINS?: string;
