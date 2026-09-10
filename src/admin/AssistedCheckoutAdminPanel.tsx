@@ -16,6 +16,7 @@ type Prepared = Readonly<{
   paymentRequiresReview: boolean;
 }>;
 type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>;
+type LifecycleAction = 'release' | 'finalize';
 
 export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyChange }: Readonly<{
   requestId: string; onUnauthorized: () => void; onBusyChange: (busy: boolean, label?: string) => void;
@@ -26,6 +27,7 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
   const [shippingAmount, setShippingAmount] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [lifecycleConfirmation, setLifecycleConfirmation] = useState<LifecycleAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const busyRef = useRef(false);
@@ -41,6 +43,7 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       if (!response.ok) throw new Error('No se pudo consultar la preparación del cobro.');
       const next = parseState(await response.json(), requestId);
       setState(next);
+      setLifecycleConfirmation(null);
       if (next.state === 'preview') {
         if (next.preview.deliveryMethod === 'coordinated_pickup') setShippingAmount('0');
       }
@@ -70,16 +73,59 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       });
       if (response.status === 401) { onUnauthorized(); return; }
       if (!response.ok) throw new Error(await errorMessage(response, 'No se pudo confirmar la preparación del cobro.'));
-      const persisted = await fetch(`/api/admin/web-order-requests/${requestId}/prepare`, {
-        credentials: 'same-origin', redirect: 'error',
-      });
-      if (persisted.status === 401) { onUnauthorized(); return; }
-      if (!persisted.ok) throw new Error('El cobro fue preparado, pero no se pudo volver a verificar su estado.');
-      setState(parseState(await persisted.json(), requestId));
+      const next = await reloadPreparedState();
+      setState(next);
       setConfirming(false);
     } catch (failure: unknown) { setConfirming(false); setError(message(failure)); }
     finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
   }
+
+  async function confirmLifecycle(): Promise<void> {
+    if (busyRef.current || state?.state !== 'prepared' || lifecycleConfirmation === null) return;
+    const action = lifecycleConfirmation;
+    if (lifecycleActionFor(state.prepared) !== action) {
+      setLifecycleConfirmation(null);
+      setError('El estado del pedido cambió. Actualizá antes de confirmar una operación Dux.');
+      return;
+    }
+    busyRef.current = true; setBusy(true); setError('');
+    onBusyChange(true, action === 'release' ? 'Confirmando liberación Dux' : 'Confirmando finalización Dux');
+    try {
+      const response = await fetch(`/api/admin/orders/${encodeURIComponent(state.prepared.orderId)}/dux-lifecycle`, {
+        method: 'POST', credentials: 'same-origin', redirect: 'error',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, confirmedInDux: true }),
+      });
+      if (response.status === 401) { onUnauthorized(); return; }
+      if (!response.ok) {
+        throw new Error(await errorMessage(response, action === 'release'
+          ? 'No se pudo confirmar la liberación Dux.'
+          : 'No se pudo confirmar la finalización Dux.'));
+      }
+      const next = await reloadPreparedState();
+      const expected = action === 'release' ? 'released' : 'finalized';
+      if (next.state !== 'prepared' || next.prepared.orderId !== state.prepared.orderId || next.prepared.reservationStatus !== expected) {
+        throw new Error('La operación fue recibida, pero su estado persistido no pudo volver a verificarse.');
+      }
+      setState(next);
+      setLifecycleConfirmation(null);
+    } catch (failure: unknown) { setLifecycleConfirmation(null); setError(message(failure)); }
+    finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
+  }
+
+  async function reloadPreparedState(): Promise<State> {
+    const persisted = await fetch(`/api/admin/web-order-requests/${requestId}/prepare`, {
+      credentials: 'same-origin', redirect: 'error',
+    });
+    if (persisted.status === 401) {
+      onUnauthorized();
+      throw new Error('La sesión administrativa venció.');
+    }
+    if (!persisted.ok) throw new Error('No se pudo volver a verificar el estado persistido del pedido.');
+    return parseState(await persisted.json(), requestId);
+  }
+
+  const lifecycleAction = state?.state === 'prepared' ? lifecycleActionFor(state.prepared) : null;
 
   return <section className="web-request-panel" aria-labelledby={`assisted-checkout-${requestId}`} aria-busy={busy}>
     <h4 id={`assisted-checkout-${requestId}`}>Reserva Dux y cobro</h4>
@@ -128,11 +174,32 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       <p>Total fijado: {formatMinor(state.prepared.totalMinor)}. Reserva: {reservationLabel(state.prepared.reservationStatus)}. Pago: {paymentLabel(state.prepared.paymentStatus)}.</p>
       {state.prepared.paymentRequiresReview || state.prepared.reservationStatus === 'requires_review'
         ? <p className="form-error">Existe una incidencia que requiere revisión antes de continuar.</p> : null}
-      <button className="button button-secondary" type="button" disabled={busy} onClick={() => { setState(null); void load(); }}>Actualizar estado</button>
+      {lifecycleAction !== null && lifecycleConfirmation === null ? <button className="button button-secondary" type="button" disabled={busy}
+        onClick={() => { setError(''); setLifecycleConfirmation(lifecycleAction); }}>
+        {lifecycleAction === 'release' ? 'Confirmar liberación en Dux' : 'Confirmar finalización en Dux'}
+      </button> : null}
+      {lifecycleConfirmation === null ? null : <div role="alertdialog" aria-label={lifecycleConfirmation === 'release' ? 'Confirmar liberación Dux' : 'Confirmar finalización Dux'}>
+        <p>{lifecycleConfirmation === 'release'
+          ? `Confirmá únicamente si el pedido ${state.prepared.duxOrderNumber} ya fue liberado en Dux y verificaste que la reserva dejó de retener stock.`
+          : `Confirmá únicamente si el pedido ${state.prepared.duxOrderNumber} ya fue finalizado en Dux y verificaste el pago acreditado.`}</p>
+        <p>Shekinah no ejecutará esta operación en Dux: sólo guardará la evidencia administrativa y volverá a validar el estado financiero.</p>
+        <button className="button button-secondary" type="button" disabled={busy} onClick={() => setLifecycleConfirmation(null)}>Cancelar</button>
+        <button className="button button-primary" type="button" disabled={busy} onClick={() => void confirmLifecycle()}>
+          {lifecycleConfirmation === 'release' ? 'Sí, ya está liberado en Dux' : 'Sí, ya está finalizado en Dux'}
+        </button>
+      </div>}
+      <button className="button button-secondary" type="button" disabled={busy} onClick={() => { setState(null); setLifecycleConfirmation(null); void load(); }}>Actualizar estado</button>
     </> : null}
   </section>;
 }
 
+function lifecycleActionFor(prepared: Prepared): LifecycleAction | null {
+  if (prepared.reservationStatus !== 'confirmed') return null;
+  if (prepared.paymentStatus === 'approved') return prepared.paymentRequiresReview ? null : 'finalize';
+  if (prepared.paymentStatus === 'pending') return null;
+  if (prepared.paymentRequiresReview && prepared.paymentStatus !== 'refunded') return null;
+  return 'release';
+}
 function parseState(value: unknown, requestId: string): State {
   if (!isRecord(value) || (value.state !== 'preview' && value.state !== 'prepared')) throw invalid();
   if (value.state === 'preview') return Object.freeze({ state: 'preview', preview: parsePreview(value.preview, requestId) });

@@ -89,6 +89,79 @@ it('recupera una preparación existente sin ofrecer campos para recrearla', asyn
   expect(screen.queryByRole('textbox', { name: 'Número de pedido Dux' })).not.toBeInTheDocument();
 });
 
+it('permite registrar una liberación ya hecha en Dux y exige releer el estado persistido', async () => {
+  const released = { ...prepared, prepared: { ...prepared.prepared, reservationStatus: 'released' } };
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(prepared))
+    .mockResolvedValueOnce(Response.json({ action: 'release', changed: true, reservationStatus: 'released' }))
+    .mockResolvedValueOnce(Response.json(released));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirmar liberación en Dux' }));
+  expect(screen.getByRole('alertdialog', { name: 'Confirmar liberación Dux' }))
+    .toHaveTextContent('Shekinah no ejecutará esta operación en Dux');
+  fireEvent.click(screen.getByRole('button', { name: 'Sí, ya está liberado en Dux' }));
+  expect(await screen.findByText(/Reserva: liberada/u)).toBeVisible();
+  const lifecyclePost = fetchMock.mock.calls.find((call) =>
+    typeof call[0] === 'string' && call[0].includes('/dux-lifecycle'));
+  expect(parseRequestBody(lifecyclePost)).toEqual({ action: 'release', confirmedInDux: true });
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+it('con pago aprobado ofrece finalizar y nunca liberar', async () => {
+  const approved = { ...prepared, prepared: { ...prepared.prepared, paymentStatus: 'approved' } };
+  const finalized = { ...approved, prepared: { ...approved.prepared, reservationStatus: 'finalized' } };
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(approved))
+    .mockResolvedValueOnce(Response.json({ action: 'finalize', changed: true, reservationStatus: 'finalized' }))
+    .mockResolvedValueOnce(Response.json(finalized));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByRole('button', { name: 'Confirmar finalización en Dux' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Confirmar liberación en Dux' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar finalización en Dux' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Sí, ya está finalizado en Dux' }));
+  expect(await screen.findByText(/Reserva: finalizada/u)).toBeVisible();
+  const lifecyclePost = fetchMock.mock.calls.find((call) =>
+    typeof call[0] === 'string' && call[0].includes('/dux-lifecycle'));
+  expect(parseRequestBody(lifecyclePost)).toEqual({ action: 'finalize', confirmedInDux: true });
+});
+
+it('no ofrece un cierre Dux mientras el pago está pendiente o hay una incidencia financiera', async () => {
+  const pending = { ...prepared, prepared: { ...prepared.prepared, paymentStatus: 'pending' } };
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json(pending)));
+  const first = render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByText(/Pago: pendiente/u)).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Confirmar (?:liberación|finalización) en Dux/u })).not.toBeInTheDocument();
+  first.unmount();
+
+  const review = { ...prepared, prepared: { ...prepared.prepared, paymentStatus: 'approved', paymentRequiresReview: true } };
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json(review)));
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByText('Existe una incidencia que requiere revisión antes de continuar.')).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Confirmar (?:liberación|finalización) en Dux/u })).not.toBeInTheDocument();
+});
+
+it('un conflicto server-side no se convierte en liberación exitosa local', async () => {
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(prepared))
+    .mockResolvedValueOnce(Response.json({
+      error: { code: 'ASSISTED_RELEASE_PAYMENT_BLOCKED', message: 'El estado financiero cambió y ya no permite liberar la reserva.' },
+    }, { status: 409 }));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirmar liberación en Dux' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Sí, ya está liberado en Dux' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('El estado financiero cambió');
+  expect(screen.getByText(/Reserva: confirmada/u)).toBeVisible();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
 it('una sesión vencida no expone estado administrativo', async () => {
   const unauthorized = vi.fn();
   vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 401 })));
