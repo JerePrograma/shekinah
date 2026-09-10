@@ -5,8 +5,9 @@ import { onRequest as readStatus } from './[publicToken]/request-status';
 import type { Env, PagesFunctionContext } from '../../../server/platform';
 import { SqliteD1 } from '../../../server/test/sqlite-d1';
 
-const doubles = vi.hoisted(() => ({ snapshot: vi.fn() }));
+const doubles = vi.hoisted(() => ({ snapshot: vi.fn(), capability: vi.fn() }));
 vi.mock('../../../server/dux-catalog', () => ({ readDuxCatalogSnapshot: doubles.snapshot }));
+vi.mock('../../../server/web-order-capability', () => ({ webOrderRegistrationEnabled: doubles.capability }));
 const migration = ['0001_commerce.sql', '0002_fulfillment_and_retention.sql', '0003_checkout_intent_cart_fingerprint.sql',
   '0012_dux_authoritative_inventory.sql', '0020_web_order_requests.sql']
   .map((name) => readFileSync(resolve(process.cwd(), 'migrations', name), 'utf8')).join('\n');
@@ -21,6 +22,7 @@ function context(db: SqliteD1, value: unknown, changes: Partial<Env> = {}, origi
     params: {}, data: {}, waitUntil: () => undefined, next: () => Promise.resolve(new Response(null, { status: 404 })) };
 }
 beforeEach(() => {
+  doubles.capability.mockReset().mockResolvedValue(true);
   doubles.snapshot.mockReset().mockResolvedValue({ catalogVersion: version, syncedAt: now, items: [
     { slug: 'dux-test-a', code: 'TEST-A', name: 'Prueba', priceAmount: 10, priceStatus: 'usable' },
   ] });
@@ -36,6 +38,7 @@ it('registra una solicitud con respuesta 201 y recupera una única referencia si
     expect(second.status).toBe(200); expect(await second.json()).toEqual(receipt);
     expect(receipt).toMatchObject({ status: 'submitted', paymentStatus: 'not_requested', reservationStatus: 'not_reserved', totalMinor: null });
     expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(doubles.capability).toHaveBeenCalledTimes(2);
     expect(doubles.snapshot).toHaveBeenCalledTimes(1);
   } finally { db.close(); }
 });
@@ -45,31 +48,34 @@ it('cerrar altas no rompe la recuperación ni la consulta de una solicitud exist
   try {
     const value = body(); const first = await onRequest(context(db, value));
     const receipt = await first.json() as Record<string, unknown>;
+    doubles.capability.mockResolvedValue(false);
     const recovered = await onRequest(context(db, { mode: 'recover', idempotencyKey: value.idempotencyKey, ownerSecret: value.ownerSecret }, { WEB_ORDERS_ENABLED: 'false' }));
     expect(recovered.status).toBe(200); expect(await recovered.json()).toEqual(receipt);
     const query = context(db, {}, { WEB_ORDERS_ENABLED: 'false' });
     const result = await readStatus({ ...query, request: new Request('https://example.test/api/orders/token/request-status'), params: { publicToken: String(receipt.publicToken) } });
     expect(result.status).toBe(200);
     expect(await result.json()).not.toHaveProperty('publicToken');
+    expect(doubles.capability).toHaveBeenCalledTimes(1);
     expect(doubles.snapshot).toHaveBeenCalledTimes(1);
   } finally { db.close(); }
 });
 
-it.each(['false', undefined])('no escribe ni lee proveedores con altas deshabilitadas (%s)', async (flag) => {
+it('no escribe ni lee el snapshot si la capacidad runtime está cerrada', async () => {
   const db = new SqliteD1(migration);
   try {
-    const base = context(db, body());
-    const { WEB_ORDERS_ENABLED: _flag, ...withoutFlag } = base.env;
-    void _flag;
-    const response = await onRequest({ ...base, env: flag === undefined ? withoutFlag : { ...withoutFlag, WEB_ORDERS_ENABLED: flag } });
+    doubles.capability.mockResolvedValue(false);
+    const response = await onRequest(context(db, body()));
     expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: { code: 'WEB_ORDERS_UNAVAILABLE', message: 'El registro de solicitudes no está disponible temporalmente.' },
+    });
     expect(doubles.snapshot).not.toHaveBeenCalled();
     expect(db.database.prepare('SELECT COUNT(*) AS count FROM checkout_intents').get()?.count).toBe(0);
     expect(db.database.prepare('SELECT COUNT(*) AS count FROM commerce_request_rate_limits').get()?.count).toBe(0);
   } finally { db.close(); }
 });
 
-it('conserva origen, límites de cuerpo y contrato estricto antes de crear', async () => {
+it('conserva origen, límites de cuerpo y contrato estricto antes de consultar capacidad', async () => {
   const db = new SqliteD1(migration);
   try {
     expect((await onRequest(context(db, body(), {}, 'https://foreign.test'))).status).toBe(403);
@@ -77,6 +83,7 @@ it('conserva origen, límites de cuerpo y contrato estricto antes de crear', asy
     expect((await onRequest(context(db, { ...body(), padding: 'x'.repeat(33000) }))).status).toBe(413);
     const base = context(db, body());
     expect((await onRequest({ ...base, request: new Request(base.request.url) })).status).toBe(405);
+    expect(doubles.capability).not.toHaveBeenCalled();
     expect(doubles.snapshot).not.toHaveBeenCalled();
     expect(db.database.prepare('SELECT COUNT(*) AS count FROM checkout_intents').get()?.count).toBe(0);
   } finally { db.close(); }
@@ -90,6 +97,7 @@ it('un UUID conocido sin la capacidad del dueño no recupera datos y otro payloa
     expect(wrong.status).toBe(404);
     const changed = await onRequest(context(db, { ...value, items: [{ ...value.items[0], quantity: 2 }] }));
     expect(changed.status).toBe(409);
+    expect(doubles.capability).toHaveBeenCalledTimes(2);
     expect(doubles.snapshot).toHaveBeenCalledTimes(1);
   } finally { db.close(); }
 });
