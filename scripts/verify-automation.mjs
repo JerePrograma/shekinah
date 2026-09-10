@@ -96,14 +96,34 @@ if (actionReferences.length !== allowedActions.size) fail('La cantidad de accion
 for (const action of actionReferences) {
   if (action === undefined || !allowedActions.has(action)) fail(`Acción no autorizada o no fijada a SHA: ${action}`);
 }
-// The only permitted PowerShell step runs repository-owned tests with mocked I/O.
-// Keep the general shell/network prohibition for every other CI command.
+// PowerShell remains limited to two exact, repository-owned, non-network actions:
+// parsing the migration script and running Dux tests with mocked I/O.
+const commerceD1ParserStep = '\n' + [
+  '      - name: Verify commerce D1 migration script syntax',
+  '        shell: pwsh',
+  '        run: |',
+  '          $tokens = $null',
+  '          $errors = $null',
+  "          $path = (Resolve-Path './scripts/apply-commerce-d1.ps1').Path",
+  '          [System.Management.Automation.Language.Parser]::ParseFile(',
+  '            $path,',
+  '            [ref]$tokens,',
+  '            [ref]$errors',
+  '          ) | Out-Null',
+  '          if ($errors.Count -ne 0) {',
+  '            $errors | ForEach-Object { Write-Error $_.Message }',
+  '            exit 1',
+  '          }',
+].join('\n') + '\n';
 const localDuxMockStep = '\n' + [
   '      - name: Verify Dux activation procedure with local mocks',
   '        shell: pwsh',
   '        run: ./tests/finalize-dux-catalog.tests.ps1',
 ].join('\n') + '\n';
 const normalizedWorkflow = workflow.replaceAll('\r\n', '\n');
+if (normalizedWorkflow.split(commerceD1ParserStep).length !== 2) {
+  fail('CI debe validar exactamente una vez la sintaxis del migrador D1 autorizado.');
+}
 if (normalizedWorkflow.split(localDuxMockStep).length !== 2) {
   fail('CI debe ejecutar exactamente una vez las pruebas Dux locales autorizadas.');
 }
@@ -114,9 +134,11 @@ const afterDuxMockStep = normalizedWorkflow
 if (afterDuxMockStep !== undefined && !/^ {0,6}\S/u.test(afterDuxMockStep)) {
   fail('El paso de pruebas Dux no admite comandos continuados ni propiedades adicionales.');
 }
-const remainingCiSteps = normalizedWorkflow.replace(localDuxMockStep, '');
+const remainingCiSteps = normalizedWorkflow
+  .replace(commerceD1ParserStep, '')
+  .replace(localDuxMockStep, '');
 if (/\b(?:powershell|pwsh|Invoke-WebRequest)\b/iu.test(remainingCiSteps)) {
-  fail('PowerShell en CI sólo está autorizado para las pruebas Dux locales exactas.');
+  fail('PowerShell en CI sólo está autorizado para el parser D1 y las pruebas Dux locales exactas.');
 }
 for (const forbidden of [
   /\bwrite\b/iu, /pull_request_target/iu, /\bsecrets\./iu, /cloudflare\//iu,
@@ -211,7 +233,7 @@ const gitignore = read(join(root, '.gitignore'));
 if (!gitignore.split(/\r?\n/u).includes('server/generated/catalog.json')) {
   fail('El catálogo generado de Functions debe permanecer fuera de Git.');
 }
-const routes = JSON.parse(read(join(root, 'public', '_routes.json')));
+const routes = JSON.parse(read(join(root, 'public', '_routes.json'));
 if (JSON.stringify(routes) !== JSON.stringify({ version: 1, include: ['/api/*', '/admin', '/admin/*'], exclude: ['/assets/*', '/images/*'] })) {
   fail('public/_routes.json no coincide con las rutas serverless autorizadas.');
 }
