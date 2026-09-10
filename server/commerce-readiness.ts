@@ -21,13 +21,16 @@ const WEB_REQUEST_COLUMNS = Object.freeze([
   'web_request_resolved_at',
   'web_request_resolved_by',
 ]);
-const WEB_REQUEST_OBJECTS = Object.freeze([
+const WEB_REQUEST_CORE_OBJECTS = Object.freeze([
   'commerce_request_rate_limits',
   'web_request_initial_guard',
   'web_request_snapshot_immutable',
   'web_request_resolution_guard',
   'web_request_preserve_history',
+]);
+const WEB_REQUEST_CONVERSION_OBJECTS = Object.freeze([
   'orders_require_web_request_conversion',
+  'web_request_checkout_order_insert_guard',
 ]);
 const DUX_OBJECTS = Object.freeze([
   'dux_catalog_control',
@@ -171,7 +174,11 @@ async function inspectSchema(database: D1Database): Promise<SchemaInspection> {
     .prepare('PRAGMA table_info(checkout_intents)')
     .all<Readonly<{ name: string }>>();
   const columnNames = new Set((columns.results ?? []).map((row) => row.name));
-  const trackedObjects = [...WEB_REQUEST_OBJECTS, ...DUX_OBJECTS];
+  const trackedObjects = [
+    ...WEB_REQUEST_CORE_OBJECTS,
+    ...WEB_REQUEST_CONVERSION_OBJECTS,
+    ...DUX_OBJECTS,
+  ];
   const placeholders = trackedObjects.map(() => '?').join(', ');
   const objects = await database
     .prepare(`SELECT name FROM sqlite_schema WHERE name IN (${placeholders})`)
@@ -181,7 +188,8 @@ async function inspectSchema(database: D1Database): Promise<SchemaInspection> {
   return Object.freeze({
     webRequests:
       WEB_REQUEST_COLUMNS.every((name) => columnNames.has(name)) &&
-      WEB_REQUEST_OBJECTS.every((name) => objectNames.has(name)),
+      WEB_REQUEST_CORE_OBJECTS.every((name) => objectNames.has(name)) &&
+      WEB_REQUEST_CONVERSION_OBJECTS.some((name) => objectNames.has(name)),
     dux: DUX_OBJECTS.every((name) => objectNames.has(name)),
   });
 }

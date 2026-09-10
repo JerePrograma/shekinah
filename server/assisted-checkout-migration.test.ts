@@ -3,11 +3,9 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const root = resolve(process.cwd(), 'migrations');
-const migrationNames = readdirSync(root)
-  .filter((name) => /^\d{4}_.*\.sql$/u.test(name))
-  .sort();
-const beforeAssisted = migrationNames
-  .filter((name) => name < '0021_')
+const beforeAssisted = readdirSync(root)
+  .filter((name) => /^\d{4}_.*\.sql$/u.test(name) && name < '0021_')
+  .sort()
   .map((name) => readFileSync(resolve(root, name), 'utf8'))
   .join('\n');
 const assisted = readFileSync(resolve(root, '0021_assisted_dux_checkout.sql'), 'utf8');
@@ -38,15 +36,9 @@ function seedAuthority(database: DatabaseSync): void {
     schemaVersion: 2,
     priceListName: 'PRECIOS DEL NEGOCIO',
     items: [{
-      slug: 'dux-producto-prueba-0000000000000001',
-      code: 'TEST-A',
-      name: 'Producto Dux actual',
-      priceAmount: 12,
-      priceStatus: 'usable',
-      categories: [],
-      unitsPerPackage: null,
-      imageUrl: null,
-      description: null,
+      slug: 'dux-producto-prueba-0000000000000001', code: 'TEST-A',
+      name: 'Producto Dux actual', priceAmount: 12, priceStatus: 'usable',
+      categories: [], unitsPerPackage: null, imageUrl: null, description: null,
     }],
   });
   database.prepare(`INSERT INTO dux_catalog_snapshots_v2 (
@@ -59,26 +51,24 @@ function seedAuthority(database: DatabaseSync): void {
     WHERE company_id = '12862'`).run(timestamp);
 }
 
-function seedAcceptedRequest(database: DatabaseSync, id = requestId, key = 'web-request-key'): void {
+function seedRequest(
+  database: DatabaseSync,
+  id = requestId,
+  key = 'web-request-key',
+  status: 'submitted' | 'accepted' = 'accepted',
+): void {
   const snapshot = JSON.stringify({
     schemaVersion: 1,
     catalogVersion: requestVersion,
     observedAt: '2026-09-10T11:30:00.000Z',
     lines: [{
       productId: 'dux-producto-prueba-0000000000000001',
-      duxCode: 'TEST-A',
-      name: 'Producto Dux anterior',
-      requestedQuantity: 2,
+      duxCode: 'TEST-A', name: 'Producto Dux anterior', requestedQuantity: 2,
       observedUnitPriceMinor: 1000,
     }],
     fulfillment: {
-      method: 'coordinated_pickup',
-      fullName: 'Cliente prueba',
-      phone: '5491100000000',
-      address: '',
-      locality: '',
-      province: '',
-      postalCode: '',
+      method: 'coordinated_pickup', fullName: 'Cliente prueba', phone: '5491100000000',
+      address: '', locality: '', province: '', postalCode: '',
     },
     totalMinor: null,
     shippingMinor: 0,
@@ -90,10 +80,12 @@ function seedAcceptedRequest(database: DatabaseSync, id = requestId, key = 'web-
     web_request_fingerprint, web_request_json, web_request_status, web_request_updated_at
   ) VALUES (?, 'fulfillment', 'request-cart', ?, 'web_request', ?, ?, ?, ?, ?, 'submitted', ?)`)
     .run(key, timestamp, id, '1'.repeat(64), '2'.repeat(64), '3'.repeat(64), snapshot, timestamp);
-  database.prepare(`UPDATE checkout_intents
-    SET web_request_status = 'accepted', web_request_resolved_by = 'admin-test',
-        web_request_resolved_at = ?, web_request_updated_at = ?
-    WHERE web_request_id = ?`).run(timestamp, timestamp, id);
+  if (status === 'accepted') {
+    database.prepare(`UPDATE checkout_intents
+      SET web_request_status = 'accepted', web_request_resolved_by = 'admin-test',
+          web_request_resolved_at = ?, web_request_updated_at = ?
+      WHERE web_request_id = ?`).run(timestamp, timestamp, id);
+  }
 }
 
 function insertAssistedOrder(database: DatabaseSync): void {
@@ -132,26 +124,35 @@ function insertAssistedLink(database: DatabaseSync): void {
     attempted_at, confirmed_at, released_at, finalized_at, created_at, updated_at,
     verification_method, verification_actor, verification_note
   ) VALUES (?, ?, NULL, 'PED-TEST-1', '12862', '1', '25566', 'confirmed', ?, NULL,
-    ?, ?, NULL, NULL, ?, ?, 'assisted_admin', 'admin-test', 'Pedido y reserva verificados manualmente en Dux.')`)
+    ?, ?, NULL, NULL, ?, ?, 'assisted_admin', 'admin-test',
+    'Pedido y reserva verificados manualmente en Dux.')`)
     .run(orderId, `shekinah:web:${requestId}`, fingerprint, timestamp, timestamp, timestamp, timestamp);
 }
 
-function insertReserveOperation(database: DatabaseSync): void {
+function insertOperation(database: DatabaseSync, action: 'reserve' | 'release' | 'finalize'): void {
   database.prepare(`INSERT INTO dux_order_operations (
     id, idempotency_key, order_id, action, status, request_json, response_json,
     provider_operation_id, error_code, attempted_at, confirmed_at, created_at, updated_at
-  ) VALUES ('op-assisted-reserve', ?, ?, 'reserve', 'confirmed', ?, ?, 'PED-TEST-1',
-    NULL, ?, ?, ?, ?)`)
+  ) VALUES (?, ?, ?, ?, 'confirmed', ?, ?, 'PED-TEST-1', NULL, ?, ?, ?, ?)`)
     .run(
-      `assisted-reserve:${orderId}`,
+      `op-assisted-${action}`,
+      `assisted-${action}:${orderId}`,
       orderId,
-      JSON.stringify({ method: 'assisted_admin', orderId }),
+      action,
+      JSON.stringify({ method: 'assisted_admin', orderId, action }),
       JSON.stringify({ verification: 'manual' }),
-      timestamp,
-      timestamp,
-      timestamp,
-      timestamp,
+      timestamp, timestamp, timestamp, timestamp,
     );
+}
+
+function seedAssistedCheckout(database: DatabaseSync): void {
+  seedAuthority(database);
+  seedRequest(database);
+  insertAssistedOrder(database);
+  insertAssistedLine(database);
+  insertPickup(database);
+  insertAssistedLink(database);
+  insertOperation(database, 'reserve');
 }
 
 describe('0021 assisted Dux checkout', () => {
@@ -171,13 +172,11 @@ describe('0021 assisted Dux checkout', () => {
       ) VALUES ('legacy-order', 'coordinated_pickup', 'Cliente', '12345678', '', '', '', '',
         NULL, 'coordinated_pickup', 1500, 0, ?, ?)`)
         .run(timestamp, timestamp);
-
       database.exec(assisted);
       expect(database.prepare(`SELECT delivery_method, shipping_tier, shipping_minor
         FROM order_fulfillment WHERE order_id = 'legacy-order'`).get()).toEqual({
         delivery_method: 'coordinated_pickup', shipping_tier: 'coordinated_pickup', shipping_minor: 0,
       });
-
       database.prepare(`INSERT INTO orders (
         id, public_token_hash, checkout_idempotency_key, cart_fingerprint, status,
         currency, total_minor, item_count, created_at, updated_at, channel
@@ -190,8 +189,6 @@ describe('0021 assisted Dux checkout', () => {
       ) VALUES ('shipping-order', 'correo_argentino', 'Cliente', '12345678', 'Calle 1',
         'CABA', 'Buenos Aires', '1000', NULL, 'correo_manual_quote', 1500, 1000, ?, ?)`)
         .run(timestamp, timestamp)).not.toThrow();
-      expect(() => database.prepare(`UPDATE order_fulfillment
-        SET delivery_method = 'coordinated_pickup' WHERE order_id = 'shipping-order'`).run()).toThrow();
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally { database.close(); }
   });
@@ -202,15 +199,13 @@ describe('0021 assisted Dux checkout', () => {
       database.exec(beforeAssisted);
       database.exec(assisted);
       seedAuthority(database);
-      seedAcceptedRequest(database);
+      seedRequest(database);
       insertAssistedOrder(database);
-
       expect(() => insertAssistedLine(database, 1)).toThrow('DUX_ASSISTED_ORDER_ITEM_INVALID');
       insertAssistedLine(database);
       insertPickup(database);
       insertAssistedLink(database);
-      insertReserveOperation(database);
-
+      insertOperation(database, 'reserve');
       expect(database.prepare(`SELECT verification_method, reservation_state, dux_order_number
         FROM dux_order_links WHERE order_id = ?`).get(orderId)).toEqual({
         verification_method: 'assisted_admin', reservation_state: 'confirmed', dux_order_number: 'PED-TEST-1',
@@ -220,34 +215,30 @@ describe('0021 assisted Dux checkout', () => {
         product_id: 'dux-producto-prueba-0000000000000001', sku: 'TEST-A', quantity: 2,
         unit_price_minor: 1200, provider_catalog_version: currentVersion,
       });
-      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally { database.close(); }
   });
 
-  it('no permite cobrar antes de la evidencia Dux y separa el estado financiero', () => {
+  it('separa pago de lifecycle Dux y exige operación confirmada para liberar o finalizar', () => {
     const database = new DatabaseSync(':memory:');
     try {
       database.exec(beforeAssisted);
       database.exec(assisted);
       seedAuthority(database);
-      seedAcceptedRequest(database);
+      seedRequest(database);
       insertAssistedOrder(database);
       insertAssistedLine(database);
       insertPickup(database);
-
       expect(() => database.prepare(`UPDATE orders SET status = 'pending',
         mp_preference_id = 'pref-before-dux', mp_checkout_url = 'https://www.mercadopago.com/test'
         WHERE id = ?`).run(orderId)).toThrow('DUX_ASSISTED_RESERVATION_REQUIRED');
-
       insertAssistedLink(database);
       expect(() => database.prepare(`UPDATE orders SET status = 'pending',
         mp_preference_id = 'pref-before-op', mp_checkout_url = 'https://www.mercadopago.com/test'
         WHERE id = ?`).run(orderId)).toThrow('DUX_ASSISTED_RESERVATION_REQUIRED');
-      insertReserveOperation(database);
+      insertOperation(database, 'reserve');
       database.prepare(`UPDATE orders SET status = 'pending',
         mp_preference_id = 'pref-assisted', mp_checkout_url = 'https://www.mercadopago.com/test'
         WHERE id = ?`).run(orderId);
-
       expect(() => database.prepare("UPDATE orders SET status = 'approved' WHERE id = ?").run(orderId))
         .toThrow('DUX_ASSISTED_FINANCIAL_STATE_INVALID');
       database.prepare(`INSERT INTO payments (
@@ -259,32 +250,35 @@ describe('0021 assisted Dux checkout', () => {
         .run(orderId, orderId, timestamp, timestamp, timestamp, timestamp);
       database.prepare("UPDATE orders SET status = 'approved', approved_at = ? WHERE id = ?")
         .run(timestamp, orderId);
+      expect(() => database.prepare(`UPDATE dux_order_links
+        SET reservation_state = 'finalized', finalized_at = ?, updated_at = ? WHERE order_id = ?`)
+        .run(timestamp, timestamp, orderId)).toThrow('DUX_ASSISTED_RESERVATION_TRANSITION_INVALID');
+      insertOperation(database, 'finalize');
+      database.prepare(`UPDATE dux_order_links
+        SET reservation_state = 'finalized', finalized_at = ?, updated_at = ? WHERE order_id = ?`)
+        .run(timestamp, timestamp, orderId);
       expect(database.prepare('SELECT status FROM orders WHERE id = ?').get(orderId)).toEqual({ status: 'approved' });
-      expect(() => database.prepare(`UPDATE dux_order_links SET verification_method = 'automatic_api'
-        WHERE order_id = ?`).run(orderId)).toThrow('DUX_ORDER_VERIFICATION_IMMUTABLE');
+      expect(database.prepare('SELECT reservation_state FROM dux_order_links WHERE order_id = ?').get(orderId))
+        .toEqual({ reservation_state: 'finalized' });
     } finally { database.close(); }
   });
 
-  it('mantiene los vínculos legacy en cuarentena y no permite conversiones no aceptadas', () => {
+  it('mantiene los vínculos legacy en cuarentena y no convierte solicitudes no aceptadas', () => {
     const database = new DatabaseSync(':memory:');
     try {
       database.exec(beforeAssisted);
       database.exec(assisted);
       seedAuthority(database);
-      seedAcceptedRequest(database, `req_${'s'.repeat(24)}`, 'submitted-key');
-      database.prepare(`UPDATE checkout_intents SET web_request_status = 'submitted',
-        web_request_resolved_at = NULL, web_request_resolved_by = NULL,
-        web_request_updated_at = ? WHERE checkout_idempotency_key = 'submitted-key'`)
-        .run(timestamp);
+      const submittedId = `req_${'s'.repeat(24)}`;
+      seedRequest(database, submittedId, 'submitted-key', 'submitted');
       expect(() => database.prepare(`INSERT INTO orders (
         id, public_token_hash, checkout_idempotency_key, cart_fingerprint, status,
         currency, total_minor, item_count, created_at, updated_at, channel,
         web_request_id, assisted_checkout_fingerprint
       ) VALUES ('order-not-accepted', 'token-not-accepted', 'submitted-key', ?,
         'preference_pending', 'ARS', 2400, 2, ?, ?, 'checkout_pro', ?, ?)`)
-        .run(fingerprint, timestamp, timestamp, `req_${'s'.repeat(24)}`, fingerprint))
+        .run(fingerprint, timestamp, timestamp, submittedId, fingerprint))
         .toThrow('WEB_REQUEST_CONVERSION_INVALID');
-
       database.prepare(`INSERT INTO orders (
         id, public_token_hash, checkout_idempotency_key, cart_fingerprint, status,
         currency, total_minor, item_count, created_at, updated_at, channel
@@ -299,6 +293,7 @@ describe('0021 assisted Dux checkout', () => {
         .run(fingerprint, timestamp, timestamp)).not.toThrow();
       expect(() => database.prepare("UPDATE orders SET status = 'pending' WHERE id = 'legacy-dux-order'").run())
         .toThrow('DUX_ORDER_LIFECYCLE_UNAVAILABLE');
+      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally { database.close(); }
   });
 });

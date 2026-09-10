@@ -345,41 +345,8 @@ BEGIN
   SELECT RAISE(ABORT, 'DUX_ASSISTED_EVIDENCE_IMMUTABLE');
 END;
 
-CREATE TRIGGER dux_assisted_reservation_transition_guard
-BEFORE UPDATE OF reservation_state ON dux_order_links
-WHEN OLD.verification_method = 'assisted_admin'
-  AND NEW.reservation_state IS NOT OLD.reservation_state
-BEGIN
-  SELECT CASE WHEN NOT (
-    OLD.reservation_state = 'confirmed'
-    AND (
-      (NEW.reservation_state = 'released'
-        AND NEW.released_at IS NOT NULL
-        AND julianday(NEW.released_at) IS NOT NULL
-        AND NEW.finalized_at IS NULL)
-      OR
-      (NEW.reservation_state = 'finalized'
-        AND NEW.finalized_at IS NOT NULL
-        AND julianday(NEW.finalized_at) IS NOT NULL
-        AND NEW.released_at IS NULL)
-    )
-  ) THEN RAISE(ABORT, 'DUX_ASSISTED_RESERVATION_TRANSITION_INVALID') END;
-END;
-
-CREATE TRIGGER dux_assisted_lifecycle_evidence_guard
-BEFORE UPDATE OF released_at, finalized_at ON dux_order_links
-WHEN OLD.verification_method = 'assisted_admin'
-  AND NEW.reservation_state IS OLD.reservation_state
-  AND (
-    NEW.released_at IS NOT OLD.released_at
-    OR NEW.finalized_at IS NOT OLD.finalized_at
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'DUX_ASSISTED_RESERVATION_TRANSITION_INVALID');
-END;
-
--- El ledger Dux conserva una única operación asistida por acción. El prefijo
--- distingue este circuito de cualquier futura automatización/reconciliación.
+-- El ledger Dux conserva una única operación asistida por acción. Cada paso
+-- requiere una identidad estable y evidencia explícita de verificación manual.
 CREATE UNIQUE INDEX idx_dux_assisted_operation_once
   ON dux_order_operations(order_id, action)
   WHERE action IN ('reserve', 'release', 'finalize')
@@ -404,7 +371,78 @@ BEGIN
     OR NEW.confirmed_at IS NULL OR julianday(NEW.confirmed_at) IS NULL
     OR COALESCE(json_extract(NEW.request_json, '$.method'), '') <> 'assisted_admin'
     OR COALESCE(json_extract(NEW.request_json, '$.orderId'), '') <> NEW.order_id
+    OR COALESCE(json_extract(NEW.request_json, '$.action'), '') <> 'reserve'
   THEN RAISE(ABORT, 'DUX_ASSISTED_OPERATION_INVALID') END;
+END;
+
+CREATE TRIGGER dux_assisted_lifecycle_operation_guard
+BEFORE INSERT ON dux_order_operations
+WHEN NEW.action IN ('release', 'finalize')
+  AND EXISTS (
+    SELECT 1 FROM dux_order_links
+    WHERE order_id = NEW.order_id AND verification_method = 'assisted_admin'
+  )
+BEGIN
+  SELECT CASE WHEN NEW.status <> 'confirmed'
+    OR NEW.idempotency_key <> 'assisted-' || NEW.action || ':' || NEW.order_id
+    OR NEW.provider_operation_id IS NULL
+    OR NEW.provider_operation_id <> (
+      SELECT dux_order_number FROM dux_order_links WHERE order_id = NEW.order_id
+    )
+    OR NEW.error_code IS NOT NULL
+    OR NEW.attempted_at IS NULL OR julianday(NEW.attempted_at) IS NULL
+    OR NEW.confirmed_at IS NULL OR julianday(NEW.confirmed_at) IS NULL
+    OR COALESCE(json_extract(NEW.request_json, '$.method'), '') <> 'assisted_admin'
+    OR COALESCE(json_extract(NEW.request_json, '$.orderId'), '') <> NEW.order_id
+    OR COALESCE(json_extract(NEW.request_json, '$.action'), '') <> NEW.action
+  THEN RAISE(ABORT, 'DUX_ASSISTED_OPERATION_INVALID') END;
+END;
+
+CREATE TRIGGER dux_assisted_reservation_transition_guard
+BEFORE UPDATE OF reservation_state ON dux_order_links
+WHEN OLD.verification_method = 'assisted_admin'
+  AND NEW.reservation_state IS NOT OLD.reservation_state
+BEGIN
+  SELECT CASE WHEN NOT (
+    OLD.reservation_state = 'confirmed'
+    AND (
+      (NEW.reservation_state = 'released'
+        AND NEW.released_at IS NOT NULL
+        AND julianday(NEW.released_at) IS NOT NULL
+        AND NEW.finalized_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM dux_order_operations AS operation
+          WHERE operation.order_id = NEW.order_id
+            AND operation.action = 'release'
+            AND operation.status = 'confirmed'
+            AND operation.idempotency_key = 'assisted-release:' || NEW.order_id
+        ))
+      OR
+      (NEW.reservation_state = 'finalized'
+        AND NEW.finalized_at IS NOT NULL
+        AND julianday(NEW.finalized_at) IS NOT NULL
+        AND NEW.released_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM dux_order_operations AS operation
+          WHERE operation.order_id = NEW.order_id
+            AND operation.action = 'finalize'
+            AND operation.status = 'confirmed'
+            AND operation.idempotency_key = 'assisted-finalize:' || NEW.order_id
+        ))
+    )
+  ) THEN RAISE(ABORT, 'DUX_ASSISTED_RESERVATION_TRANSITION_INVALID') END;
+END;
+
+CREATE TRIGGER dux_assisted_lifecycle_evidence_guard
+BEFORE UPDATE OF released_at, finalized_at ON dux_order_links
+WHEN OLD.verification_method = 'assisted_admin'
+  AND NEW.reservation_state IS OLD.reservation_state
+  AND (
+    NEW.released_at IS NOT OLD.released_at
+    OR NEW.finalized_at IS NOT OLD.finalized_at
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'DUX_ASSISTED_RESERVATION_TRANSITION_INVALID');
 END;
 
 -- La preferencia de una solicitud web sólo puede persistirse después de que la
