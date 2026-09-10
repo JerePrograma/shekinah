@@ -94,7 +94,9 @@ describe('capacidad runtime de solicitudes web', () => {
     const database = new SqliteD1(migrations());
     try {
       await seedPublicSnapshot(database);
-      await expect(webOrderRegistrationEnabled(database, { ...env, ORDER_TOKEN_SECRET: undefined }, Date.parse(now))).resolves.toBe(false);
+      const { ORDER_TOKEN_SECRET: _secret, ...withoutSecret } = env;
+      void _secret;
+      await expect(webOrderRegistrationEnabled(database, withoutSecret, Date.parse(now))).resolves.toBe(false);
     } finally {
       database.close();
     }
