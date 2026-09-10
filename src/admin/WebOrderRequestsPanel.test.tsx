@@ -28,7 +28,8 @@ it('consulta bajo demanda y exige confirmar la aceptación sin convertirla en pa
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar resolución' }));
   expect(await screen.findByRole('heading', { name: 'WEB-abcdefghijklmnopqrstuvwx · Aceptada para gestión' })).toBeVisible();
   expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
-  expect(busy).toHaveBeenCalledWith(true, 'Resolviendo solicitud web'); expect(busy).toHaveBeenCalledWith(false);
+  expect(busy).toHaveBeenCalledWith(true, 'Resolviendo solicitud web');
+  expect(busy).toHaveBeenCalledWith(false, undefined);
 });
 
 it('un error de lectura no se informa como ausencia de solicitudes', async () => {
