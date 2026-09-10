@@ -149,7 +149,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }, [whatsappOrderResult]);
 
   async function startCheckout() {
-    if (items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
+    if (webRequestsEnabled || items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
     setShowErrors(true);
     setCheckoutError('');
     if (validation.value === null) {
@@ -549,7 +549,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               <p className="cart-disclaimer">
                 El servidor vuelve a validar productos, precios, disponibilidad, envío y total antes de registrar el pedido o iniciar el pago integrado.
               </p>
-              {commerceEnabled ? (
+              {webRequestsEnabled ? (
+                <p className="cart-configuration-note">
+                  Mercado Pago se habilita dentro de la solicitud web cuando el comercio confirma en Dux la reserva y el total definitivo.
+                </p>
+              ) : commerceEnabled ? (
                 <button
                   className="button button-primary"
                   type="button"
@@ -565,7 +569,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   </button>
                   <p className="cart-configuration-note">
                     {quote.kind === 'manual'
-                      ? webRequestsEnabled ? 'El pago requiere un total definitivo. Podés registrar una solicitud web para su revisión.' : 'El pago se habilita cuando el envío tenga un total definido. Solicitá la cotización por WhatsApp.'
+                      ? 'El pago se habilita cuando el envío tenga un total definido. Solicitá la cotización por WhatsApp.'
                       : 'El pago estará disponible cuando el comercio esté habilitado.'}
                   </p>
                 </>
