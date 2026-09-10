@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import '../commerce/web-order-requests.css';
 import { parseAdminWebRequestDetail, webRequestReference, webRequestStatusLabel } from '../commerce/web-order-contracts';
 import type { AdminWebRequestDetail, WebRequestStatus } from '../commerce/web-order-contracts';
+import { AssistedCheckoutAdminPanel } from './AssistedCheckoutAdminPanel';
 
 type Row = Readonly<{ id: string; status: WebRequestStatus; name: string }>;
 
@@ -62,7 +63,7 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
 
   async function resolveRequest(): Promise<void> {
     if (busyRef.current || confirmation === null || detail === null) return;
-    busyRef.current = true; setBusy(true); onBusyChange(true, 'Resolviendo solicitud web'); setError('');
+    setPanelBusy(true, 'Resolviendo solicitud web'); setError('');
     const target = detail.id; const status = confirmation;
     try {
       const response = await fetch(`/api/admin/web-order-requests/${target}/resolve`, { method: 'POST', credentials: 'same-origin', redirect: 'error',
@@ -74,7 +75,13 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
       if (mounted.current) { setConfirmation(null); setRevision((value) => value + 1); }
     } catch (failure: unknown) {
       if (mounted.current) { setConfirmation(null); setError(failure instanceof Error ? failure.message : 'La resolución no pudo confirmarse.'); }
-    } finally { busyRef.current = false; if (mounted.current) setBusy(false); onBusyChange(false); }
+    } finally { setPanelBusy(false); }
+  }
+
+  function setPanelBusy(active: boolean, label?: string): void {
+    busyRef.current = active;
+    if (mounted.current) setBusy(active);
+    onBusyChange(active, label);
   }
 
   return <section className="container section web-request-panel" aria-labelledby="web-requests-admin-title" aria-busy={busy}>
@@ -104,6 +111,7 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
           <button className="button button-secondary" type="button" ref={cancelRef} disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => resolveTrigger.current?.focus()); }}>Cancelar resolución</button>
           <button className="button button-primary" type="button" disabled={busy} onClick={() => void resolveRequest()}>Confirmar resolución</button>
         </div>}
+        {detail.status === 'accepted' ? <AssistedCheckoutAdminPanel requestId={detail.id} onUnauthorized={onUnauthorized} onBusyChange={setPanelBusy} /> : null}
       </article>}
       <div className="payment-return-actions">
         <button className="button button-secondary" type="button" disabled={busy} onClick={() => setRevision((value) => value + 1)}>Actualizar solicitudes</button>

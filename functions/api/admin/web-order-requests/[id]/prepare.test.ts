@@ -8,13 +8,15 @@ import { onRequest } from './prepare';
 const doubles = vi.hoisted(() => ({
   parse: vi.fn(),
   prepare: vi.fn(),
-  preview: vi.fn(),
+  state: vi.fn(),
 }));
 
+vi.mock('../../../../../server/assisted-checkout-admin-state', () => ({
+  readAssistedCheckoutAdminState: doubles.state,
+}));
 vi.mock('../../../../../server/assisted-checkout', () => ({
   parseAssistedCheckoutInput: doubles.parse,
   prepareAssistedCheckout: doubles.prepare,
-  previewAssistedCheckout: doubles.preview,
 }));
 
 const migration = readFileSync(resolve(process.cwd(), 'migrations', '0001_commerce.sql'), 'utf8');
@@ -52,10 +54,13 @@ beforeEach(() => {
   doubles.parse.mockReset().mockReturnValue({
     duxOrderNumber: 'PED-1', duxOrderId: null, shippingMinor: 0, confirmedExactReservation: true,
   });
-  doubles.preview.mockReset().mockResolvedValue({
-    requestId, catalogVersion: 'a'.repeat(64), catalogObservedAt: '2026-09-10T14:00:00.000Z',
-    lines: [], itemCount: 1, productsTotalMinor: 1000,
-    deliveryMethod: 'coordinated_pickup', shippingMinor: 0, totalMinor: 1000,
+  doubles.state.mockReset().mockResolvedValue({
+    state: 'preview',
+    preview: {
+      requestId, catalogVersion: 'a'.repeat(64), catalogObservedAt: '2026-09-10T14:00:00.000Z',
+      lines: [], itemCount: 1, productsTotalMinor: 1000,
+      deliveryMethod: 'coordinated_pickup', shippingMinor: 0, totalMinor: 1000,
+    },
   });
   doubles.prepare.mockReset().mockResolvedValue({
     orderId: `ord_${'b'.repeat(24)}`, requestId, duxOrderNumber: 'PED-1', duxOrderId: null,
@@ -66,15 +71,54 @@ beforeEach(() => {
 });
 
 describe('handler admin de preparación asistida', () => {
-  it('protege la previsualización con identidad administrativa', async () => {
+  it('protege y audita la lectura recuperable de la preparación', async () => {
     const database = new SqliteD1(migration);
     try {
       const unauthorized = await onRequest(context(database, 'GET', false));
       expect(unauthorized.status).toBe(401);
-      expect(doubles.preview).not.toHaveBeenCalled();
+      expect(doubles.state).not.toHaveBeenCalled();
+
       const response = await onRequest(context(database, 'GET'));
       expect(response.status).toBe(200);
-      expect(doubles.preview).toHaveBeenCalledWith(database, expect.any(Object), requestId);
+      expect(doubles.state).toHaveBeenCalledWith(database, expect.any(Object), requestId);
+      await expect(response.json()).resolves.toMatchObject({ state: 'preview' });
+      await expect(database.prepare(`SELECT action, target_type, target_id, outcome_status
+        FROM admin_audit ORDER BY created_at DESC LIMIT 1`).first()).resolves.toEqual({
+        action: 'admin.web_requests.assisted_checkout_state',
+        target_type: 'web_request',
+        target_id: requestId,
+        outcome_status: 200,
+      });
+    } finally { database.close(); }
+  });
+
+  it('devuelve el estado preparado persistido después de una recarga', async () => {
+    const database = new SqliteD1(migration);
+    try {
+      doubles.state.mockResolvedValueOnce({
+        state: 'prepared',
+        prepared: {
+          orderId: `ord_${'b'.repeat(24)}`,
+          requestId,
+          duxOrderNumber: 'PED-1',
+          duxOrderId: null,
+          catalogVersion: 'a'.repeat(64),
+          itemCount: 2,
+          productsTotalMinor: 2000,
+          shippingMinor: 0,
+          totalMinor: 2000,
+          reservationStatus: 'confirmed',
+          paymentStatus: 'none',
+          paymentRequiresReview: false,
+        },
+      });
+      const response = await onRequest(context(database, 'GET'));
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        state: 'prepared',
+        prepared: { duxOrderNumber: 'PED-1', reservationStatus: 'confirmed' },
+      });
+      expect(doubles.prepare).not.toHaveBeenCalled();
     } finally { database.close(); }
   });
 
@@ -110,8 +154,8 @@ describe('handler admin de preparación asistida', () => {
       expect(doubles.prepare).toHaveBeenCalledWith(
         database, expect.any(Object), requestId, expect.objectContaining({ duxOrderNumber: 'PED-1' }), 'admin-test',
       );
-      expect(await database.prepare(`SELECT action, target_type, target_id, outcome_status
-        FROM admin_audit ORDER BY created_at DESC LIMIT 1`).first()).toEqual({
+      await expect(database.prepare(`SELECT action, target_type, target_id, outcome_status
+        FROM admin_audit ORDER BY created_at DESC LIMIT 1`).first()).resolves.toEqual({
         action: 'admin.web_requests.assisted_checkout_prepare',
         target_type: 'web_request',
         target_id: requestId,
