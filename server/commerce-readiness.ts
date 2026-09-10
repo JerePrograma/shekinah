@@ -40,6 +40,29 @@ const DUX_OBJECTS = Object.freeze([
   'dux_order_links',
   'dux_order_operations',
 ]);
+const ASSISTED_ORDER_COLUMNS = Object.freeze([
+  'web_request_id',
+  'assisted_checkout_fingerprint',
+]);
+const ASSISTED_DUX_LINK_COLUMNS = Object.freeze([
+  'verification_method',
+  'verification_actor',
+  'verification_note',
+]);
+const ASSISTED_OBJECTS = Object.freeze([
+  'idx_orders_web_request_id',
+  'web_request_checkout_order_insert_guard',
+  'web_request_checkout_source_immutable',
+  'assisted_order_items_require_dux_catalog_snapshot',
+  'dux_order_link_assisted_guard',
+  'idx_dux_assisted_order_number_unique',
+  'dux_assisted_release_financial_guard',
+  'dux_assisted_finalize_financial_guard',
+]);
+const ASSISTED_LIFECYCLE_GUARDS = Object.freeze([
+  'dux_assisted_release_financial_guard',
+  'dux_assisted_finalize_financial_guard',
+]);
 
 export type CommerceReadiness = Readonly<{
   checkedAt: string;
@@ -53,6 +76,22 @@ export type CommerceReadiness = Readonly<{
     submittedCount: number | null;
     blockers: readonly string[];
     warnings: readonly string[];
+  }>;
+  assistedCheckout: Readonly<{
+    schemaReady: boolean;
+    lifecycleGuardsReady: boolean;
+    serverEnabled: boolean;
+    webOrdersEnabled: boolean;
+    commerceEnabled: boolean;
+    duxApiEnabled: boolean;
+    paymentMode: 'sandbox' | 'production' | 'invalid_or_missing';
+    paymentAccessTokenConfigured: boolean;
+    webhookSecretConfigured: boolean;
+    orderTokenSecretConfigured: boolean;
+    publicSiteConfigured: boolean;
+    catalogSnapshotAvailable: boolean;
+    catalogSnapshotFresh: boolean | null;
+    blockers: readonly string[];
   }>;
   checkout: Readonly<{
     serverEnabled: boolean;
@@ -97,6 +136,8 @@ export type CommerceReadiness = Readonly<{
 
 type SchemaInspection = Readonly<{
   webRequests: boolean;
+  assistedCheckout: boolean;
+  assistedLifecycleGuards: boolean;
   dux: boolean;
 }>;
 
@@ -128,6 +169,18 @@ export async function readCommerceReadiness(
   if (dux.snapshotFresh === false) webWarnings.push('DUX_CATALOG_SNAPSHOT_STALE');
   if (dux.publicCatalogEnabled === false) webWarnings.push('DUX_PUBLIC_CATALOG_DISABLED');
 
+  const assistedBlockers = [...config.checkoutConfigurationErrors];
+  if (!schema.assistedCheckout) assistedBlockers.push('ASSISTED_CHECKOUT_MIGRATION_REQUIRED');
+  if (!schema.assistedLifecycleGuards) assistedBlockers.push('ASSISTED_DUX_LIFECYCLE_MIGRATION_REQUIRED');
+  if (!isEnabledFlag(env.WEB_ORDERS_ENABLED)) assistedBlockers.push('WEB_ORDERS_DISABLED');
+  if (!isEnabledFlag(env.ASSISTED_CHECKOUT_ENABLED)) assistedBlockers.push('ASSISTED_CHECKOUT_DISABLED');
+  if (!isEnabledFlag(env.COMMERCE_ENABLED)) assistedBlockers.push('COMMERCE_DISABLED');
+  if (!isEnabledFlag(env.DUX_API_ENABLED)) assistedBlockers.push('DUX_API_DISABLED');
+  if (!dux.credentialsConfigured) assistedBlockers.push('DUX_CREDENTIALS_MISSING');
+  if (!dux.snapshotAvailable) assistedBlockers.push('DUX_CATALOG_SNAPSHOT_UNAVAILABLE');
+  if (dux.snapshotFresh === false) assistedBlockers.push('DUX_CATALOG_SNAPSHOT_STALE');
+  if (dux.publicCatalogEnabled !== true) assistedBlockers.push('DUX_PUBLIC_CATALOG_DISABLED');
+
   const checkoutBlockers = [...config.checkoutConfigurationErrors];
   if (!isEnabledFlag(env.COMMERCE_ENABLED)) checkoutBlockers.push('COMMERCE_DISABLED');
   if (config.guardCode !== null) checkoutBlockers.push(config.guardCode);
@@ -152,6 +205,22 @@ export async function readCommerceReadiness(
       blockers: Object.freeze(unique(webBlockers)),
       warnings: Object.freeze(unique(webWarnings)),
     }),
+    assistedCheckout: Object.freeze({
+      schemaReady: schema.assistedCheckout,
+      lifecycleGuardsReady: schema.assistedLifecycleGuards,
+      serverEnabled: isEnabledFlag(env.ASSISTED_CHECKOUT_ENABLED),
+      webOrdersEnabled: isEnabledFlag(env.WEB_ORDERS_ENABLED),
+      commerceEnabled: isEnabledFlag(env.COMMERCE_ENABLED),
+      duxApiEnabled: isEnabledFlag(env.DUX_API_ENABLED),
+      paymentMode: config.paymentMode,
+      paymentAccessTokenConfigured: config.paymentAccessTokenConfigured,
+      webhookSecretConfigured: config.webhookSecretConfigured,
+      orderTokenSecretConfigured: config.orderTokenSecretConfigured,
+      publicSiteConfigured: config.publicSiteConfigured,
+      catalogSnapshotAvailable: dux.snapshotAvailable,
+      catalogSnapshotFresh: dux.snapshotFresh,
+      blockers: Object.freeze(unique(assistedBlockers)),
+    }),
     checkout: Object.freeze({
       serverEnabled: isEnabledFlag(env.COMMERCE_ENABLED),
       duxApiEnabled: isEnabledFlag(env.DUX_API_ENABLED),
@@ -170,14 +239,19 @@ export async function readCommerceReadiness(
 }
 
 async function inspectSchema(database: D1Database): Promise<SchemaInspection> {
-  const columns = await database
-    .prepare('PRAGMA table_info(checkout_intents)')
-    .all<Readonly<{ name: string }>>();
-  const columnNames = new Set((columns.results ?? []).map((row) => row.name));
+  const [intentColumns, orderColumns, linkColumns] = await Promise.all([
+    database.prepare('PRAGMA table_info(checkout_intents)').all<Readonly<{ name: string }>>(),
+    database.prepare('PRAGMA table_info(orders)').all<Readonly<{ name: string }>>(),
+    database.prepare('PRAGMA table_info(dux_order_links)').all<Readonly<{ name: string }>>(),
+  ]);
+  const intentColumnNames = new Set((intentColumns.results ?? []).map((row) => row.name));
+  const orderColumnNames = new Set((orderColumns.results ?? []).map((row) => row.name));
+  const linkColumnNames = new Set((linkColumns.results ?? []).map((row) => row.name));
   const trackedObjects = [
     ...WEB_REQUEST_CORE_OBJECTS,
     ...WEB_REQUEST_CONVERSION_OBJECTS,
     ...DUX_OBJECTS,
+    ...ASSISTED_OBJECTS,
   ];
   const placeholders = trackedObjects.map(() => '?').join(', ');
   const objects = await database
@@ -187,9 +261,14 @@ async function inspectSchema(database: D1Database): Promise<SchemaInspection> {
   const objectNames = new Set((objects.results ?? []).map((row) => row.name));
   return Object.freeze({
     webRequests:
-      WEB_REQUEST_COLUMNS.every((name) => columnNames.has(name)) &&
+      WEB_REQUEST_COLUMNS.every((name) => intentColumnNames.has(name)) &&
       WEB_REQUEST_CORE_OBJECTS.every((name) => objectNames.has(name)) &&
       WEB_REQUEST_CONVERSION_OBJECTS.some((name) => objectNames.has(name)),
+    assistedCheckout:
+      ASSISTED_ORDER_COLUMNS.every((name) => orderColumnNames.has(name)) &&
+      ASSISTED_DUX_LINK_COLUMNS.every((name) => linkColumnNames.has(name)) &&
+      ASSISTED_OBJECTS.every((name) => objectNames.has(name)),
+    assistedLifecycleGuards: ASSISTED_LIFECYCLE_GUARDS.every((name) => objectNames.has(name)),
     dux: DUX_OBJECTS.every((name) => objectNames.has(name)),
   });
 }
