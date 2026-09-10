@@ -17,6 +17,7 @@ const migrations = readdirSync(resolve(process.cwd(), 'migrations'))
   .join('\n');
 const publicToken = 'e'.repeat(64);
 const publicTokenHash = createHash('sha256').update(publicToken).digest('hex');
+const mercadoPagoAccessToken = 'TEST-' + '1'.repeat(20);
 const env: Env = {
   DUX_COMPANY_ID: '12862', DUX_BRANCH_ID: '1', DUX_DEPOSIT_ID: '25566', DUX_SNAPSHOT_MAX_AGE_SECONDS: '900',
 };
@@ -81,7 +82,7 @@ async function seedPrepared(database: SqliteD1, shippingMinor = 0): Promise<stri
 }
 
 function dependencies() {
-  return { accessToken: 'TEST-12345678901234567890', mode: 'sandbox' as const, siteUrl: new URL('https://example.test') };
+  return { accessToken: mercadoPagoAccessToken, mode: 'sandbox' as const, siteUrl: new URL('https://example.test') };
 }
 
 function gateway(): Gateway {
