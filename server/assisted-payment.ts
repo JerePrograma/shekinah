@@ -96,11 +96,12 @@ export async function createOrRecoverAssistedPreference(
   if (order.status === 'approved' || order.status === 'refunded') {
     throw new HttpError(409, 'ORDER_ALREADY_FINALIZED', 'Este pedido ya tiene un estado financiero final.');
   }
-  assertMercadoPagoPreferenceActive(order.created_at);
   if ((order.mp_preference_id === null) !== (order.mp_checkout_url === null)) {
     throw new HttpError(503, 'PREFERENCE_STATE_INVALID', 'El estado de la preferencia requiere revisión.', false);
   }
   if (order.mp_preference_id !== null && order.mp_checkout_url !== null) {
+    const attemptedAt = requirePreferenceAttemptTimestamp(order.mp_preference_attempted_at);
+    assertMercadoPagoPreferenceActive(attemptedAt);
     return Object.freeze({ checkoutUrl: order.mp_checkout_url, orderId: order.id, totalMinor: order.total_minor, created: false });
   }
 
@@ -109,7 +110,7 @@ export async function createOrRecoverAssistedPreference(
     const recovered = await gateway.recover({
       accessToken: dependencies.accessToken,
       cart,
-      createdAt: order.created_at,
+      createdAt: order.mp_preference_attempted_at,
       mode: dependencies.mode,
       orderId: order.id,
     });
@@ -125,15 +126,28 @@ export async function createOrRecoverAssistedPreference(
   if (attemptToken === null) {
     const current = await getOrderById(database, order.id);
     if (current !== null && current.mp_preference_id !== null && current.mp_checkout_url !== null) {
+      const attemptedAt = requirePreferenceAttemptTimestamp(current.mp_preference_attempted_at);
+      assertMercadoPagoPreferenceActive(attemptedAt);
       return Object.freeze({ checkoutUrl: current.mp_checkout_url, orderId: current.id, totalMinor: current.total_minor, created: false });
     }
     throw new HttpError(409, 'PREFERENCE_ATTEMPT_IN_PROGRESS', 'Ya existe un intento de pago en curso para este pedido.');
   }
+  const claimed = await getOrderById(database, order.id);
+  if (
+    claimed === null ||
+    claimed.mp_preference_attempt_token !== attemptToken ||
+    claimed.mp_preference_id !== null ||
+    claimed.mp_checkout_url !== null
+  ) {
+    throw new HttpError(409, 'PREFERENCE_ATTEMPT_IN_PROGRESS', 'El intento de pago cambió durante la preparación.');
+  }
+  const attemptedAt = requirePreferenceAttemptTimestamp(claimed.mp_preference_attempted_at);
+  assertMercadoPagoPreferenceActive(attemptedAt);
   try {
     const preference = await gateway.create({
       accessToken: dependencies.accessToken,
       cart,
-      createdAt: order.created_at,
+      createdAt: attemptedAt,
       mode: dependencies.mode,
       orderId: order.id,
       publicToken,
@@ -274,6 +288,13 @@ function readShippingTier(row: FulfillmentRow): Exclude<ShippingTier, 'manual_un
     row.shipping_minor > 0 && row.total_weight_grams !== null
   ) return row.shipping_tier;
   throw invalidProjection();
+}
+
+function requirePreferenceAttemptTimestamp(value: string | null): string {
+  if (value === null || !Number.isFinite(Date.parse(value))) {
+    throw new HttpError(503, 'PREFERENCE_STATE_INVALID', 'No se pudo verificar el inicio del intento de pago.', false);
+  }
+  return value;
 }
 
 function invalidProjection(): HttpError {

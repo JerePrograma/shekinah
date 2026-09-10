@@ -109,6 +109,25 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
     } finally { database.close(); }
   });
 
+  it('inicia los 30 minutos al primer intento de Mercado Pago y no al preparar la reserva', async () => {
+    const database = new SqliteD1(migrations);
+    try {
+      const orderId = await seedPrepared(database);
+      const oldCreatedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      database.database.prepare('UPDATE orders SET created_at = ? WHERE id = ?').run(oldCreatedAt, orderId);
+      const provider = gateway();
+      const beforeAttempt = Date.now();
+      await createOrRecoverAssistedPreference(database, publicToken, dependencies(), provider);
+      const createdAt = vi.mocked(provider.create).mock.calls[0]?.[0].createdAt;
+      const persisted = await database.prepare('SELECT mp_preference_attempted_at FROM orders WHERE id = ?')
+        .bind(orderId).first<{ mp_preference_attempted_at: string }>();
+      expect(createdAt).toBe(persisted?.mp_preference_attempted_at);
+      expect(createdAt).not.toBe(oldCreatedAt);
+      expect(Date.parse(createdAt ?? '')).toBeGreaterThanOrEqual(beforeAttempt);
+      expect(Date.parse(createdAt ?? '')).toBeLessThanOrEqual(Date.now());
+    } finally { database.close(); }
+  });
+
   it('incluye la cotización manual de correo como ítem sin inferir peso', async () => {
     const database = new SqliteD1(migrations);
     try {
