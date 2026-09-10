@@ -46,6 +46,8 @@ const requiredFunctions = [
   'functions/api/checkout/preferences.ts',
   'functions/api/webhooks/mercadopago.ts',
   'functions/api/orders/[publicToken]/status.ts',
+  'functions/api/orders/[publicToken]/request-status.ts',
+  'functions/api/orders/request.ts',
   'functions/api/orders/whatsapp.ts',
   'functions/api/analytics/events.ts',
   'functions/api/privacy/delete-session.ts',
@@ -62,6 +64,11 @@ const requiredFunctions = [
   'functions/api/admin/orders/[id].ts',
   'functions/api/admin/orders/[id]/approve.ts',
   'functions/api/admin/orders/[id]/reject.ts',
+  'functions/api/admin/commerce-attention.ts',
+  'functions/api/admin/commerce-readiness.ts',
+  'functions/api/admin/web-order-requests.ts',
+  'functions/api/admin/web-order-requests/[id].ts',
+  'functions/api/admin/web-order-requests/[id]/resolve.ts',
   'functions/api/admin/analytics/funnel.ts',
   'functions/api/admin/analytics/products.ts',
   'functions/api/admin/analytics/sources.ts',
@@ -155,6 +162,9 @@ if (!existsSync(join(projectRoot, 'migrations', '0007_whatsapp_order_reservation
 }
 if (!existsSync(join(projectRoot, 'migrations', '0008_checkout_pro_stock_and_whatsapp_identity.sql'))) {
   fail('Falta la migración de stock de Checkout Pro y datos de WhatsApp.');
+}
+if (!existsSync(join(projectRoot, 'migrations', '0020_web_order_requests.sql'))) {
+  fail('Falta la migración aditiva de solicitudes web idempotentes.');
 }
 
 const headers = readFileSync(join(projectRoot, 'public', '_headers'), 'utf8');
