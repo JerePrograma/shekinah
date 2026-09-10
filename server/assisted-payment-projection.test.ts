@@ -24,8 +24,7 @@ function seedAssisted(database: SqliteD1): void {
   ) VALUES (1, 'v2', '12862', 'Empresa prueba', '1', 'Sucursal prueba',
     '25566', 'Depósito prueba', ?, ?)`).run(now, now);
   db.prepare(`UPDATE dux_catalog_control SET snapshot_collection_enabled = 1,
-    public_catalog_enabled = 1, updated_by = 'test', updated_at = ?
-    WHERE company_id = '12862'`).run(now);
+    updated_by = 'test', updated_at = ? WHERE company_id = '12862'`).run(now);
   db.prepare(`INSERT INTO dux_sync_runs (
     id, kind, status, trigger_actor, processed_count, mapped_count, unmapped_count,
     ambiguous_count, absent_count, failed_count, started_at, completed_at, created_at, updated_at
@@ -51,6 +50,8 @@ function seedAssisted(database: SqliteD1): void {
     payload_json, synced_at, created_at, updated_at
   ) VALUES (1, 'dux_sync_payment_test', ?, 'PRECIOS DEL NEGOCIO', 1, ?, ?, ?, ?)`)
     .run(version, payload, now, now, now);
+  db.prepare(`UPDATE dux_catalog_control SET public_catalog_enabled = 1,
+    updated_by = 'test', updated_at = ? WHERE company_id = '12862'`).run(now);
   const requestSnapshot = JSON.stringify({
     schemaVersion: 1,
     catalogVersion: version,
