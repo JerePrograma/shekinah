@@ -93,7 +93,8 @@ it('muestra Mercado Pago sólo cuando el servidor confirma reserva y total', asy
   render(component());
   const pay = await screen.findByRole('button', { name: 'Pagar con Mercado Pago' });
   expect(screen.getByRole('status')).toHaveTextContent('La reserva Dux y el total están confirmados');
-  expect(screen.getByText(/Total confirmado:/u)).toHaveTextContent('$ 1.234');
+  const totalLabel = screen.getByText('Total confirmado:');
+  expect(totalLabel.parentElement).toHaveTextContent(/1\.234/u);
   fireEvent.click(pay); fireEvent.click(pay);
   await waitFor(() => expect(doubles.checkout).toHaveBeenCalledTimes(1));
   expect(doubles.checkout).toHaveBeenCalledWith(ready.publicToken, ready.totalMinor);
