@@ -66,7 +66,7 @@ function Invoke-Native {
         return $text | ConvertFrom-Json -Depth 100
     }
     catch {
-        throw "No se pudo interpretar la salida JSON de Wrangler."
+        throw 'No se pudo interpretar la salida JSON de Wrangler.'
     }
 }
 
@@ -89,18 +89,28 @@ function Invoke-Wrangler {
     Invoke-Native -FilePath 'npx' -Arguments (Wrangler-Args $Environment $Command) | Out-Host
 }
 
+function Read-Property {
+    param([object]$Value, [string]$Name)
+    if ($null -eq $Value) { return $null }
+    $property = $Value.PSObject.Properties[$Name]
+    return if ($null -eq $property) { $null } else { $property.Value }
+}
+
 function D1-Rows {
     param([object]$Payload)
     $rows = @()
     foreach ($entry in @($Payload)) {
-        if ($null -ne $entry -and $null -ne $entry.results) {
-            $rows += @($entry.results)
+        $results = Read-Property $entry 'results'
+        if ($null -ne $results) {
+            $rows += @($results)
+            continue
         }
-        elseif ($null -ne $entry -and $null -ne $entry.result) {
-            foreach ($nested in @($entry.result)) {
-                if ($null -ne $nested -and $null -ne $nested.results) {
-                    $rows += @($nested.results)
-                }
+        $result = Read-Property $entry 'result'
+        if ($null -eq $result) { continue }
+        foreach ($nested in @($result)) {
+            $nestedResults = Read-Property $nested 'results'
+            if ($null -ne $nestedResults) {
+                $rows += @($nestedResults)
             }
         }
     }
@@ -164,7 +174,8 @@ function Assert-ConfigIdentity {
     if ($ids[0] -eq $ids[1] -or $names[0] -eq $names[1]) {
         throw 'Preview y producción apuntan a la misma D1. Migración abortada.'
     }
-    if (($ids + $names | Where-Object { $_ -match 'REEMPLAZAR|CHANGE_ME|PLACEHOLDER' }).Count -ne 0) {
+    $placeholders = @(($ids + $names) | Where-Object { $_ -match 'REEMPLAZAR|CHANGE_ME|PLACEHOLDER' })
+    if ($placeholders.Count -ne 0) {
         throw 'wrangler.jsonc todavía contiene placeholders de D1.'
     }
 }
@@ -187,12 +198,6 @@ function Assert-MigrationState {
             throw "$Environment no tiene aplicada la base histórica requerida: $required"
         }
     }
-    $newApplied = @($ExpectedNewMigrations | Where-Object { $applied -contains $_ })
-    for ($index = 0; $index -lt $newApplied.Count; $index++) {
-        if ($newApplied[$index] -ne $ExpectedNewMigrations[$index]) {
-            throw "$Environment tiene un estado salteado de 0020-0023. Revisión manual requerida."
-        }
-    }
     $firstMissing = $ExpectedNewMigrations.Count
     for ($index = 0; $index -lt $ExpectedNewMigrations.Count; $index++) {
         if ($applied -notcontains $ExpectedNewMigrations[$index]) {
@@ -202,7 +207,7 @@ function Assert-MigrationState {
     }
     for ($index = $firstMissing; $index -lt $ExpectedNewMigrations.Count; $index++) {
         if ($applied -contains $ExpectedNewMigrations[$index]) {
-            throw "$Environment tiene un estado no contiguo de migraciones. Revisión manual requerida."
+            throw "$Environment tiene un estado no contiguo de migraciones 0020-0023. Revisión manual requerida."
         }
     }
     return @($ExpectedNewMigrations | Where-Object { $applied -notcontains $_ })
@@ -248,15 +253,22 @@ function Verify-Environment {
 }
 
 function Process-Environment {
-    param([string]$Environment, [string]$EvidenceDirectory)
+    param(
+        [string]$Environment,
+        [string[]]$ExpectedPending,
+        [string]$EvidenceDirectory
+    )
     Write-Host "`n=== $Environment ==="
-    $pending = @(Assert-MigrationState $Environment)
-    if ($pending.Count -eq 0) {
+    $currentPending = @(Assert-MigrationState $Environment)
+    if (($currentPending -join '|') -ne ($ExpectedPending -join '|')) {
+        throw "$Environment cambió desde el preflight. No se aplicará nada con un estado remoto distinto al revisado."
+    }
+    if ($currentPending.Count -eq 0) {
         Write-Host '0020-0023 ya están aplicadas; se ejecutará sólo la verificación.'
         Verify-Environment $Environment
         return
     }
-    Write-Host "Pendientes: $($pending -join ', ')"
+    Write-Host "Pendientes: $($currentPending -join ', ')"
     if (-not $Apply) {
         Write-Host 'Dry-run: no se aplicaron migraciones. Volvé a ejecutar con -Apply.'
         return
@@ -270,13 +282,25 @@ Assert-GitState
 Assert-LocalMigrations
 Assert-ConfigIdentity
 
+$targets = if ($Target -eq 'both') { @('preview', 'production') } else { @($Target) }
+$preflight = @{}
+foreach ($environment in $targets) {
+    $preflight[$environment] = @(Assert-MigrationState $environment)
+    $pendingLabel = if ($preflight[$environment].Count -eq 0) {
+        'ninguna'
+    }
+    else {
+        $preflight[$environment] -join ', '
+    }
+    Write-Host "Preflight $environment: pendientes $pendingLabel"
+}
+
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmssZ')
 $evidenceDirectory = Join-Path $EvidenceRoot $timestamp
 New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
 
-$targets = if ($Target -eq 'both') { @('preview', 'production') } else { @($Target) }
 foreach ($environment in $targets) {
-    Process-Environment $environment $evidenceDirectory
+    Process-Environment $environment @($preflight[$environment]) $evidenceDirectory
 }
 
 if (-not $Apply) {
