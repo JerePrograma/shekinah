@@ -21,6 +21,11 @@ export type AssistedDuxLifecycleResult = AssistedDuxLifecycleInspection & Readon
   paymentStatus: 'none' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
 }>;
 
+const REQUIRED_FINANCIAL_GUARDS = Object.freeze([
+  'dux_assisted_release_financial_guard',
+  'dux_assisted_finalize_financial_guard',
+] as const);
+
 type LifecycleRow = Readonly<{
   id: string;
   mp_preference_id: string | null;
@@ -44,6 +49,7 @@ export async function inspectAssistedDuxLifecycle(
   if (action !== 'release' && action !== 'finalize') {
     throw new HttpError(400, 'INVALID_ASSISTED_DUX_ACTION', 'La acción Dux no es válida.');
   }
+  await assertFinancialGuardsReady(database);
   const row = await readLifecycleRow(database, orderId);
   if (row === null) throw new HttpError(404, 'ORDER_NOT_FOUND', 'No se encontró el pedido.');
   if (row.verification_method !== 'assisted_admin' || row.dux_order_number === null || row.dux_order_number.trim() === '') {
@@ -157,6 +163,27 @@ export async function confirmAssistedDuxLifecycle(
   return Object.freeze({ ...persisted, changed: true, reservationStatus: target, paymentStatus: payment.status });
 }
 
+async function assertFinancialGuardsReady(database: D1Database): Promise<void> {
+  try {
+    const result = await database.prepare(`SELECT name FROM sqlite_schema
+      WHERE type = 'trigger' AND name IN (?, ?)`)
+      .bind(...REQUIRED_FINANCIAL_GUARDS)
+      .all<Readonly<{ name: string }>>();
+    const names = new Set((result.results ?? []).map((row) => row.name));
+    if (!REQUIRED_FINANCIAL_GUARDS.every((name) => names.has(name))) {
+      throw lifecycleMigrationRequired();
+    }
+  } catch (error: unknown) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(
+      503,
+      'ASSISTED_DUX_LIFECYCLE_UNAVAILABLE',
+      'No se pudo verificar el guard financiero del lifecycle Dux asistido.',
+      false,
+    );
+  }
+}
+
 async function readLifecycleRow(database: D1Database, orderId: string): Promise<LifecycleRow | null> {
   try {
     return await database.prepare(`SELECT o.id, o.mp_preference_id, o.mp_checkout_url, o.mp_preference_attempted_at,
@@ -199,6 +226,13 @@ function validateOrderId(value: string): void {
   if (!/^ord_[A-Za-z0-9_-]{20,128}$/u.test(value)) {
     throw new HttpError(400, 'INVALID_ORDER_ID', 'El identificador de pedido no es válido.');
   }
+}
+function lifecycleMigrationRequired(): HttpError {
+  return new HttpError(
+    503,
+    'ASSISTED_DUX_LIFECYCLE_MIGRATION_REQUIRED',
+    'La migración 0023 debe estar aplicada antes de confirmar liberaciones o finalizaciones Dux.',
+  );
 }
 function lifecycleReview(): HttpError {
   return new HttpError(409, 'ASSISTED_DUX_LIFECYCLE_REVIEW_REQUIRED', 'El estado Dux asistido requiere revisión antes de continuar.');
