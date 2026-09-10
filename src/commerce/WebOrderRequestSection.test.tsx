@@ -3,9 +3,16 @@ import { WebOrderRequestSection } from './WebOrderRequestSection';
 import type { CartItem } from '../cart/model';
 import type { WebRequestReceipt } from './web-order-contracts';
 
-const doubles = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), finish: vi.fn(), submit: vi.fn(), recover: vi.fn(), token: vi.fn() }));
+const doubles = vi.hoisted(() => ({
+  read: vi.fn(), create: vi.fn(), finish: vi.fn(), submit: vi.fn(), recover: vi.fn(), token: vi.fn(), checkout: vi.fn(),
+}));
 vi.mock('./web-request-session', () => ({ readWebRequestIdentity: doubles.read, getOrCreateWebRequestIdentity: doubles.create, finishWebRequestIdentity: doubles.finish }));
-vi.mock('./web-request-api', () => ({ submitWebRequest: doubles.submit, recoverWebRequest: doubles.recover, readWebRequest: doubles.token }));
+vi.mock('./web-request-api', () => ({
+  submitWebRequest: doubles.submit,
+  recoverWebRequest: doubles.recover,
+  readWebRequest: doubles.token,
+  startWebRequestCheckout: doubles.checkout,
+}));
 vi.mock('./env', () => ({ getAuthorizedWhatsappNumber: () => '5492236216559' }));
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent: vi.fn() }));
 const identity = { idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64) };
@@ -79,8 +86,39 @@ it('no envía si el navegador no logra persistir la identidad', async () => {
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
-it('sólo prepara otra solicitud después de volver a consultar una resolución terminal', async () => {
+it('muestra Mercado Pago sólo cuando el servidor confirma reserva y total', async () => {
+  const ready: WebRequestReceipt = { ...receipt, status: 'accepted', reservationStatus: 'confirmed', checkoutAvailable: true, totalMinor: 123_400 };
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(ready);
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  const pay = await screen.findByRole('button', { name: 'Pagar con Mercado Pago' });
+  expect(screen.getByRole('status')).toHaveTextContent('La reserva Dux y el total están confirmados');
+  expect(screen.getByText(/Total confirmado:/u)).toHaveTextContent('$ 1.234');
+  fireEvent.click(pay); fireEvent.click(pay);
+  await waitFor(() => expect(doubles.checkout).toHaveBeenCalledTimes(1));
+  expect(doubles.checkout).toHaveBeenCalledWith(ready.publicToken, ready.totalMinor);
+  expect(screen.getByRole('button', { name: 'Preparando pago…' })).toBeDisabled();
+});
+
+it('un pago pendiente o aprobado se muestra y nunca ofrece otro botón de pago', async () => {
+  const approved: WebRequestReceipt = { ...receipt, status: 'accepted', reservationStatus: 'confirmed',
+    paymentStatus: 'approved', paymentRequiresReview: true, checkoutAvailable: false, totalMinor: 123_400 };
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(approved);
+  render(component());
+  expect(await screen.findByRole('status')).toHaveTextContent('Pago recibido. No vuelvas a pagar');
+  expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it('no permite abrir otro intento mientras una solicitud aceptada sigue activa', async () => {
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue({ ...receipt, status: 'accepted' });
+  render(component());
+  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Preparar otra solicitud' })).not.toBeInTheDocument();
+});
+
+it('sólo prepara otra solicitud después de volver a consultar una resolución terminal segura', async () => {
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue({ ...receipt, status: 'rejected' });
   render(component());
   fireEvent.click(await screen.findByRole('button', { name: 'Preparar otra solicitud' }));
   await waitFor(() => expect(doubles.finish).toHaveBeenCalledWith(identity.idempotencyKey));

@@ -6,7 +6,7 @@ import type { CartItem } from '../cart/model';
 import type { CheckoutFulfillment } from './fulfillment';
 import type { WebRequestIdentity, WebRequestReceipt } from './web-order-contracts';
 import { webRequestStatusLabel } from './web-order-contracts';
-import { readWebRequest, recoverWebRequest, submitWebRequest } from './web-request-api';
+import { readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest } from './web-request-api';
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
 export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange }: Readonly<{
@@ -56,20 +56,28 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     return () => { cancelled = true; };
   }, [linkedToken, onActiveChange]);
 
-  async function operate(action: 'create' | 'recover' | 'new'): Promise<void> {
+  async function operate(action: 'create' | 'recover' | 'new' | 'checkout'): Promise<void> {
     if (busyRef.current || disabled) return;
     busyRef.current = true; setBusy(true); onBusyChange(true); setError('');
     try {
       if (action === 'new') {
         if (identity === null) return;
         const current = await recoverWebRequest(identity);
-        if (current.status === 'submitted') throw new Error('La solicitud anterior todavía está en revisión. No se iniciará otra automáticamente.');
+        if (!canPrepareAnother(current)) {
+          throw new Error('La solicitud anterior todavía tiene una gestión activa. No se iniciará otra automáticamente.');
+        }
         await finishWebRequestIdentity(identity.idempotencyKey);
         if (mounted.current) { setIdentity(null); setReceipt(null); onActiveChange(false); }
       } else if (action === 'recover') {
         const current = linkedToken !== null ? await readWebRequest(linkedToken)
           : identity !== null ? await recoverWebRequest(identity) : null;
         if (mounted.current && current !== null) { focusReceipt.current = true; setReceipt(current); }
+      } else if (action === 'checkout') {
+        if (receipt === null || !receipt.checkoutAvailable || receipt.totalMinor === null) return;
+        void trackAnalyticsEvent('checkout_start', { path: '/carrito' });
+        const checkout = await startWebRequestCheckout(receipt.publicToken, receipt.totalMinor);
+        void trackAnalyticsEvent('checkout_redirect', { path: '/carrito' });
+        window.location.assign(checkout.checkoutUrl);
       } else {
         if (!registrationEnabled || items.length === 0 || fulfillment === null || receipt !== null || linkedToken !== null) return;
         const saved = await getOrCreateWebRequestIdentity();
@@ -90,7 +98,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     {receipt !== null ? <>
       <h3 ref={receiptTitle} tabIndex={-1}>Solicitud registrada</h3>
       <p>Esta referencia corresponde al intento ya enviado. Editar el carrito no cambia esa solicitud.</p>
-      <p role="status">{receipt.reference}: {webRequestStatusLabel(receipt.status)}. Sin cobro ni reserva acreditados por este registro.</p>
+      <p role="status">{receipt.reference}: {webRequestStatusLabel(receipt.status)}. {receiptStatusMessage(receipt)}</p>
+      {receipt.totalMinor === null ? null : <p><strong>Total confirmado:</strong> {formatMinor(receipt.totalMinor)}.</p>}
+      {receipt.checkoutAvailable ? <button className="button button-primary" type="button" disabled={disabled || busy}
+        onClick={() => void operate('checkout')}>{busy ? 'Preparando pago…' : 'Pagar con Mercado Pago'}</button> : null}
       <a className="text-button" href={`/carrito#solicitud=${receipt.publicToken}`}>Enlace protegido de esta solicitud</a>
       {whatsappNumber === null ? null : <a className="button button-secondary"
         href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hola, consulto por la solicitud ${receipt.reference} registrada en Shekinah.`)}`}
@@ -106,8 +117,45 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     </> : null}
     {identity !== null || linkedToken !== null ? <button className="button button-secondary" type="button" disabled={disabled || busy}
       onClick={() => void operate('recover')}>Consultar estado de la solicitud</button> : null}
-    {linkedToken === null && receipt !== null && receipt.status !== 'submitted' && identity !== null && registrationEnabled ? <button className="text-button" type="button" disabled={disabled || busy}
+    {linkedToken === null && receipt !== null && identity !== null && registrationEnabled && canPrepareAnother(receipt) ? <button className="text-button" type="button" disabled={disabled || busy}
       onClick={() => void operate('new')}>Preparar otra solicitud</button> : null}
   </section>;
 }
+
+function receiptStatusMessage(receipt: WebRequestReceipt): string {
+  if (receipt.paymentStatus === 'approved') {
+    return receipt.paymentRequiresReview
+      ? 'Pago recibido. No vuelvas a pagar: la gestión de la reserva requiere revisión administrativa.'
+      : 'Pago recibido y acreditado.';
+  }
+  if (receipt.paymentStatus === 'refunded') {
+    return receipt.paymentRequiresReview
+      ? 'Pago reintegrado. La devolución física y la reserva requieren revisión administrativa.'
+      : 'Pago reintegrado. El reintegro no repone inventario por sí solo.';
+  }
+  if (receipt.paymentStatus === 'pending') return 'El pago está pendiente de acreditación. No vuelvas a pagarlo.';
+  if (receipt.reservationStatus === 'requires_review') return 'La gestión de la reserva requiere revisión. El pago permanece bloqueado.';
+  if (receipt.reservationStatus === 'finalized') return 'La gestión Dux fue confirmada como finalizada.';
+  if (receipt.reservationStatus === 'released') return 'La reserva Dux fue confirmada como liberada.';
+  if (receipt.reservationStatus === 'confirmed') {
+    if (receipt.checkoutAvailable) {
+      return receipt.paymentStatus === 'rejected' || receipt.paymentStatus === 'cancelled'
+        ? 'La reserva sigue confirmada y el intento anterior no se acreditó. Podés volver a iniciar Mercado Pago.'
+        : 'La reserva Dux y el total están confirmados. El pago integrado está disponible.';
+    }
+    return 'La reserva Dux y el total están confirmados. El pago integrado todavía no está disponible.';
+  }
+  if (receipt.status === 'rejected') return 'No hay cobro ni reserva acreditados para esta solicitud.';
+  if (receipt.status === 'accepted') return 'Aceptada para gestión. Todavía no hay una reserva Dux confirmada ni un cobro.';
+  return 'Sin cobro ni reserva acreditados por este registro.';
+}
+
+function canPrepareAnother(receipt: WebRequestReceipt): boolean {
+  return receipt.status === 'rejected' || receipt.reservationStatus === 'released' || receipt.reservationStatus === 'finalized';
+}
+
+function formatMinor(value: number): string {
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value / 100);
+}
+
 function message(error: unknown): string { return error instanceof Error ? error.message : 'No se pudo completar la solicitud.'; }
