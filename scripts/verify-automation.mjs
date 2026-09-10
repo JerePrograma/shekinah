@@ -97,7 +97,7 @@ for (const action of actionReferences) {
   if (action === undefined || !allowedActions.has(action)) fail(`Acción no autorizada o no fijada a SHA: ${action}`);
 }
 // PowerShell remains limited to two exact, repository-owned, non-network actions:
-// parsing the migration script and running Dux tests with mocked I/O.
+// parsing/self-testing the migration script and running Dux tests with mocked I/O.
 const commerceD1ParserStep = '\n' + [
   '      - name: Verify commerce D1 migration script syntax',
   '        shell: pwsh',
@@ -114,6 +114,7 @@ const commerceD1ParserStep = '\n' + [
   '            $errors | ForEach-Object { $_.Message | Out-Host }',
   '            exit 1',
   '          }',
+  '          & $path -SelfTestJsonParser',
 ].join('\n') + '\n';
 const localDuxMockStep = '\n' + [
   '      - name: Verify Dux activation procedure with local mocks',
@@ -122,7 +123,7 @@ const localDuxMockStep = '\n' + [
 ].join('\n') + '\n';
 const normalizedWorkflow = workflow.replaceAll('\r\n', '\n');
 if (normalizedWorkflow.split(commerceD1ParserStep).length !== 2) {
-  fail('CI debe validar exactamente una vez la sintaxis del migrador D1 autorizado.');
+  fail('CI debe validar exactamente una vez la sintaxis y self-test del migrador D1 autorizado.');
 }
 if (normalizedWorkflow.split(localDuxMockStep).length !== 2) {
   fail('CI debe ejecutar exactamente una vez las pruebas Dux locales autorizadas.');
@@ -233,7 +234,7 @@ const gitignore = read(join(root, '.gitignore'));
 if (!gitignore.split(/\r?\n/u).includes('server/generated/catalog.json')) {
   fail('El catálogo generado de Functions debe permanecer fuera de Git.');
 }
-const routes = JSON.parse(read(join(root, 'public', '_routes.json')));
+const routes = JSON.parse(read(join(root, 'public', '_routes.json'));
 if (JSON.stringify(routes) !== JSON.stringify({ version: 1, include: ['/api/*', '/admin', '/admin/*'], exclude: ['/assets/*', '/images/*'] })) {
   fail('public/_routes.json no coincide con las rutas serverless autorizadas.');
 }
