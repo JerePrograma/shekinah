@@ -28,6 +28,9 @@ const migrationsThrough = (last: number) => Array.from({ length: last }, (_, ind
     '0018': '0018_retire_manual_catalog.sql',
     '0019': '0019_mercadolibre_editorial.sql',
     '0020': '0020_web_order_requests.sql',
+    '0021': '0021_assisted_dux_checkout.sql',
+    '0022': '0022_assisted_dux_order_number_unique.sql',
+    '0023': '0023_assisted_dux_lifecycle_financial_guard.sql',
   };
   const name = names[number];
   if (name === undefined) throw new Error(`Migración de prueba ausente: ${number}`);
@@ -36,6 +39,7 @@ const migrationsThrough = (last: number) => Array.from({ length: last }, (_, ind
 
 const baseEnv = Object.freeze({
   WEB_ORDERS_ENABLED: 'false',
+  ASSISTED_CHECKOUT_ENABLED: 'false',
   COMMERCE_ENABLED: 'false',
   DUX_API_ENABLED: 'false',
   DUX_API_TOKEN: 'dux-token-test-only',
@@ -50,7 +54,7 @@ const baseEnv = Object.freeze({
   PUBLIC_SITE_URL: 'https://shekinah.ar',
 } satisfies Env);
 
-function database(last = 20): SqliteD1 {
+function database(last = 23): SqliteD1 {
   return new SqliteD1(migrationsThrough(last));
 }
 
@@ -107,8 +111,25 @@ describe('preparación comercial administrativa', () => {
       expect(result.webRequests.schemaReady).toBe(false);
       expect(result.webRequests.totalCount).toBeNull();
       expect(result.webRequests.blockers).toContain('WEB_REQUEST_MIGRATION_REQUIRED');
+      expect(result.assistedCheckout.schemaReady).toBe(false);
+      expect(result.assistedCheckout.blockers).toContain('ASSISTED_CHECKOUT_MIGRATION_REQUIRED');
       expect(result.checkout.automaticDuxMutationAllowed).toBe(false);
       expect(result.checkout.blockers).toContain('DUX_ORDER_PRODUCT_SCHEMA_UNVERIFIED');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('distingue 0020 del circuito asistido completo 0021 a 0023', async () => {
+    const db = database(20);
+    try {
+      await seedSnapshot(db, '2026-09-10T11:55:00.000Z');
+      const result = await readCommerceReadiness(db, baseEnv, Date.parse('2026-09-10T12:00:00.000Z'));
+      expect(result.webRequests.schemaReady).toBe(true);
+      expect(result.assistedCheckout.schemaReady).toBe(false);
+      expect(result.assistedCheckout.lifecycleGuardsReady).toBe(false);
+      expect(result.assistedCheckout.blockers).toContain('ASSISTED_CHECKOUT_MIGRATION_REQUIRED');
+      expect(result.assistedCheckout.blockers).toContain('ASSISTED_DUX_LIFECYCLE_MIGRATION_REQUIRED');
     } finally {
       db.close();
     }
@@ -129,6 +150,16 @@ describe('preparación comercial administrativa', () => {
         submittedCount: 0,
       });
       expect(result.webRequests.blockers).toEqual(['WEB_ORDERS_DISABLED']);
+      expect(result.assistedCheckout).toMatchObject({
+        schemaReady: true,
+        lifecycleGuardsReady: true,
+        serverEnabled: false,
+        webOrdersEnabled: false,
+        commerceEnabled: false,
+        duxApiEnabled: false,
+      });
+      expect(result.assistedCheckout.blockers).toContain('ASSISTED_CHECKOUT_DISABLED');
+      expect(result.assistedCheckout.blockers).toContain('COMMERCE_DISABLED');
       expect(result.dux).toMatchObject({
         schemaReady: true,
         publicCatalogEnabled: true,
@@ -154,6 +185,7 @@ describe('preparación comercial administrativa', () => {
       expect(result.dux.snapshotAvailable).toBe(true);
       expect(result.dux.snapshotFresh).toBe(false);
       expect(result.webRequests.warnings).toContain('DUX_CATALOG_SNAPSHOT_STALE');
+      expect(result.assistedCheckout.blockers).toContain('DUX_CATALOG_SNAPSHOT_STALE');
       expect(result.checkout.blockers).toContain('DUX_CATALOG_SNAPSHOT_STALE');
     } finally {
       db.close();
@@ -209,21 +241,34 @@ describe('preparación comercial administrativa', () => {
     }
   });
 
-  it('valida configuración sin devolver credenciales y conserva el guard de lifecycle', async () => {
+  it('habilita el readiness asistido sin afirmar que Dux automático está disponible', async () => {
     const db = database();
     try {
       const enabledEnv: Env = Object.freeze({
         ...baseEnv,
         WEB_ORDERS_ENABLED: 'true',
+        ASSISTED_CHECKOUT_ENABLED: 'true',
         COMMERCE_ENABLED: 'true',
         DUX_API_ENABLED: 'true',
       });
       await seedSnapshot(db, '2026-09-10T11:55:00.000Z');
       const result = await readCommerceReadiness(db, enabledEnv, Date.parse('2026-09-10T12:00:00.000Z'));
       expect(result.webRequests.blockers).toEqual([]);
+      expect(result.assistedCheckout.blockers).toEqual([]);
+      expect(result.assistedCheckout).toMatchObject({
+        schemaReady: true,
+        lifecycleGuardsReady: true,
+        serverEnabled: true,
+        webOrdersEnabled: true,
+        commerceEnabled: true,
+        duxApiEnabled: true,
+        catalogSnapshotAvailable: true,
+        catalogSnapshotFresh: true,
+      });
       expect(result.checkout.guardCode).toBe('DUX_ORDER_LIFECYCLE_UNAVAILABLE');
       expect(result.checkout.blockers).toContain('DUX_ORDER_LIFECYCLE_UNAVAILABLE');
       expect(result.checkout.blockers).toContain('DUX_ORDER_RELEASE_FINALIZE_UNVERIFIED');
+      expect(result.checkout.automaticDuxMutationAllowed).toBe(false);
       expect(JSON.stringify(result)).not.toContain(enabledEnv.MERCADO_PAGO_ACCESS_TOKEN);
     } finally {
       db.close();
