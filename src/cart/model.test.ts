@@ -109,7 +109,7 @@ describe('carrito', () => {
     })]).items).toEqual([{ productId: dynamic.id, quantity: 2 }]);
   });
 
-  it('ignora stock local legacy y sólo usa disponibilidad Dux entera verificada', () => {
+  it('ignora stock local legacy y sólo usa disponibilidad Dux verificada', () => {
     const tracked = product('controlado', 100, { stockQuantity: 3 });
     const depleted = product('sin-stock', 100, { stockQuantity: 0 });
     const legacy = product('legacy');
@@ -151,5 +151,29 @@ describe('carrito', () => {
     const legacyTimestamp = new Date('2026-08-10T12:00:00.000Z');
     expect(addCartItem(emptyCart(), legacy.id, 1, legacyTimestamp).updatedAt)
       .toBe(legacyTimestamp.toISOString());
+  });
+
+  it('trata el stock decimal Dux como equivalentes de la unidad comercial y sólo vende unidades completas', () => {
+    const abedul: Product = Object.freeze({
+      ...product('abedul-100gr', 2_500),
+      presentation: '100 g',
+      commerce: Object.freeze({
+        source: 'dux' as const,
+        catalogVersion: 'b'.repeat(64),
+        syncedAt: '2026-09-10T12:00:00.000Z',
+        availabilityState: 'verified' as const,
+        checkoutEligible: false,
+        mappingStatus: 'mapped' as const,
+        quantitySemanticsStatus: 'verified' as const,
+        observedStock: Object.freeze({ real: 12.68, reserved: 0, available: 12.68 }),
+      }),
+    });
+
+    expect(isProductAvailable(abedul)).toBe(true);
+    expect(getProductCartLimit(abedul)).toBe(12);
+    const twelve = addCartItem(emptyCart(), abedul.id, 12, getProductCartLimit(abedul));
+    expect(twelve.items).toEqual([{ productId: abedul.id, quantity: 12 }]);
+    expect(addCartItem(twelve, abedul.id, 1, getProductCartLimit(abedul))).toBe(twelve);
+    expect(setCartItemQuantity(twelve, abedul.id, 13, getProductCartLimit(abedul))).toBe(twelve);
   });
 });
