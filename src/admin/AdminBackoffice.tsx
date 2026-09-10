@@ -10,11 +10,12 @@ import type { FormEvent } from 'react';
 import { AdminPage } from '../pages/AdminPage';
 import type { AdminSection } from '../pages/AdminPage';
 import type { Navigate } from '../routing/routes';
-import { DuxPanel } from './DuxPanel';
 import { CommerceAttentionPanel } from './CommerceAttentionPanel';
-import { WebOrderRequestsPanel } from './WebOrderRequestsPanel';
+import { CommerceReadinessPanel } from './CommerceReadinessPanel';
+import { DuxPanel } from './DuxPanel';
 import { ProductManager } from './ProductManager';
 import type { ProductInteractionState } from './ProductManager';
+import { WebOrderRequestsPanel } from './WebOrderRequestsPanel';
 
 type AdminIdentity = Readonly<{
   label: string;
@@ -307,6 +308,7 @@ export function AdminBackoffice({
           </ul>
         </div>
       </nav>
+      {section === 'summary' ? <CommerceReadinessPanel onUnauthorized={handleUnauthorized} /> : null}
       <div hidden={section !== 'products'}>
         <ProductManager
           onInteractionStateChange={handleProductInteractionChange}
