@@ -12,6 +12,7 @@ const {
   product,
   refreshRuntimeCatalog,
   trackAnalyticsEvent,
+  webOrderState,
 } = vi.hoisted(() => ({
   commerceState: { enabled: false },
   createCheckoutPreference: vi.fn(),
@@ -41,6 +42,7 @@ const {
   }),
   refreshRuntimeCatalog: vi.fn(),
   trackAnalyticsEvent: vi.fn(() => Promise.resolve()),
+  webOrderState: { enabled: false },
 }));
 
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent }));
@@ -52,6 +54,9 @@ vi.mock('../data/runtime-catalog', () => ({
 vi.mock('../commerce/env', () => ({
   getAuthorizedWhatsappNumber: () => '5492236216559',
   isCommerceClientEnabled: () => commerceState.enabled,
+}));
+vi.mock('../commerce/web-order-capability-client', () => ({
+  useWebOrderRegistrationEnabled: () => webOrderState.enabled,
 }));
 vi.mock('../commerce/api', () => ({ createCheckoutPreference, createWhatsappOrder }));
 vi.mock('../commerce/checkout-session', () => ({
@@ -74,6 +79,7 @@ describe('CartPage', () => {
     getOrCreateWhatsappOrderIdempotencyKey.mockClear();
     refreshRuntimeCatalog.mockReset().mockResolvedValue([product]);
     commerceState.enabled = false;
+    webOrderState.enabled = false;
   });
 
   afterEach(() => {
@@ -188,6 +194,18 @@ describe('CartPage', () => {
       'Mercado Pago no pudo iniciar el pago.',
     );
     expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+  });
+
+  it('canaliza Mercado Pago por la solicitud web cuando el circuito está habilitado', () => {
+    commerceState.enabled = true;
+    webOrderState.enabled = true;
+    renderCart();
+
+    expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Mercado Pago se habilita dentro de la solicitud web/u)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Registrar solicitud web' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
+    expect(createCheckoutPreference).not.toHaveBeenCalled();
   });
 
   it('registra una sola vez antes de ofrecer WhatsApp y usa el snapshot autoritativo', async () => {
