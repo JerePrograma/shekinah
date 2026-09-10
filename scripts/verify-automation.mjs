@@ -111,7 +111,7 @@ const commerceD1ParserStep = '\n' + [
   '            [ref]$errors',
   '          ) | Out-Null',
   '          if ($errors.Count -ne 0) {',
-  '            $errors | ForEach-Object { Write-Error $_.Message }',
+  '            $errors | ForEach-Object { $_.Message | Out-Host }',
   '            exit 1',
   '          }',
 ].join('\n') + '\n';
