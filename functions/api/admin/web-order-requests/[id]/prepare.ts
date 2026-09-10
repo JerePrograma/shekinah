@@ -44,7 +44,7 @@ export const onRequest: PagesFunction<Env, 'id', AdminContextData> = async ({ da
       env,
       id,
       parseAssistedCheckoutInput(value),
-      data.adminIdentity.sub,
+      data.adminIdentity.actor,
     );
     return jsonResponse(prepared, prepared.created ? 201 : 200);
   }, { type: 'web_request', ...(typeof id === 'string' ? { id } : {}) });
