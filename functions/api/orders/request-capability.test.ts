@@ -41,8 +41,9 @@ it('falla cerrado si falta D1 o el diagnóstico interno falla', async () => {
     doubles.enabled.mockRejectedValue(new Error('secret-name-should-not-leak'));
     const response = await onRequest(context(database));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ enabled: false });
-    expect(await response.text()).not.toContain('secret-name-should-not-leak');
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({ enabled: false });
+    expect(text).not.toContain('secret-name-should-not-leak');
   } finally {
     database.close();
   }
