@@ -49,6 +49,34 @@ $RequiredIntentColumns = @(
 $RequiredOrderColumns = @('web_request_id', 'assisted_checkout_fingerprint')
 $RequiredLinkColumns = @('verification_method', 'verification_actor', 'verification_note')
 
+function ConvertFrom-JsonCompat {
+    param([Parameter(Mandatory = $true)][string]$Text)
+    return $Text | ConvertFrom-Json
+}
+
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($Bytes)
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    return (($hashBytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Write-Utf8NoBomFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Text
+    )
+
+    $encoding = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
+    [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
 function Remove-TerminalNoise {
     param([Parameter(Mandatory = $true)][string]$Text)
 
@@ -76,7 +104,7 @@ function Convert-WranglerJsonText {
     }
 
     try {
-        return $trimmed | ConvertFrom-Json -Depth 100
+        return ConvertFrom-JsonCompat $trimmed
     }
     catch {
         # Wrangler/npm pueden contaminar stdout aun con --json. El fallback no
@@ -95,7 +123,7 @@ function Convert-WranglerJsonText {
             }
             $candidate = $clean.Substring($start, $end - $start + 1).Trim()
             try {
-                return $candidate | ConvertFrom-Json -Depth 100
+                return ConvertFrom-JsonCompat $candidate
             }
             catch {
                 continue
@@ -111,17 +139,16 @@ function Save-WranglerJsonDiagnostic {
 
     New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    $hash = [Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData($bytes)
-    ).ToLowerInvariant()
+    $hash = Get-Sha256Hex $bytes
     $path = Join-Path $EvidenceRoot 'last-wrangler-json-failure.txt'
-    @(
+    $content = @(
         "captured_at=$((Get-Date).ToUniversalTime().ToString('o'))"
         "length=$($Text.Length)"
         "sha256=$hash"
         '--- raw output ---'
         $Text
-    ) | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    ) -join [Environment]::NewLine
+    Write-Utf8NoBomFile $path $content
     return $path
 }
 
@@ -231,7 +258,18 @@ function Test-WranglerJsonParser {
     if (-not $invalidRejected) {
         throw 'Self-test del parser aceptó texto inválido.'
     }
-    Write-Host "Parser JSON de Wrangler verificado: $($samples.Count) variantes válidas y rechazo de texto inválido."
+
+    $diagnosticPath = Save-WranglerJsonDiagnostic 'diagnostic-self-test'
+    if (-not (Test-Path -LiteralPath $diagnosticPath -PathType Leaf)) {
+        throw 'Self-test no pudo persistir el diagnóstico JSON.'
+    }
+    $diagnostic = Get-Content -LiteralPath $diagnosticPath -Raw
+    if (-not $diagnostic.Contains('sha256=') -or -not $diagnostic.Contains('diagnostic-self-test')) {
+        throw 'Self-test generó un diagnóstico JSON inválido.'
+    }
+    Remove-Item -LiteralPath $diagnosticPath -Force
+
+    Write-Host "Parser JSON de Wrangler verificado: $($samples.Count) variantes válidas, diagnóstico portable y rechazo de texto inválido."
 }
 
 function Query-D1 {
@@ -334,7 +372,8 @@ function Save-Bookmark {
     param([string]$Environment, [string]$Directory)
     $payload = Invoke-WranglerJson $Environment @('d1', 'time-travel', 'info', 'DB')
     $path = Join-Path $Directory "$Environment-before.json"
-    $payload | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    $json = $payload | ConvertTo-Json -Depth 100
+    Write-Utf8NoBomFile $path $json
     Write-Host "Bookmark Time Travel guardado: $path"
 }
 
