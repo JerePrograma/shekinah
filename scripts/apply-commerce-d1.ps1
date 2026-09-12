@@ -51,7 +51,15 @@ $RequiredLinkColumns = @('verification_method', 'verification_actor', 'verificat
 
 function ConvertFrom-JsonCompat {
     param([Parameter(Mandatory = $true)][string]$Text)
-    return $Text | ConvertFrom-Json
+
+    $value = ConvertFrom-Json -InputObject $Text
+    if ($value -is [System.Array]) {
+        foreach ($item in $value) {
+            Write-Output $item
+        }
+        return
+    }
+    Write-Output $value
 }
 
 function Get-Sha256Hex {
@@ -231,6 +239,12 @@ function Test-WranglerJsonParser {
     $escape = [string][char]27
     $bell = [string][char]7
     $bom = [string][char]0xFEFF
+
+    $compatPayload = @(ConvertFrom-JsonCompat $json)
+    if ($compatPayload.Count -ne 1 -or $compatPayload[0] -is [System.Array]) {
+        throw 'Self-test detectó enumeración incompatible del array JSON superior.'
+    }
+
     $samples = @(
         $json,
         "npm notice wrapper`n$json",
@@ -240,11 +254,12 @@ function Test-WranglerJsonParser {
         ($escape + ']0;wrangler' + $bell + $json)
     )
 
-    foreach ($sample in $samples) {
+    for ($sampleIndex = 0; $sampleIndex -lt $samples.Count; $sampleIndex++) {
+        $sample = $samples[$sampleIndex]
         $payload = @(Convert-WranglerJsonText $sample)
         $rows = @(D1-Rows $payload)
         if ($rows.Count -ne 1 -or [string]$rows[0].name -ne '0019_test.sql') {
-            throw 'Self-test del parser JSON de Wrangler falló.'
+            throw "Self-test del parser JSON de Wrangler falló en variante $sampleIndex; filas=$($rows.Count)."
         }
     }
 
@@ -269,7 +284,7 @@ function Test-WranglerJsonParser {
     }
     Remove-Item -LiteralPath $diagnosticPath -Force
 
-    Write-Host "Parser JSON de Wrangler verificado: $($samples.Count) variantes válidas, diagnóstico portable y rechazo de texto inválido."
+    Write-Host "Parser JSON de Wrangler verificado: array superior normalizado, $($samples.Count) variantes válidas, diagnóstico portable y rechazo de texto inválido."
 }
 
 function Query-D1 {
