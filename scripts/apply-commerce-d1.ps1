@@ -205,7 +205,8 @@ function Invoke-Native {
 }
 
 function Test-NativeInvocation {
-    $failureScript = 'console.log("native-" + "failure-stdout"); console.error("native-" + "failure-stderr"); process.exitCode = 23;'
+    # PowerShell 5.1 elimina comillas dobles internas al pasar argumentos nativos.
+    $failureScript = "console.log('native-' + 'failure-stdout'); console.error('native-' + 'failure-stderr'); process.exitCode = 23;"
     $failureMessage = $null
     try {
         Invoke-Native -FilePath 'node' -Arguments @('-e', $failureScript) | Out-Null
@@ -226,7 +227,7 @@ function Test-NativeInvocation {
 
     # La prueba exitosa queda última para que el self-test no propague el
     # LASTEXITCODE esperado (23) del proceso fallido que acaba de inspeccionar.
-    $successScript = 'console.log("native-" + "stdout-ok"); console.error("native-" + "stderr-ok");'
+    $successScript = "console.log('native-' + 'stdout-ok'); console.error('native-' + 'stderr-ok');"
     $successOutput = @(Invoke-Native -FilePath 'node' -Arguments @('-e', $successScript))
     $successText = @($successOutput) -join "`n"
     if (-not $successText.Contains('native-stdout-ok') -or -not $successText.Contains('native-stderr-ok')) {
