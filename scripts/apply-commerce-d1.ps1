@@ -205,13 +205,6 @@ function Invoke-Native {
 }
 
 function Test-NativeInvocation {
-    $successScript = 'console.log("native-" + "stdout-ok"); console.error("native-" + "stderr-ok");'
-    $successOutput = @(Invoke-Native -FilePath 'node' -Arguments @('-e', $successScript))
-    $successText = @($successOutput) -join "`n"
-    if (-not $successText.Contains('native-stdout-ok') -or -not $successText.Contains('native-stderr-ok')) {
-        throw 'Self-test no pudo capturar stdout y stderr de un proceso nativo exitoso.'
-    }
-
     $failureScript = 'console.log("native-" + "failure-stdout"); console.error("native-" + "failure-stderr"); process.exitCode = 23;'
     $failureMessage = $null
     try {
@@ -229,6 +222,15 @@ function Test-NativeInvocation {
     }
     if ($ErrorActionPreference -ne 'Stop') {
         throw 'Self-test detectó que Invoke-Native no restauró ErrorActionPreference.'
+    }
+
+    # La prueba exitosa queda última para que el self-test no propague el
+    # LASTEXITCODE esperado (23) del proceso fallido que acaba de inspeccionar.
+    $successScript = 'console.log("native-" + "stdout-ok"); console.error("native-" + "stderr-ok");'
+    $successOutput = @(Invoke-Native -FilePath 'node' -Arguments @('-e', $successScript))
+    $successText = @($successOutput) -join "`n"
+    if (-not $successText.Contains('native-stdout-ok') -or -not $successText.Contains('native-stderr-ok')) {
+        throw 'Self-test no pudo capturar stdout y stderr de un proceso nativo exitoso.'
     }
 
     Write-Host 'Ejecución nativa verificada: stderr no interrumpe PowerShell 5.1 y el exit code conserva el diagnóstico.'
