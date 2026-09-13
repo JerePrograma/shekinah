@@ -1,5 +1,9 @@
 # Estado actual
 
+## D1 0020–0023 verificada; activación comercial pendiente — 2026-09-13
+
+Preview y Production tienen 0001–0023 contiguas, sin pendientes, 14 objetos y 15 columnas críticas, foreign keys válidas y datos históricos conservados. El cierre por import oficial, los bookmarks, el fix mínimo del self-test PowerShell 5.1 y la evidencia de CI/Pages están en [el registro del rollout](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md). Los flags comerciales permanecen cerrados: faltan sesión administrativa, refresco Dux y smokes reales. La intermediación TLS Fortinet de la red local impidió acreditar el acceso canónico. No confundir cierre de D1 con producto comercial activo; las secciones anteriores en el tiempo que siguen conservan su carácter histórico.
+
 ## Catálogo Dux exclusivo y preparación editorial — 2026-09-08
 
 La programación Dux vuelve a GitHub cada cinco minutos después de que el intento Cloudflare no registrara eventos dentro de los plazos observados. El relay se conserva sin programación; la transición operativa debe confirmar primero cero crons Cloudflare y después abrir el gate GitHub. La frecuencia efectiva y la muestra de cuatro ejecuciones siguen requiriendo evidencia independiente.

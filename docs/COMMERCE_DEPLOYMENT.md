@@ -1,5 +1,9 @@
 # Despliegue del comercio
 
+## Verificación operativa vigente — 2026-09-13
+
+El [rollout D1 0020–0023](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md) terminó en Preview y Production con historial continuo y datos anteriores conservados. Documenta la incidencia 7500 de `/query`, el import oficial de los SQL originales y las verificaciones posteriores. Dux API está habilitada, pero WEB/ASSISTED/COMMERCE siguen cerrados y no se acreditó la activación comercial. Usar ese registro para el estado observado y las dependencias pendientes; las etapas históricas de 0012–0014 descritas abajo no representan el esquema remoto actual.
+
 ## Regla de activación
 
 Este documento distingue código, migraciones, configuración, deployment y pruebas externas. Ninguna etapa demuestra automáticamente la siguiente.

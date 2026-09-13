@@ -1,5 +1,9 @@
 # Continuación
 
+## Continuar la activación después del cierre D1 — 2026-09-13
+
+Partir de [COMMERCE_D1_ROLLOUT_2026-09-13.md](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md). Ambas D1 ya tienen 0020–0023 verificadas: releer el estado, no reaplicarlas ni restaurar. Trabajar exclusivamente en `C:\laburo\shekinah-release-20260910-155842`; el checkout original no fue tocado. La activación quedó detenida antes del primer flag por falta de sesión administrativa y snapshot fresco; el acceso HTTPS canónico desde la red local mostró un emisor Fortinet no confiable. El intento de abrir temporalmente el scheduler GitHub fue rechazado antes de ejecutarse. Seguir los pasos concretos del registro, preservar evidencia y abrir WEB → ASSISTED → COMMERCE sólo con los smokes correspondientes. No hay registros de prueba nuevos que cerrar.
+
 ## Dependencias operativas pendientes — 2026-09-08
 
 Usar el informe externo de esta ejecución y [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md) para determinar el SHA y estado remoto real. El usuario confirmó falta de acceso al titular de HERBOLARIOMDP; no solicitarle nuevamente un login que no puede proporcionar. El titular debe configurar y autorizar la aplicación oficial Mercado Libre. Mantener el flag editorial cerrado hasta completar en Preview conexión, vendedor, importación total, idempotencia, presupuesto Free y revisión real; después habilitar producción y el gate diario. Ningún error permite reconstruir catálogo manual ni habilitar compras.
