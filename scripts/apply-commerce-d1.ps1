@@ -220,10 +220,11 @@ function Test-NativeInvocation {
     catch {
         $failureMessage = $_.Exception.Message
     }
-    if ($null -eq $failureMessage
-        -or -not $failureMessage.Contains('exit code 23')
-        -or -not $failureMessage.Contains('native-failure-stdout')
-        -or -not $failureMessage.Contains('native-failure-stderr')) {
+    $failureIsComplete = $null -ne $failureMessage
+    if ($failureIsComplete) {
+        $failureIsComplete = $failureMessage.Contains('exit code 23') -and $failureMessage.Contains('native-failure-stdout') -and $failureMessage.Contains('native-failure-stderr')
+    }
+    if (-not $failureIsComplete) {
         throw 'Self-test no pudo preservar exit code, stdout y stderr de un proceso nativo fallido.'
     }
     if ($ErrorActionPreference -ne 'Stop') {
