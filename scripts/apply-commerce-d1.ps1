@@ -166,9 +166,27 @@ function Invoke-Native {
         [Parameter(Mandatory = $true)][string[]]$Arguments,
         [switch]$Json
     )
-    $output = @(& $FilePath @Arguments 2>&1 | ForEach-Object { $_.ToString() })
-    if ($LASTEXITCODE -ne 0) {
-        throw "Falló: $FilePath $($Arguments -join ' ')"
+
+    # Windows PowerShell 5.1 convierte stderr nativo redirigido en ErrorRecord.
+    # Con la preferencia global en Stop puede abortar antes de leer LASTEXITCODE.
+    # La preferencia se relaja sólo durante esta invocación y se restaura siempre.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $rawOutput = @(& $FilePath @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $output = @($rawOutput | ForEach-Object { $_.ToString() })
+    if ($exitCode -ne 0) {
+        $details = (@($output) -join "`n").Trim()
+        if ([string]::IsNullOrWhiteSpace($details)) {
+            $details = '(sin salida capturada)'
+        }
+        throw "Falló: $FilePath $($Arguments -join ' ') (exit code $exitCode).`n$details"
     }
     if (-not $Json) {
         return @($output)
@@ -184,6 +202,35 @@ function Invoke-Native {
         $diagnosticPath = Save-WranglerJsonDiagnostic $text
         throw "$($_.Exception.Message) Salida cruda guardada localmente en: $diagnosticPath"
     }
+}
+
+function Test-NativeInvocation {
+    $successScript = 'console.log("native-" + "stdout-ok"); console.error("native-" + "stderr-ok");'
+    $successOutput = @(Invoke-Native -FilePath 'node' -Arguments @('-e', $successScript))
+    $successText = @($successOutput) -join "`n"
+    if (-not $successText.Contains('native-stdout-ok') -or -not $successText.Contains('native-stderr-ok')) {
+        throw 'Self-test no pudo capturar stdout y stderr de un proceso nativo exitoso.'
+    }
+
+    $failureScript = 'console.log("native-" + "failure-stdout"); console.error("native-" + "failure-stderr"); process.exitCode = 23;'
+    $failureMessage = $null
+    try {
+        Invoke-Native -FilePath 'node' -Arguments @('-e', $failureScript) | Out-Null
+    }
+    catch {
+        $failureMessage = $_.Exception.Message
+    }
+    if ($null -eq $failureMessage
+        -or -not $failureMessage.Contains('exit code 23')
+        -or -not $failureMessage.Contains('native-failure-stdout')
+        -or -not $failureMessage.Contains('native-failure-stderr')) {
+        throw 'Self-test no pudo preservar exit code, stdout y stderr de un proceso nativo fallido.'
+    }
+    if ($ErrorActionPreference -ne 'Stop') {
+        throw 'Self-test detectó que Invoke-Native no restauró ErrorActionPreference.'
+    }
+
+    Write-Host 'Ejecución nativa verificada: stderr no interrumpe PowerShell 5.1 y el exit code conserva el diagnóstico.'
 }
 
 function Wrangler-Args {
@@ -302,8 +349,7 @@ function Assert-GitState {
         $head = (@(Invoke-Native 'git' @('rev-parse', 'HEAD')) -join '').Trim()
         $remote = (@(Invoke-Native 'git' @('rev-parse', 'origin/main')) -join '').Trim()
         if ($head -ne $remote) { throw 'HEAD no coincide con origin/main. Ejecutá git pull --ff-only origin main.' }
-        $dirty = @(& git status --porcelain --untracked-files=no)
-        if ($LASTEXITCODE -ne 0) { throw 'No se pudo comprobar git status.' }
+        $dirty = @(Invoke-Native 'git' @('status', '--porcelain', '--untracked-files=no'))
         if ($dirty.Count -ne 0) { throw 'Hay cambios tracked locales. Preservalos y dejá el árbol limpio antes de migrar D1.' }
         if ($ExpectedCommit -ne '' -and $head -ne $ExpectedCommit) {
             throw "HEAD $head no coincide con -ExpectedCommit $ExpectedCommit."
@@ -451,6 +497,7 @@ function Process-Environment {
 
 if ($SelfTestJsonParser) {
     Test-WranglerJsonParser
+    Test-NativeInvocation
     return
 }
 
