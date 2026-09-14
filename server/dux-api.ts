@@ -42,7 +42,7 @@ type DuxTransportErrorClass =
 
 type DuxTransportFailureDiagnostic = Readonly<{
   version: 2;
-  kind: 'upstream_5xx' | 'fetch_exception' | 'provider_redirect';
+  kind: 'upstream_5xx' | 'fetch_exception' | 'provider_redirect' | 'provider_rejected';
   endpoint: DuxReadEndpoint;
   providerStatus: number | null;
   attempts: number;
@@ -427,12 +427,12 @@ export class DuxApiClient {
         }
         const providerError = statusError(response.status);
         if (
-          providerError.code === 'DUX_UNAVAILABLE' &&
+          (providerError.code === 'DUX_UNAVAILABLE' || providerError.code === 'DUX_PROVIDER_REJECTED') &&
           providerError.providerStatus !== null
         ) {
           reportDuxTransportFailure({
             version: 2,
-            kind: 'upstream_5xx',
+            kind: providerError.code === 'DUX_UNAVAILABLE' ? 'upstream_5xx' : 'provider_rejected',
             endpoint,
             providerStatus: providerError.providerStatus,
             attempts: attempt + 1,

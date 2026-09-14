@@ -639,6 +639,43 @@ describe('Dux API v2', () => {
       }
     });
 
+    it.each([400, 404, 422])('diagnostica el rechazo HTTP %s sin exponer datos ni reintentar', async (providerStatus) => {
+      const tokenSentinel = 'dux-token-sentinel-never-log';
+      const bodySentinel = 'provider-body-sentinel-never-log';
+      const companyIdSentinel = 987654321;
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const fetchImplementation = vi.fn(() => Promise.resolve(new Response(
+        JSON.stringify({ error: bodySentinel }),
+        { status: providerStatus, headers: { 'content-type': 'application/json' } },
+      )));
+      const client = new DuxApiClient({ accessToken: tokenSentinel, fetch: fetchImplementation });
+
+      try {
+        await expect(client.listSucursales(companyIdSentinel)).rejects.toMatchObject({
+          status: 502,
+          code: 'DUX_PROVIDER_REJECTED',
+          providerStatus,
+        });
+        expect(fetchImplementation).toHaveBeenCalledOnce();
+        expect(warning).toHaveBeenCalledExactlyOnceWith('dux_api_transport_failure', {
+          version: 2,
+          kind: 'provider_rejected',
+          endpoint: '/v2/sucursales',
+          providerStatus,
+          attempts: 1,
+          phase: 'classify_response',
+          errorClass: 'http_status',
+          headersReceived: true,
+        });
+        const diagnostics = JSON.stringify(warning.mock.calls);
+        for (const sensitive of [tokenSentinel, bodySentinel, String(companyIdSentinel), 'id_empresa', 'Authorization', 'Bearer']) {
+          expect(diagnostics).not.toContain(sensitive);
+        }
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
     it('conserva status y fase cuando falla la lectura del cuerpo', async () => {
       const bodyErrorSentinel = 'body-stream-sentinel-never-log';
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
