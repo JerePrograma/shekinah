@@ -1,5 +1,9 @@
 # Operación del comercio
 
+## Actualización operativa — 2026-09-14
+
+Consultar [la activación del 14 de septiembre](validation/COMMERCE_ACTIVATION_2026-09-14.md) para el estado actual: D1 hasta 0023 verificada, Dux API habilitada, 754 productos publicados, scheduler GitHub habilitado y workflow manual completo aprobado. WEB se abrió y volvió a cerrarse al fallar la validación TLS del entorno local; ASSISTED y COMMERCE siguen cerrados. La credencial Mercado Pago y los smokes transaccionales están pendientes. Las secciones del 1 de septiembre que siguen son evidencia histórica; no representan la configuración ni el esquema remoto actuales.
+
 ## Estado operativo vigente
 
 Dux Software es la autoridad de inventario, pero el corte productivo read-only todavía no se completó. El 2026-09-01 la API oficial respondió directamente con la credencial autorizada y resolvió empresa `12862`, sucursal `1`, depósito `25566` y `743` items; no se confirmó el nombre exacto del plan y no debe inferirse. Tres reconciliaciones Pages históricas no alcanzaron una respuesta HTTP clasificable. La causa fue aislada en `redirect: 'error'` y el candidato adopta el modo manual seguro, aún pendiente de publicación, `0014` y sync. La API pública tampoco documenta cómo liberar, cancelar, finalizar o vencer en forma segura la reserva de un pedido, ni expone en `GET /v2/items` la semántica de unidad necesaria para vender.

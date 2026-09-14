@@ -1,5 +1,9 @@
 # Continuación
 
+## Retomar después del diagnóstico y rollback WEB — 2026-09-14
+
+Continuar desde [COMMERCE_ACTIVATION_2026-09-14.md](validation/COMMERCE_ACTIVATION_2026-09-14.md), exclusivamente en el checkout de release. Preservar exactamente la edición local de `COMMERCE_D1_ROLLOUT_2026-09-13.md`: el usuario pidió conservarla y no fue publicada. D1 ya está verificada. El catálogo se actualizó y el workflow Dux manual terminó bien; comprobar la cadencia automática del scheduler habilitado. WEB volvió a `false` por imposibilidad de validar el certificado local de `shekinah.ar`; ASSISTED y COMMERCE nunca se abrieron. Chrome acreditó posteriormente HTTPS seguro y sesión administrativa; el control se recuperó en una pestaña nueva y la prueba identificada por el usuario quedó rechazada, auditada y verificada en D1. Completar el guardado humano del token Mercado Pago, acreditar el deployment y retomar los smokes en orden con catálogo fresco. El carrito local fue vaciado y no hay reservas ni preferencias nuevas que compensar.
+
 ## Continuar la activación después del cierre D1 — 2026-09-13
 
 Partir de [COMMERCE_D1_ROLLOUT_2026-09-13.md](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md). Ambas D1 ya tienen 0020–0023 verificadas: releer el estado, no reaplicarlas ni restaurar. Trabajar exclusivamente en `C:\laburo\shekinah-release-20260910-155842`; el checkout original no fue tocado. La activación quedó detenida antes del primer flag por falta de sesión administrativa y snapshot fresco; el acceso HTTPS canónico desde la red local mostró un emisor Fortinet no confiable. El intento de abrir temporalmente el scheduler GitHub fue rechazado antes de ejecutarse. Seguir los pasos concretos del registro, preservar evidencia y abrir WEB → ASSISTED → COMMERCE sólo con los smokes correspondientes. No hay registros de prueba nuevos que cerrar.

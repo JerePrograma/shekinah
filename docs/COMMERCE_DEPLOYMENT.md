@@ -1,5 +1,9 @@
 # Despliegue del comercio
 
+## Continuación operativa — 2026-09-14
+
+El [registro de activación](validation/COMMERCE_ACTIVATION_2026-09-14.md) contiene el SHA validado y desplegado, las dos D1 verificadas, el refresco real de 754 productos y la ejecución exitosa del workflow Dux. La primera apertura WEB tuvo rollback de flags por fallo local de validación TLS antes del smoke. Faltan la entrada humana del token Mercado Pago, la cadencia automática acreditada y la secuencia comercial completa. Las reglas y estados históricos que siguen no sustituyen estos recibos ni autorizan reaplicar migraciones.
+
 ## Verificación operativa vigente — 2026-09-13
 
 El [rollout D1 0020–0023](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md) terminó en Preview y Production con historial continuo y datos anteriores conservados. Documenta la incidencia 7500 de `/query`, el import oficial de los SQL originales y las verificaciones posteriores. Dux API está habilitada, pero WEB/ASSISTED/COMMERCE siguen cerrados y no se acreditó la activación comercial. Usar ese registro para el estado observado y las dependencias pendientes; las etapas históricas de 0012–0014 descritas abajo no representan el esquema remoto actual.

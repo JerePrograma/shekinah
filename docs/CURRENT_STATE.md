@@ -1,5 +1,9 @@
 # Estado actual
 
+## Activación reanudada; cadencia Dux y Mercado Pago pendientes — 2026-09-14
+
+El [registro de activación](validation/COMMERCE_ACTIVATION_2026-09-14.md) acredita ambas D1 nuevamente, el diagnóstico Dux publicado en `bffec969d27c4bd03450b3617c8f5681b85321ab`, CI/Pages verdes y un catálogo real de 754 productos. El scheduler GitHub quedó habilitado con autorización explícita; su workflow manual terminó correctamente, incluidas las 754 fichas, pero la cadencia automática todavía requiere evidencia. La primera apertura WEB se revirtió al impedir el certificado local Fortinet la verificación posterior. Chrome acreditó después HTTPS seguro y sesión administrativa; tras recuperar el control en una pestaña nueva, la prueba del usuario quedó rechazada por el flujo soportado y auditada a las 12:57 UTC, sin reserva ni orden asistida. ASSISTED y COMMERCE siguen cerrados y la credencial Mercado Pago requiere entrada del titular. El agente no creó transacciones de prueba. Este registro actualiza los bloqueos del 13 de septiembre sin borrar su evidencia.
+
 ## D1 0020–0023 verificada; activación comercial pendiente — 2026-09-13
 
 Preview y Production tienen 0001–0023 contiguas, sin pendientes, 14 objetos y 15 columnas críticas, foreign keys válidas y datos históricos conservados. El cierre por import oficial, los bookmarks, el fix mínimo del self-test PowerShell 5.1 y la evidencia de CI/Pages están en [el registro del rollout](validation/COMMERCE_D1_ROLLOUT_2026-09-13.md). Los flags comerciales permanecen cerrados: faltan sesión administrativa, refresco Dux y smokes reales. La intermediación TLS Fortinet de la red local impidió acreditar el acceso canónico. No confundir cierre de D1 con producto comercial activo; las secciones anteriores en el tiempo que siguen conservan su carácter histórico.
