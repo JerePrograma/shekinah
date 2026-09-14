@@ -9,6 +9,8 @@ import { webRequestStatusLabel } from './web-order-contracts';
 import { readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest } from './web-request-api';
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
+const MAX_AUTOMATIC_CHECKS = 8;
+
 export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange }: Readonly<{
   registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
   onBusyChange: (busy: boolean) => void; onActiveChange: (active: boolean) => void;
@@ -18,6 +20,8 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   const [receipt, setReceipt] = useState<WebRequestReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [refreshState, setRefreshState] = useState<'watching' | 'paused' | 'error'>('watching');
   const [linkedToken] = useState(() => {
     const token = new URLSearchParams(window.location.hash.slice(1)).get('solicitud');
     return token !== null && /^[a-f0-9]{64}$/u.test(token) ? token : null;
@@ -56,9 +60,42 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     return () => { cancelled = true; };
   }, [linkedToken, onActiveChange]);
 
+  const publicToken = receipt?.publicToken ?? null;
+  const awaitingUpdate = receipt !== null && shouldWatchRequest(receipt);
+  useEffect(() => {
+    if (publicToken === null || !awaitingUpdate) return;
+    const controller = new AbortController();
+    let checks = 0;
+    let timer: number | undefined;
+    setRefreshState('watching');
+    const schedule = () => {
+      if (checks >= MAX_AUTOMATIC_CHECKS) { setRefreshState('paused'); return; }
+      timer = window.setTimeout(() => void refresh(), Math.min(15_000 * 2 ** checks, 60_000));
+    };
+    const refresh = async () => {
+      if (controller.signal.aborted) return;
+      if (document.visibilityState === 'hidden' || busyRef.current) {
+        timer = window.setTimeout(() => void refresh(), 60_000);
+        return;
+      }
+      checks += 1;
+      try {
+        const current = await readWebRequest(publicToken, controller.signal);
+        if (controller.signal.aborted) return;
+        setReceipt(current);
+        if (shouldWatchRequest(current)) schedule();
+      } catch {
+        if (!controller.signal.aborted) setRefreshState('error');
+      }
+    };
+    schedule();
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [publicToken, awaitingUpdate, refreshVersion]);
+
   async function operate(action: 'create' | 'recover' | 'new' | 'checkout'): Promise<void> {
     if (busyRef.current || disabled) return;
     busyRef.current = true; setBusy(true); onBusyChange(true); setError('');
+    setRefreshVersion((value) => value + 1);
     try {
       if (action === 'new') {
         if (identity === null) return;
@@ -93,12 +130,17 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   }
   if (!registrationEnabled && identity === null && linkedToken === null) return null;
   return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy}>
-    <h2 id="web-request-title">Solicitud desde la página</h2>
-    <p>El comercio revisará presentación, cantidad, disponibilidad y total antes de confirmar la compra. Registrar esta solicitud no reserva stock ni inicia un cobro. No necesitás abrir WhatsApp.</p>
+    <h2 id="web-request-title">Tu pedido</h2>
+    <p>Completá tus datos una sola vez. El comercio confirmará stock y total antes de habilitar Mercado Pago en esta página. No necesitás abrir WhatsApp.</p>
     {receipt !== null ? <>
       <h3 ref={receiptTitle} tabIndex={-1}>Solicitud registrada</h3>
       <p>Esta referencia corresponde al intento ya enviado. Editar el carrito no cambia esa solicitud.</p>
       <p role="status">{receipt.reference}: {webRequestStatusLabel(receipt.status)}. {receiptStatusMessage(receipt)}</p>
+      {awaitingUpdate ? <p aria-live="polite">{refreshState === 'watching'
+        ? 'El estado se actualiza automáticamente mientras esta página está visible. No necesitás volver a cargar tus datos.'
+        : refreshState === 'error'
+          ? 'No pudimos actualizar el estado. Tu solicitud sigue guardada; podés consultar su estado nuevamente.'
+          : 'Tu solicitud sigue guardada. La actualización automática terminó por ahora; podés consultar su estado más tarde.'}</p> : null}
       {receipt.totalMinor === null ? null : <p><strong>Total confirmado:</strong> {formatMinor(receipt.totalMinor)}.</p>}
       {receipt.checkoutAvailable ? <button className="button button-primary" type="button" disabled={disabled || busy}
         onClick={() => void operate('checkout')}>{busy ? 'Preparando pago…' : 'Pagar con Mercado Pago'}</button> : null}
@@ -113,7 +155,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     {receipt === null && linkedToken === null && registrationEnabled ? <>
       <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : 'El envío por correo y el total quedan sujetos a confirmación; no se presuponen gratuitos.'}</p>
       <button className="button button-primary" type="button" disabled={disabled || busy || fulfillment === null || items.length === 0}
-        onClick={() => void operate('create')}>{busy ? 'Registrando solicitud…' : identity === null ? 'Registrar solicitud web' : 'Reenviar el mismo intento'}</button>
+        onClick={() => void operate('create')}>{busy ? 'Guardando tus datos…' : identity === null ? 'Confirmar mis datos' : 'Reenviar el mismo intento'}</button>
     </> : null}
     {identity !== null || linkedToken !== null ? <button className="button button-secondary" type="button" disabled={disabled || busy}
       onClick={() => void operate('recover')}>Consultar estado de la solicitud</button> : null}
@@ -135,19 +177,25 @@ function receiptStatusMessage(receipt: WebRequestReceipt): string {
   }
   if (receipt.paymentStatus === 'pending') return 'El pago está pendiente de acreditación. No vuelvas a pagarlo.';
   if (receipt.reservationStatus === 'requires_review') return 'La gestión de la reserva requiere revisión. El pago permanece bloqueado.';
-  if (receipt.reservationStatus === 'finalized') return 'La gestión Dux fue confirmada como finalizada.';
-  if (receipt.reservationStatus === 'released') return 'La reserva Dux fue confirmada como liberada.';
+  if (receipt.reservationStatus === 'finalized') return 'La gestión del pedido está finalizada.';
+  if (receipt.reservationStatus === 'released') return 'La reserva de este pedido fue liberada.';
   if (receipt.reservationStatus === 'confirmed') {
     if (receipt.checkoutAvailable) {
       return receipt.paymentStatus === 'rejected' || receipt.paymentStatus === 'cancelled'
         ? 'La reserva sigue confirmada y el intento anterior no se acreditó. Podés volver a iniciar Mercado Pago.'
-        : 'La reserva Dux y el total están confirmados. El pago integrado está disponible.';
+        : 'Tu stock está reservado y el total está confirmado. Podés pagar con Mercado Pago.';
     }
-    return 'La reserva Dux y el total están confirmados. El pago integrado todavía no está disponible.';
+    return 'Tu stock está reservado y el total está confirmado. El pago todavía no está disponible.';
   }
   if (receipt.status === 'rejected') return 'No hay cobro ni reserva acreditados para esta solicitud.';
-  if (receipt.status === 'accepted') return 'Aceptada para gestión. Todavía no hay una reserva Dux confirmada ni un cobro.';
+  if (receipt.status === 'accepted') return 'El comercio está preparando tu pedido. El pago se habilitará cuando confirme la reserva y el total.';
   return 'Sin cobro ni reserva acreditados por este registro.';
+}
+
+function shouldWatchRequest(receipt: WebRequestReceipt): boolean {
+  return !receipt.checkoutAvailable && !receipt.paymentRequiresReview && receipt.status !== 'rejected' &&
+    receipt.paymentStatus !== 'approved' && receipt.paymentStatus !== 'refunded' &&
+    (receipt.reservationStatus === 'not_reserved' || receipt.reservationStatus === 'confirmed');
 }
 
 function canPrepareAnother(receipt: WebRequestReceipt): boolean {

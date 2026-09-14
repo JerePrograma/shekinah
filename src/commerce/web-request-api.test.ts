@@ -42,3 +42,14 @@ it('propaga un mensaje de error del servidor sin convertirlo en una compra exito
   await expect(startWebRequestCheckout('c'.repeat(64), 10_000))
     .rejects.toThrow('La reserva Dux debe estar confirmada antes de iniciar el pago.');
 });
+
+it('permite cancelar la consulta de estado sin crear una solicitud ni una preferencia', async () => {
+  const controller = new AbortController();
+  const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new DOMException('Cancelada', 'AbortError'));
+  vi.stubGlobal('fetch', fetchMock);
+  controller.abort();
+  await expect(readWebRequest('d'.repeat(64), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  expect(fetchMock).toHaveBeenCalledExactlyOnceWith(`/api/orders/${'d'.repeat(64)}/request-status`, {
+    credentials: 'same-origin', redirect: 'error', signal: controller.signal,
+  });
+});

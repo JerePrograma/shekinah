@@ -209,7 +209,7 @@ describe('CartPage', () => {
 
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
     expect(screen.getByText(/Mercado Pago se habilita dentro de la solicitud web/u)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Registrar solicitud web' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Confirmar mis datos' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(createCheckoutPreference).not.toHaveBeenCalled();
   });
@@ -225,7 +225,7 @@ describe('CartPage', () => {
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: /Acepto compartir/iu })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
     expect(screen.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
     expect(screen.getByText(/El envío requiere cotización/iu)).toBeVisible();
     expect(screen.queryByText(/peso determinístico|cotización por WhatsApp/iu)).not.toBeInTheDocument();
@@ -238,14 +238,14 @@ describe('CartPage', () => {
     commerceState.assistedOnly = true;
     webOrderState.enabled = true;
     renderCart();
-    expect(screen.getByRole('button', { name: 'Registrar solicitud web' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Confirmar mis datos' })).toBeDisabled();
 
     webOrderState.enabled = false;
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
       target: { value: 'Prueba de disponibilidad' },
     });
 
-    expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(screen.getByText(/Tu carrito se conserva/iu)).toBeVisible();

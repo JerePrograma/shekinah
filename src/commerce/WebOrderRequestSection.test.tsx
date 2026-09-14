@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WebOrderRequestSection } from './WebOrderRequestSection';
 import type { CartItem } from '../cart/model';
 import type { WebRequestReceipt } from './web-order-contracts';
@@ -34,9 +34,11 @@ beforeEach(() => {
   doubles.read.mockResolvedValue(null); doubles.create.mockResolvedValue(identity); doubles.submit.mockResolvedValue(receipt);
 });
 
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
+
 it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita doble clic', async () => {
   render(component());
-  const button = screen.getByRole('button', { name: 'Registrar solicitud web' });
+  const button = screen.getByRole('button', { name: 'Confirmar mis datos' });
   fireEvent.click(button); fireEvent.click(button);
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1);
@@ -48,7 +50,7 @@ it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita dobl
 
 it('una respuesta perdida conserva la identidad y se recupera sin reenviar la creación', async () => {
   doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida.')); doubles.recover.mockResolvedValue(receipt);
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Registrar solicitud web' }));
+  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Confirmar mis datos' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Respuesta perdida');
   fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' }));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
@@ -60,14 +62,14 @@ it('las altas cerradas no impiden recuperar la solicitud del navegador', async (
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
   render(component(false));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
 it('sin alta habilitada ni intento previo no presenta una falsa capacidad', async () => {
   render(component(false));
   await waitFor(() => expect(doubles.read).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole('heading', { name: 'Solicitud desde la página' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Tu pedido' })).not.toBeInTheDocument();
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
@@ -81,7 +83,7 @@ it('un enlace protegido no requiere el almacenamiento privado de otro navegador'
 
 it('no envía si el navegador no logra persistir la identidad', async () => {
   doubles.create.mockRejectedValue(new Error('Almacenamiento no disponible.'));
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Registrar solicitud web' }));
+  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Confirmar mis datos' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Almacenamiento no disponible');
   expect(doubles.submit).not.toHaveBeenCalled();
 });
@@ -92,7 +94,7 @@ it('muestra Mercado Pago sólo cuando el servidor confirma reserva y total', asy
   doubles.checkout.mockImplementation(() => new Promise(() => undefined));
   render(component());
   const pay = await screen.findByRole('button', { name: 'Pagar con Mercado Pago' });
-  expect(screen.getByRole('status')).toHaveTextContent('La reserva Dux y el total están confirmados');
+  expect(screen.getByRole('status')).toHaveTextContent('Tu stock está reservado y el total está confirmado');
   const totalLabel = screen.getByText('Total confirmado:');
   expect(totalLabel.parentElement).toHaveTextContent(/1\.234/u);
   fireEvent.click(pay); fireEvent.click(pay);
@@ -125,4 +127,128 @@ it('sólo prepara otra solicitud después de volver a consultar una resolución 
   await waitFor(() => expect(doubles.finish).toHaveBeenCalledWith(identity.idempotencyKey));
   expect(doubles.recover).toHaveBeenCalledTimes(2);
   expect(doubles.submit).not.toHaveBeenCalled();
+});
+
+it('actualiza la reserva y habilita Mercado Pago sin pedir otra carga de datos ni consulta manual', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  doubles.token.mockResolvedValue({ ...receipt, status: 'accepted', reservationStatus: 'confirmed',
+    checkoutAvailable: true, totalMinor: 123_400 });
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(component(false));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  const pay = screen.getByRole('button', { name: 'Pagar con Mercado Pago' });
+  expect(pay).toBeEnabled();
+  expect(screen.getByText('Total confirmado:').parentElement).toHaveTextContent('1.234');
+  expect(doubles.recover).toHaveBeenCalledTimes(1);
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+  fireEvent.click(pay); fireEvent.click(pay);
+  expect(doubles.checkout).toHaveBeenCalledTimes(1);
+  expect(doubles.checkout).toHaveBeenCalledWith(receipt.publicToken, 123_400);
+});
+
+it('espacia y limita las lecturas automáticas sin cambiar cuotas ni reenviar el alta', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  doubles.token.mockResolvedValue(receipt);
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(14_999); });
+  expect(doubles.token).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(doubles.token).toHaveBeenCalledTimes(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(8);
+  expect(screen.getByText(/La actualización automática terminó por ahora/u)).toBeVisible();
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it('pausa las lecturas en una pestaña oculta y retoma al volver a estar visible', async () => {
+  vi.useFakeTimers();
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  doubles.token.mockResolvedValue(receipt);
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(75_000); });
+  expect(doubles.token).not.toHaveBeenCalled();
+  visibility.mockReturnValue('visible');
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+});
+
+it('un fallo detiene la consulta automática y permite recuperar el mismo intento', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  doubles.token.mockRejectedValueOnce(new Error('Límite de consultas.')).mockResolvedValue(receipt);
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/No pudimos actualizar el estado/u)).toBeVisible();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' })); await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  expect(doubles.recover).toHaveBeenCalledTimes(2);
+  expect(doubles.token).toHaveBeenCalledTimes(2);
+  expect(doubles.submit).not.toHaveBeenCalled();
+});
+
+it('una respuesta automática antigua no pisa la recuperación manual más reciente', async () => {
+  vi.useFakeTimers();
+  let resolveRead: (value: WebRequestReceipt) => void = () => { throw new Error('Lectura no iniciada.'); };
+  doubles.token.mockImplementation(() => new Promise<WebRequestReceipt>((resolve) => { resolveRead = resolve; }));
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValueOnce(receipt)
+    .mockResolvedValue({ ...receipt, status: 'rejected' });
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  const signal = doubles.token.mock.calls[0]?.[1] as AbortSignal;
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' })); await Promise.resolve(); });
+  expect(signal.aborted).toBe(true);
+  await act(async () => { resolveRead(receipt); await Promise.resolve(); });
+  expect(screen.getByRole('status')).toHaveTextContent('Rechazada');
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+});
+
+it('cancela la lectura pendiente al salir de la página y no solapa peticiones', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
+  doubles.token.mockImplementation(() => new Promise(() => undefined));
+  const view = render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.token).toHaveBeenCalledTimes(1);
+  const signal = doubles.token.mock.calls[0]?.[1] as AbortSignal;
+  view.unmount();
+  expect(signal.aborted).toBe(true);
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it.each([
+  { status: 'rejected' as const },
+  { paymentStatus: 'approved' as const },
+  { paymentStatus: 'refunded' as const },
+  { paymentRequiresReview: true },
+  { reservationStatus: 'released' as const },
+  { reservationStatus: 'finalized' as const },
+  { reservationStatus: 'requires_review' as const },
+])('no consulta automáticamente una resolución terminal o con incidencia: %j', async (state) => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue({ ...receipt, ...state });
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.token).not.toHaveBeenCalled();
+  expect(doubles.checkout).not.toHaveBeenCalled();
 });

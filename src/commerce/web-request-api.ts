@@ -15,9 +15,9 @@ export function recoverWebRequest(identity: WebRequestIdentity): Promise<WebRequ
   return post({ mode: 'recover', ...identity });
 }
 
-export async function readWebRequest(publicToken: string): Promise<WebRequestReceipt> {
+export async function readWebRequest(publicToken: string, signal?: AbortSignal): Promise<WebRequestReceipt> {
   if (!/^[a-f0-9]{64}$/u.test(publicToken)) throw new Error('La referencia protegida no es válida.');
-  const response = await fetch(`/api/orders/${publicToken}/request-status`, { credentials: 'same-origin', redirect: 'error' });
+  const response = await fetch(`/api/orders/${publicToken}/request-status`, { credentials: 'same-origin', redirect: 'error', signal: signal ?? null });
   const value = await readResponse(response);
   if (!isRecord(value)) throw new Error('La respuesta no es válida.');
   return parseWebRequestReceipt({ ...value, publicToken });

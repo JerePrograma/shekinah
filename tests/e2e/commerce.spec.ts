@@ -188,6 +188,56 @@ test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no estÃ
   expect(legacyRequests).toBe(0);
 });
 
+test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar datos', async ({ page }) => {
+  const token = 'a'.repeat(64);
+  let reads = 0;
+  let checkouts = 0;
+  let creates = 0;
+  await page.clock.install();
+  await page.route('**/api/orders/request', async (route) => {
+    creates += 1;
+    await route.fulfill({ status: 409, contentType: 'application/json', body: '{}' });
+  });
+  await page.route(`**/api/orders/${token}/request-status`, async (route) => {
+    reads += 1;
+    const ready = reads > 1;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      reference: 'WEB-abcdefghijklmnopqrstuvwx', status: ready ? 'accepted' : 'submitted',
+      createdAt: '2026-09-14T12:00:00.000Z', updatedAt: '2026-09-14T12:01:00.000Z',
+      paymentStatus: 'not_requested', paymentRequiresReview: false,
+      reservationStatus: ready ? 'confirmed' : 'not_reserved', checkoutAvailable: ready,
+      totalMinor: ready ? 350_000 : null,
+    }) });
+  });
+  await page.route(`**/api/orders/${token}/checkout`, async (route) => {
+    checkouts += 1;
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postData()).toBeNull();
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+      checkoutUrl: 'https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-customer-flow',
+      totalMinor: 350_000,
+    }) });
+  });
+  await page.route('https://www.mercadopago.com.ar/**', (route) => route.fulfill({
+    status: 200, contentType: 'text/html', body: '<h1>Proveedor simulado para la prueba</h1>',
+  }));
+  await page.goto(`/carrito#solicitud=${token}`);
+  await expect(page.getByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
+  await expect(page.getByText(/El estado se actualiza automÃ¡ticamente/u)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toHaveCount(0);
+  expect(checkouts).toBe(0);
+  await page.clock.fastForward(15_000);
+  const pay = page.getByRole('button', { name: 'Pagar con Mercado Pago' });
+  await expect(pay).toBeEnabled();
+  await expect(page.locator('.web-request-panel p').filter({ hasText: 'Total confirmado:' })).toContainText('3.500');
+  expect(reads).toBe(2);
+  expect(creates).toBe(0);
+  expect(checkouts).toBe(0);
+  await pay.click();
+  await expect(page).toHaveURL('https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-customer-flow');
+  expect(checkouts).toBe(1);
+});
+
 test('registra y reserva una sola vez antes de ofrecer el segundo gesto de WhatsApp', async ({ page }) => {
   let orderRequests = 0;
   let releaseOrder: (() => void) | undefined;
