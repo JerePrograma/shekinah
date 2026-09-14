@@ -85,11 +85,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const whatsappResultTitleRef = useRef<HTMLHeadingElement>(null);
   const whatsappOrderPendingRef = useRef(false);
   const webRequestsEnabled = useWebOrderRegistrationEnabled();
+  const usesWebRequestFlow = webRequestsEnabled || items.some(({ product }) =>
+    product.commerce?.source === 'dux' && !product.commerce.checkoutEligible);
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const commerceEnabled = isCommerceClientEnabled();
   const validation = useMemo(() => validateFulfillment(fulfillmentDraft), [fulfillmentDraft]);
   const quote = useMemo(
-    () => webRequestsEnabled && items.some(({ product }) => product.commerce?.source === 'dux')
+    () => usesWebRequestFlow && items.some(({ product }) => product.commerce?.source === 'dux')
       ? fulfillmentDraft.method === 'correo_argentino'
         ? Object.freeze({ kind: 'manual' as const, tier: 'manual_unknown_weight' as const, shippingMinor: 0 as const, totalWeightGrams: null })
         : Object.freeze({ kind: 'online' as const, tier: 'coordinated_pickup' as const, shippingMinor: 0, totalWeightGrams: null })
@@ -101,7 +103,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       })),
       fulfillmentDraft.method === '' ? 'coordinated_pickup' : fulfillmentDraft.method,
     ),
-    [fulfillmentDraft.method, items, webRequestsEnabled],
+    [fulfillmentDraft.method, items, usesWebRequestFlow],
   );
   const productsTotalMinor = Math.round(total * 100);
   const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
@@ -149,7 +151,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }, [whatsappOrderResult]);
 
   async function startCheckout() {
-    if (webRequestsEnabled || items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
+    if (usesWebRequestFlow || items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
     setShowErrors(true);
     setCheckoutError('');
     if (validation.value === null) {
@@ -219,7 +221,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   async function registerWhatsappOrder(): Promise<void> {
     if (
-      webRequestsEnabled ||
+      usesWebRequestFlow ||
       whatsappNumber === null ||
       items.length === 0 ||
       whatsappOrderResult !== null ||
@@ -536,22 +538,24 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
               <h2 id="cart-summary-title">Resumen</h2>
               <dl className="cart-totals">
-                <div><dt>{webRequestsEnabled ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
+                <div><dt>{usesWebRequestFlow ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
                 <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
-                <div className="cart-total"><dt>Total</dt><dd>{webRequestsEnabled || quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
+                <div className="cart-total"><dt>Total</dt><dd>{usesWebRequestFlow || quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
               </dl>
               {fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
                 <p className="cart-disclaimer">Peso calculado: {formatWeight(quote.totalWeightGrams)}.</p>
               ) : null}
               {quote.kind === 'manual' ? (
-                <p className="form-error" role="status">{webRequestsEnabled ? 'El envío requiere cotización. No se cobrará un total sin confirmación previa.' : manualQuoteMessage(quote.tier)}</p>
+                <p className="form-error" role="status">{usesWebRequestFlow ? 'El envío requiere cotización. No se cobrará un total sin confirmación previa.' : manualQuoteMessage(quote.tier)}</p>
               ) : null}
               <p className="cart-disclaimer">
                 El servidor vuelve a validar productos, precios, disponibilidad, envío y total antes de registrar el pedido o iniciar el pago integrado.
               </p>
-              {webRequestsEnabled ? (
+              {usesWebRequestFlow ? (
                 <p className="cart-configuration-note">
-                  Mercado Pago se habilita dentro de la solicitud web cuando el comercio confirma en Dux la reserva y el total definitivo.
+                  {webRequestsEnabled
+                    ? 'Mercado Pago se habilita dentro de la solicitud web cuando el comercio confirma en Dux la reserva y el total definitivo.'
+                    : 'El registro de solicitudes no está disponible en este momento. Tu carrito se conserva.'}
                 </p>
               ) : commerceEnabled ? (
                 <button
@@ -574,7 +578,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   </p>
                 </>
               )}
-              {!webRequestsEnabled && whatsappOrderResult === null ? (
+              {!usesWebRequestFlow && whatsappOrderResult === null ? (
                 <>
                   <label className="whatsapp-consent" htmlFor="whatsapp-consent">
                     <input

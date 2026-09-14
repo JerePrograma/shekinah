@@ -14,7 +14,7 @@ const {
   trackAnalyticsEvent,
   webOrderState,
 } = vi.hoisted(() => ({
-  commerceState: { enabled: false },
+  commerceState: { enabled: false, assistedOnly: false },
   createCheckoutPreference: vi.fn(),
   createWhatsappOrder: vi.fn(),
   getOrCreateWhatsappOrderIdempotencyKey: vi.fn(() => Promise.resolve('whatsapp-test-key')),
@@ -46,11 +46,16 @@ const {
 }));
 
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent }));
-vi.mock('../data/runtime-catalog', () => ({
-  isRuntimeCatalogResolved: () => true,
-  refreshRuntimeCatalog,
-  useRuntimeCatalogProducts: () => [product],
-}));
+vi.mock('../data/runtime-catalog', () => {
+  const assistedProduct = Object.freeze({ ...product,
+    commerce: Object.freeze({ ...product.commerce, checkoutEligible: false }),
+  });
+  return {
+    isRuntimeCatalogResolved: () => true,
+    refreshRuntimeCatalog,
+    useRuntimeCatalogProducts: () => [commerceState.assistedOnly ? assistedProduct : product],
+  };
+});
 vi.mock('../commerce/env', () => ({
   getAuthorizedWhatsappNumber: () => '5492236216559',
   isCommerceClientEnabled: () => commerceState.enabled,
@@ -79,6 +84,7 @@ describe('CartPage', () => {
     getOrCreateWhatsappOrderIdempotencyKey.mockClear();
     refreshRuntimeCatalog.mockReset().mockResolvedValue([product]);
     commerceState.enabled = false;
+    commerceState.assistedOnly = false;
     webOrderState.enabled = false;
   });
 
@@ -206,6 +212,44 @@ describe('CartPage', () => {
     expect(screen.getByRole('button', { name: 'Registrar solicitud web' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(createCheckoutPreference).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('no ofrece el checkout anterior para Dux asistido si las solicitudes están cerradas (commerce=%s)', (commerceEnabled) => {
+    commerceState.enabled = commerceEnabled;
+    commerceState.assistedOnly = true;
+    renderCart();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Modalidad' }), {
+      target: { value: 'correo_argentino' },
+    });
+
+    expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Acepto compartir/iu })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+    expect(screen.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
+    expect(screen.getByText(/El envío requiere cotización/iu)).toBeVisible();
+    expect(screen.queryByText(/peso determinístico|cotización por WhatsApp/iu)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: product.name })).toBeVisible();
+    expect(createCheckoutPreference).not.toHaveBeenCalled();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
+  });
+
+  it('conserva el circuito asistido al dejar de estar disponible el registro web', () => {
+    commerceState.assistedOnly = true;
+    webOrderState.enabled = true;
+    renderCart();
+    expect(screen.getByRole('button', { name: 'Registrar solicitud web' })).toBeDisabled();
+
+    webOrderState.enabled = false;
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
+      target: { value: 'Prueba de disponibilidad' },
+    });
+
+    expect(screen.queryByRole('button', { name: 'Registrar solicitud web' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Tu carrito se conserva/iu)).toBeVisible();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
   it('registra una sola vez antes de ofrecer WhatsApp y usa el snapshot autoritativo', async () => {

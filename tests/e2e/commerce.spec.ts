@@ -154,6 +154,40 @@ test('mantiene Checkout cerrado sin exponer monto manual y conserva WhatsApp', a
   await expect(page.getByText(/WhatsApp estará disponible/iu)).toHaveCount(0);
 });
 
+test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no están disponibles', async ({ page }) => {
+  await page.route('**/api/catalog', async (route) => {
+    const products = duxCatalogProducts.map((product) => ({ ...product,
+      commerce: { ...(product.commerce as Record<string, unknown>), checkoutEligible: false,
+        quantitySemanticsStatus: 'unavailable_from_v2_items' },
+    }));
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(duxApiFixture({ products })),
+    });
+  });
+  await page.route('**/api/orders/request-capability', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
+  let legacyRequests = 0;
+  await page.route(/\/api\/(?:orders\/whatsapp|checkout\/preferences)$/u, async (route) => {
+    legacyRequests += 1;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.goto('/catalogo');
+  await page.locator('[data-product]').first().getByRole('button', {
+    name: /Agregar .* al carrito/u,
+  }).click();
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  await page.getByLabel('Modalidad').selectOption('correo_argentino');
+
+  await expect(page.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
+  await expect(page.getByText(/El envío requiere cotización/iu)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toHaveCount(0);
+  await expect(page.getByText(/peso determinístico|cotización por WhatsApp/iu)).toHaveCount(0);
+  await expect(page.getByText('1 unidad en el carrito.')).toBeVisible();
+  expect(legacyRequests).toBe(0);
+});
+
 test('registra y reserva una sola vez antes de ofrecer el segundo gesto de WhatsApp', async ({ page }) => {
   let orderRequests = 0;
   let releaseOrder: (() => void) | undefined;
