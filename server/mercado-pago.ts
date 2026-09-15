@@ -67,6 +67,7 @@ export async function createMercadoPagoPreference({
     },
     auto_return: 'approved',
     binary_mode: false,
+    payment_methods: { excluded_payment_types: [{ id: 'ticket' }] },
     expires: true,
     expiration_date_from: preferenceTerm.from,
     expiration_date_to: preferenceTerm.to,

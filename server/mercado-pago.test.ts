@@ -107,6 +107,7 @@ describe('Mercado Pago', () => {
     expect(body).toMatchObject({
       external_reference: 'order-123',
       auto_return: 'approved',
+      binary_mode: false,
       notification_url: 'https://example.test/api/webhooks/mercadopago?source_news=webhooks',
       expires: true,
       expiration_date_from: ORDER_CREATED_AT,
@@ -116,6 +117,7 @@ describe('Mercado Pago', () => {
       expect.objectContaining({ id: 'producto-prueba', currency_id: 'ARS', quantity: 1, unit_price: 7_500 }),
       expect.objectContaining({ id: 'shipping-correo-argentino', currency_id: 'ARS', quantity: 1, unit_price: 19_000 }),
     ]);
+    expect(body.payment_methods).toEqual({ excluded_payment_types: [{ id: 'ticket' }] });
   });
 
   it('falla cerrado ante una intención vencida o una respuesta con otra vigencia', async () => {
