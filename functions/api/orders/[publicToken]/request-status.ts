@@ -1,4 +1,4 @@
-import { assistedCheckoutConfigured } from '../../../../server/assisted-checkout-capability';
+import { assistedCheckoutConfigured, directCheckoutPaymentConfigured } from '../../../../server/assisted-checkout-capability';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../../server/http';
 import type { PagesFunction } from '../../../../server/platform';
 import { getWebRequestByToken } from '../../../../server/web-order-requests';
@@ -15,6 +15,6 @@ export const onRequest: PagesFunction = async ({ env, request, params }) => {
     const secret = requireSecret(env.ORDER_TOKEN_SECRET, 'ORDER_TOKEN_SECRET_MISSING', 'La protección de solicitudes no está configurada.', 32);
     const seconds = Math.floor(Date.now() / 1000);
     await consumeWebRequestAccess(db, await webRequestLimits(request, secret, seconds, false), seconds);
-    return jsonResponse(await getWebRequestByToken(db, token, assistedCheckoutConfigured(env)));
+    return jsonResponse(await getWebRequestByToken(db, token, assistedCheckoutConfigured(env), Date.now(), directCheckoutPaymentConfigured(env)));
   } catch (error: unknown) { return responseFromError(error); }
 };

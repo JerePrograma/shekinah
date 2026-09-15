@@ -23,6 +23,16 @@ export async function readWebRequest(publicToken: string, signal?: AbortSignal):
   return parseWebRequestReceipt({ ...value, publicToken });
 }
 
+export async function prepareWebRequest(publicToken: string, signal?: AbortSignal): Promise<WebRequestReceipt> {
+  if (!/^[a-f0-9]{64}$/u.test(publicToken)) throw new Error('La referencia protegida no es válida.');
+  const response = await fetch(`/api/orders/${publicToken}/prepare`, {
+    method: 'POST', credentials: 'same-origin', redirect: 'error', signal: signal ?? null,
+  });
+  const value = await readResponse(response);
+  if (!isRecord(value)) throw new Error('La respuesta no es válida.');
+  return parseWebRequestReceipt({ ...value, publicToken });
+}
+
 export async function startWebRequestCheckout(publicToken: string, expectedTotalMinor: number): Promise<WebRequestCheckout> {
   if (!/^[a-f0-9]{64}$/u.test(publicToken) || !Number.isSafeInteger(expectedTotalMinor) || expectedTotalMinor <= 0) {
     throw new Error('La solicitud no está lista para iniciar el pago.');

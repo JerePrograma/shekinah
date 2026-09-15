@@ -1,5 +1,9 @@
 # Operación del comercio
 
+## Compra directa — 2026-09-15
+
+El [contrato de compra directa](DIRECT_CHECKOUT.md) amplía el circuito asistido autorizado con lecturas Dux en vivo, creación única del pedido por v2 y recuperación por referencia. La administración muestra el progreso y permite retomarlo, liberar o finalizar con los guards financieros existentes. No hay endpoint público Dux de cancelación/finalización acreditado ni liberación automática de abandono. Correo sin peso estructurado conserva su cotización. Esta sección describe el candidato; los recibos de despliegue, flags y pruebas reales determinan su activación.
+
 ## Actualización operativa — 2026-09-14
 
 Consultar [la activación del 14 de septiembre](validation/COMMERCE_ACTIVATION_2026-09-14.md) para el estado actual: D1 hasta 0023 verificada, Dux API habilitada, 754 productos publicados, scheduler GitHub habilitado y workflow manual completo aprobado. WEB se abrió y volvió a cerrarse al fallar la validación TLS del entorno local; ASSISTED y COMMERCE siguen cerrados. La credencial Mercado Pago y los smokes transaccionales están pendientes. Las secciones del 1 de septiembre que siguen son evidencia histórica; no representan la configuración ni el esquema remoto actuales.

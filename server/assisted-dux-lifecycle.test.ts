@@ -18,7 +18,7 @@ function migrationsThrough(lastName: string): string {
     .join('\n');
 }
 
-const migrations = migrationsThrough('0023_assisted_dux_lifecycle_financial_guard.sql');
+
 const migrationsBeforeFinancialGuard = migrationsThrough('0022_assisted_dux_order_number_unique.sql');
 const env: Env = {
   DUX_COMPANY_ID: '12862', DUX_BRANCH_ID: '1', DUX_DEPOSIT_ID: '25566', DUX_SNAPSHOT_MAX_AGE_SECONDS: '900',
@@ -93,7 +93,8 @@ function addPayment(database: SqliteD1, orderId: string, status: 'pending' | 'ap
   database.database.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?').run(status, timestamp, orderId);
 }
 
-describe('lifecycle Dux asistido', () => {
+describe.each(['0023_assisted_dux_lifecycle_financial_guard.sql', '0024_direct_dux_checkout.sql'])('lifecycle Dux asistido con %s', (lastName) => {
+  const migrations = migrationsThrough(lastName);
   it('falla cerrado si 0023 todavía no está aplicada', async () => {
     const database = new SqliteD1(migrationsBeforeFinancialGuard);
     try {

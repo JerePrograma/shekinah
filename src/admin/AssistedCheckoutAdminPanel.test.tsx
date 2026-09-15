@@ -36,6 +36,19 @@ const prepared = {
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+it('recupera una preparación directa por el servidor sin pedir otra reserva manual',async()=>{
+  const fetchMock=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({state:'direct_preparing',requestId,
+    preparationStatus:'uncertain',duxReference:`shekinah:web:${requestId}`,errorCode:'DUX_ORDER_RESULT_UNCERTAIN'}))
+    .mockResolvedValueOnce(Response.json(prepared));
+  vi.stubGlobal('fetch',fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Consultar preparación de cobro'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Continuar verificación Dux'}));
+  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Pedido preparado'));
+  expect(fetchMock.mock.calls[1]).toEqual([`/api/admin/web-order-requests/${requestId}/resume`,{method:'POST',credentials:'same-origin',redirect:'error'}]);
+  expect(screen.queryByRole('button',{name:'Preparar cobro'})).not.toBeInTheDocument();
+});
+
 it('muestra precios Dux de sólo lectura y prepara una reserva confirmada', async () => {
   const fetchMock = vi.fn<typeof fetch>()
     .mockResolvedValueOnce(Response.json(preview))

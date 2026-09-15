@@ -20,3 +20,7 @@ export function assistedCheckoutConfigured(env: Env): boolean {
     return false;
   }
 }
+
+export function directCheckoutPaymentConfigured(env: Env): boolean {
+  return env.DIRECT_CHECKOUT_ENABLED === 'true' && assistedCheckoutConfigured({ ...env, ASSISTED_CHECKOUT_ENABLED: 'true' });
+}

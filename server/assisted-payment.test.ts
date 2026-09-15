@@ -92,9 +92,9 @@ function gateway(): Gateway {
   };
 }
 
-describe('preferencia Mercado Pago para checkout asistido', () => {
+describe.each([['0022', migrations], ['0024', migrations + '\n' + readFileSync(resolve('migrations/0023_assisted_dux_lifecycle_financial_guard.sql'),'utf8') + '\n' + readFileSync(resolve('migrations/0024_direct_dux_checkout.sql'),'utf8')]])('preferencia asistida con esquema %s', (_name, schemaSql) => {
   it('crea una única preferencia desde D1 y la reutiliza sin volver al proveedor', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       const orderId = await seedPrepared(database);
       const provider = gateway();
@@ -110,7 +110,7 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
   });
 
   it('inicia los 30 minutos al primer intento de Mercado Pago y no al preparar la reserva', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       const orderId = await seedPrepared(database);
       const oldCreatedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -129,7 +129,7 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
   });
 
   it('incluye la cotización manual de correo como ítem sin inferir peso', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       await seedPrepared(database, 250000);
       const provider = gateway();
@@ -146,7 +146,7 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
   });
 
   it('un resultado incierto no repite el POST y sólo continúa tras recuperar la misma preferencia', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       const orderId = await seedPrepared(database);
       const firstGateway = gateway();
@@ -173,7 +173,7 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
   });
 
   it('dos solicitudes simultáneas no crean dos preferencias', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       await seedPrepared(database);
       let release!: () => void;
@@ -194,7 +194,7 @@ describe('preferencia Mercado Pago para checkout asistido', () => {
   });
 
   it('no encuentra un token ajeno y no toca al proveedor', async () => {
-    const database = new SqliteD1(migrations);
+    const database = new SqliteD1(schemaSql);
     try {
       await seedPrepared(database);
       const provider = gateway();

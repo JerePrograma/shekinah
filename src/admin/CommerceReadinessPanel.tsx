@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 
 type Readiness = Readonly<{
+  directCheckout?: Readonly<{
+    schemaReady:boolean; serverEnabled:boolean; identitiesConfigured:boolean; ready:boolean;
+    preparingCount:number|null; reviewCount:number|null; blockers:readonly string[];
+  }>;
   checkedAt: string;
   webRequests: Readonly<{
     schemaReady: boolean;
@@ -53,6 +57,10 @@ type Readiness = Readonly<{
 }>;
 
 const BLOCKER_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  DIRECT_CHECKOUT_DISABLED: 'La compra directa está cerrada por configuración del servidor.',
+  DIRECT_CHECKOUT_MIGRATION_REQUIRED: 'Falta el esquema 0024 completo de compra directa.',
+  DIRECT_CHECKOUT_IDENTITY_MISSING: 'Falta verificar la configuración del cliente, vendedor o depósito Dux.',
+  LEGACY_CHECKOUT_DISABLED: 'El checkout anterior está retirado. Consultá el estado de compra directa.',
   WEB_REQUEST_MIGRATION_REQUIRED: 'Falta aplicar la migración 0020 de solicitudes web en esta D1.',
   WEB_ORDERS_DISABLED: 'Las altas de solicitudes web están cerradas por configuración del servidor.',
   ORDER_TOKEN_SECRET_MISSING: 'Falta la protección server-side para recuperar pedidos o solicitudes.',
@@ -129,6 +137,13 @@ export function CommerceReadinessPanel({
       {readiness === null ? null : (
         <>
           <div className="cart-items">
+            {readiness.directCheckout === undefined ? null : <article className="cart-line"><div className="cart-line-content">
+              <h3>Compra directa con Mercado Pago</h3>
+              <p>Configuración: {readiness.directCheckout.ready ? 'lista' : 'pendiente'} · Backend: {openClosed(readiness.directCheckout.serverEnabled)} · Esquema 0024: {yesNo(readiness.directCheckout.schemaReady)} · Identidades Dux: {yesNo(readiness.directCheckout.identitiesConfigured)}.</p>
+              <p>En preparación: {readiness.directCheckout.preparingCount ?? 'no consultable'} · requieren revisión: {readiness.directCheckout.reviewCount ?? 'no consultable'}.</p>
+              <p>Cada compra verifica precio, unidades disponibles y reserva directamente con Dux. La liberación y finalización se confirman por el flujo administrativo existente.</p>
+              <IssueList title="Bloqueos" codes={readiness.directCheckout.blockers} />
+            </div></article>}
             <article className="cart-line">
               <div className="cart-line-content">
                 <h3>Solicitudes desde la página</h3>
@@ -148,7 +163,7 @@ export function CommerceReadinessPanel({
             </article>
             <article className="cart-line">
               <div className="cart-line-content">
-                <h3>Checkout Pro</h3>
+                <h3>Checkout anterior retirado</h3>
                 <p>
                   Backend: {openClosed(readiness.checkout.serverEnabled)} · Dux API: {openClosed(readiness.checkout.duxApiEnabled)} · modo MP: {readiness.checkout.paymentMode}.
                 </p>
@@ -216,6 +231,7 @@ function parseReadiness(value: unknown): Readiness {
   const attention = record(value.attention);
   const contract = record(dux.orderApiContract);
   return Object.freeze({
+    ...(value.directCheckout === undefined ? {} : {directCheckout:parseDirectReadiness(value.directCheckout)}),
     checkedAt: stringValue(value.checkedAt),
     webRequests: Object.freeze({
       schemaReady: booleanValue(web.schemaReady),
@@ -268,6 +284,14 @@ function parseReadiness(value: unknown): Readiness {
       paymentIncidentCount: nonNegativeInteger(attention.paymentIncidentCount),
     }),
   });
+}
+
+function parseDirectReadiness(value: unknown): NonNullable<Readiness['directCheckout']> {
+  const direct = record(value);
+  return {schemaReady:booleanValue(direct.schemaReady),serverEnabled:booleanValue(direct.serverEnabled),
+    identitiesConfigured:booleanValue(direct.identitiesConfigured),ready:booleanValue(direct.ready),
+    preparingCount:nullableNonNegativeInteger(direct.preparingCount),reviewCount:nullableNonNegativeInteger(direct.reviewCount),
+    blockers:stringArray(direct.blockers)};
 }
 
 function record(value: unknown): Record<string, unknown> {

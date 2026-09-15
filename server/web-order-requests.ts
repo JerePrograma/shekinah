@@ -14,6 +14,7 @@ import { webRequestReference } from '../src/commerce/web-order-contracts';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import type { DuxCatalogSnapshot } from './dux-catalog';
 import { HttpError } from './http';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database } from './platform';
 import { assertExactKeys, assertUuid, isRecord, readInteger, readSafeText } from './validation';
@@ -148,6 +149,7 @@ export async function recoverWebOrderRequest(
   secret: string,
   checkoutConfigured = false,
   nowMilliseconds = Date.now(),
+  automaticCheckoutConfigured = false,
 ): Promise<WebRequestReceipt> {
   const row = await findRequest(database, identity.idempotencyKey);
   if (row === null) throw notFound();
@@ -157,7 +159,7 @@ export async function recoverWebOrderRequest(
     throw new HttpError(503, 'WEB_REQUEST_TOKEN_UNAVAILABLE', 'No se pudo recuperar la protección de la solicitud.');
   }
   return Object.freeze({
-    ...(await getWebRequestByToken(database, publicToken, checkoutConfigured, nowMilliseconds)),
+    ...(await getWebRequestByToken(database, publicToken, checkoutConfigured, nowMilliseconds, automaticCheckoutConfigured)),
     publicToken,
   });
 }
@@ -167,6 +169,7 @@ export async function getWebRequestByToken(
   publicToken: string,
   checkoutConfigured = false,
   nowMilliseconds = Date.now(),
+  automaticCheckoutConfigured = false,
 ): Promise<WebRequestPublic> {
   if (!/^[a-f0-9]{64}$/u.test(publicToken)) throw notFound();
   let row: RequestRow | null;
@@ -176,9 +179,12 @@ export async function getWebRequestByToken(
       .bind(await sha256Hex(publicToken)).first<RequestRow>();
   } catch (error: unknown) { throwWebRequestStorageError(error); }
   if (row === null) throw notFound();
-  const base = publicStatus(row);
+  const preparation = await readDirectPreparation(database, row.web_request_id);
+  const base = { ...publicStatus(row), ...(preparation === undefined ? {} : { preparationStatus: preparation }) };
   const assisted = await readAssistedPublicOrder(database, row.web_request_id);
   if (assisted === null) return base;
+  const directSchemaReady = assisted.verification_method !== 'automatic_api' ||
+    await requireDirectCheckoutSchema(database).then(() => true, () => false);
   if (!Number.isSafeInteger(assisted.total_minor) || assisted.total_minor <= 0) {
     throw new HttpError(503, 'WEB_REQUEST_STATUS_INVALID', 'El estado comercial no puede verificarse.');
   }
@@ -195,12 +201,12 @@ export async function getWebRequestByToken(
     paymentRequiresReview: payment.requiresReview || lifecycleNeedsReview,
     reservationStatus,
     checkoutAvailable:
-      checkoutConfigured &&
+      directSchemaReady && (assisted.verification_method === 'automatic_api' ? automaticCheckoutConfigured : checkoutConfigured) &&
       reservationStatus === 'confirmed' &&
       payment.status !== 'pending' && payment.status !== 'approved' && payment.status !== 'refunded' &&
       assisted.status !== 'approved' && assisted.status !== 'refunded' &&
       preferenceAttemptCanContinue(assisted, nowMilliseconds),
-    totalMinor: assisted.total_minor,
+    totalMinor: assisted.verification_method === 'automatic_api' && reservationStatus === 'not_reserved' ? null : assisted.total_minor,
   });
 }
 
@@ -259,7 +265,7 @@ async function readAssistedPublicOrder(database: D1Database, requestId: string):
       d.verification_method, d.reservation_state,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id
         AND op.action = 'reserve' AND op.status = 'confirmed'
-        AND op.idempotency_key = 'assisted-reserve:' || o.id) AS reserve_count,
+        AND op.idempotency_key = CASE d.verification_method WHEN 'automatic_api' THEN 'automatic-reserve:' ELSE 'assisted-reserve:' END || o.id) AS reserve_count,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id
         AND op.action = 'release' AND op.status = 'confirmed'
         AND op.idempotency_key = 'assisted-release:' || o.id) AS release_count,
@@ -280,11 +286,26 @@ async function readAssistedPublicOrder(database: D1Database, requestId: string):
 }
 
 function readReservationStatus(row: AssistedPublicRow): WebRequestReservationStatus {
-  if (row.verification_method !== 'assisted_admin') return 'requires_review';
+  if (row.verification_method === 'automatic_api' && ['not_attempted', 'pending', 'uncertain'].includes(row.reservation_state ?? '')) return 'not_reserved';
+  if (!['assisted_admin', 'automatic_api'].includes(row.verification_method ?? '')) return 'requires_review';
   if (row.reservation_state === 'confirmed') return row.reserve_count === 1 ? 'confirmed' : 'requires_review';
   if (row.reservation_state === 'released') return row.release_count === 1 ? 'released' : 'requires_review';
   if (row.reservation_state === 'finalized') return row.finalize_count === 1 ? 'finalized' : 'requires_review';
   return 'requires_review';
+}
+
+async function readDirectPreparation(database: D1Database, requestId: string): Promise<WebRequestPublic['preparationStatus']> {
+  try {
+    const row = await database.prepare('SELECT direct_checkout_state FROM checkout_intents WHERE web_request_id = ?')
+      .bind(requestId).first<{ direct_checkout_state: unknown }>();
+    const value = row?.direct_checkout_state;
+    if (value === null || value === undefined) return undefined;
+    if (value === 'preparing' || value === 'uncertain' || value === 'prepared' || value === 'failed' || value === 'requires_review') return value;
+    throw new HttpError(503, 'WEB_REQUEST_STATUS_INVALID', 'El estado comercial no puede verificarse.');
+  } catch (error: unknown) {
+    if (error instanceof Error && /no such column: direct_checkout_state/iu.test(error.message)) return undefined;
+    throw error;
+  }
 }
 
 function preferenceAttemptCanContinue(row: AssistedPublicRow, nowMilliseconds: number): boolean {

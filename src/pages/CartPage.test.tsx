@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { CartProvider } from '../cart/CartContext';
 import { CART_STORAGE_KEY } from '../cart/model';
@@ -90,6 +90,7 @@ describe('CartPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.history.replaceState(null,'','/carrito');
   });
 
   it('rechaza cero sin borrar silenciosamente y permite ajustar dentro del stock', () => {
@@ -208,10 +209,27 @@ describe('CartPage', () => {
     renderCart();
 
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Mercado Pago se habilita dentro de la solicitud web/u)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Confirmar mis datos' })).toBeDisabled();
+    expect(screen.getByText(/Continuá con tus datos para verificar stock/u)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Continuar con mi compra' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(createCheckoutPreference).not.toHaveBeenCalled();
+  });
+
+  it('muestra el total confirmado con centavos sin mezclarlo con el carrito ni pedir otra cotización',async()=>{
+    webOrderState.enabled=true;commerceState.assistedOnly=true;
+    window.history.replaceState(null,'',`/carrito#solicitud=${'a'.repeat(64)}`);
+    vi.stubGlobal('fetch',vi.fn<typeof fetch>().mockResolvedValue(Response.json({reference:`WEB-${'b'.repeat(24)}`,
+      status:'accepted',createdAt:'2026-09-15T12:00:00Z',updatedAt:'2026-09-15T12:01:00Z',
+      paymentStatus:'not_requested',paymentRequiresReview:false,reservationStatus:'confirmed',checkoutAvailable:true,
+      preparationStatus:'prepared',totalMinor:123450})));
+    renderCart();
+    await screen.findByRole('heading',{name:'Pedido confirmado'});
+    const summary=screen.getByRole('complementary',{name:'Pedido confirmado'});
+    expect(within(summary).getByText('Total confirmado')).toBeVisible();
+    expect(summary).toHaveTextContent('1.234,50');
+    expect(summary).not.toHaveTextContent('Pendiente');
+    expect(summary).not.toHaveTextContent('requiere cotización');
+    expect(screen.getByRole('button',{name:'Pagar con Mercado Pago'})).toBeEnabled();
   });
 
   it.each([false, true])('no ofrece el checkout anterior para Dux asistido si las solicitudes están cerradas (commerce=%s)', (commerceEnabled) => {
@@ -225,7 +243,7 @@ describe('CartPage', () => {
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: /Acepto compartir/iu })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continuar con mi compra' })).not.toBeInTheDocument();
     expect(screen.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
     expect(screen.getByText(/El envío requiere cotización/iu)).toBeVisible();
     expect(screen.queryByText(/peso determinístico|cotización por WhatsApp/iu)).not.toBeInTheDocument();
@@ -268,14 +286,14 @@ describe('CartPage', () => {
     commerceState.assistedOnly = true;
     webOrderState.enabled = true;
     renderCart();
-    expect(screen.getByRole('button', { name: 'Confirmar mis datos' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar con mi compra' })).toBeDisabled();
 
     webOrderState.enabled = false;
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
       target: { value: 'Prueba de disponibilidad' },
     });
 
-    expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continuar con mi compra' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(screen.getByText(/Tu carrito se conserva/iu)).toBeVisible();

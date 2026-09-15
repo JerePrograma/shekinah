@@ -66,6 +66,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, liveMessage, remove, setQuantity, total } = useCart();
   const [webRequestPending, setWebRequestPending] = useState(false);
   const [webRequestActive, setWebRequestActive] = useState(false);
+  const [confirmedRequestTotal, setConfirmedRequestTotal] = useState<number | null>(null);
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [whatsappOrderPending, setWhatsappOrderPending] = useState(false);
   const [whatsappOrderResult, setWhatsappOrderResult] =
@@ -330,6 +331,18 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     window.requestAnimationFrame(() => emptyStateRef.current?.focus());
   }
 
+  const webOrderSection = (
+        <WebOrderRequestSection
+          registrationEnabled={webRequestsEnabled}
+          items={items}
+          fulfillment={validation.value}
+          disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null}
+          onBusyChange={setWebRequestPending}
+          onActiveChange={setWebRequestActive}
+          onConfirmedTotalChange={setConfirmedRequestTotal}
+        />
+  );
+
   return (
     <section className="cart-page section" aria-labelledby="cart-title">
       <div className="container cart-shell">
@@ -368,17 +381,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           </div>
         )}
 
-        <WebOrderRequestSection
-          registrationEnabled={webRequestsEnabled}
-          items={items}
-          fulfillment={validation.value}
-          disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null}
-          onBusyChange={setWebRequestPending}
-          onActiveChange={setWebRequestActive}
-        />
+
 
         {items.length === 0 ? (
           <div className="empty-state">
+            {webOrderSection}
             <div>
               <h2 ref={emptyStateRef} tabIndex={-1}>El carrito está vacío</h2>
               <p>Recorré el catálogo y agregá los productos que necesitás.</p>
@@ -536,25 +543,26 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             </div>
 
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
-              <h2 id="cart-summary-title">Resumen</h2>
-              <dl className="cart-totals">
+              <h2 id="cart-summary-title">{confirmedRequestTotal === null ? 'Resumen' : 'Pedido confirmado'}</h2>
+              {confirmedRequestTotal === null ? <dl className="cart-totals">
                 <div><dt>{usesWebRequestFlow ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
                 <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
                 <div className="cart-total"><dt>Total</dt><dd>{usesWebRequestFlow || quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
-              </dl>
-              {fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
+              </dl> : <dl className="cart-totals"><div className="cart-total"><dt>Total confirmado</dt><dd>{formatMinor(confirmedRequestTotal)}</dd></div></dl>}
+              {confirmedRequestTotal === null && fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
                 <p className="cart-disclaimer">Peso calculado: {formatWeight(quote.totalWeightGrams)}.</p>
               ) : null}
-              {quote.kind === 'manual' ? (
+              {confirmedRequestTotal === null && quote.kind === 'manual' ? (
                 <p className="form-error" role="status">{usesWebRequestFlow ? 'El envío requiere cotización. No se cobrará un total sin confirmación previa.' : manualQuoteMessage(quote.tier)}</p>
               ) : null}
               <p className="cart-disclaimer">
-                El servidor vuelve a validar productos, precios, disponibilidad, envío y total antes de registrar el pedido o iniciar el pago integrado.
+                Confirmamos el precio, el stock y el total antes de cobrar.
               </p>
-              {usesWebRequestFlow ? (
+              {webOrderSection}
+              {confirmedRequestTotal !== null ? <p className="cart-disclaimer">Este es el importe del pedido guardado. Los cambios posteriores del carrito no modifican ese pedido.</p> : usesWebRequestFlow ? (
                 <p className="cart-configuration-note">
                   {webRequestsEnabled
-                    ? 'Mercado Pago se habilita dentro de la solicitud web cuando el comercio confirma en Dux la reserva y el total definitivo.'
+                    ? 'Continuá con tus datos para verificar stock y confirmar el total antes de pagar con Mercado Pago.'
                     : 'El registro de solicitudes no está disponible en este momento. Tu carrito se conserva.'}
                 </p>
               ) : commerceEnabled ? (
@@ -707,7 +715,7 @@ function FieldError({ id, message }: Readonly<{ id: string; message: string | un
 }
 
 function formatMinor(value: number): string {
-  return formatProductPrice({ amount: value / 100, currency: 'ARS' }) ?? '$ 0';
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: value % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 }).format(value / 100);
 }
 
 function formatWeight(grams: number): string {

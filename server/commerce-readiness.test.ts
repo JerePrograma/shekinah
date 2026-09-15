@@ -31,6 +31,7 @@ const migrationsThrough = (last: number) => Array.from({ length: last }, (_, ind
     '0021': '0021_assisted_dux_checkout.sql',
     '0022': '0022_assisted_dux_order_number_unique.sql',
     '0023': '0023_assisted_dux_lifecycle_financial_guard.sql',
+    '0024': '0024_direct_dux_checkout.sql',
   };
   const name = names[number];
   if (name === undefined) throw new Error(`Migración de prueba ausente: ${number}`);
@@ -114,7 +115,7 @@ describe('preparación comercial administrativa', () => {
       expect(result.assistedCheckout.schemaReady).toBe(false);
       expect(result.assistedCheckout.blockers).toContain('ASSISTED_CHECKOUT_MIGRATION_REQUIRED');
       expect(result.checkout.automaticDuxMutationAllowed).toBe(false);
-      expect(result.checkout.blockers).toContain('DUX_ORDER_PRODUCT_SCHEMA_UNVERIFIED');
+      expect(result.checkout.blockers).toContain('LEGACY_CHECKOUT_DISABLED');
     } finally {
       db.close();
     }
@@ -171,7 +172,7 @@ describe('preparación comercial administrativa', () => {
       });
       expect(result.checkout.guardCode).toBe('DUX_API_DISABLED');
       expect(result.checkout.blockers).toContain('COMMERCE_DISABLED');
-      expect(result.checkout.blockers).toContain('DUX_ORDER_REFERENCE_RECOVERY_UNVERIFIED');
+      expect(result.checkout.blockers).toContain('LEGACY_CHECKOUT_DISABLED');
     } finally {
       db.close();
     }
@@ -267,11 +268,29 @@ describe('preparación comercial administrativa', () => {
       });
       expect(result.checkout.guardCode).toBe('DUX_ORDER_LIFECYCLE_UNAVAILABLE');
       expect(result.checkout.blockers).toContain('DUX_ORDER_LIFECYCLE_UNAVAILABLE');
-      expect(result.checkout.blockers).toContain('DUX_ORDER_RELEASE_FINALIZE_UNVERIFIED');
+      expect(result.checkout.blockers).toContain('LEGACY_CHECKOUT_DISABLED');
       expect(result.checkout.automaticDuxMutationAllowed).toBe(false);
       expect(JSON.stringify(result)).not.toContain(enabledEnv.MERCADO_PAGO_ACCESS_TOKEN);
     } finally {
       db.close();
     }
   });
+});
+
+it('separa la compra directa del checkout retirado y exige 0024 e identidades sin exponerlas', async () => {
+  const db = database(24);
+  try {
+    const now = Date.parse('2026-09-15T12:00:00Z');
+    await seedSnapshot(db,'2026-09-15T10:00:00Z');
+    const env: Env = {...baseEnv,WEB_ORDERS_ENABLED:'true',COMMERCE_ENABLED:'true',DIRECT_CHECKOUT_ENABLED:'true',
+      DUX_API_ENABLED:'true',DUX_ORDER_PERSONAL_ID:'1234567',DUX_ORDER_CUSTOMER_ID:'7654321'};
+    const result = await readCommerceReadiness(db,env,now);
+    expect(result.directCheckout).toMatchObject({schemaReady:true,ready:true,blockers:[],preparingCount:0,reviewCount:0});
+    expect(result.assistedCheckout.blockers).toContain('DUX_CATALOG_SNAPSHOT_STALE');
+    expect(result.checkout.automaticDuxMutationAllowed).toBe(false);
+    expect(result.dux.orderApiContract).toMatchObject({createEndpoint:'/v2/pedidos',queryByReferenceDocumented:true,releaseOrFinalizeDocumented:false});
+    expect(JSON.stringify(result)).not.toContain('1234567');
+    db.database.exec('DROP TRIGGER dux_automatic_reserve_confirm_guard');
+    expect((await readCommerceReadiness(db,env,now)).directCheckout).toMatchObject({schemaReady:false,ready:false});
+  } finally {db.close();}
 });

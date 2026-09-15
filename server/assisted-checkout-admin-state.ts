@@ -3,6 +3,7 @@ import type { AssistedCheckoutPreview } from './assisted-checkout';
 import { HttpError } from './http';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database, Env } from './platform';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 
 export type AssistedCheckoutAdminPrepared = Readonly<{
   orderId: string;
@@ -20,6 +21,7 @@ export type AssistedCheckoutAdminPrepared = Readonly<{
 }>;
 
 export type AssistedCheckoutAdminState =
+  | Readonly<{ state:'direct_preparing'; requestId:string; preparationStatus:string; duxReference:string; errorCode:string|null }>
   | Readonly<{ state: 'preview'; preview: AssistedCheckoutPreview }>
   | Readonly<{ state: 'prepared'; prepared: AssistedCheckoutAdminPrepared }>;
 
@@ -50,11 +52,24 @@ export async function readAssistedCheckoutAdminState(
   requestId: string,
 ): Promise<AssistedCheckoutAdminState> {
   if (!/^req_[A-Za-z0-9_-]{20,128}$/u.test(requestId)) throw notFound();
+  let direct: Readonly<{direct_checkout_state:string|null;direct_checkout_error_code:string|null}>|null = null;
+  try {
+    direct = await database.prepare('SELECT direct_checkout_state,direct_checkout_error_code FROM checkout_intents WHERE web_request_id = ?')
+      .bind(requestId).first();
+  } catch (error:unknown) {
+    if (!(error instanceof Error) || !/no such column:\s*direct_checkout_/iu.test(error.message)) throw error;
+  }
+  if (direct?.direct_checkout_state !== null && direct?.direct_checkout_state !== undefined && direct.direct_checkout_state !== 'prepared') {
+    await requireDirectCheckoutSchema(database);
+    return {state:'direct_preparing',requestId,preparationStatus:direct.direct_checkout_state,
+      duxReference:`shekinah:web:${requestId}`,errorCode:direct.direct_checkout_error_code};
+  }
   const prepared = await readPrepared(database, requestId);
   if (prepared === null) {
     return Object.freeze({ state: 'preview', preview: await previewAssistedCheckout(database, env, requestId) });
   }
   assertPreparedProjection(prepared);
+  if (prepared.verification_method === 'automatic_api') await requireDirectCheckoutSchema(database);
   const payment = await getOrderPaymentState(database, prepared.order_id);
   const reservationStatus = reservationStatusFor(prepared);
   return Object.freeze({
@@ -90,7 +105,7 @@ async function readPrepared(database: D1Database, requestId: string): Promise<Pr
       (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id) AS item_quantity_count,
       (SELECT COALESCE(SUM(subtotal_minor), 0) FROM order_items WHERE order_id = o.id) AS item_subtotal_total,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'reserve'
-        AND op.status = 'confirmed' AND op.idempotency_key = 'assisted-reserve:' || o.id) AS reserve_count,
+        AND op.status = 'confirmed' AND op.idempotency_key = CASE link.verification_method WHEN 'automatic_api' THEN 'automatic-reserve:' ELSE 'assisted-reserve:' END || o.id) AS reserve_count,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'release'
         AND op.status = 'confirmed' AND op.idempotency_key = 'assisted-release:' || o.id) AS release_count,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'finalize'
@@ -115,7 +130,7 @@ async function readPrepared(database: D1Database, requestId: string): Promise<Pr
 
 function assertPreparedProjection(row: PreparedRow): void {
   if (
-    row.request_id === '' || row.verification_method !== 'assisted_admin' ||
+    row.request_id === '' || !['assisted_admin','automatic_api'].includes(row.verification_method ?? '') ||
     row.dux_order_number === null || row.dux_order_number.trim() === '' ||
     row.provider_catalog_version === null || !/^[a-f0-9]{64}$/u.test(row.provider_catalog_version) ||
     row.provider_catalog_version_count !== 1 || row.line_count < 1 || row.reserve_count !== 1 ||

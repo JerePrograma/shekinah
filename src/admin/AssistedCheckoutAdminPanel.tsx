@@ -15,7 +15,8 @@ type Prepared = Readonly<{
   paymentStatus: 'none' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
   paymentRequiresReview: boolean;
 }>;
-type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>;
+type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>
+  | Readonly<{state:'direct_preparing';requestId:string;preparationStatus:string;duxReference:string;errorCode:string|null}>;
 type LifecycleAction = 'release' | 'finalize';
 
 export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyChange }: Readonly<{
@@ -80,6 +81,18 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
     finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
   }
 
+  async function resumeDirect():Promise<void> {
+    if(busyRef.current || state?.state!=='direct_preparing') return;
+    busyRef.current=true;setBusy(true);setError('');onBusyChange(true,'Verificando compra directa');
+    try {
+      const response=await fetch(`/api/admin/web-order-requests/${requestId}/resume`,{method:'POST',credentials:'same-origin',redirect:'error'});
+      if(response.status===401){onUnauthorized();return;}
+      if(!response.ok) throw new Error(await errorMessage(response,'No se pudo continuar la verificación Dux.'));
+      setState(parseState(await response.json(),requestId));
+    } catch(failure:unknown){setError(message(failure));}
+    finally{busyRef.current=false;setBusy(false);onBusyChange(false);}
+  }
+
   async function confirmLifecycle(): Promise<void> {
     if (busyRef.current || state?.state !== 'prepared' || lifecycleConfirmation === null) return;
     const action = lifecycleConfirmation;
@@ -134,6 +147,13 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       {busy ? 'Consultando…' : 'Consultar preparación de cobro'}
     </button> : null}
     {error === '' ? null : <p role="alert">{error}</p>}
+    {state?.state === 'direct_preparing' ? <>
+      <p role="status">Compra directa: {state.preparationStatus === 'failed' ? 'no se pudo preparar; sin cobro habilitado' : 'verificación automática en curso'}.</p>
+      <p>Referencia Dux: <code>{state.duxReference}</code>. No crees otro pedido para esta referencia. Un resultado incierto debe verificarse antes de cualquier nueva reserva.</p>
+      {state.errorCode === null ? null : <p>Diagnóstico: <code>{state.errorCode}</code>.</p>}
+      {state.preparationStatus === 'preparing' || state.preparationStatus === 'uncertain' ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void resumeDirect()}>Continuar verificación Dux</button> : null}
+      <button className="button button-secondary" type="button" disabled={busy} onClick={() => void load()}>Actualizar estado</button>
+    </> : null}
     {state?.state === 'preview' ? <>
       <p>Catálogo Dux observado: {formatDate(state.preview.catalogObservedAt)}.</p>
       <div className="cart-items">{state.preview.lines.map((line) => <article className="cart-line" key={line.productId}>
@@ -201,6 +221,11 @@ function lifecycleActionFor(prepared: Prepared): LifecycleAction | null {
   return 'release';
 }
 function parseState(value: unknown, requestId: string): State {
+  if (isRecord(value) && value.state === 'direct_preparing' && value.requestId === requestId &&
+      ['preparing','uncertain','failed','requires_review'].includes(String(value.preparationStatus)) &&
+      value.duxReference === `shekinah:web:${requestId}` && (value.errorCode === null || typeof value.errorCode === 'string')) {
+    return value as unknown as Extract<State,{state:'direct_preparing'}>;
+  }
   if (!isRecord(value) || (value.state !== 'preview' && value.state !== 'prepared')) throw invalid();
   if (value.state === 'preview') return Object.freeze({ state: 'preview', preview: parsePreview(value.preview, requestId) });
   return Object.freeze({ state: 'prepared', prepared: parsePrepared(value.prepared, requestId) });
@@ -248,7 +273,7 @@ async function errorMessage(response: Response, fallback: string): Promise<strin
   catch { /* Usa el fallback. */ }
   return fallback;
 }
-function formatMinor(value: number): string { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value / 100); }
+function formatMinor(value: number): string { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: value % 100 === 0 ? 0 : 2, maximumFractionDigits:2 }).format(value / 100); }
 function formatDate(value: string): string { return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value)); }
 function reservationLabel(value: Prepared['reservationStatus']): string { return ({ confirmed: 'confirmada', released: 'liberada', finalized: 'finalizada', requires_review: 'requiere revisión' })[value]; }
 function paymentLabel(value: Prepared['paymentStatus']): string { return ({ none: 'sin pago', pending: 'pendiente', approved: 'aprobado', rejected: 'rechazado', cancelled: 'cancelado', refunded: 'reintegrado' })[value]; }

@@ -16,12 +16,14 @@ import {
   resetRetrySafeFailedOrder,
 } from './orders';
 import { sha256Hex } from './crypto';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import type { CommerceMode, D1Database } from './platform';
 
 export type AssistedPaymentDependencies = Readonly<{
   accessToken: string;
   mode: CommerceMode;
   siteUrl: URL;
+  allowAutomatic?: boolean;
 }>;
 
 export type AssistedPaymentResult = Readonly<{
@@ -90,6 +92,10 @@ export async function createOrRecoverAssistedPreference(
   if (!/^[a-f0-9]{64}$/u.test(publicToken)) throw notFound();
   const access = await readAssistedAccess(database, await sha256Hex(publicToken));
   if (access === null) throw notFound();
+  if (access.verification_method === 'automatic_api') {
+    if (dependencies.allowAutomatic !== true) throw new HttpError(503, 'DIRECT_CHECKOUT_DISABLED', 'La compra directa no está disponible temporalmente.');
+    await requireDirectCheckoutSchema(database);
+  }
   assertAssistedReservation(access);
   const order = await getOrderById(database, access.id);
   if (order === null) throw notFound();
@@ -176,7 +182,7 @@ async function readAssistedAccess(database: D1Database, tokenHash: string): Prom
       d.verification_method, d.reservation_state,
       (SELECT COUNT(*) FROM dux_order_operations op
         WHERE op.order_id = o.id AND op.action = 'reserve' AND op.status = 'confirmed'
-          AND op.idempotency_key = 'assisted-reserve:' || o.id) AS reserve_count
+          AND op.idempotency_key = CASE d.verification_method WHEN 'automatic_api' THEN 'automatic-reserve:' ELSE 'assisted-reserve:' END || o.id) AS reserve_count
       FROM orders o INNER JOIN dux_order_links d ON d.order_id = o.id
       WHERE o.public_token_hash = ? AND o.channel = 'checkout_pro'
         AND o.web_request_id IS NOT NULL LIMIT 1`)
@@ -190,7 +196,7 @@ async function readAssistedAccess(database: D1Database, tokenHash: string): Prom
 }
 
 function assertAssistedReservation(row: AssistedAccessRow): void {
-  if (row.verification_method !== 'assisted_admin' || row.reservation_state !== 'confirmed' || row.reserve_count !== 1) {
+  if (!['assisted_admin', 'automatic_api'].includes(row.verification_method) || row.reservation_state !== 'confirmed' || row.reserve_count !== 1) {
     throw new HttpError(409, 'ASSISTED_RESERVATION_REQUIRED', 'La reserva Dux debe estar confirmada antes de iniciar el pago.');
   }
 }

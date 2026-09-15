@@ -1,4 +1,5 @@
-import { assistedCheckoutConfigured } from '../../../server/assisted-checkout-capability';
+import { assistedCheckoutConfigured, directCheckoutPaymentConfigured } from '../../../server/assisted-checkout-capability';
+import { advanceDirectCheckout } from '../../../server/direct-checkout';
 import { readDuxCatalogSnapshot } from '../../../server/dux-catalog';
 import { HttpError, jsonResponse, methodNotAllowedResponse, requireDatabase, requireSecret, responseFromError } from '../../../server/http';
 import type { PagesFunction } from '../../../server/platform';
@@ -33,10 +34,22 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
         secret,
         assistedCheckoutConfigured(env),
         now.getTime(),
+        directCheckoutPaymentConfigured(env),
       ));
     }
     const result = await createWebOrderRequest(database, input, secret,
       () => readDuxCatalogSnapshot(database), await webRequestLimits(request, secret, seconds, true), now);
+    if (env.DIRECT_CHECKOUT_ENABLED === 'true' && input.fulfillment.method === 'coordinated_pickup') {
+      // El registro ya es durable. Un error del proveedor conserva la identidad
+      // y se consulta antes de permitir otra compra.
+      await advanceDirectCheckout(database, env, result.receipt.publicToken).catch((error: unknown) => {
+        console.warn('direct_checkout_preparation_pending', {
+          code: error instanceof HttpError ? error.code : 'DIRECT_CHECKOUT_STORAGE_UNAVAILABLE',
+        });
+      });
+      return jsonResponse(await recoverWebOrderRequest(database, identity, secret,
+        assistedCheckoutConfigured(env), Date.now(), directCheckoutPaymentConfigured(env)), result.created ? 201 : 200);
+    }
     return jsonResponse(result.receipt, result.created ? 201 : 200);
   } catch (error: unknown) { return responseFromError(error); }
 };

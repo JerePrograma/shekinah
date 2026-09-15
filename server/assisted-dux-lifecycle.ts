@@ -4,6 +4,7 @@ import { HttpError } from './http';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database } from './platform';
 import { readSafeText } from './validation';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 
 export type AssistedDuxLifecycleAction = 'release' | 'finalize';
 
@@ -52,7 +53,8 @@ export async function inspectAssistedDuxLifecycle(
   await assertFinancialGuardsReady(database);
   const row = await readLifecycleRow(database, orderId);
   if (row === null) throw new HttpError(404, 'ORDER_NOT_FOUND', 'No se encontró el pedido.');
-  if (row.verification_method !== 'assisted_admin' || row.dux_order_number === null || row.dux_order_number.trim() === '') {
+  if (row.verification_method === 'automatic_api') await requireDirectCheckoutSchema(database);
+  if (!['assisted_admin', 'automatic_api'].includes(row.verification_method ?? '') || row.dux_order_number === null || row.dux_order_number.trim() === '') {
     throw new HttpError(409, 'ASSISTED_DUX_ORDER_REQUIRED', 'El pedido no pertenece al circuito Dux asistido.');
   }
   if (row.reserve_count !== 1) {
@@ -147,7 +149,7 @@ export async function confirmAssistedDuxLifecycle(
           inspection.duxOrderNumber, timestamp, timestamp, timestamp, timestamp),
       database.prepare(`UPDATE dux_order_links SET reservation_state = ?, ${lifecycleColumn} = ?,
         last_error_code = NULL, updated_at = ?
-        WHERE order_id = ? AND verification_method = 'assisted_admin' AND reservation_state = 'confirmed'`)
+        WHERE order_id = ? AND verification_method IN ('assisted_admin', 'automatic_api') AND reservation_state = 'confirmed'`)
         .bind(target, timestamp, timestamp, orderId),
     ]);
   } catch (error: unknown) {
@@ -189,7 +191,7 @@ async function readLifecycleRow(database: D1Database, orderId: string): Promise<
     return await database.prepare(`SELECT o.id, o.mp_preference_id, o.mp_checkout_url, o.mp_preference_attempted_at,
       link.dux_order_number, link.verification_method, link.reservation_state,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'reserve'
-        AND op.status = 'confirmed' AND op.idempotency_key = 'assisted-reserve:' || o.id) AS reserve_count,
+        AND op.status = 'confirmed' AND op.idempotency_key = CASE link.verification_method WHEN 'automatic_api' THEN 'automatic-reserve:' ELSE 'assisted-reserve:' END || o.id) AS reserve_count,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'release'
         AND op.status = 'confirmed' AND op.idempotency_key = 'assisted-release:' || o.id) AS release_count,
       (SELECT COUNT(*) FROM dux_order_operations op WHERE op.order_id = o.id AND op.action = 'finalize'

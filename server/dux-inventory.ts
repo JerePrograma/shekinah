@@ -12,11 +12,13 @@ import {
 } from './dux-api';
 import { HttpError } from './http';
 import { authorizedDuxWarehouses } from './dux-stock-observation';
+import { createDuxRequestGate, DUX_COORDINATED_SYNC_MAX_ATTEMPTS } from './dux-request-gate';
 import type { D1Database, D1PreparedStatement, Env } from './platform';
 
 const SYNC_LEASE_MAX_AGE_MINUTES = 30;
 const DUX_REQUEST_MIN_INTERVAL_MS = 5_000;
 const STAGING_ROWS_PER_STATEMENT = 50;
+const COORDINATED_STAGING_ROWS_PER_STATEMENT = 500;
 const DUX_REQUESTS_PER_HEARTBEAT = 10;
 const DUX_D1_DAILY_ESTIMATED_WRITE_LIMIT = 40_000;
 const DUX_D1_CONSTANT_WRITE_RESERVATION = 64;
@@ -274,9 +276,16 @@ export async function syncDuxInventory(
   if (!/^dux_sync_[A-Za-z0-9._:-]{1,180}$/u.test(runId)) {
     throw new HttpError(500, 'DUX_SYNC_ID_INVALID', 'No se pudo identificar la sincronización Dux.');
   }
+  const heartbeat = periodicSyncHeartbeat(database, runId);
+  const requestGate = env.DIRECT_CHECKOUT_ENABLED === 'true' ? createDuxRequestGate(database) : null;
   const client = options.client ?? new DuxApiClient({
     accessToken: config.accessToken,
-    beforeRequest: periodicSyncHeartbeat(database, runId),
+    // El deadline de siete minutos queda muy por debajo del lease de treinta.
+    // La compra directa reserva una query por intento HTTP y no añade heartbeats.
+    ...(requestGate === null ? { beforeRequest: heartbeat } : {
+      beforeRequest: requestGate, minRequestIntervalMs: 0,
+      maxTotalRequestAttempts: DUX_COORDINATED_SYNC_MAX_ATTEMPTS,
+    }),
   });
 
   await recoverAbandonedSync(database, startedAt);
@@ -333,7 +342,8 @@ export async function syncDuxInventory(
       startedAt,
       changedRows.length + newlyAbsent,
     );
-    await writeInventoryGenerationRows(database, runId, changedRows, startedAt);
+    await writeInventoryGenerationRows(database, runId, changedRows, startedAt,
+      requestGate === null ? STAGING_ROWS_PER_STATEMENT : COORDINATED_STAGING_ROWS_PER_STATEMENT);
     if (newlyAbsent > 0) {
       await stageAbsentInventoryRows(database, runId, currentKeys, startedAt);
     }
@@ -1152,9 +1162,10 @@ async function writeInventoryGenerationRows(
   generationId: string,
   rows: readonly PersistableInventoryUnit[],
   updatedAt: string,
+  rowsPerStatement: number,
 ): Promise<void> {
-  for (let offset = 0; offset < rows.length; offset += STAGING_ROWS_PER_STATEMENT) {
-    const batchRows = rows.slice(offset, offset + STAGING_ROWS_PER_STATEMENT);
+  for (let offset = 0; offset < rows.length; offset += rowsPerStatement) {
+    const batchRows = rows.slice(offset, offset + rowsPerStatement);
     if (batchRows.length > 0) {
       await database.batch([
         inventoryGenerationBatchInsert(database, generationId, batchRows, updatedAt),

@@ -22,7 +22,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
   try {
     requireEnabledFlag(env.COMMERCE_ENABLED, 'COMMERCE_DISABLED', 'El checkout todavía no está habilitado.');
     requireEnabledFlag(
-      env.ASSISTED_CHECKOUT_ENABLED,
+      env.DIRECT_CHECKOUT_ENABLED === 'true' ? 'true' : env.ASSISTED_CHECKOUT_ENABLED,
       'ASSISTED_CHECKOUT_DISABLED',
       'El checkout asistido todavía no está habilitado.',
     );
@@ -66,6 +66,7 @@ export const onRequest: PagesFunction = async ({ env, params, request }) => {
       accessToken,
       mode,
       siteUrl: requirePublicSiteUrl(env),
+      allowAutomatic: env.DIRECT_CHECKOUT_ENABLED === 'true',
     });
     return jsonResponse({ checkoutUrl: result.checkoutUrl, totalMinor: result.totalMinor }, result.created ? 201 : 200);
   } catch (error: unknown) {

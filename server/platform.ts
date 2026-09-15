@@ -84,6 +84,9 @@ export type Env = Readonly<{
   MERCADO_LIBRE_CATALOG_MAX_AGE_SECONDS?: string;
   MERCADO_LIBRE_SCHEDULER_SECRET?: string;
   DUX_API_ENABLED?: string;
+  DIRECT_CHECKOUT_ENABLED?: string;
+  DUX_ORDER_PERSONAL_ID?: string;
+  DUX_ORDER_CUSTOMER_ID?: string;
   DUX_API_TOKEN?: string;
   DUX_COMPANY_ID?: string;
   DUX_BRANCH_ID?: string;

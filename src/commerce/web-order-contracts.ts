@@ -27,6 +27,7 @@ export type WebRequestPublic = Readonly<{
   paymentStatus: WebRequestPaymentStatus; paymentRequiresReview: boolean;
   reservationStatus: WebRequestReservationStatus; checkoutAvailable: boolean;
   totalMinor: number | null;
+  preparationStatus?: 'preparing' | 'uncertain' | 'prepared' | 'failed' | 'requires_review';
 }>;
 export type WebRequestReceipt = WebRequestPublic & Readonly<{ publicToken: string }>;
 
@@ -43,6 +44,9 @@ export function parseWebRequestReceipt(value: unknown): WebRequestReceipt {
   const row = value as Record<string, unknown>;
   const paymentStatus = readPaymentStatus(row.paymentStatus);
   const reservationStatus = readReservationStatus(row.reservationStatus);
+  const preparationStatus = row.preparationStatus;
+  if (preparationStatus !== undefined && preparationStatus !== 'preparing' && preparationStatus !== 'uncertain' &&
+      preparationStatus !== 'prepared' && preparationStatus !== 'failed' && preparationStatus !== 'requires_review') throw invalid();
   const totalMinor = row.totalMinor === null
     ? null
     : typeof row.totalMinor === 'number' && Number.isSafeInteger(row.totalMinor) && row.totalMinor > 0
@@ -73,6 +77,7 @@ export function parseWebRequestReceipt(value: unknown): WebRequestReceipt {
     checkoutAvailable: row.checkoutAvailable,
     totalMinor,
     publicToken: row.publicToken,
+    ...(preparationStatus === undefined ? {} : { preparationStatus }),
   });
 }
 

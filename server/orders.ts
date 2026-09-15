@@ -2,6 +2,7 @@ import { CHECKOUT_IDEMPOTENCY_WINDOW_MS } from '../src/commerce/contracts';
 import type { RecalculatedCart } from './catalog';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import { HttpError } from './http';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import type { D1Database } from './platform';
 
 export type OrderStatus =
@@ -543,13 +544,17 @@ export async function assertDuxOrderLifecycleUnlinked(
   try {
     // SELECT * mantiene compatibilidad con esquemas 0012–0020, donde la columna
     // verification_method todavía no existe. Sólo 0021 puede acreditar el modo
-    // asistido; cualquier otro vínculo conserva el bloqueo histórico.
+    // asistido y compra directa con 0024; los demás vínculos conservan el bloqueo histórico.
     const link = await database
       .prepare('SELECT * FROM dux_order_links WHERE order_id = ? LIMIT 1')
       .bind(orderId)
       .first<Readonly<{ reservation_state: string; verification_method?: unknown }>>();
     if (link !== null) {
       if (link.verification_method === 'assisted_admin') return;
+      if (link.verification_method === 'automatic_api') {
+        await requireDirectCheckoutSchema(database);
+        return;
+      }
       throw new HttpError(
         503,
         'DUX_ORDER_LIFECYCLE_UNAVAILABLE',

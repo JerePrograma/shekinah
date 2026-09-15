@@ -17,6 +17,8 @@ import {
 } from './dux-inventory';
 import type { Env } from './platform';
 import { authorizedDuxWarehouses, captureDuxWarehouseStocks } from './dux-stock-observation';
+import { createDuxRequestGate, DUX_COORDINATED_SYNC_MAX_ATTEMPTS } from './dux-request-gate';
+import { requireDatabase } from './http';
 
 const ITEM_PAGE_LIMIT = 50;
 const MAX_ITEM_PAGES = DUX_MAX_ITEMS_PER_SYNC / ITEM_PAGE_LIMIT;
@@ -53,6 +55,10 @@ export function createDuxInventoryReader(
   const client = new DuxApiClient({
     accessToken: config.accessToken,
     fetch: filter.fetch,
+    ...(env.DIRECT_CHECKOUT_ENABLED === 'true' ? {
+      beforeRequest: createDuxRequestGate(requireDatabase(env)), minRequestIntervalMs: 0,
+      maxTotalRequestAttempts: DUX_COORDINATED_SYNC_MAX_ATTEMPTS,
+    } : {}),
   });
   let capturedCatalogItems: readonly DuxCatalogSourceItem[] | null = null;
 

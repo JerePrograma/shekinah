@@ -2,6 +2,8 @@ import { readDuxSnapshotMaxAgeSeconds } from './config';
 import { readDuxCatalogSnapshot } from './dux-catalog';
 import { requireSecret } from './http';
 import type { D1Database, Env } from './platform';
+import { readDirectCheckoutConfig } from './direct-checkout';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 
 const REQUIRED_COLUMNS = [
   'intent_kind',
@@ -69,6 +71,13 @@ export async function webOrderRegistrationEnabled(
     const snapshot = await readDuxCatalogSnapshot(database);
     const observedAt = Date.parse(snapshot.stockReadAt ?? snapshot.syncedAt);
     if (!Number.isFinite(observedAt) || observedAt > nowMilliseconds) return false;
+    if (env.DIRECT_CHECKOUT_ENABLED === 'true') {
+      void readDirectCheckoutConfig(env);
+      await requireDirectCheckoutSchema(database);
+      // La proyección identifica el producto. Precio y stock se consultan en
+      // Dux al preparar la compra; no se declara fresco el snapshot histórico.
+      return true;
+    }
     return nowMilliseconds - observedAt <= readDuxSnapshotMaxAgeSeconds(env) * 1000;
   } catch {
     return false;

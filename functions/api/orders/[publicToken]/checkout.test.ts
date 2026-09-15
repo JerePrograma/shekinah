@@ -78,6 +78,7 @@ describe('checkout público de solicitud asistida', () => {
         accessToken: mercadoPagoAccessToken,
         mode: 'sandbox',
         siteUrl: new URL('https://example.test'),
+        allowAutomatic: false,
       });
       expect(doubles.consume).toHaveBeenCalledTimes(1);
     } finally { database.close(); }
@@ -122,4 +123,13 @@ describe('checkout público de solicitud asistida', () => {
       }
     } finally { database.close(); }
   });
+});
+
+it('habilita el pago directo sin depender del flag asistido y pasa el permiso al servicio', async () => {
+  const database = new SqliteD1(migration);
+  try {
+    const response = await onRequest(context(database,{ASSISTED_CHECKOUT_ENABLED:'false',DIRECT_CHECKOUT_ENABLED:'true'}));
+    expect(response.status).toBe(201);
+    expect(doubles.checkout.mock.calls[0]?.[2]).toMatchObject({allowAutomatic:true});
+  } finally {database.close();}
 });

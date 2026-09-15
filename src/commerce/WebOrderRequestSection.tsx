@@ -6,14 +6,15 @@ import type { CartItem } from '../cart/model';
 import type { CheckoutFulfillment } from './fulfillment';
 import type { WebRequestIdentity, WebRequestReceipt } from './web-order-contracts';
 import { webRequestStatusLabel } from './web-order-contracts';
-import { readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest } from './web-request-api';
+import { prepareWebRequest, readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest } from './web-request-api';
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
 const MAX_AUTOMATIC_CHECKS = 8;
 
-export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange }: Readonly<{
+export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange }: Readonly<{
   registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
   onBusyChange: (busy: boolean) => void; onActiveChange: (active: boolean) => void;
+  onConfirmedTotalChange?: (total: number | null) => void;
 }>) {
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const [identity, setIdentity] = useState<WebRequestIdentity | null>(null);
@@ -27,6 +28,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     return token !== null && /^[a-f0-9]{64}$/u.test(token) ? token : null;
   });
   const busyRef = useRef(false);
+  useEffect(() => { onConfirmedTotalChange?.(receipt?.totalMinor ?? null); }, [receipt?.totalMinor, onConfirmedTotalChange]);
   const receiptTitle = useRef<HTMLHeadingElement>(null);
   const focusReceipt = useRef(false);
   useEffect(() => {
@@ -62,6 +64,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
 
   const publicToken = receipt?.publicToken ?? null;
   const awaitingUpdate = receipt !== null && shouldWatchRequest(receipt);
+  const directPreparing = receipt?.preparationStatus === 'preparing' || receipt?.preparationStatus === 'uncertain';
   useEffect(() => {
     if (publicToken === null || !awaitingUpdate) return;
     const controller = new AbortController();
@@ -69,8 +72,8 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     let timer: number | undefined;
     setRefreshState('watching');
     const schedule = () => {
-      if (checks >= MAX_AUTOMATIC_CHECKS) { setRefreshState('paused'); return; }
-      timer = window.setTimeout(() => void refresh(), Math.min(15_000 * 2 ** checks, 60_000));
+      if (checks >= (directPreparing ? 120 : MAX_AUTOMATIC_CHECKS)) { setRefreshState('paused'); return; }
+      timer = window.setTimeout(() => void refresh(), directPreparing ? 5000 : Math.min(15_000 * 2 ** checks, 60_000));
     };
     const refresh = async () => {
       if (controller.signal.aborted) return;
@@ -80,17 +83,17 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
       }
       checks += 1;
       try {
-        const current = await readWebRequest(publicToken, controller.signal);
+        const current = directPreparing ? await prepareWebRequest(publicToken, controller.signal) : await readWebRequest(publicToken, controller.signal);
         if (controller.signal.aborted) return;
         setReceipt(current);
         if (shouldWatchRequest(current)) schedule();
-      } catch {
-        if (!controller.signal.aborted) setRefreshState('error');
+      } catch (failure: unknown) {
+        if (!controller.signal.aborted) { setRefreshState('error'); setError(message(failure)); }
       }
     };
     schedule();
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [publicToken, awaitingUpdate, refreshVersion]);
+  }, [publicToken, awaitingUpdate, refreshVersion, directPreparing]);
 
   async function operate(action: 'create' | 'recover' | 'new' | 'checkout'): Promise<void> {
     if (busyRef.current || disabled) return;
@@ -131,11 +134,11 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   if (!registrationEnabled && identity === null && linkedToken === null) return null;
   return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy}>
     <h2 id="web-request-title">Tu pedido</h2>
-    <p>Completá tus datos una sola vez. El comercio confirmará stock y total antes de habilitar Mercado Pago en esta página. No necesitás abrir WhatsApp.</p>
+    <p>Completá tus datos una sola vez. Verificamos disponibilidad y total antes de abrir Mercado Pago. Podés usar WhatsApp para coordinar con el negocio cuando lo necesites.</p>
     {receipt !== null ? <>
       <h3 ref={receiptTitle} tabIndex={-1}>Solicitud registrada</h3>
-      <p>Esta referencia corresponde al intento ya enviado. Editar el carrito no cambia esa solicitud.</p>
-      <p role="status">{receipt.reference}: {webRequestStatusLabel(receipt.status)}. {receiptStatusMessage(receipt)}</p>
+      <p>Tu pedido está guardado. Podés volver a esta página para consultar el pago. Editar el carrito no modifica este pedido.</p>
+      <p role="status">{receipt.reference}: {receipt.preparationStatus === undefined ? `${webRequestStatusLabel(receipt.status)}. ` : ''}{receiptStatusMessage(receipt)}</p>
       {awaitingUpdate ? <p aria-live="polite">{refreshState === 'watching'
         ? 'El estado se actualiza automáticamente mientras esta página está visible. No necesitás volver a cargar tus datos.'
         : refreshState === 'error'
@@ -153,9 +156,11 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     </> : null}
     {error !== '' ? <p role="alert">{error}</p> : null}
     {receipt === null && linkedToken === null && registrationEnabled ? <>
-      <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : 'El envío por correo y el total quedan sujetos a confirmación; no se presuponen gratuitos.'}</p>
+      <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : fulfillment.method === 'coordinated_pickup'
+        ? 'El retiro no agrega costo. Verificamos los productos para mostrarte el total final antes de pagar.'
+        : 'El envío por correo requiere una cotización confirmada. También podés elegir retiro y coordinarlo con el negocio.'}</p>
       <button className="button button-primary" type="button" disabled={disabled || busy || fulfillment === null || items.length === 0}
-        onClick={() => void operate('create')}>{busy ? 'Guardando tus datos…' : identity === null ? 'Confirmar mis datos' : 'Reenviar el mismo intento'}</button>
+        onClick={() => void operate('create')}>{busy ? 'Guardando tus datos…' : identity === null ? 'Continuar con mi compra' : 'Reenviar el mismo intento'}</button>
     </> : null}
     {identity !== null || linkedToken !== null ? <button className="button button-secondary" type="button" disabled={disabled || busy}
       onClick={() => void operate('recover')}>Consultar estado de la solicitud</button> : null}
@@ -176,6 +181,9 @@ function receiptStatusMessage(receipt: WebRequestReceipt): string {
       : 'Pago reintegrado. El reintegro no repone inventario por sí solo.';
   }
   if (receipt.paymentStatus === 'pending') return 'El pago está pendiente de acreditación. No vuelvas a pagarlo.';
+  if (receipt.preparationStatus === 'preparing') return 'Estamos verificando tus productos y reservando el stock. El total final aparecerá aquí para continuar al pago.';
+  if (receipt.preparationStatus === 'uncertain') return 'Estamos recuperando la confirmación de Dux. Tu compra está guardada; no vuelvas a cargarla.';
+  if (receipt.preparationStatus === 'failed') return 'No pudimos preparar esta compra. Revisá los productos y cantidades; podés corregir el carrito e iniciar otra.';
   if (receipt.reservationStatus === 'requires_review') return 'La gestión de la reserva requiere revisión. El pago permanece bloqueado.';
   if (receipt.reservationStatus === 'finalized') return 'La gestión del pedido está finalizada.';
   if (receipt.reservationStatus === 'released') return 'La reserva de este pedido fue liberada.';
@@ -193,17 +201,18 @@ function receiptStatusMessage(receipt: WebRequestReceipt): string {
 }
 
 function shouldWatchRequest(receipt: WebRequestReceipt): boolean {
+  if (receipt.preparationStatus === 'failed' || receipt.preparationStatus === 'requires_review') return false;
   return !receipt.checkoutAvailable && !receipt.paymentRequiresReview && receipt.status !== 'rejected' &&
     receipt.paymentStatus !== 'approved' && receipt.paymentStatus !== 'refunded' &&
     (receipt.reservationStatus === 'not_reserved' || receipt.reservationStatus === 'confirmed');
 }
 
 function canPrepareAnother(receipt: WebRequestReceipt): boolean {
-  return receipt.status === 'rejected' || receipt.reservationStatus === 'released' || receipt.reservationStatus === 'finalized';
+  return (receipt.preparationStatus === 'failed' && receipt.totalMinor === null) || receipt.status === 'rejected' || receipt.reservationStatus === 'released' || receipt.reservationStatus === 'finalized';
 }
 
 function formatMinor(value: number): string {
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value / 100);
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: value % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 }).format(value / 100);
 }
 
 function message(error: unknown): string { return error instanceof Error ? error.message : 'No se pudo completar la solicitud.'; }

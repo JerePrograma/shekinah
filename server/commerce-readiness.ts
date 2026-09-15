@@ -7,6 +7,8 @@ import {
   requirePublicSiteUrl,
 } from './config';
 import { HttpError, requireSecret } from './http';
+import { readDirectCheckoutConfig } from './direct-checkout';
+import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import type { D1Database, Env } from './platform';
 
 const WEB_REQUEST_COLUMNS = Object.freeze([
@@ -65,6 +67,10 @@ const ASSISTED_LIFECYCLE_GUARDS = Object.freeze([
 ]);
 
 export type CommerceReadiness = Readonly<{
+  directCheckout: Readonly<{
+    schemaReady: boolean; serverEnabled: boolean; identitiesConfigured: boolean;
+    ready: boolean; preparingCount: number | null; reviewCount: number | null; blockers: readonly string[];
+  }>;
   checkedAt: string;
   webRequests: Readonly<{
     schemaReady: boolean;
@@ -121,11 +127,11 @@ export type CommerceReadiness = Readonly<{
     linkAttentionCount: number | null;
     operationAttentionCount: number | null;
     orderApiContract: Readonly<{
-      reviewedAt: '2026-09-10';
-      createEndpoint: '/pedido/nuevopedido';
-      queryEndpoint: '/pedidos';
-      queryByReferenceDocumented: false;
-      productObjectSchemaVerified: false;
+      reviewedAt: '2026-09-15';
+      createEndpoint: '/v2/pedidos';
+      queryEndpoint: '/v2/pedidos';
+      queryByReferenceDocumented: true;
+      productObjectSchemaVerified: true;
       releaseOrFinalizeDocumented: false;
     }>;
   }>;
@@ -186,13 +192,24 @@ export async function readCommerceReadiness(
   if (config.guardCode !== null) checkoutBlockers.push(config.guardCode);
   if (!dux.snapshotAvailable) checkoutBlockers.push('DUX_CATALOG_SNAPSHOT_UNAVAILABLE');
   if (dux.snapshotFresh === false) checkoutBlockers.push('DUX_CATALOG_SNAPSHOT_STALE');
-  checkoutBlockers.push(
-    'DUX_ORDER_PRODUCT_SCHEMA_UNVERIFIED',
-    'DUX_ORDER_REFERENCE_RECOVERY_UNVERIFIED',
-    'DUX_ORDER_RELEASE_FINALIZE_UNVERIFIED',
-  );
+  checkoutBlockers.push('LEGACY_CHECKOUT_DISABLED');
+
+  const directSchemaReady = await requireDirectCheckoutSchema(database).then(() => true, () => false);
+  let identitiesConfigured = false;
+  try { readDirectCheckoutConfig(env); identitiesConfigured = true; } catch { /* Sólo informa configuración. */ }
+  const directBlockers = assistedBlockers.filter(code => !['ASSISTED_CHECKOUT_DISABLED', 'DUX_CATALOG_SNAPSHOT_STALE'].includes(code));
+  if (!directSchemaReady) directBlockers.push('DIRECT_CHECKOUT_MIGRATION_REQUIRED');
+  if (!identitiesConfigured) directBlockers.push('DIRECT_CHECKOUT_IDENTITY_MISSING');
+  if (!isEnabledFlag(env.DIRECT_CHECKOUT_ENABLED)) directBlockers.push('DIRECT_CHECKOUT_DISABLED');
+  const directCounts = directSchemaReady ? await database.prepare(`SELECT
+    SUM(CASE WHEN direct_checkout_state = 'preparing' THEN 1 ELSE 0 END) AS preparing,
+    SUM(CASE WHEN direct_checkout_state IN ('uncertain','requires_review') THEN 1 ELSE 0 END) AS review
+    FROM checkout_intents WHERE intent_kind = 'web_request'`).first<{preparing:number|null;review:number|null}>() : null;
 
   return Object.freeze({
+    directCheckout: Object.freeze({schemaReady:directSchemaReady,serverEnabled:isEnabledFlag(env.DIRECT_CHECKOUT_ENABLED),
+      identitiesConfigured,ready:directBlockers.length===0,preparingCount:directSchemaReady ? directCounts?.preparing ?? 0 : null,
+      reviewCount:directSchemaReady ? directCounts?.review ?? 0 : null,blockers:Object.freeze(unique(directBlockers))}),
     checkedAt,
     webRequests: Object.freeze({
       schemaReady: schema.webRequests,
@@ -493,11 +510,11 @@ function unique(values: readonly string[]): string[] {
 
 function orderApiContract(): DuxStatus['orderApiContract'] {
   return Object.freeze({
-    reviewedAt: '2026-09-10',
-    createEndpoint: '/pedido/nuevopedido',
-    queryEndpoint: '/pedidos',
-    queryByReferenceDocumented: false,
-    productObjectSchemaVerified: false,
+    reviewedAt: '2026-09-15',
+    createEndpoint: '/v2/pedidos',
+    queryEndpoint: '/v2/pedidos',
+    queryByReferenceDocumented: true,
+    productObjectSchemaVerified: true,
     releaseOrFinalizeDocumented: false,
   });
 }

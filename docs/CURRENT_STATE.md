@@ -1,5 +1,9 @@
 # Estado actual
 
+## Compra directa autorizada — 2026-09-15
+
+La ampliación descrita en [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) incorpora preparación automática de retiro, stock y precio Dux en vivo, reserva única, total confirmado y Checkout Pro, con migración 0024 autorizada por el titular. El flag nace cerrado. La implementación no acredita por sí sola aplicación remota, despliegue ni smoke real. Las secciones anteriores conservan su valor histórico; la ausencia de esquema de creación/recuperación Dux fue corregida al revisar el contrato v2 completo.
+
 ## Activación reanudada; cadencia Dux y Mercado Pago pendientes — 2026-09-14
 
 El [registro de activación](validation/COMMERCE_ACTIVATION_2026-09-14.md) acredita ambas D1 nuevamente, el diagnóstico Dux publicado en `bffec969d27c4bd03450b3617c8f5681b85321ab`, CI/Pages verdes y un catálogo real de 754 productos. El scheduler GitHub quedó habilitado con autorización explícita; su workflow manual terminó correctamente, incluidas las 754 fichas, pero la cadencia automática todavía requiere evidencia. La primera apertura WEB se revirtió al impedir el certificado local Fortinet la verificación posterior. Chrome acreditó después HTTPS seguro y sesión administrativa; tras recuperar el control en una pestaña nueva, la prueba del usuario quedó rechazada por el flujo soportado y auditada a las 12:57 UTC, sin reserva ni orden asistida. ASSISTED y COMMERCE siguen cerrados y la credencial Mercado Pago requiere entrada del titular. El agente no creó transacciones de prueba. Este registro actualiza los bloqueos del 13 de septiembre sin borrar su evidencia.

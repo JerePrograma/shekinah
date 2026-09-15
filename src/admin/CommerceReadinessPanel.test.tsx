@@ -124,3 +124,15 @@ it('rechaza respuestas mal formadas', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Comprobar preparación comercial' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('diagnóstico comercial inválido');
 });
+
+it('presenta la preparación directa por separado del checkout retirado', async () => {
+  vi.stubGlobal('fetch',vi.fn<typeof fetch>().mockResolvedValue(Response.json({...payload,directCheckout:{
+    schemaReady:true,serverEnabled:true,identitiesConfigured:true,ready:true,preparingCount:2,reviewCount:1,blockers:[],
+  }})));
+  render(<CommerceReadinessPanel />);
+  fireEvent.click(screen.getByRole('button',{name:'Comprobar preparación comercial'}));
+  expect(await screen.findByRole('heading',{name:'Compra directa con Mercado Pago'})).toBeVisible();
+  expect(screen.getByText(/Configuración: lista · Backend: abierto · Esquema 0024: sí/)).toBeVisible();
+  expect(screen.getByText(/En preparación: 2 · requieren revisión: 1/)).toBeVisible();
+  expect(screen.getByRole('heading',{name:'Checkout anterior retirado'})).toBeVisible();
+});

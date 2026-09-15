@@ -1,5 +1,9 @@
 # Despliegue del comercio
 
+## Ampliación 0024 — 2026-09-15
+
+La [compra directa](DIRECT_CHECKOUT.md) tiene autorización explícita y despliegue separado del rollout histórico 0020–0023. Nace con `DIRECT_CHECKOUT_ENABLED=false`, incorpora dos identidades Dux verificadas por entorno y requiere validación de Preview antes de Production. Seguir ese procedimiento para la nueva migración y no ampliar el alcance del migrador histórico. La credencial Mercado Pago ya fue corregida; su aceptación productiva y los smokes se acreditan mediante recibos separados.
+
 ## Continuación operativa — 2026-09-14
 
 El [registro de activación](validation/COMMERCE_ACTIVATION_2026-09-14.md) contiene el SHA validado y desplegado, las dos D1 verificadas, el refresco real de 754 productos y la ejecución exitosa del workflow Dux. La primera apertura WEB tuvo rollback de flags por fallo local de validación TLS antes del smoke. Faltan la entrada humana del token Mercado Pago, la cadencia automática acreditada y la secuencia comercial completa. Las reglas y estados históricos que siguen no sustituyen estos recibos ni autorizan reaplicar migraciones.

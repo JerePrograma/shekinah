@@ -1,5 +1,9 @@
 # Continuación
 
+## Continuar la compra directa autorizada — 2026-09-15
+
+Usar [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) para el alcance 0024, contratos, pruebas, flags y cierre. Trabajar únicamente en el checkout de release y conservar intacta la edición local del rollout 0020–0023. Verificar los recibos del SHA antes de afirmar activación. El titular ya autorizó implementar la compra directa y su migración posterior a 0023; no volver a pedir esa aprobación. La credencial Mercado Pago fue corregida y los tres registros web de prueba anteriores fueron rechazados sin reservas ni preferencias. Sus evidencias privadas están en `.wrangler/commerce-d1-rollout`.
+
 ## Retomar después del diagnóstico y rollback WEB — 2026-09-14
 
 Continuar desde [COMMERCE_ACTIVATION_2026-09-14.md](validation/COMMERCE_ACTIVATION_2026-09-14.md), exclusivamente en el checkout de release. Preservar exactamente la edición local de `COMMERCE_D1_ROLLOUT_2026-09-13.md`: el usuario pidió conservarla y no fue publicada. D1 ya está verificada. El catálogo se actualizó y el workflow Dux manual terminó bien; comprobar la cadencia automática del scheduler habilitado. WEB volvió a `false` por imposibilidad de validar el certificado local de `shekinah.ar`; ASSISTED y COMMERCE nunca se abrieron. Chrome acreditó posteriormente HTTPS seguro y sesión administrativa; el control se recuperó en una pestaña nueva y la prueba identificada por el usuario quedó rechazada, auditada y verificada en D1. Completar el guardado humano del token Mercado Pago, acreditar el deployment y retomar los smokes en orden con catálogo fresco. El carrito local fue vaciado y no hay reservas ni preferencias nuevas que compensar.

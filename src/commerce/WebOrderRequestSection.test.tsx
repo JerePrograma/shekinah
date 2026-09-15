@@ -4,7 +4,7 @@ import type { CartItem } from '../cart/model';
 import type { WebRequestReceipt } from './web-order-contracts';
 
 const doubles = vi.hoisted(() => ({
-  read: vi.fn(), create: vi.fn(), finish: vi.fn(), submit: vi.fn(), recover: vi.fn(), token: vi.fn(), checkout: vi.fn(),
+  read: vi.fn(), create: vi.fn(), finish: vi.fn(), submit: vi.fn(), recover: vi.fn(), token: vi.fn(), checkout: vi.fn(), prepare: vi.fn(),
 }));
 vi.mock('./web-request-session', () => ({ readWebRequestIdentity: doubles.read, getOrCreateWebRequestIdentity: doubles.create, finishWebRequestIdentity: doubles.finish }));
 vi.mock('./web-request-api', () => ({
@@ -12,6 +12,7 @@ vi.mock('./web-request-api', () => ({
   recoverWebRequest: doubles.recover,
   readWebRequest: doubles.token,
   startWebRequestCheckout: doubles.checkout,
+  prepareWebRequest: doubles.prepare,
 }));
 vi.mock('./env', () => ({ getAuthorizedWhatsappNumber: () => '5492236216559' }));
 vi.mock('../analytics/client', () => ({ trackAnalyticsEvent: vi.fn() }));
@@ -36,9 +37,37 @@ beforeEach(() => {
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it('avanza la compra directa sin aprobación humana y ofrece pago sólo tras confirmar el servidor', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({...receipt,preparationStatus:'preparing'});
+  doubles.prepare.mockResolvedValue({...receipt,status:'accepted',preparationStatus:'prepared',reservationStatus:'confirmed',checkoutAvailable:true,totalMinor:350000});
+  render(component());
+  await act(async()=> { await Promise.resolve(); });
+  expect(screen.queryByRole('button',{name:'Pagar con Mercado Pago'})).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Estamos verificando');
+  await act(async()=> { await vi.advanceTimersByTimeAsync(5000); });
+  expect(screen.getByRole('button',{name:'Pagar con Mercado Pago'})).toBeEnabled();
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  await act(async()=> { await vi.advanceTimersByTimeAsync(15000); });
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+});
+
+it('comunica al resumen el total confirmado de la solicitud guardada', async () => {
+  const onConfirmedTotalChange=vi.fn();
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({...receipt,status:'accepted',reservationStatus:'confirmed',checkoutAvailable:true,totalMinor:123450});
+  render(<WebOrderRequestSection registrationEnabled items={items} fulfillment={fulfillment} disabled={false}
+    onBusyChange={vi.fn()} onActiveChange={vi.fn()} onConfirmedTotalChange={onConfirmedTotalChange}/>);
+  await waitFor(()=>expect(onConfirmedTotalChange).toHaveBeenLastCalledWith(123450));
+  expect(screen.getByText('Total confirmado:').parentElement).toHaveTextContent('1.234,5');
+});
+
 it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita doble clic', async () => {
   render(component());
-  const button = screen.getByRole('button', { name: 'Confirmar mis datos' });
+  const button = screen.getByRole('button', { name: 'Continuar con mi compra' });
   fireEvent.click(button); fireEvent.click(button);
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1);
@@ -50,7 +79,7 @@ it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita dobl
 
 it('una respuesta perdida conserva la identidad y se recupera sin reenviar la creación', async () => {
   doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida.')); doubles.recover.mockResolvedValue(receipt);
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Confirmar mis datos' }));
+  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Continuar con mi compra' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Respuesta perdida');
   fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' }));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
@@ -62,7 +91,7 @@ it('las altas cerradas no impiden recuperar la solicitud del navegador', async (
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
   render(component(false));
   expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Confirmar mis datos' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Continuar con mi compra' })).not.toBeInTheDocument();
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
@@ -83,7 +112,7 @@ it('un enlace protegido no requiere el almacenamiento privado de otro navegador'
 
 it('no envía si el navegador no logra persistir la identidad', async () => {
   doubles.create.mockRejectedValue(new Error('Almacenamiento no disponible.'));
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Confirmar mis datos' }));
+  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Continuar con mi compra' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Almacenamiento no disponible');
   expect(doubles.submit).not.toHaveBeenCalled();
 });
