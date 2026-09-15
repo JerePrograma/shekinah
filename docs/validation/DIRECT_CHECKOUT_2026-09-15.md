@@ -40,8 +40,49 @@ El control de una pestaña Chrome respondió `Debugger unattached`. Se recuperó
 
 ## Estado de publicación y activación
 
-Pendiente de recibos del SHA de esta ampliación: CI, Pages, 0024 Preview, 0024 Production, apertura gradual de flags, reserva Dux real, preferencia Checkout Pro sin cobro y cierre de la prueba. No atribuir estos resultados a las pruebas locales.
+El estado previo a la publicación dejaba pendientes CI, Pages, ambas migraciones remotas y todos los smokes. Los recibos posteriores acreditan las etapas siguientes, sin atribuirlas a las pruebas locales.
 
-El scheduler GitHub está configurado cada cinco minutos, pero sus ejecuciones observadas del 15 de septiembre fueron espaciadas: 05:09, 10:02 y 14:51 UTC. Las tres terminaron correctamente; la expresión cron no acredita esa frecuencia efectiva. La compra directa consulta Dux en vivo antes de reservar y no usa el snapshot obsoleto como autorización de stock o precio. La demora del scheduler sigue siendo una incidencia operativa a observar.
+### Publicación acreditada
+
+Commit `f642b76fbcdd55613d09fc908275cd8ecb75cf7b`, `feat: permitir compra directa con reserva autoritativa Dux`, publicado en `origin/main`. [CI 34998487540](https://github.com/JerePrograma/shekinah/actions/runs/34998487540) y su [job Verify](https://github.com/JerePrograma/shekinah/actions/runs/34998487540/job/104480688792) terminaron con success a las 17:03:19 UTC. La ejecución normal acreditó 120 archivos, 771 pruebas aprobadas, 14 omitidas, 29 E2E, parser PowerShell, mocks Dux y artefacto `shekinah-dist-f642b76fbcdd55613d09fc908275cd8ecb75cf7b` de 52.273.461 bytes. El agregado normal de Pages también pasó: [deployment inicial](https://4bc8dd0f.shekinah-7dl.pages.dev), success a las 17:03:23.406143 UTC para el mismo SHA. Esto resuelve la validación de agregados pendiente por el entorno Windows, sin borrar sus intentos fallidos.
+
+### D1 remota acreditada
+
+La única migración nueva fue `0024_direct_dux_checkout.sql`, expresamente autorizada. Se aplicó mediante import oficial de Wrangler 4.131.0, SQL exacto más registro de historial, desde Windows PowerShell 5.1. SHA-256 del SQL: `8EBECFACCDDAB5908F0B668D653A85FCBACF0933F641ECFC5F8B0AE5ADFA7B5A`. Preview pasó antes de comenzar Production.
+
+| Entorno | `applied_at` de 0024, UTC | Verificación terminada, UTC | Bookmark previo, archivo local |
+| --- | --- | --- | --- |
+| Preview | 2026-09-15 17:06:32 | 17:06:59.6674232 | `preview-before-0024-20260915-170509Z.json` |
+| Production | 2026-09-15 17:08:11 | 17:08:25.1294813 | `production-before-0024-20260915-170740Z.json` |
+
+Ambas bases: historial exacto y continuo 0001–0024; `No migrations to apply`; ninguna migración posterior; 35 objetos críticos y 21 columnas presentes; `PRAGMA foreign_key_check` sin filas; conteos de órdenes, vínculos, operaciones e intenciones preservados durante la migración. Los 35 objetos incluyen los 14 históricos y los 21 declarados en `DIRECT_CHECKOUT_GUARDS` de `server/direct-checkout-schema.ts`. Las columnas verificadas son las 15 del migrador histórico más `direct_checkout_state`, `direct_checkout_claim_token`, `direct_checkout_updated_at`, `direct_checkout_error_code`, `direct_checkout_lease_until_ms` y `direct_checkout_progress_json` de `checkout_intents`.
+
+Recibos privados: `preview-apply-receipt.json`, `production-apply-receipt.json`, `*-verified-preapply.json`, `*-verified-after.json` y `*-list-after-0024.log`. Los bookmarks nuevos están en el directorio privado de esta ampliación; también se preservaron `20260913-172748Z/preview-before.json`, `20260913-194042Z/preview-before.json` y los bookmarks de import Preview/Production de `20260913-resume-readonly`. No hubo restore, recreación ni modificación del SQL histórico. Una relectura de Production después de cerrar la prueba volvió a confirmar 24 migraciones, 35 objetos, 21 columnas y cero incidencias FK.
+
+### Activación por etapas y prueba cerrada
+
+Se configuraron las dos identidades operativas Dux existentes y verificadas a las 17:09:03 UTC, sin cambiar credenciales. Los valores privados no se publican. Se preservó toda configuración ajena a cada etapa.
+
+| Etapa Production | Cambio UTC | Despliegue del mismo SHA | Resultado |
+| --- | --- | --- | --- |
+| WEB y frontend WEB a true | 17:10:10.6977082 | [747abb6f](https://747abb6f.shekinah-7dl.pages.dev), success 17:13:19.483588 | Readiness sin bloqueos a las 17:15:24.569; persistencia, replay, recuperación y visibilidad administrativa verificados |
+| ASSISTED a true | 17:20:20.4364162 | [660d3bc8](https://660d3bc8.shekinah-7dl.pages.dev), success 17:23:23.180144 | Reserva real no ejecutada: Dux impidió abrir Nuevo Pedido por sesión duplicada |
+| ASSISTED nuevamente false | 17:31:55.9115294 | [b5e4c73e](https://b5e4c73e.shekinah-7dl.pages.dev), success 17:36:20.396747 | Cierre del único flag recién habilitado; DIRECT y COMMERCE permanecieron cerrados |
+
+La primera consulta Cloudflare al intentar abrir ASSISTED devolvió `10000 Authentication error` antes de cualquier PATCH. Se preservó el error, se refrescó la sesión OAuth existente mediante Wrangler y una sola nueva ejecución configuró la etapa correctamente. No fue un fallo de D1 ni motivó restore.
+
+La prueba WEB claramente identificada se creó a las 17:15:48.894 UTC: creación HTTP 201, replay HTTP 200 y recuperación HTTP 200 con la misma identidad. Pago `not_requested`, reserva `not_reserved`, checkout cerrado y total sin confirmar. Se observó en administración y se rechazó por su resolución soportada a las 17:33:37.120 UTC. Auditoría `admin.web_requests.resolve` con HTTP 200 a las 17:33:37.424 UTC. D1 confirmó una sola solicitud rechazada, cero órdenes vinculadas y cero solicitudes pendientes. La referencia técnica completa y los recibos `controlled-web-smoke-*.json` quedan locales; no se publica el token de consulta ni la identidad protegida. No se creó pedido Dux, reserva ni preferencia Mercado Pago en esta ampliación.
+
+Logs observados de Functions: WEB, 215 eventos completos con resultado ok; ASSISTED, 15 eventos completos con resultado ok. En ambas muestras: cero excepciones, logs de error e incidencias D1. El último objeto de cada captura quedó incompleto al detener el tail y no se contó. Estas muestras no acreditan un smoke de reserva o pago que no ocurrió.
+
+El diagnóstico de las 17:37:08.347 UTC confirma esquema 0024 e identidades presentes, WEB abierto, DIRECT y COMMERCE cerrados, cuatro solicitudes registradas y ninguna pendiente, cero compras en preparación/revisión, cero operaciones Dux e incidencias financieras. El catálogo de 754 productos publicado a las 17:11:34.658 UTC aparece obsoleto; no se presenta este readiness como completamente saludable. Preview conserva sus flags comerciales cerrados. `VITE_COMMERCE_ENABLED` continúa false porque corresponde al checkout anterior retirado.
+
+### Bloqueos de continuidad
+
+Dux devolvió HTTP 200 para `access-duplied.faces` al pulsar Nuevo Pedido; la navegación al formulario publicado por el propio menú mostró «Se cerró esta sesión porque tu usuario entró en otro dispositivo». El tablero visible no acreditaba una sesión operativa. No se determinó quién originó el otro acceso. Chrome también perdió las pestañas durante la operación; una pestaña nueva recuperó la sesión Shekinah y permitió cerrar la prueba. Dux quedó en inicio de sesión, sin credenciales expuestas ni controles eludidos.
+
+Se requiere un acceso Dux que permita abrir y operar Nuevo Pedido. Después: refrescar catálogo, verificar readiness, completar ASSISTED con reserva y cierre reales; habilitar DIRECT y confirmar reserva autoritativa; abrir COMMERCE y verificar preferencia, redirección y retorno sin cobro; respetar las ventanas y conciliación financiera al cerrar la reserva de prueba. Nada de esto queda acreditado por un build. El producto todavía no está terminado.
+
+El scheduler GitHub está configurado cada cinco minutos, pero sus ejecuciones observadas del 15 de septiembre fueron espaciadas: 05:09, 10:02 y 14:51 UTC. Las tres terminaron correctamente; la expresión cron no acredita esa frecuencia efectiva. La [ejecución manual 34999515994](https://github.com/JerePrograma/shekinah/actions/runs/34999515994), despachada a las 17:09:48 UTC sobre el SHA funcional, también terminó con success y publicó 754 productos; incluyó la verificación de todas sus fichas. La compra directa consulta Dux en vivo antes de reservar y no usa el snapshot obsoleto como autorización de stock o precio. La demora del scheduler sigue siendo una incidencia operativa pendiente.
 
 No hubo restore, recreación de D1, force-push, cambios de credenciales, cobros reales ni modificación de datos de clientes en esta ampliación. Los IDs privados, identidades de prueba, payloads y bookmarks permanecen en evidencia local ignorada.

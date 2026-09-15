@@ -2,7 +2,9 @@
 
 ## Compra directa autorizada — 2026-09-15
 
-La ampliación descrita en [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) incorpora preparación automática de retiro, stock y precio Dux en vivo, reserva única, total confirmado y Checkout Pro, con migración 0024 autorizada por el titular. El flag nace cerrado. La implementación no acredita por sí sola aplicación remota, despliegue ni smoke real. Las secciones anteriores conservan su valor histórico; la ausencia de esquema de creación/recuperación Dux fue corregida al revisar el contrato v2 completo.
+La ampliación descrita en [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) incorpora preparación automática de retiro, stock y precio Dux en vivo, reserva única, total confirmado y Checkout Pro, con migración 0024 autorizada por el titular. El SHA funcional `f642b76fbcdd55613d09fc908275cd8ecb75cf7b` está publicado con CI y Pages aprobados. Ambas D1 tienen 0001–0024 contiguas, sin pendientes, 35 objetos y 21 columnas críticos verificados, foreign keys válidas y bookmarks previos preservados.
+
+A las 17:37 UTC, WEB está abierto y su prueba persistente e idempotente quedó rechazada por el flujo administrativo, sin orden ni reserva. ASSISTED se abrió y volvió a cerrar al no poder acreditar su smoke: Dux respondió «acceso duplicado» al abrir Nuevo Pedido, aunque el tablero seguía visible. DIRECT y COMMERCE permanecen cerrados. El diagnóstico confirma cero solicitudes pendientes y cero operaciones Dux comerciales; advierte que el catálogo de 754 productos volvió a quedar obsoleto. La reserva real, Checkout Pro sin cobro y la cadencia efectiva del scheduler siguen pendientes. No declarar el producto comercial terminado. Los recibos, horas y pasos de continuación están en [el registro de validación](validation/DIRECT_CHECKOUT_2026-09-15.md). Las secciones de fechas anteriores conservan su valor histórico.
 
 ## Activación reanudada; cadencia Dux y Mercado Pago pendientes — 2026-09-14
 
