@@ -75,3 +75,9 @@ El cliente confirma una sola vez los datos del carrito. Después de recuperar o 
 Las consultas usan el GET existente con el token protegido, sin reenviar datos de entrega. Se ejecutan en serie, con espera inicial de 15 segundos, luego 30 y finalmente 60, hasta ocho lecturas por ciclo. Las pestañas ocultas no consultan. Se detienen al habilitarse el pago, alcanzar una resolución terminal, aparecer una incidencia o fallar la lectura. La interfaz conserva el intento y permite una consulta manual posterior. Al salir de la página o comenzar una operación manual se cancela la lectura automática anterior, y una respuesta antigua no sobrescribe la recuperación más reciente. No se amplían cuotas ni se dispara una sincronización Dux por comprador.
 
 Esta mejora evita tener que refrescar manualmente para descubrir que el pedido está listo. No convierte la preparación asistida en una reserva automática ni acredita activación productiva: la credencial Mercado Pago válida, el stock vigente, la reserva Dux real y el total de envío siguen siendo requisitos. El estado operativo se registra por separado en [la evidencia de activación](validation/COMMERCE_ACTIVATION_2026-09-14.md).
+
+## Consulta desde el carrito — 2026-09-15
+
+Antes de tener una solicitud asociada, el carrito Dux ofrece `Consultar por WhatsApp` con el número autorizado, incluso con las altas cerradas o el formulario incompleto. El enlace abre un mensaje genérico; no incorpora productos, precios, datos ingresados ni capacidades de consulta. No exige consentimiento para compartir un formulario que no transmite. Cuando existe una solicitud asociada, se conserva la consulta con referencia de su panel.
+
+El enlace no registra pedidos, reservas ni preferencias, no usa las rutas legacy y conserva el carrito. Su clic sólo es una interacción `whatsapp_open`, sujeta al consentimiento de analítica existente. Las condiciones de stock, envío y reserva que habilitan Mercado Pago continúan vigentes.

@@ -578,6 +578,17 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   </p>
                 </>
               )}
+              {usesWebRequestFlow && !webRequestActive && whatsappNumber !== null ? (
+                <a
+                  className="button button-secondary"
+                  href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart })}
+                >
+                  Consultar por WhatsApp
+                </a>
+              ) : null}
               {!usesWebRequestFlow && whatsappOrderResult === null ? (
                 <>
                   <label className="whatsapp-consent" htmlFor="whatsapp-consent">

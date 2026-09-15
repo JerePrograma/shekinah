@@ -234,6 +234,36 @@ describe('CartPage', () => {
     expect(createWhatsappOrder).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('permite consultar por WhatsApp sin registrar ni compartir el formulario (solicitudes=%s)', (registrationEnabled) => {
+    commerceState.assistedOnly = true;
+    webOrderState.enabled = registrationEnabled;
+    renderCart();
+
+    const contact = screen.getByRole('link', { name: 'Consultar por WhatsApp' });
+    expect(contact).toBeVisible();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
+      target: { value: 'Persona de prueba' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '2235550199' },
+    });
+    const url = new URL(contact.getAttribute('href') ?? '');
+    expect(url.origin).toBe('https://wa.me');
+    expect(url.pathname).toBe('/5492236216559');
+    expect([...url.searchParams.entries()]).toEqual([
+      ['text', 'Hola, quiero consultar mi compra en Shekinah.'],
+    ]);
+    expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(trackAnalyticsEvent).not.toHaveBeenCalled();
+    contact.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(contact);
+    expect(trackAnalyticsEvent).toHaveBeenCalledExactlyOnceWith('whatsapp_open', { path: '/carrito' });
+    expect(createCheckoutPreference).not.toHaveBeenCalled();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
+    expect(getOrCreateWhatsappOrderIdempotencyKey).not.toHaveBeenCalled();
+    expect(screen.getByText('1 unidad en el carrito.')).toBeVisible();
+  });
+
   it('conserva el circuito asistido al dejar de estar disponible el registro web', () => {
     commerceState.assistedOnly = true;
     webOrderState.enabled = true;

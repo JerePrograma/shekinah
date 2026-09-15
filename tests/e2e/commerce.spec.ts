@@ -181,6 +181,11 @@ test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no est�
 
   await expect(page.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
   await expect(page.getByText(/El envío requiere cotización/iu)).toBeVisible();
+  const contact = page.getByRole('link', { name: 'Consultar por WhatsApp' });
+  await expect(contact).toBeVisible();
+  await expect(contact).toHaveAttribute('href',
+    `https://wa.me/5492236216559?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`);
+  await expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
   await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pedir por WhatsApp' })).toHaveCount(0);
   await expect(page.getByText(/peso determinístico|cotización por WhatsApp/iu)).toHaveCount(0);
