@@ -1,5 +1,22 @@
 # Despliegue del comercio
 
+## Configuración productiva acreditada — 2026-09-21
+
+El deployment canónico `b636b48a-dbec-4cd6-a9f0-4f71ac5d4b3d`, SHA funcional
+`e788cba2904eed444afaf7763b2b5a96fdc14838`, incorporó los flags de Production:
+`WEB_ORDERS_ENABLED=true`, `VITE_WEB_ORDERS_ENABLED=true`,
+`ASSISTED_CHECKOUT_ENABLED=true`, `DIRECT_CHECKOUT_ENABLED=true`,
+`COMMERCE_ENABLED=true`, `DUX_API_ENABLED=true` y `VITE_COMMERCE_ENABLED=false`.
+`DUX_SNAPSHOT_MAX_AGE_SECONDS=900` no cambió. Se cotejaron los valores capturados
+por ese deployment y el readiness autenticado del dominio canónico.
+
+El proyecto tenía valores guardados que un deployment anterior no incorporaba;
+fue necesario publicar de nuevo. No considerar una edición del dashboard prueba
+de configuración efectiva. El smoke acreditó reserva automática y Checkout Pro
+sin cobrar; consultar [su evidencia y cierre](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md).
+Las reglas de cierre histórico que siguen no autorizan revertir estos valores ni
+reaplicar 0024. Preview conserva su configuración separada y no fue activado.
+
 ## Ampliación 0024 — 2026-09-15
 
 La [compra directa](DIRECT_CHECKOUT.md) tiene autorización explícita y despliegue separado del rollout histórico 0020–0023. Nace con `DIRECT_CHECKOUT_ENABLED=false`, incorpora dos identidades Dux verificadas por entorno y requiere validación de Preview antes de Production. Seguir ese procedimiento para la nueva migración y no ampliar el alcance del migrador histórico. La credencial Mercado Pago ya fue corregida; su aceptación productiva y los smokes se acreditan mediante recibos separados.

@@ -1,5 +1,37 @@
 # Estado actual
 
+## Retiro directo operativo hasta Checkout Pro — 2026-09-21
+
+El SHA funcional `e788cba2904eed444afaf7763b2b5a96fdc14838` tiene CI aprobado y
+Pages `b636b48a-dbec-4cd6-a9f0-4f71ac5d4b3d` publicado en `shekinah.ar`.
+WEB, VITE_WEB, ASSISTED, DIRECT, COMMERCE y DUX_API están efectivamente en `true`;
+`VITE_COMMERCE_ENABLED=false` conserva retirado el checkout legacy. Ambas D1
+mantienen 0001–0024, sin reaplicar ni modificar migraciones.
+
+El cliente de la prueba obtuvo una reserva Dux automática, total ARS 3.500 y
+Checkout Pro con vendedor visible Shekinah, sin aceptar ni preparar el pedido
+desde administración. Dux mantuvo stock real 14, reservó 1 y dejó disponible 13.
+La recuperación y los POST repetidos conservaron una orden, una reserva y una
+preferencia. El retorno mostró pago no confirmado: no hubo pago real.
+
+La limpieza respetó la ventana financiera iniciada a las 05:26:37.034 UTC.
+Mercado Pago confirmó cero pagos a las 05:56:47.847 UTC; la UI Dux anuló el pedido
+00000001 y su API acreditó stock real 14, reservado 0 y disponible 14 a las
+05:58:19.621 UTC. Falta registrar la liberación en Shekinah: Chrome empezó a
+rechazar el certificado HTTPS del dominio, también en una pestaña nueva.
+La última lectura D1 mantiene la reserva local `confirmed`, sin operación release.
+No repetir la anulación ni escribir D1; seguir el
+[registro operativo](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md).
+A las 05:52 UTC se observaron cero preparaciones,
+revisiones e incidencias financieras/Dux. La reconciliación de 862 productos
+terminó sin fallas a las 05:12:17.220 UTC; el snapshot volvió a quedar obsoleto
+porque el scheduler no cumple su cadencia. El umbral sigue en 900 segundos y la
+compra directa verifica Dux en vivo. Persisten HTTP 400 intermitentes del proveedor
+y cotización previa de Correo; WhatsApp es coordinación opcional.
+
+Los estados fechados siguientes son históricos; no representan una instrucción
+para cerrar la compra directa vigente ni para introducir un gate administrativo.
+
 ## Compra directa autorizada — 2026-09-15
 
 La ampliación descrita en [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) incorpora preparación automática de retiro, stock y precio Dux en vivo, reserva única, total confirmado y Checkout Pro, con migración 0024 autorizada por el titular. El SHA funcional `f642b76fbcdd55613d09fc908275cd8ecb75cf7b` está publicado con CI y Pages aprobados. Ambas D1 tienen 0001–0024 contiguas, sin pendientes, 35 objetos y 21 columnas críticos verificados, foreign keys válidas y bookmarks previos preservados.

@@ -1,5 +1,20 @@
 # Shekinah
 
+## Compra directa productiva — 2026-09-21
+
+El retiro coordinado permite carrito → datos → consulta viva de precio/stock →
+reserva automática Dux → total definitivo → Mercado Pago Checkout Pro, sin
+aceptación administrativa previa. El smoke real creó una sola reserva y abrió
+Checkout Pro por ARS 3.500, sin efectuar un pago. WhatsApp es opcional para
+coordinar; Correo Argentino conserva cotización previa cuando no hay peso y
+cobertura acreditados. El checkout legacy continúa deshabilitado.
+
+Consultar [estado actual](docs/CURRENT_STATE.md) y
+[evidencia del smoke y su cierre](docs/validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md).
+La cadencia efectiva del scheduler y los HTTP 400 intermitentes de Dux siguen
+siendo incidencias. Las secciones fechadas anteriores preservan estados históricos
+y no indican revertir la activación actual.
+
 ## Depósitos y frescura Dux — 2026-09-08
 
 El contrato de [todos los depósitos y antigüedad del inventario](docs/DUX_STOCK_ALL_WAREHOUSES.md) incorpora descubrimiento por empresa, cantidades ausentes explícitas y fecha conservadora de lectura. Tras no observar eventos del relay Cloudflare, la programación vuelve a GitHub cada cinco minutos como único reloj activo, sujeta a comprobar las ejecuciones reales y sus posibles demoras. La configuración no acredita el objetivo de quince minutos. El retiro manual de 0018 y el cierre de compras continúan vigentes.

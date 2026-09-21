@@ -1,5 +1,24 @@
 # Operación del comercio
 
+## Operación vigente de retiro directo — 2026-09-21
+
+El cliente continúa desde el carrito, obtiene validación y reserva Dux automática
+y abre Checkout Pro sin aceptación ni preparación administrativa. El
+[smoke productivo](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md) acreditó
+ese recorrido hasta Mercado Pago sin cobro real; consultar allí su cierre.
+Los flags efectivos se registran en [CURRENT_STATE.md](CURRENT_STATE.md).
+
+La administración interviene ante incidencias, coordinación y cierre operativo
+Dux. Una reserva sin pago se libera por el flujo oficial Dux, después del
+vencimiento financiero y de consultar Mercado Pago; luego se confirma la
+liberación en Shekinah. No escribir estados directamente en D1 ni reenviar un
+POST Dux incierto. WhatsApp es opcional. Correo conserva cotización previa.
+
+El scheduler GitHub está habilitado, pero su cadencia efectiva no cumple cinco
+minutos. Conservar el umbral de 900 segundos; la compra directa consulta Dux en
+vivo. Las secciones anteriores en el tiempo que siguen son evidencia histórica:
+sus instrucciones de cierre inicial no reemplazan la configuración vigente.
+
 ## Compra directa — 2026-09-15
 
 El [contrato de compra directa](DIRECT_CHECKOUT.md) amplía el circuito asistido autorizado con lecturas Dux en vivo, creación única del pedido por v2 y recuperación por referencia. La administración muestra el progreso y permite retomarlo, liberar o finalizar con los guards financieros existentes. No hay endpoint público Dux de cancelación/finalización acreditado ni liberación automática de abandono. Correo sin peso estructurado conserva su cotización. Esta sección describe el candidato; los recibos de despliegue, flags y pruebas reales determinan su activación.

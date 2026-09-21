@@ -74,7 +74,7 @@ Reglas:
 - Mercado Pago Checkout Pro se integra por redirección; el webhook consulta información autoritativa del proveedor.
 - Las operaciones administrativas se protegen en Functions mediante credencial propia server-side, sesión firmada y rate limiting D1. Cloudflare Access puede coexistir como fallback interno, pero no debe interceptar los endpoints de login ni sustituir la validación de sesión.
 - La analítica first-party requiere consentimiento y una retención expresamente autorizada.
-- Checkout Pro automatizado permanece deshabilitado. La analítica first-party está habilitada en preview y producción desde el 2026-08-11, con consentimiento obligatorio, secretos HMAC independientes y retención de 730 días.
+- El checkout legacy permanece retirado. La compra directa para retiro coordinado fue autorizada y acreditada hasta Checkout Pro sin cobro el 2026-09-21; consultar el estado, limpieza y pendientes en [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). El comprador no requiere aceptación ni preparación administrativa previa al pago. La analítica first-party está habilitada en preview y producción desde el 2026-08-11, con consentimiento obligatorio, secretos HMAC independientes y retención de 730 días.
 - `manual_payment_click` y `whatsapp_open` son interacciones comerciales; nunca representan pedidos, pagos aprobados, revenue ni ventas.
 - WhatsApp sólo puede habilitarse con un número autorizado. El número `5492236216559` quedó autorizado explícitamente el 2026-08-10 para el fallback manual actual.
 - La autorización histórica de una URL de Link de Pago no la convierte en una capacidad vigente.

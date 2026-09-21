@@ -1,5 +1,27 @@
 # Diagnóstico de preparación comercial
 
+## Compra directa vigente — 2026-09-21
+
+Evaluar `directCheckout` por separado de `checkout` (legacy) y
+`assistedCheckout`. Para retiro directo deben estar listos el esquema, las
+identidades y el servidor, con `ready=true` y `blockers=[]`. El
+[registro productivo](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md)
+acredita flags efectivos, reserva automática, total y apertura de Checkout Pro.
+El diagnóstico por sí solo no prueba que los proveedores respondan.
+
+`LEGACY_CHECKOUT_DISABLED` y `checkout.automaticDuxMutationAllowed=false`
+corresponden al circuito retirado; no deben resolverse activando
+`VITE_COMMERCE_ENABLED`. El contrato v2 vigente de Dux acredita creación y
+recuperación por referencia; la liberación/finalización conserva la gestión
+oficial y confirmación administrativa descrita en [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md).
+Las limitaciones contractuales de la revisión del 10 de septiembre que sigue
+son históricas y no reemplazan la revisión v2 del 15 de septiembre.
+
+Un snapshot stale sigue bloqueando el circuito asistido. La compra directa
+consulta precio y stock vivos antes de reservar y no incorpora ese bloqueo
+como sustituto de la validación en Dux. Mantener visible la incidencia de
+cadencia, sin ampliar artificialmente la vigencia del snapshot.
+
 ## Objetivo
 
 Este documento describe el diagnóstico administrativo de sólo lectura incorporado después de la reactivación comercial autorizada. Su función es separar **código desplegado**, **esquema D1**, **configuración**, **estado Dux**, **configuración de Mercado Pago** y **contrato externo todavía no demostrado**. Ningún resultado del diagnóstico activa una capacidad ni sustituye una prueba operativa.
@@ -12,7 +34,7 @@ El diagnóstico comprueba que `0020_web_order_requests.sql` esté materializada 
 
 El frontend muestra además el valor compilado de `VITE_WEB_ORDERS_ENABLED`, que el servidor no puede deducir de forma fiable del entorno de ejecución. Ambos controles deben habilitarse de forma deliberada después de migrar y probar el entorno correspondiente. Cerrar las altas no debe romper recuperación, consulta o administración de solicitudes ya existentes.
 
-Un snapshot obsoleto se presenta como advertencia para la solicitud asistida; no convierte el registro en una reserva ni en un cobro. Checkout Pro, en cambio, lo trata como bloqueo.
+Un snapshot obsoleto se presenta como advertencia para la solicitud asistida; no convierte el registro en una reserva ni en un cobro. El checkout asistido lo trata como bloqueo; la compra directa revalida Dux en vivo según su contrato independiente.
 
 ## Checkout Pro
 

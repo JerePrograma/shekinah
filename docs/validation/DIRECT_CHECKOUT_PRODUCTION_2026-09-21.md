@@ -274,3 +274,92 @@ preexistente conserva su SHA-256 y se excluye nuevamente del commit.
    acreditada para automatizar los tramos comerciales. No bloquea el retiro.
 
 Esta evidencia no declara terminada la activación comercial ni el smoke.
+
+## Compra directa acreditada hasta Checkout Pro; limpieza en curso
+
+La corrección de referencia se publicó en
+`e788cba2904eed444afaf7763b2b5a96fdc14838`. Pages
+`b636b48a-dbec-4cd6-a9f0-4f71ac5d4b3d` terminó `success` y se acreditó como
+canónico de `shekinah.ar` a las 05:25:42 UTC. CI `35564370571`, job
+`106223172047`, terminó `success`; artefacto
+`shekinah-dist-e788cba2904eed444afaf7763b2b5a96fdc14838` (`10623820893`).
+La API Pages confirmó además los ocho valores del deployment, incluido el umbral
+900; no sólo los valores guardados en el proyecto.
+
+Al abrir el enlace protegido del comprador, el servidor recuperó el pedido Dux
+existente, volvió a consultar el stock y confirmó la reserva a las
+**05:26:17.685 UTC**. El carrito mostró total definitivo **ARS 3.500** y
+**Pagar con Mercado Pago**. No se aceptó, preparó ni retomó desde administración.
+
+El clic del comprador creó la preferencia a las **05:26:37.034 UTC**, después
+de la reserva confirmada. Checkout Pro abrió en el dominio productivo Mercado
+Pago, mostrando **Shekinah**, **ADOBO PIZZA GOURMET 100GR**, importe y total
+**$ 3.500**. La moneda ARS quedó persistida por el servidor. La referencia externa
+del retorno generado por Mercado Pago coincide con la orden interna. Se acreditó
+el vendedor visible; no se realizó una consulta autenticada independiente de
+`collector_id`. No se pulsó el botón final Pagar ni se efectuó un cobro.
+
+La preferencia única es `445638367-33977e51-a400-4956-896a-8f365dea388f`.
+El retorno oficial **Volver a la tienda** llevó a Shekinah y mostró **Pago no
+confirmado**, sin considerar la redirección una prueba financiera. El carrito
+conservó la unidad de prueba y el vínculo opcional de WhatsApp con la referencia
+pública; no se envió ningún mensaje.
+
+Después del retorno se repitieron dos POST de preparación y dos POST de checkout
+con la misma identidad: todos devolvieron HTTP 200, total `350000` y la misma URL
+de Checkout Pro. La recarga conservó la solicitud. D1 acreditó a las 05:28:25 UTC
+**una orden, una operación reserve, la misma preferencia, el mismo timestamp de
+intento financiero y cero pagos**. La pérdida de respuesta forzada sigue cubierta
+por pruebas locales; en producción se acreditó recuperación del resultado
+incierto causado por la normalización Dux, sin segundo POST del proveedor.
+
+Readiness posterior: direct listo, `blockers=[]`, preparación 0, revisión 0,
+incidencias financieras 0, atención de vínculos 0 y operaciones Dux 0. El snapshot
+de 05:12 volvió a quedar stale al superar 900 segundos: el schedule sigue sin
+cumplir cinco minutos. La compra directa se completó mediante lecturas vivas.
+
+La limpieza no puede ejecutarse antes de **05:56:37.034 UTC** por los guards
+financieros existentes. Debe conciliar Mercado Pago, anular el pedido mediante
+la UI oficial Dux, verificar stock real 14/reservado 0/disponible 14 y registrar
+la liberación soportada en Shekinah. Este apartado todavía no acredita esa
+limpieza; el registro posterior debe hacerlo antes de declarar cerrado el smoke.
+
+La consulta autoritativa `POST /api/admin/orders/<orden>/reconcile` devolvió
+HTTP 200 a las **05:34:02.206 UTC**, `checkedPayments=0`. Esto acredita ausencia
+de pagos en la consulta del proveedor; no depende del retorno del navegador.
+La limpieza requiere una nueva consulta inmediata al cierre después de vencer
+la ventana, como exige el circuito soportado.
+
+## Liberación física acreditada; conexión HTTPS interrumpida
+
+Después de vencer la preferencia, la consulta autoritativa Mercado Pago devolvió
+HTTP 200, `checkedPayments=0`, a las **05:56:47.847 UTC**. Se eligió **Anular**
+en el pedido Dux **00000001**, cuya referencia completa y total ARS 3.500 se
+revisaron antes de actuar. Se confirmó el diálogo oficial. Dux informó
+**Comprobante anulado con éxito** y el listado de pedidos vigentes quedó vacío.
+No se facturó, remitió ni modificó stock manualmente.
+
+El GET oficial de producto devolvió HTTP 200 a las **05:58:19.621 UTC** y
+acreditó código `799000001`, depósito operativo, stock real **14**, reservado
+**0** y disponible **14**. La reserva física de prueba quedó liberada. La lectura
+anterior había devuelto 200, pero el filtro del diagnóstico usó un nombre de
+contenedor incorrecto y no imprimió cantidades; no se contó como evidencia de
+stock. La segunda lectura usó el campo `datos` del contrato vigente.
+
+La confirmación administrativa soportada de liberación no obtuvo respuesta HTTP.
+Una lectura D1 de sólo lectura a las **05:58:47.348 UTC** acreditó estado local
+`confirmed`, `released_at=null`, cero operaciones release. El reintento
+idempotente tampoco conectó. La inspección de red de una lectura del mismo
+endpoint confirmó **net::ERR_CERT_AUTHORITY_INVALID**; abrir una pestaña Chrome
+nueva en el dominio reprodujo el rechazo. No se omitió validación TLS ni se
+escribieron estados directamente en D1. Se solicitó recuperar una conexión HTTPS
+válida para completar el cierre; no repetir la anulación Dux ya acreditada.
+
+Readiness previo al problema de conexión, **05:52:12.968 UTC**: direct listo,
+`blockers=[]`, preparación 0, revisión 0, incidencias financieras 0, atención de
+vínculos 0 y operaciones 0; snapshot stale. El refresh posterior a la liberación
+y el cierre lógico en Shekinah aún no están acreditados en este apartado.
+
+La UI de Dux además mostró un aviso de facturas del servicio pendientes y posible
+suspensión. Se registra como aviso operativo del proveedor, sin atribuirle la
+intermitencia HTTP 400 ni efectuar pagos del servicio.

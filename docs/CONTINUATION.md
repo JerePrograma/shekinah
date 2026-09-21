@@ -1,5 +1,31 @@
 # Continuación
 
+## Continuar desde la compra directa productiva — 2026-09-21
+
+Partir de `origin/main` real y del
+[registro del cierre productivo](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md).
+El SHA funcional `e788cba2904eed444afaf7763b2b5a96fdc14838` está desplegado con
+CI aprobado. El retiro ya llegó automáticamente a Checkout Pro en el smoke,
+sin aprobación administrativa ni cobro. No reabrir el checkout legacy ni repetir
+el POST Dux de la solicitud existente. Ambas D1 conservan 0001–0024 aplicadas.
+
+La prueba usa el pedido Dux 00000001 y la orden
+`ord_wNdSN3hQXcKHU4SPz1DsRUks`. Dux ya lo anuló por su UI oficial después de
+vencer la ventana financiera y consultar Mercado Pago (cero pagos). Su API
+confirmó stock real 14, reservado 0 y disponible 14. No repetir la anulación.
+Falta registrar la liberación mediante `POST /api/admin/orders/<orden>/dux-lifecycle`
+con `action=release` y `confirmedInDux=true`: la conexión Chrome al dominio empezó
+a fallar por `ERR_CERT_AUTHORITY_INVALID`. D1 todavía muestra `confirmed` y cero
+operaciones release. Restablecer HTTPS válido, consultar el estado y completar
+el endpoint idempotente, que concilia Mercado Pago nuevamente; después refrescar
+el snapshot y verificar readiness. Nunca fabricar estados mediante escrituras D1.
+
+Mantener los flags efectivos de [CURRENT_STATE.md](CURRENT_STATE.md), preservar
+la edición local ajena del rollout del 13 de septiembre y tratar por separado
+las demoras del scheduler, los rechazos intermitentes Dux y Correo con cotización.
+Las instrucciones fechadas anteriores son evidencia histórica y no sustituyen
+el flujo directo actual.
+
 ## Continuar la compra directa autorizada — 2026-09-15
 
 Usar [DIRECT_CHECKOUT.md](DIRECT_CHECKOUT.md) para el alcance 0024, contratos, pruebas, flags y cierre. Trabajar únicamente en el checkout de release y conservar intacta la edición local del rollout 0020–0023. Verificar los recibos del SHA antes de afirmar activación. El titular ya autorizó implementar la compra directa y su migración posterior a 0023; no volver a pedir esa aprobación. La credencial Mercado Pago fue corregida y los tres registros web de prueba anteriores fueron rechazados sin reservas ni preferencias. Sus evidencias privadas están en `.wrangler/commerce-d1-rollout`.
