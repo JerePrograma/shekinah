@@ -9,16 +9,19 @@ CI aprobado. El retiro ya llegó automáticamente a Checkout Pro en el smoke,
 sin aprobación administrativa ni cobro. No reabrir el checkout legacy ni repetir
 el POST Dux de la solicitud existente. Ambas D1 conservan 0001–0024 aplicadas.
 
-La prueba usa el pedido Dux 00000001 y la orden
-`ord_wNdSN3hQXcKHU4SPz1DsRUks`. Dux ya lo anuló por su UI oficial después de
-vencer la ventana financiera y consultar Mercado Pago (cero pagos). Su API
-confirmó stock real 14, reservado 0 y disponible 14. No repetir la anulación.
-Falta registrar la liberación mediante `POST /api/admin/orders/<orden>/dux-lifecycle`
-con `action=release` y `confirmedInDux=true`: la conexión Chrome al dominio empezó
-a fallar por `ERR_CERT_AUTHORITY_INVALID`. D1 todavía muestra `confirmed` y cero
-operaciones release. Restablecer HTTPS válido, consultar el estado y completar
-el endpoint idempotente, que concilia Mercado Pago nuevamente; después refrescar
-el snapshot y verificar readiness. Nunca fabricar estados mediante escrituras D1.
+La prueba del pedido Dux 00000001 y la orden
+`ord_wNdSN3hQXcKHU4SPz1DsRUks` está cerrada: anulación oficial Dux, stock
+14 real / 0 reservado / 14 disponible y confirmación soportada de liberación
+en Shekinah a las 06:05:46.018 UTC. Quedaron una reserva, una liberación y cero
+pagos, sin opción de pagar esa solicitud. El carrito se vació. No repetir la
+anulación ni crear otra reserva para compensarla. El rechazo temporal del
+certificado se superó con HTTPS válido, sin omitir controles ni editar D1.
+
+Readiness de las 06:06:46.334 UTC confirmó direct listo, blockers direct/assisted
+vacíos, snapshot fresco de 862 productos y todos los contadores de atención en
+cero. El refresh fue controlado; no prueba cadencia automática de cinco minutos.
+La creación de pago aprobado y su webhook real no se probaron porque el smoke
+autorizado terminó antes de cobrar.
 
 Mantener los flags efectivos de [CURRENT_STATE.md](CURRENT_STATE.md), preservar
 la edición local ajena del rollout del 13 de septiembre y tratar por separado

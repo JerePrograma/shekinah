@@ -363,3 +363,56 @@ y el cierre lógico en Shekinah aún no están acreditados en este apartado.
 La UI de Dux además mostró un aviso de facturas del servicio pendientes y posible
 suspensión. Se registra como aviso operativo del proveedor, sin atribuirle la
 intermitencia HTTP 400 ni efectuar pagos del servicio.
+
+## Cierre completo del smoke y lectura final
+
+El commit documental `1bc575f3fb922c4db5d0af8442c560de195c5d0e` se publicó en
+main. CI `35566750281`, job `106230005084`, terminó `success`; artefacto
+`shekinah-dist-1bc575f3fb922c4db5d0af8442c560de195c5d0e` (`10624408376`). Pages
+`3be5cdb4-9a5c-46be-9fc8-6c34d4e0f42a` quedó `success` y canónico a las
+06:05:20 UTC, con los mismos flags efectivos. No cambió el código funcional
+validado por el smoke.
+
+Mientras la conexión local fallaba se inició **una** ejecución manual del
+workflow existente sobre main, `35566776925` (#181). La corrida
+`dux_sync_d612bd30-ae55-4bc5-8c9f-b0f7199e8fbd` terminó `succeeded` con
+**862 procesados y 0 fallas**, desde 06:02:58.127 hasta **06:04:58.827 UTC**.
+La lectura remota D1 acreditó el resultado. Esta ejecución controlada posterior
+a la liberación no acredita la cadencia del schedule ni modifica el umbral 900.
+
+Tras la nueva publicación, la petición normal al dominio canónico volvió a
+responder con HTTPS válido. No se instaló un certificado, desactivó TLS ni omitió
+una advertencia. El motivo de esa recuperación de conexión no quedó determinado;
+la coincidencia temporal con el despliegue no demuestra causalidad. Se retiró
+la necesidad de intervención humana informando al titular.
+
+El endpoint soportado `POST /api/admin/orders/<orden>/dux-lifecycle` devolvió
+HTTP **200**, `action=release`, `changed=true`, `completed=true`,
+`reservationStatus=released`, `paymentStatus=none`. Ejecutó la conciliación
+financiera exigida antes de persistir. D1 de sólo lectura acreditó a las
+**06:06:34.543 UTC**: `released_at=2026-09-21T06:05:46.018Z`, **una reserva,
+una liberación y cero pagos**. No se efectuaron escrituras D1 manuales.
+
+La consulta del comprador devolvió HTTP 200, `reservationStatus=released`,
+`paymentRequiresReview=false`, `checkoutAvailable=false`. La recarga mostró
+**La reserva de este pedido fue liberada**, sin botón de pago, conservando la
+referencia e historial. Se eliminó únicamente el Adobo Pizza usado en la prueba;
+el carrito quedó con cero productos. WhatsApp siguió siendo opcional y no se
+envió ningún mensaje.
+
+Readiness autenticado final, **06:06:46.334 UTC**:
+
+- direct: `schemaReady=true`, `serverEnabled=true`, `identitiesConfigured=true`,
+  `ready=true`, `blockers=[]`;
+- assisted: `blockers=[]`;
+- `snapshotFresh=true`, 862 productos, sincronización 06:04:58.827 UTC;
+- `preparingCount=0`, `reviewCount=0`, `paymentIncidentCount=0`,
+  `linkAttentionCount=0`, `operationAttentionCount=0`.
+
+El recorrido normal hasta Checkout Pro y la limpieza están acreditados. No se
+probó un cobro ni un webhook productivo de pago aprobado; su comportamiento
+está cubierto por las pruebas locales, el rechazo productivo de firma ausente
+y la consulta autoritativa real de cero pagos. Quedan como incidencias la cadencia
+del scheduler, los HTTP 400 intermitentes Dux y el aviso de facturación del
+servicio. Correo mantiene cotización previa por falta de pesos/cobertura
+logísticos acreditados. No queda ninguna acción humana pendiente para este smoke.

@@ -2,6 +2,13 @@
 
 El titular autorizó expresamente el 2026-09-15 ampliar la preparación asistida y aplicar una nueva migración después de 0023. Esta ampliación implementa compra directa para retiro coordinado, cuyo envío es cero. El cliente carga nombre y celular una vez, continúa la compra, ve el total confirmado por el servidor y abre Checkout Pro. WhatsApp es opcional para coordinación. La implementación y sus pruebas no acreditan por sí solas una activación productiva.
 
+El [smoke productivo del 21 de septiembre](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md)
+acreditó ese recorrido sin aprobación administrativa, abrió Checkout Pro sin
+cobrar y cerró la reserva de prueba por Dux y Shekinah. Consultar
+[CURRENT_STATE.md](CURRENT_STATE.md) para los flags efectivos y las incidencias
+que permanecen; las instrucciones de despliegue inicial se conservan como
+procedimiento histórico y no autorizan reaplicar migraciones ya aplicadas.
+
 ## Contrato y autoridad
 
 Se usa el contrato oficial Dux v2 revisado el 2026-09-15: [crear pedido](https://developers.duxsoftware.com.ar/reference/crear_pedido), [listar pedidos](https://developers.duxsoftware.com.ar/reference/listar_pedidos) y [listar productos](https://developers.duxsoftware.com.ar/reference/listar_items). La versión Markdown/OpenAPI de esas referencias documenta el cuerpo de `POST /v2/pedidos`, el depósito para reserva y el filtro `referencia` de `GET /v2/pedidos`. La descripción histórica de que no existía ese esquema ni recuperación por referencia quedó superada por esta revisión.
