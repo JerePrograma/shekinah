@@ -248,10 +248,26 @@ export async function resolveWebOrderRequest(database: D1Database, id: string, s
   }
   const now = new Date().toISOString();
   try {
-    const result = await database.prepare(`UPDATE checkout_intents SET web_request_status = ?,
+    const directSchema = await database.prepare("SELECT name FROM pragma_table_info('checkout_intents') WHERE name = 'direct_checkout_state'")
+      .first<{ name: string }>();
+    // El rechazo de una preparación sin orden es un cierre operativo, nunca
+    // una liberación Dux. La condición y el cierre compiten atómicamente con el
+    // lease del comprador; invalidar el claim impide escrituras tardías del GET.
+    const result = directSchema === null
+      ? await database.prepare(`UPDATE checkout_intents SET web_request_status = ?,
       web_request_resolved_by = ?, web_request_resolved_at = ?, web_request_updated_at = ?
       WHERE intent_kind = 'web_request' AND web_request_id = ? AND web_request_status = 'submitted'`)
-      .bind(status, actor, now, now, id).run();
+        .bind(status, actor, now, now, id).run()
+      : await database.prepare(`UPDATE checkout_intents SET web_request_status = ?,
+        web_request_resolved_by = ?, web_request_resolved_at = ?, web_request_updated_at = ?,
+        direct_checkout_state = CASE WHEN direct_checkout_state IS NOT NULL THEN 'failed' ELSE NULL END,
+        direct_checkout_updated_at = CASE WHEN direct_checkout_state IS NOT NULL THEN ? ELSE direct_checkout_updated_at END,
+        direct_checkout_claim_token = NULL, direct_checkout_lease_until_ms = 0
+        WHERE intent_kind = 'web_request' AND web_request_id = ? AND web_request_status = 'submitted'
+          AND (direct_checkout_state IS NULL OR (? = 'rejected'
+            AND direct_checkout_state IN ('preparing', 'failed') AND direct_checkout_lease_until_ms <= ?
+            AND NOT EXISTS (SELECT 1 FROM orders WHERE web_request_id = checkout_intents.web_request_id)))`)
+        .bind(status, actor, now, now, now, id, status, Date.parse(now)).run();
     const detail = await getAdminWebOrderRequest(database, id);
     if (detail.status !== status) throw new HttpError(409, 'WEB_REQUEST_STATE_CONFLICT', 'La solicitud ya fue resuelta de otra manera.');
     return Object.freeze({ ...detail, changed: result.meta.changes === 1 });

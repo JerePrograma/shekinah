@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { advanceDirectCheckout } from './direct-checkout';
 import { createOrRecoverAssistedPreference } from './assisted-payment';
 import { confirmAssistedDuxLifecycle, inspectAssistedDuxLifecycle } from './assisted-dux-lifecycle';
-import { getWebRequestByToken } from './web-order-requests';
+import { getWebRequestByToken, resolveWebOrderRequest } from './web-order-requests';
+import { HttpError } from './http';
 import { getOrderById, updateOrderFromPayment } from './orders';
 import { readAssistedCheckoutAdminState } from './assisted-checkout-admin-state';
 import type { DirectGateway } from './direct-checkout';
@@ -79,6 +80,79 @@ it('prepara automáticamente con precio vivo, stock decimal, total final y una s
     await test.steps(2);
     expect(test.createOrder).toHaveBeenCalledTimes(1);
   } finally {test.db.close();}
+});
+
+it('cierra idempotentemente una consulta Dux fallida sin orden, reserva ni pago y conserva el error', async () => {
+  const test = setup();
+  try {
+    test.readItem.mockRejectedValueOnce(new HttpError(503, 'DUX_ORDER_QUERY_UNAVAILABLE', 'Dux no disponible'));
+    await expect(test.advance()).rejects.toMatchObject({ code: 'DUX_ORDER_QUERY_UNAVAILABLE' });
+    const results = await Promise.all(Array.from({ length: 4 }, () => resolveWebOrderRequest(test.db, id, 'rejected', 'admin:test')));
+    expect(results.filter(result => result.changed)).toHaveLength(1);
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ status: 'rejected', preparationStatus: 'failed', totalMinor: null, checkoutAvailable: false });
+    expect(await test.db.prepare('SELECT direct_checkout_error_code, direct_checkout_claim_token FROM checkout_intents').first())
+      .toEqual({ direct_checkout_error_code: 'DUX_ORDER_QUERY_UNAVAILABLE', direct_checkout_claim_token: null });
+    await test.steps(2);
+    expect(test.readItem).toHaveBeenCalledTimes(1);
+    expect(test.createOrder).not.toHaveBeenCalled();
+    for (const table of ['orders', 'dux_order_links', 'dux_order_operations', 'payments']) {
+      expect(test.db.database.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get()?.total).toBe(0);
+    }
+  } finally { test.db.close(); }
+});
+
+it('no permite aceptar ni rechazar manualmente una preparación mientras mantiene un lease activo', async () => {
+  const test = setup();
+  let finishRead: () => void = () => undefined;
+  let notifyStarted: () => void = () => undefined;
+  const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+  const pendingRead = new Promise<void>(resolve => { finishRead = resolve; });
+  test.setClock(Date.now());
+  test.readItem.mockImplementationOnce(async () => { notifyStarted(); await pendingRead; return item; });
+  const advancing = test.advance();
+  try {
+    await started;
+    for (const status of ['accepted', 'rejected'] as const) {
+      await expect(resolveWebOrderRequest(test.db, id, status, 'admin:test')).rejects.toMatchObject({ status: 409 });
+    }
+    finishRead();
+    await advancing;
+    await expect(resolveWebOrderRequest(test.db, id, 'accepted', 'admin:test')).rejects.toMatchObject({ status: 409 });
+    expect((await resolveWebOrderRequest(test.db, id, 'rejected', 'admin:test')).changed).toBe(true);
+    expect(test.createOrder).not.toHaveBeenCalled();
+  } finally { finishRead(); await advancing.catch(() => undefined); test.db.close(); }
+});
+
+it('un rechazo tras vencer el lease invalida el GET demorado y no deja que reabra la compra', async () => {
+  const test = setup();
+  let finishRead: () => void = () => undefined;
+  let notifyStarted: () => void = () => undefined;
+  const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+  const pendingRead = new Promise<void>(resolve => { finishRead = resolve; });
+  test.setClock(Date.now() - 61_000);
+  test.readItem.mockImplementationOnce(async () => { notifyStarted(); await pendingRead; return item; });
+  const advancing = test.advance();
+  try {
+    await started;
+    await resolveWebOrderRequest(test.db, id, 'rejected', 'admin:test');
+    finishRead();
+    await expect(advancing).rejects.toMatchObject({ code: 'DIRECT_CHECKOUT_IN_PROGRESS' });
+    await test.advance();
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ status: 'rejected', preparationStatus: 'failed', checkoutAvailable: false });
+    expect(test.createOrder).not.toHaveBeenCalled();
+  } finally { finishRead(); await advancing.catch(() => undefined); test.db.close(); }
+});
+
+it.each([2, 3, 6])('no usa el rechazo de solicitud para cerrar una compra que ya avanzó %s pasos con una orden', async (steps) => {
+  const test = setup();
+  try {
+    await test.steps(steps);
+    await expect(resolveWebOrderRequest(test.db, id, 'rejected', 'admin:test')).rejects.toMatchObject({ status: 409 });
+    expect((await getWebRequestByToken(test.db, token, true, Date.now(), true)).status).toBe('accepted');
+    expect(test.createOrder.mock.calls.length).toBe(steps < 3 ? 0 : 1);
+  } finally { test.db.close(); }
 });
 
 it('una respuesta demorada no confirma con un lease vencido y se recupera sin otro POST', async () => {

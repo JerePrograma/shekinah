@@ -38,6 +38,19 @@ it('consulta una referencia sin reenviar un POST y no conserva datos personales 
   expect(options?.body).toBeUndefined();
 });
 
+it('invoca el fetch nativo sin usar el cliente como receptor, como exige Cloudflare Workers', async () => {
+  const nativeFetch = vi.fn(function (this: unknown) {
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    return Promise.resolve(Response.json(page([])));
+  });
+  vi.stubGlobal('fetch', nativeFetch);
+  try {
+    const client = new DuxOrderApiClient({ accessToken: 'test-only-token', beforeRequest: () => Promise.resolve() });
+    expect(await client.findOrder(lookup)).toBeNull();
+    expect(nativeFetch).toHaveBeenCalledTimes(1);
+  } finally { vi.unstubAllGlobals(); }
+});
+
 it('una referencia sin resultados no demuestra que sea seguro repetir la creación', async () => {
   const { client, fetchMock } = setup(() => Response.json(page([])));
   expect(await client.findOrder(lookup)).toBeNull();
@@ -71,6 +84,37 @@ it.each([302, 400, 401, 429, 500, 503])('no reintenta una creación cuando Dux d
   const { client, fetchMock } = setup(() => new Response('respuesta privada', { status }));
   await expect(client.createOrder(request)).rejects.toMatchObject({ code: 'DUX_ORDER_RESULT_UNCERTAIN' });
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it.each(['GET', 'POST'] as const)('diagnostica el rechazo HTTP de %s sin filtrar datos ni repetir la petición', async (method) => {
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    const { client, fetchMock } = setup(() => new Response('cuerpo privado del proveedor', {
+      status: 400, headers: { 'x-private': 'header privado' },
+    }));
+    await expect(method === 'GET' ? client.readItem('CODIGO-PRIVADO', 50) : client.createOrder(request))
+      .rejects.toMatchObject({ code: method === 'GET' ? 'DUX_ORDER_QUERY_UNAVAILABLE' : 'DUX_ORDER_RESULT_UNCERTAIN' });
+    expect(warning).toHaveBeenCalledExactlyOnceWith('dux_order_api_transport_failure', {
+      endpoint: method === 'GET' ? '/v2/items' : '/v2/pedidos', method, providerStatus: 400,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(warning.mock.calls);
+    for (const value of ['test-only-dux-order-token', 'CODIGO-PRIVADO', request.referencia, 'cuerpo privado', 'header privado']) {
+      expect(logged).not.toContain(value);
+    }
+  } finally { warning.mockRestore(); }
+});
+
+it('distingue una falla de transporte sin registrar el mensaje privado de la excepción', async () => {
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    const { client, fetchMock } = setup(() => { throw new Error('token y URL privados'); });
+    await expect(client.readItem('TEST-1', 50)).rejects.toMatchObject({ code: 'DUX_ORDER_QUERY_UNAVAILABLE' });
+    expect(warning).toHaveBeenCalledExactlyOnceWith('dux_order_api_transport_failure', {
+      endpoint: '/v2/items', method: 'GET', providerStatus: null, errorClass: 'fetch_exception',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally { warning.mockRestore(); }
 });
 
 it.each([

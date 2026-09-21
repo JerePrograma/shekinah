@@ -20,6 +20,19 @@ El intento se persiste inmediatamente antes del POST Dux. Una respuesta incierta
 
 La administración distingue las compras en preparación de las confirmadas. «Continuar verificación Dux» usa `POST /api/admin/web-order-requests/[id]/resume`, autenticación, origen, auditoría y la misma identidad persistida. No recibe datos de carrito ni habilita otro POST ante incertidumbre. La recuperación requiere que la configuración de compra directa siga habilitada; durante un rollback debe diagnosticarse la incidencia antes de reabrirla.
 
+Una solicitud directa que todavía no tiene orden puede cerrarse como incidencia
+mediante el rechazo administrativo existente. El servidor exige una preparación
+sin lease activo, cambia conjuntamente la solicitud a `rejected` y la preparación
+a `failed`, invalida el claim y conserva el error y el progreso para auditoría.
+Una respuesta tardía no puede reabrirla. Una orden ya creada o una reserva incierta
+exigen su circuito de recuperación/cierre; este rechazo no libera stock ni pagos.
+Tampoco permite aceptar manualmente una preparación directa en curso.
+
+El diagnóstico `dux_order_api_transport_failure` registra únicamente endpoint,
+método y estado HTTP; si no llegaron encabezados, distingue timeout de excepción
+de transporte. No registra token, query, referencia, headers ni cuerpos. No cambia
+los reintentos permitidos ni convierte una respuesta incierta en éxito.
+
 La coordinación ocupa una consulta D1 por intento y reserva ventanas de inicio de un segundo separadas seis segundos. Una espera fuera de su ventana falla antes de consultar Dux. Con DIRECT habilitado, el sincronizador admite hasta 24 intentos HTTP y escribe hasta 500 identidades por sentencia JSON, conservando el límite de 1,9 MB por carga, las 1.000 identidades, el presupuesto diario y la publicación atómica. Su plazo máximo de siete minutos queda dentro del lease de treinta minutos sin heartbeats adicionales. La prueba con cliente real simulado mide 44 consultas D1 para 1.000 productos y un retry; quedan seis para el envoltorio y los caminos de error dentro del límite de [50 consultas por invocación de D1 Free](https://developers.cloudflare.com/d1/platform/limits/). Si se agota el presupuesto o una carga excede el tamaño, no se publica un catálogo parcial.
 
 ## Pago y cierre

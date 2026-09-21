@@ -73,7 +73,8 @@ export class DuxOrderApiClient {
     if (!options.accessToken || options.accessToken.length > 4096 || options.accessToken.trim() !== options.accessToken) {
       throw new HttpError(503, 'DUX_TOKEN_INVALID', 'Dux no está configurado correctamente.');
     }
-    this.fetchImplementation = options.fetch ?? fetch;
+    // El fetch nativo de Workers no admite una instancia ajena como `this`.
+    this.fetchImplementation = options.fetch ?? ((input, init) => fetch(input, init));
   }
 
   async readItem(code: string, depositId: number): Promise<DuxCommerceItem> {
@@ -138,6 +139,7 @@ export class DuxOrderApiClient {
     if (beforeSend !== undefined) await beforeSend();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12_000);
+    let headersReceived = false;
     try {
       const url = new URL(`${DUX_API_BASE_URL}${path}`);
       url.search = parameters.toString();
@@ -147,9 +149,24 @@ export class DuxOrderApiClient {
         redirect: 'manual', cache: 'no-store', signal: controller.signal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      if (!response.ok) { await response.body?.cancel(); throw body === undefined ? unavailable() : uncertain(); }
+      headersReceived = true;
+      if (!response.ok) {
+        // Sólo metadatos acotados: nunca token, query, referencia, headers ni
+        // cuerpo del proveedor. El diagnóstico no cambia retries ni guards.
+        console.warn('dux_order_api_transport_failure', {
+          endpoint: path, method: body === undefined ? 'GET' : 'POST', providerStatus: response.status,
+        });
+        await response.body?.cancel();
+        throw body === undefined ? unavailable() : uncertain();
+      }
       return await readBoundedJson(response);
     } catch (error: unknown) {
+      if (!headersReceived) {
+        console.warn('dux_order_api_transport_failure', {
+          endpoint: path, method: body === undefined ? 'GET' : 'POST', providerStatus: null,
+          errorClass: controller.signal.aborted ? 'timeout' : 'fetch_exception',
+        });
+      }
       if (body !== undefined) throw uncertain();
       if (error instanceof HttpError) throw error;
       throw unavailable();
