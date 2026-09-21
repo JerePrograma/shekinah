@@ -130,6 +130,8 @@ export async function getPublicOrderStatus(
       'failed',
     ].includes(String(payload.status)) ||
     payload.currency !== 'ARS' ||
+    typeof payload.orderNumber !== 'string' ||
+    !/^SHK-[A-Z0-9_-]{8}$/u.test(payload.orderNumber) ||
     typeof payload.totalMinor !== 'number' ||
     !Number.isSafeInteger(payload.totalMinor) ||
     payload.totalMinor <= 0 ||

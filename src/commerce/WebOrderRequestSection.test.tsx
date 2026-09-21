@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { WebOrderRequestSection } from './WebOrderRequestSection';
 import type { CartItem } from '../cart/model';
 import type { WebRequestReceipt } from './web-order-contracts';
@@ -28,6 +29,12 @@ const items: readonly CartItem[] = [{
   quantity: 1, unitPrice: 10, subtotal: 10,
 }];
 function component(registrationEnabled = true) { return <WebOrderRequestSection registrationEnabled={registrationEnabled} items={items} fulfillment={fulfillment} disabled={false} onBusyChange={vi.fn()} onActiveChange={vi.fn()} />; }
+async function continueToPayment() {
+  const button = screen.getByRole('button', { name: 'Continuar al pago' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  return button;
+}
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/carrito');
@@ -37,6 +44,106 @@ beforeEach(() => {
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+const ready: WebRequestReceipt = { ...receipt, status: 'accepted', preparationStatus: 'prepared',
+  reservationStatus: 'confirmed', checkoutAvailable: true, totalMinor: 350000 };
+
+it('prepara una compra nueva y continúa automáticamente una sola vez, incluso en StrictMode', async () => {
+  vi.useFakeTimers();
+  doubles.submit.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
+  doubles.prepare.mockResolvedValue(ready);
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(<StrictMode>{component()}</StrictMode>);
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => {
+    const button = screen.getByRole('button', { name: 'Continuar al pago' });
+    fireEvent.click(button); fireEvent.click(button);
+    await Promise.resolve();
+  });
+  expect(screen.getByRole('heading', { name: 'Estamos preparando tu compra…' })).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent('Estamos confirmando disponibilidad y total.');
+  expect(screen.queryByRole('button', { name: 'Consultar mi compra' })).not.toBeInTheDocument();
+  for (const text of ['Solicitud registrada', 'WEB-', 'Enlace protegido', 'Dux', 'verificaciones']) {
+    expect(document.body).not.toHaveTextContent(text);
+  }
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(doubles.submit).toHaveBeenCalledTimes(1);
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(receipt.publicToken, 350000);
+  await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+  expect(doubles.checkout).toHaveBeenCalledTimes(1);
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+});
+
+it('continúa también cuando el alta ya devuelve reserva y total confirmados', async () => {
+  doubles.submit.mockResolvedValue(ready);
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  await continueToPayment();
+  await waitFor(() => expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(receipt.publicToken, 350000));
+  expect(doubles.prepare).not.toHaveBeenCalled();
+});
+
+it('no crea checkout sin total confirmado aunque una respuesta declare disponibilidad', async () => {
+  doubles.submit.mockResolvedValue({ ...ready, totalMinor: null });
+  render(component());
+  await continueToPayment();
+  await screen.findByRole('heading', { name: 'Tu compra' });
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
+});
+
+it('un fallo de continuación automática ofrece reintento explícito con la misma compra', async () => {
+  doubles.submit.mockResolvedValue(ready);
+  doubles.checkout.mockRejectedValueOnce(new Error('DUX_INTERNAL stack trace'))
+    .mockImplementation(() => new Promise(() => undefined));
+  const view = render(component());
+  await continueToPayment();
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos abrir Mercado Pago');
+  expect(document.body).not.toHaveTextContent('DUX_INTERNAL');
+  view.rerender(component());
+  expect(doubles.checkout).toHaveBeenCalledTimes(1);
+  const retry = screen.getByRole('button', { name: 'Ir a Mercado Pago' });
+  fireEvent.click(retry); fireEvent.click(retry);
+  expect(doubles.checkout).toHaveBeenCalledTimes(2);
+  expect(doubles.checkout).toHaveBeenNthCalledWith(2, ready.publicToken, ready.totalMinor);
+  expect(doubles.submit).toHaveBeenCalledTimes(1);
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('recupera una respuesta de alta perdida y continúa sin crear otro intento', async () => {
+  doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida'));
+  doubles.recover.mockResolvedValue(ready);
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  await continueToPayment();
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' }));
+  await waitFor(() => expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(ready.publicToken, ready.totalMinor));
+  expect(doubles.recover).toHaveBeenCalledWith(identity);
+  expect(doubles.submit).toHaveBeenCalledTimes(1);
+  expect(doubles.create).toHaveBeenCalledTimes(1);
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('abrir un enlace de una compra lista nunca redirige sin un gesto nuevo', async () => {
+  window.history.replaceState(null, '', `/carrito#solicitud=${receipt.publicToken}`);
+  doubles.token.mockResolvedValue(ready);
+  render(<StrictMode>{component(false)}</StrictMode>);
+  expect(await screen.findByRole('button', { name: 'Ir a Mercado Pago' })).toBeEnabled();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(doubles.create).not.toHaveBeenCalled();
+});
+
+it('espera la recuperación inicial antes de permitir un alta que podría ser otra compra', () => {
+  doubles.read.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  const button = screen.getByRole('button', { name: 'Continuar al pago' });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(doubles.create).not.toHaveBeenCalled();
+});
+
 it('avanza la compra directa sin aprobación humana y ofrece pago sólo tras confirmar el servidor', async () => {
   vi.useFakeTimers();
   doubles.read.mockResolvedValue(identity);
@@ -44,10 +151,10 @@ it('avanza la compra directa sin aprobación humana y ofrece pago sólo tras con
   doubles.prepare.mockResolvedValue({...receipt,status:'accepted',preparationStatus:'prepared',reservationStatus:'confirmed',checkoutAvailable:true,totalMinor:350000});
   render(component());
   await act(async()=> { await Promise.resolve(); });
-  expect(screen.queryByRole('button',{name:'Pagar con Mercado Pago'})).not.toBeInTheDocument();
-  expect(screen.getByRole('status')).toHaveTextContent('Estamos verificando');
+  expect(screen.queryByRole('button',{name:'Ir a Mercado Pago'})).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Estamos confirmando disponibilidad y total');
   await act(async()=> { await vi.advanceTimersByTimeAsync(5000); });
-  expect(screen.getByRole('button',{name:'Pagar con Mercado Pago'})).toBeEnabled();
+  expect(screen.getByRole('button',{name:'Ir a Mercado Pago'})).toBeEnabled();
   expect(doubles.prepare).toHaveBeenCalledTimes(1);
   expect(doubles.submit).not.toHaveBeenCalled();
   expect(doubles.checkout).not.toHaveBeenCalled();
@@ -67,22 +174,24 @@ it('comunica al resumen el total confirmado de la solicitud guardada', async () 
 
 it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita doble clic', async () => {
   render(component());
-  const button = screen.getByRole('button', { name: 'Continuar con mi compra' });
-  fireEvent.click(button); fireEvent.click(button);
-  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
+  const button = await continueToPayment();
+  fireEvent.click(button);
+  expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('status')).toHaveTextContent('Sin cobro ni reserva acreditados');
+  expect(screen.getByRole('status')).toHaveTextContent('Estamos revisando disponibilidad y entrega');
   expect(screen.getByRole('link', { name: 'Consultar por WhatsApp (opcional)' })).toBeVisible();
-  expect(screen.getByRole('link', { name: 'Enlace protegido de esta solicitud' })).toHaveAttribute('href', `/carrito#solicitud=${receipt.publicToken}`);
+  expect(screen.queryByRole('link', { name: 'Enlace protegido de esta solicitud' })).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent('WEB-');
+  expect(document.body).not.toHaveTextContent('Solicitud registrada');
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
 });
 
 it('una respuesta perdida conserva la identidad y se recupera sin reenviar la creación', async () => {
   doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida.')); doubles.recover.mockResolvedValue(receipt);
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Continuar con mi compra' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Respuesta perdida');
-  fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' }));
-  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
+  render(component()); await continueToPayment();
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos continuar con tu compra');
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' }));
+  expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1); expect(doubles.recover).toHaveBeenCalledWith(identity);
   expect(doubles.finish).not.toHaveBeenCalled();
 });
@@ -90,8 +199,8 @@ it('una respuesta perdida conserva la identidad y se recupera sin reenviar la cr
 it('las altas cerradas no impiden recuperar la solicitud del navegador', async () => {
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
   render(component(false));
-  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Continuar con mi compra' })).not.toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Continuar al pago' })).not.toBeInTheDocument();
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
@@ -106,14 +215,14 @@ it('un enlace protegido no requiere el almacenamiento privado de otro navegador'
   window.history.replaceState(null, '', `/carrito#solicitud=${receipt.publicToken}`);
   doubles.read.mockRejectedValue(new Error('Sin almacenamiento.')); doubles.token.mockResolvedValue(receipt);
   render(component(false));
-  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.token).toHaveBeenCalledWith(receipt.publicToken); expect(doubles.read).not.toHaveBeenCalled();
 });
 
 it('no envía si el navegador no logra persistir la identidad', async () => {
   doubles.create.mockRejectedValue(new Error('Almacenamiento no disponible.'));
-  render(component()); fireEvent.click(screen.getByRole('button', { name: 'Continuar con mi compra' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Almacenamiento no disponible');
+  render(component()); await continueToPayment();
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos continuar con tu compra');
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
@@ -122,14 +231,14 @@ it('muestra Mercado Pago sólo cuando el servidor confirma reserva y total', asy
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(ready);
   doubles.checkout.mockImplementation(() => new Promise(() => undefined));
   render(component());
-  const pay = await screen.findByRole('button', { name: 'Pagar con Mercado Pago' });
-  expect(screen.getByRole('status')).toHaveTextContent('Tu stock está reservado y el total está confirmado');
+  const pay = await screen.findByRole('button', { name: 'Ir a Mercado Pago' });
+  expect(screen.getByRole('status')).toHaveTextContent('Tu compra está lista para pagar');
   const totalLabel = screen.getByText('Total confirmado:');
   expect(totalLabel.parentElement).toHaveTextContent(/1\.234/u);
   fireEvent.click(pay); fireEvent.click(pay);
   await waitFor(() => expect(doubles.checkout).toHaveBeenCalledTimes(1));
   expect(doubles.checkout).toHaveBeenCalledWith(ready.publicToken, ready.totalMinor);
-  expect(screen.getByRole('button', { name: 'Preparando pago…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Abriendo Mercado Pago…' })).toBeDisabled();
 });
 
 it('un pago pendiente o aprobado se muestra y nunca ofrece otro botón de pago', async () => {
@@ -137,22 +246,22 @@ it('un pago pendiente o aprobado se muestra y nunca ofrece otro botón de pago',
     paymentStatus: 'approved', paymentRequiresReview: true, checkoutAvailable: false, totalMinor: 123_400 };
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(approved);
   render(component());
-  expect(await screen.findByRole('status')).toHaveTextContent('Pago recibido. No vuelvas a pagar');
-  expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+  expect(await screen.findByRole('status')).toHaveTextContent('No vuelvas a pagar');
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
   expect(doubles.checkout).not.toHaveBeenCalled();
 });
 
 it('no permite abrir otro intento mientras una solicitud aceptada sigue activa', async () => {
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue({ ...receipt, status: 'accepted' });
   render(component());
-  expect(await screen.findByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Preparar otra solicitud' })).not.toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Iniciar otra compra' })).not.toBeInTheDocument();
 });
 
 it('sólo prepara otra solicitud después de volver a consultar una resolución terminal segura', async () => {
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue({ ...receipt, status: 'rejected' });
   render(component());
-  fireEvent.click(await screen.findByRole('button', { name: 'Preparar otra solicitud' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Iniciar otra compra' }));
   await waitFor(() => expect(doubles.finish).toHaveBeenCalledWith(identity.idempotencyKey));
   expect(doubles.recover).toHaveBeenCalledTimes(2);
   expect(doubles.submit).not.toHaveBeenCalled();
@@ -166,9 +275,9 @@ it('actualiza la reserva y habilita Mercado Pago sin pedir otra carga de datos n
   doubles.checkout.mockImplementation(() => new Promise(() => undefined));
   render(component(false));
   await act(async () => { await Promise.resolve(); });
-  expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
-  const pay = screen.getByRole('button', { name: 'Pagar con Mercado Pago' });
+  const pay = screen.getByRole('button', { name: 'Ir a Mercado Pago' });
   expect(pay).toBeEnabled();
   expect(screen.getByText('Total confirmado:').parentElement).toHaveTextContent('1.234');
   expect(doubles.recover).toHaveBeenCalledTimes(1);
@@ -197,7 +306,7 @@ it('espacia y limita las lecturas automáticas sin cambiar cuotas ni reenviar el
   expect(doubles.token).toHaveBeenCalledTimes(2);
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).toHaveBeenCalledTimes(8);
-  expect(screen.getByText(/La actualización automática terminó por ahora/u)).toBeVisible();
+  expect(screen.getByText(/La confirmación está tardando más de lo esperado/u)).toBeVisible();
   expect(doubles.submit).not.toHaveBeenCalled();
   expect(doubles.checkout).not.toHaveBeenCalled();
 });
@@ -224,8 +333,8 @@ it('un fallo detiene la consulta automática y permite recuperar el mismo intent
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).toHaveBeenCalledTimes(1);
-  expect(screen.getByText(/No pudimos actualizar el estado/u)).toBeVisible();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' })); await Promise.resolve(); });
+  expect(screen.getByText(/No pudimos actualizar tu compra/u)).toBeVisible();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' })); await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   expect(doubles.recover).toHaveBeenCalledTimes(2);
   expect(doubles.token).toHaveBeenCalledTimes(2);
@@ -242,10 +351,10 @@ it('una respuesta automática antigua no pisa la recuperación manual más recie
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   const signal = doubles.token.mock.calls[0]?.[1] as AbortSignal;
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la solicitud' })); await Promise.resolve(); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' })); await Promise.resolve(); });
   expect(signal.aborted).toBe(true);
   await act(async () => { resolveRead(receipt); await Promise.resolve(); });
-  expect(screen.getByRole('status')).toHaveTextContent('Rechazada');
+  expect(screen.getByRole('status')).toHaveTextContent('No pudimos completar esta compra');
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).toHaveBeenCalledTimes(1);
 });

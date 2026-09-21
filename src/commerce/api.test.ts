@@ -61,6 +61,7 @@ describe('cliente de comercio', () => {
     );
 
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+      orderNumber: 'SHK-1234ABCD',
       status: 'approved',
       currency: 'ARS',
       totalMinor: 246_800,

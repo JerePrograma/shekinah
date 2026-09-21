@@ -57,10 +57,10 @@ describe('retorno verificable de pago', () => {
 
     render(<PaymentReturnPage expected="success" navigate={vi.fn()} />);
 
-    const region = screen.getByRole('region', { name: 'Verificando tu pedido…' });
+    const region = screen.getByRole('region', { name: 'Estamos confirmando tu pago' });
     expect(region).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Estamos consultando el estado confirmado por el servidor.',
+      'Estamos consultando la confirmación de Mercado Pago. No vuelvas a pagar.',
     );
     expect(screen.queryByRole('button', { name: 'Reintentar verificación' }))
       .not.toBeInTheDocument();
@@ -70,9 +70,9 @@ describe('retorno verificable de pago', () => {
       await request.promise;
     });
 
-    expect(screen.getByRole('heading', { name: 'Pago aprobado' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '¡Compra confirmada!' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Mercado Pago confirmó el pago y el pedido quedó aprobado.',
+      'Tu pedido es SHK-1234ABCD.',
     );
     expect(region).toHaveAttribute('aria-busy', 'false');
     expect(doubles.shouldClearCartAfterApproval).toHaveBeenCalledWith([], PUBLIC_TOKEN);
@@ -87,10 +87,10 @@ describe('retorno verificable de pago', () => {
     render(<PaymentReturnPage expected="pending" navigate={vi.fn()} />);
     await flushMicrotasks();
 
-    const region = screen.getByRole('region', { name: 'Pago pendiente' });
+    const region = screen.getByRole('region', { name: 'Estamos confirmando tu pago' });
     expect(region).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Seguimos verificando automáticamente.',
+      'No vuelvas a pagar mientras verificamos la acreditación.',
     );
 
     await act(async () => {
@@ -100,7 +100,7 @@ describe('retorno verificable de pago', () => {
     expect(doubles.getPublicOrderStatus).toHaveBeenCalledTimes(7);
     expect(region).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Las verificaciones automáticas terminaron por ahora.',
+      'Podés volver a consultar en unos momentos.',
     );
     expect(screen.getByRole('button', { name: 'Reintentar verificación' })).toBeVisible();
     expect(doubles.clearCart).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('retorno verificable de pago', () => {
     expect(doubles.getPublicOrderStatus).toHaveBeenCalledTimes(8);
     expect(region).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Seguimos verificando automáticamente.',
+      'No vuelvas a pagar mientras verificamos la acreditación.',
     );
     expect(screen.queryByRole('button', { name: 'Reintentar verificación' }))
       .not.toBeInTheDocument();
@@ -120,13 +120,13 @@ describe('retorno verificable de pago', () => {
   it('muestra el error como alerta y recupera la consulta mediante un reintento único', async () => {
     const retryRequest = deferred<PublicOrderStatusResponse>();
     doubles.getPublicOrderStatus
-      .mockRejectedValueOnce(new Error('No se pudo consultar el pedido ahora.'))
+      .mockRejectedValueOnce(new Error('No pudimos consultar tu compra. Intentá nuevamente en unos momentos.'))
       .mockReturnValueOnce(retryRequest.promise);
 
     render(<PaymentReturnPage expected="pending" navigate={vi.fn()} />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo consultar el pedido ahora.',
+      'No pudimos consultar tu compra. Intentá nuevamente en unos momentos.',
     );
     const region = screen.getByRole('region', { name: 'No pudimos verificar el pedido' });
     expect(region).toHaveAttribute('aria-busy', 'false');
@@ -135,7 +135,7 @@ describe('retorno verificable de pago', () => {
 
     expect(region).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Estamos consultando el estado confirmado por el servidor.',
+      'Estamos consultando la confirmación de Mercado Pago. No vuelvas a pagar.',
     );
     expect(doubles.getPublicOrderStatus).toHaveBeenCalledTimes(2);
 
@@ -144,7 +144,7 @@ describe('retorno verificable de pago', () => {
       await retryRequest.promise;
     });
 
-    expect(screen.getByRole('heading', { name: 'Pago aprobado' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '¡Compra confirmada!' })).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reintentar verificación' }))
       .not.toBeInTheDocument();
@@ -156,6 +156,7 @@ function orderStatus(
   status: PublicOrderStatusResponse['status'],
 ): PublicOrderStatusResponse {
   return Object.freeze({
+    orderNumber: 'SHK-1234ABCD',
     status,
     totalMinor: 12_500,
     itemCount: 2,

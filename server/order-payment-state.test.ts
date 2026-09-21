@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getOrderPaymentState, getPublicOrderState } from './order-payment-state';
+import { formatOrderNumber } from '../src/commerce/contracts';
 import { listCommerceAttention } from './commerce-attention';
 import { SqliteD1 } from './test/sqlite-d1';
 
@@ -53,6 +54,7 @@ describe('lectura financiera y pendientes comerciales', () => {
         await pay(db, item.id);
         const result = await getPublicOrderState(db, item.tokenHash);
         expect(result?.status).toBe(status);
+        expect(result?.orderNumber).toBe(formatOrderNumber(item.id));
         expect(result?.payment).toEqual({ status: 'approved', requiresReview: true, updatedAt: now });
         expect(result).not.toHaveProperty('id');
         expect(result).not.toHaveProperty('dux_reference');

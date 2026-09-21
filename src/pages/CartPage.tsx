@@ -543,7 +543,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             </div>
 
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
-              <h2 id="cart-summary-title">{confirmedRequestTotal === null ? 'Resumen' : 'Pedido confirmado'}</h2>
+              <h2 id="cart-summary-title">Resumen</h2>
               {confirmedRequestTotal === null ? <dl className="cart-totals">
                 <div><dt>{usesWebRequestFlow ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
                 <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
@@ -559,11 +559,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 Confirmamos el precio, el stock y el total antes de cobrar.
               </p>
               {webOrderSection}
-              {confirmedRequestTotal !== null ? <p className="cart-disclaimer">Este es el importe del pedido guardado. Los cambios posteriores del carrito no modifican ese pedido.</p> : usesWebRequestFlow ? (
+              {webRequestActive ? null : usesWebRequestFlow ? (
                 <p className="cart-configuration-note">
                   {webRequestsEnabled
                     ? 'Continuá con tus datos para verificar stock y confirmar el total antes de pagar con Mercado Pago.'
-                    : 'El registro de solicitudes no está disponible en este momento. Tu carrito se conserva.'}
+                    : 'No podemos iniciar tu compra en este momento. Tu carrito se conserva.'}
                 </p>
               ) : commerceEnabled ? (
                 <button

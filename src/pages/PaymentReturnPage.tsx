@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { formatProductPrice } from '../catalog/catalog';
+import { trackAnalyticsEvent } from '../analytics/client';
+import { getAuthorizedWhatsappNumber } from '../commerce/env';
 import { useCart } from '../cart/CartContext';
 import { getPublicOrderStatus } from '../commerce/api';
-import { parseOrderPaymentState, paymentStateLabel, paymentStatePresentation } from '../commerce/payment-state';
+import { parseOrderPaymentState } from '../commerce/payment-state';
 import {
   clearRememberedCheckoutOrder,
   readRememberedCheckoutOrder,
@@ -80,13 +81,9 @@ export function PaymentReturnPage({
         } else {
           setPhase('settled');
         }
-      } catch (loadError: unknown) {
+      } catch {
         if (controller.signal.aborted) return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'No se pudo consultar el pedido.',
-        );
+        setError('No pudimos consultar tu compra. Intentá nuevamente en unos momentos.');
         setPhase('error');
       }
     };
@@ -97,9 +94,17 @@ export function PaymentReturnPage({
     };
   }, [clear, publicToken, retryVersion]);
 
-  const presentation = statusPresentation(status, expected, phase, error);
+  const presentation = statusPresentation(status, phase, error);
   const busy = phase === 'checking' || phase === 'polling';
   const canRetry = publicToken !== null && (phase === 'error' || phase === 'exhausted' || (!busy && status?.payment?.requiresReview === true));
+  const confirmed = !busy && phase !== 'error' && status !== null &&
+    (status.payment?.status ?? status.status) === 'approved' && status.payment?.requiresReview !== true;
+  const whatsappNumber = getAuthorizedWhatsappNumber();
+  const whatsappUrl = confirmed && whatsappNumber !== null
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hola, realicé la compra ${status.orderNumber} en Shekinah. Quedo a la espera para coordinar la entrega.`)}`
+    : null;
+  const canResume = !busy && phase !== 'error' && status !== null &&
+    ['rejected', 'cancelled', 'failed'].includes(status.payment?.status === 'none' ? status.status : status.payment?.status ?? status.status);
   return (
     <section
       className="payment-return section"
@@ -116,34 +121,14 @@ export function PaymentReturnPage({
         >
           {presentation.message}
         </p>
-        {status === null ? null : (
-          <dl className="payment-summary">
-            <div>
-              <dt>Estado del pedido</dt>
-              <dd>{humanStatus(status.status)}</dd>
-            </div>
-            {status.payment === undefined ? null : (
-              <div>
-                <dt>Estado del pago</dt>
-                <dd>{paymentStateLabel(status.payment.status)}</dd>
-              </div>
-            )}
-            <div>
-              <dt>Total</dt>
-              <dd>
-                {formatProductPrice({
-                  amount: status.totalMinor / 100,
-                  currency: status.currency,
-                })}
-              </dd>
-            </div>
-            <div>
-              <dt>Unidades</dt>
-              <dd>{status.itemCount}</dd>
-            </div>
-          </dl>
-        )}
+        {confirmed ? <p>Pronto nos pondremos en contacto para coordinar la entrega.</p> : null}
         <div className="payment-return-actions">
+          {whatsappUrl === null ? null : <a className="button button-primary" href={whatsappUrl}
+            target="_blank" rel="noopener noreferrer"
+            onClick={() => void trackAnalyticsEvent('whatsapp_open', { path: expected === 'success'
+              ? appPaths.paymentSuccess : expected === 'pending' ? appPaths.paymentPending : appPaths.paymentError })}>
+            Enviar mensaje por WhatsApp
+          </a>}
           {canRetry ? (
             <button
               className="button button-primary"
@@ -153,13 +138,13 @@ export function PaymentReturnPage({
               Reintentar verificación
             </button>
           ) : null}
-          <AppLink
+          {canResume ? <AppLink
             className={`button ${canRetry ? 'button-secondary' : 'button-primary'}`}
             navigate={navigate}
             to={appPaths.cart}
           >
-            Ver carrito
-          </AppLink>
+            Retomar mi compra
+          </AppLink> : null}
           <AppLink className="button button-secondary" navigate={navigate} to={appPaths.catalog}>
             Volver al catálogo
           </AppLink>
@@ -179,67 +164,56 @@ function readPublicToken(): string | null {
 
 function statusPresentation(
   status: PublicOrderStatusResponse | null,
-  expected: 'success' | 'pending' | 'failure',
   phase: VerificationPhase,
   error: string,
 ): Readonly<{ title: string; message: string }> {
   if (phase === 'checking') {
     return {
-      title: 'Verificando tu pedido…',
-      message: status !== null && isPendingStatus(status.status)
-        ? 'Estamos volviendo a consultar el estado confirmado por el servidor.'
-        : 'Estamos consultando el estado confirmado por el servidor.',
+      title: 'Estamos confirmando tu pago',
+      message: 'Estamos consultando la confirmación de Mercado Pago. No vuelvas a pagar.',
     };
   }
   if (phase === 'error' || error !== '') {
     if (status?.payment?.status === 'approved' || status?.payment?.status === 'refunded') {
-      const recorded = paymentStatePresentation(status.payment);
+      const recorded = paymentPresentation(status);
       return { title: recorded.title, message: `${recorded.message} No pudimos actualizar la consulta: ${error}` };
     }
     return { title: 'No pudimos verificar el pedido', message: error };
   }
   if (status === null) return { title: 'Estado no disponible', message: 'No hay información verificable del pedido.' };
-  if (status.payment !== undefined) {
-    const recorded = paymentStatePresentation(status.payment);
-    return phase === 'exhausted'
-      ? { ...recorded, message: `${recorded.message} Las verificaciones automáticas terminaron por ahora. Podés reintentar la consulta.` }
-      : recorded;
-  }
-  switch (status.status) {
+  const recorded = paymentPresentation(status);
+  return phase === 'exhausted'
+    ? { ...recorded, message: `${recorded.message} Podés volver a consultar en unos momentos.` }
+    : recorded;
+}
+
+function paymentPresentation(status: PublicOrderStatusResponse): Readonly<{ title: string; message: string }> {
+  switch (status.payment?.status ?? status.status) {
     case 'approved':
-      return { title: 'Pago aprobado', message: 'Mercado Pago confirmó el pago y el pedido quedó aprobado.' };
+      return status.payment?.requiresReview === true
+        ? { title: 'Recibimos tu pago', message: 'Tu pedido está en revisión. No vuelvas a pagar. Nos pondremos en contacto si necesitamos algo.' }
+        : { title: '¡Compra confirmada!', message: `Tu pedido es ${status.orderNumber}.` };
     case 'refunded':
-      return { title: 'Pago reintegrado', message: 'El servidor confirmó que el pago fue reintegrado.' };
+      return { title: 'Pago reintegrado o revertido', message: status.payment?.requiresReview === true
+        ? 'Se registró el reintegro o la reversión de tu pago. Tu pedido está en revisión; nos pondremos en contacto si necesitamos algo.'
+        : 'Se registró el reintegro o la reversión de tu pago. Si necesitás coordinar una devolución, contactanos.' };
     case 'rejected':
-      return { title: 'Pago rechazado', message: 'El pago fue rechazado. Podés volver al carrito e iniciar otro intento.' };
+      return { title: 'El pago no se completó', message: 'Podés retomar tu compra para consultar las opciones de pago disponibles.' };
     case 'cancelled':
-      return { title: 'Pago cancelado', message: 'El pago fue cancelado y el carrito permanece disponible.' };
+      return { title: 'El pago fue cancelado', message: 'Podés retomar tu compra cuando quieras continuar.' };
     case 'failed':
-      return { title: 'No se pudo preparar el pago', message: 'El servidor no pudo confirmar una preferencia de pago segura.' };
+      return { title: 'No pudimos iniciar el pago', message: 'Podés retomar tu compra para consultar las opciones disponibles.' };
+    case 'none':
+      return { title: 'Pago no confirmado', message: 'Todavía no recibimos la confirmación de tu pago. Si ya pagaste, no vuelvas a hacerlo mientras lo verificamos.' };
     case 'preference_pending':
     case 'pending':
       return {
-        title: expected === 'failure' ? 'Pago todavía no confirmado' : 'Pago pendiente',
-        message: phase === 'exhausted'
-          ? 'El servidor todavía no recibió una confirmación definitiva. Las verificaciones automáticas terminaron por ahora. Podés reintentar la consulta; el carrito no se modificó.'
-          : 'El servidor todavía no recibió una confirmación definitiva. Seguimos verificando automáticamente. El carrito no se modificó.',
+        title: 'Estamos confirmando tu pago',
+        message: 'Tu pedido está registrado. No vuelvas a pagar mientras verificamos la acreditación.',
       };
   }
 }
 
 function isPendingStatus(status: PublicOrderStatusResponse['status']): boolean {
   return status === 'preference_pending' || status === 'pending';
-}
-
-function humanStatus(status: PublicOrderStatusResponse['status']): string {
-  const labels: Record<PublicOrderStatusResponse['status'], string> = {
-    preference_pending: 'Preparando pago',
-    pending: 'Pendiente',
-    approved: 'Aprobado',
-    rejected: 'Rechazado',
-    cancelled: 'Cancelado',
-    refunded: 'Reintegrado',
-    failed: 'Fallido',
-  };
-  return labels[status];
 }

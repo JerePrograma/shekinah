@@ -73,6 +73,7 @@ describe('estado público del pedido', () => {
       expect(response.headers.get('cache-control')).toBe('no-store');
       const body = await response.json() as Record<string, unknown>;
       expect(body).toEqual({
+        orderNumber: 'SHK-INTERNAL',
         status: 'approved',
         currency: 'ARS',
         totalMinor: 123_400,
@@ -81,6 +82,10 @@ describe('estado público del pedido', () => {
         payment: { status: 'none', requiresReview: false, updatedAt: null },
       });
       expect(body).not.toHaveProperty('id');
+      expect(body).not.toHaveProperty('publicToken');
+      expect(body).not.toHaveProperty('public_token_hash');
+      expect(JSON.stringify(body)).not.toContain(publicToken);
+      expect(JSON.stringify(body)).not.toContain(tokenHash);
       expect(JSON.stringify(body)).not.toContain('ord_private_internal');
     } finally {
       database.close();

@@ -179,7 +179,7 @@ test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no est�
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
   await page.getByLabel('Modalidad').selectOption('correo_argentino');
 
-  await expect(page.getByText(/El registro de solicitudes no está disponible/iu)).toBeVisible();
+  await expect(page.getByText(/No podemos iniciar tu compra en este momento/iu)).toBeVisible();
   await expect(page.getByText(/El envío requiere cotización/iu)).toBeVisible();
   const contact = page.getByRole('link', { name: 'Consultar por WhatsApp' });
   await expect(contact).toBeVisible();
@@ -227,12 +227,11 @@ test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar dat
     status: 200, contentType: 'text/html', body: '<h1>Proveedor simulado para la prueba</h1>',
   }));
   await page.goto(`/carrito#solicitud=${token}`);
-  await expect(page.getByRole('heading', { name: 'Solicitud registrada' })).toBeVisible();
-  await expect(page.getByText(/El estado se actualiza automáticamente/u)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pagar con Mercado Pago' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tu compra' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ir a Mercado Pago' })).toHaveCount(0);
   expect(checkouts).toBe(0);
   await page.clock.fastForward(15_000);
-  const pay = page.getByRole('button', { name: 'Pagar con Mercado Pago' });
+  const pay = page.getByRole('button', { name: 'Ir a Mercado Pago' });
   await expect(pay).toBeEnabled();
   await expect(page.locator('.web-request-panel p').filter({ hasText: 'Total confirmado:' })).toContainText('3.500');
   expect(reads).toBe(2);
@@ -240,6 +239,56 @@ test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar dat
   expect(checkouts).toBe(0);
   await pay.click();
   await expect(page).toHaveURL('https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-customer-flow');
+  expect(checkouts).toBe(1);
+});
+
+test('compra directa: un solo CTA prepara y redirige sin mostrar la infraestructura interna', async ({ page }) => {
+  const token = 'c'.repeat(64);
+  const receipt = { reference: 'WEB-abcdefghijklmnopqrstuvwx', status: 'submitted',
+    createdAt: '2026-09-21T12:00:00.000Z', updatedAt: '2026-09-21T12:00:00.000Z',
+    paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved',
+    checkoutAvailable: false, totalMinor: null, preparationStatus: 'preparing' };
+  let creates = 0;
+  let preparations = 0;
+  let checkouts = 0;
+  await page.clock.install();
+  await page.route('**/api/orders/request-capability', (route) => route.fulfill({ json: { enabled: true } }));
+  await page.route('**/api/orders/request', (route) => {
+    creates += 1;
+    expect(route.request().postDataJSON()).toMatchObject({ mode: 'create' });
+    return route.fulfill({ status: 201, json: { ...receipt, publicToken: token } });
+  });
+  await page.route(`**/api/orders/${token}/prepare`, (route) => {
+    preparations += 1;
+    return route.fulfill({ json: { ...receipt, status: 'accepted', preparationStatus: 'prepared',
+      reservationStatus: 'confirmed', checkoutAvailable: true, totalMinor: 350000 } });
+  });
+  await page.route(`**/api/orders/${token}/checkout`, (route) => {
+    checkouts += 1;
+    expect(preparations).toBe(1);
+    expect(route.request().postData()).toBeNull();
+    return route.fulfill({ status: 201, json: {
+      checkoutUrl: 'https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-direct-ux', totalMinor: 350000,
+    } });
+  });
+  await page.route('https://www.mercadopago.com.ar/**', (route) => route.fulfill({
+    status: 200, contentType: 'text/html', body: '<h1>Checkout Pro simulado</h1>',
+  }));
+  await page.goto('/catalogo');
+  await page.locator('[data-product]').first().getByRole('button', { name: /Agregar .* al carrito/u }).click();
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  await page.getByLabel('Nombre completo').fill('Cliente de prueba UX');
+  await page.getByLabel('Celular').fill('2235550100');
+  await page.getByRole('button', { name: 'Continuar al pago' }).click();
+  await expect(page.getByRole('heading', { name: 'Estamos preparando tu compra…' })).toBeVisible();
+  await expect(page.getByText('Estamos confirmando disponibilidad y total.')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText(/Solicitud registrada|WEB-|Enlace protegido|Consultar estado de la solicitud|Dux|verificaciones/u);
+  await expect(page.getByRole('button', { name: 'Consultar mi compra' })).toHaveCount(0);
+  expect(checkouts).toBe(0);
+  await page.clock.fastForward(5000);
+  await expect(page).toHaveURL('https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-direct-ux');
+  expect(creates).toBe(1);
+  expect(preparations).toBe(1);
   expect(checkouts).toBe(1);
 });
 
@@ -334,6 +383,7 @@ test('el retorno del navegador sólo muestra el estado confirmado por el servido
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
+        orderNumber: 'SHK-1234ABCD',
         status: 'pending',
         totalMinor: 123_400,
         itemCount: 1,
@@ -343,9 +393,9 @@ test('el retorno del navegador sólo muestra el estado confirmado por el servido
     });
   });
   await page.goto(`/pago/exito?order=${publicToken}&status=approved`);
-  await expect(page.getByText('Pendiente', { exact: true })).toBeVisible();
-  await expect(page.getByText('Aprobado', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Pago pendiente' })).toBeVisible();
+  await expect(page.getByText('Tu pedido está registrado. No vuelvas a pagar mientras verificamos la acreditación.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '¡Compra confirmada!' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Estamos confirmando tu pago' })).toBeVisible();
 });
 
 test('vacía el carrito únicamente después de una aprobación confirmada para el mismo intento', async ({ page }) => {
@@ -355,6 +405,7 @@ test('vacía el carrito únicamente después de una aprobación confirmada para 
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
+        orderNumber: 'SHK-1234ABCD',
         status: 'approved',
         totalMinor: 123_400,
         itemCount: 1,
@@ -401,7 +452,9 @@ test('vacía el carrito únicamente después de una aprobación confirmada para 
   }, publicToken);
 
   await page.goto(`/pago/exito?order=${publicToken}&status=pending`);
-  await expect(page.getByRole('heading', { name: 'Pago aprobado' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '¡Compra confirmada!' })).toBeVisible();
+  await expect(page.getByText('Tu pedido es SHK-1234ABCD.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Enviar mensaje por WhatsApp' })).toHaveAttribute('href', /wa\.me\/5492236216559\?text=.*SHK-1234ABCD/u);
   await expect(page.getByRole('link', { name: 'Carrito, 0 productos' })).toBeVisible();
   await expect
     .poll(async () =>

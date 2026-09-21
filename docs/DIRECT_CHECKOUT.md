@@ -2,6 +2,33 @@
 
 El titular autorizó expresamente el 2026-09-15 ampliar la preparación asistida y aplicar una nueva migración después de 0023. Esta ampliación implementa compra directa para retiro coordinado, cuyo envío es cero. El cliente carga nombre y celular una vez, continúa la compra, ve el total confirmado por el servidor y abre Checkout Pro. WhatsApp es opcional para coordinación. La implementación y sus pruebas no acreditan por sí solas una activación productiva.
 
+## Experiencia pública simplificada — 2026-09-21
+
+El CTA de retiro es «Continuar al pago». Durante el intento iniciado en esa
+visita se muestra «Estamos preparando tu compra…» y «Estamos confirmando
+disponibilidad y total.». Cuando el servidor devuelve `checkoutAvailable=true`
+y un total confirmado, el navegador llama una sola vez automáticamente al
+checkout existente. No adelanta la preferencia a la reserva ni agrega aceptación
+administrativa. «Ir a Mercado Pago» permite recuperar una apertura fallida.
+
+La intención de redirigir automáticamente vive sólo en memoria de esa visita.
+Recargar, volver al carrito o abrir un enlace conservado recupera el mismo pedido
+sin abrir Mercado Pago inesperadamente; el comprador elige continuar. Una
+respuesta de alta perdida puede recuperarse con la misma identidad, sin crear
+otra solicitud. Persistencia, límites de consulta e idempotencia permanecen.
+
+El retorno usa la evidencia financiera existente. Un pago aprobado sin revisión
+muestra «¡Compra confirmada!», el número comercial `SHK-*` y coordinación opcional
+por WhatsApp. `orderNumber` se calcula en servidor con `formatOrderNumber` sobre
+la orden resuelta por hash de token; no se devuelve el ID interno ni el token.
+Pendiente, rechazado, cancelado, reintegrado y aprobado con revisión conservan
+mensajes propios. La URL de retorno no confirma un pago y la regla de limpieza
+del carrito no cambia. Las referencias `WEB-*`, enlaces de recuperación y estados
+Dux permanecen internamente y en administración, sin dominar la pantalla pública.
+
+La validación y los límites del smoke de esta corrección se documentan en
+[UX de compra directa](validation/DIRECT_CHECKOUT_UX_2026-09-21.md).
+
 El [smoke productivo del 21 de septiembre](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md)
 acreditó ese recorrido sin aprobación administrativa, abrió Checkout Pro sin
 cobrar y cerró la reserva de prueba por Dux y Shekinah. Consultar

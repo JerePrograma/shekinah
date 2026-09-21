@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './web-order-requests.css';
 import { trackAnalyticsEvent } from '../analytics/client';
 import { getAuthorizedWhatsappNumber } from './env';
 import type { CartItem } from '../cart/model';
 import type { CheckoutFulfillment } from './fulfillment';
 import type { WebRequestIdentity, WebRequestReceipt } from './web-order-contracts';
-import { webRequestStatusLabel } from './web-order-contracts';
 import { prepareWebRequest, readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest } from './web-request-api';
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
 const MAX_AUTOMATIC_CHECKS = 8;
+const PUBLIC_ERROR = 'No pudimos continuar con tu compra. Volvé a consultar o intentá nuevamente.';
 
 export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange }: Readonly<{
   registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
@@ -20,6 +20,8 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   const [identity, setIdentity] = useState<WebRequestIdentity | null>(null);
   const [receipt, setReceipt] = useState<WebRequestReceipt | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recovering, setRecovering] = useState(true);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [refreshState, setRefreshState] = useState<'watching' | 'paused' | 'error'>('watching');
@@ -28,6 +30,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     return token !== null && /^[a-f0-9]{64}$/u.test(token) ? token : null;
   });
   const busyRef = useRef(false);
+  // Sólo el gesto de compra de esta visita autoriza una continuación automática.
+  // Recuperar desde IndexedDB o un enlace nunca vuelve a abrir Mercado Pago solo.
+  const continueAutomatically = useRef(false);
+  const checkoutAttempted = useRef(new Set<string>());
   useEffect(() => { onConfirmedTotalChange?.(receipt?.totalMinor ?? null); }, [receipt?.totalMinor, onConfirmedTotalChange]);
   const receiptTitle = useRef<HTMLHeadingElement>(null);
   const focusReceipt = useRef(false);
@@ -56,8 +62,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         const current = await recoverWebRequest(saved);
         if (!cancelled) setReceipt(current);
       }
-    })().catch((failure: unknown) => {
-      if (!cancelled && hasAttempt) setError(message(failure));
+    })().catch(() => {
+      if (!cancelled && hasAttempt) setError(PUBLIC_ERROR);
+    }).finally(() => {
+      if (!cancelled) setRecovering(false);
     });
     return () => { cancelled = true; };
   }, [linkedToken, onActiveChange]);
@@ -87,16 +95,42 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         if (controller.signal.aborted) return;
         setReceipt(current);
         if (shouldWatchRequest(current)) schedule();
-      } catch (failure: unknown) {
-        if (!controller.signal.aborted) { setRefreshState('error'); setError(message(failure)); }
+      } catch {
+        if (!controller.signal.aborted) { setRefreshState('error'); setError(PUBLIC_ERROR); }
       }
     };
     schedule();
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [publicToken, awaitingUpdate, refreshVersion, directPreparing]);
 
-  async function operate(action: 'create' | 'recover' | 'new' | 'checkout'): Promise<void> {
-    if (busyRef.current || disabled) return;
+  const startCheckout = useCallback(async (): Promise<void> => {
+    if (busyRef.current || disabled || receipt === null || !receipt.checkoutAvailable || receipt.totalMinor === null) return;
+    checkoutAttempted.current.add(receipt.publicToken);
+    busyRef.current = true; setBusy(true); onBusyChange(true); setError('');
+    try {
+      void trackAnalyticsEvent('checkout_start', { path: '/carrito' });
+      const checkout = await startWebRequestCheckout(receipt.publicToken, receipt.totalMinor);
+      if (!mounted.current) return;
+      setCheckoutUrl(checkout.checkoutUrl);
+      void trackAnalyticsEvent('checkout_redirect', { path: '/carrito' });
+      window.location.assign(checkout.checkoutUrl);
+    } catch {
+      if (mounted.current) setError('No pudimos abrir Mercado Pago. Podés volver a intentarlo con esta misma compra.');
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) { setBusy(false); onBusyChange(false); }
+    }
+  }, [disabled, receipt, onBusyChange]);
+
+  useEffect(() => {
+    if (!continueAutomatically.current || receipt === null ||
+        !receipt.checkoutAvailable || receipt.totalMinor === null || busy || disabled ||
+        checkoutAttempted.current.has(receipt.publicToken)) return;
+    void startCheckout();
+  }, [receipt, busy, disabled, startCheckout]);
+
+  async function operate(action: 'create' | 'recover' | 'new'): Promise<void> {
+    if (busyRef.current || disabled || recovering) return;
     busyRef.current = true; setBusy(true); onBusyChange(true); setError('');
     setRefreshVersion((value) => value + 1);
     try {
@@ -104,100 +138,102 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         if (identity === null) return;
         const current = await recoverWebRequest(identity);
         if (!canPrepareAnother(current)) {
-          throw new Error('La solicitud anterior todavía tiene una gestión activa. No se iniciará otra automáticamente.');
+          throw new Error('La compra anterior sigue activa.');
         }
         await finishWebRequestIdentity(identity.idempotencyKey);
-        if (mounted.current) { setIdentity(null); setReceipt(null); onActiveChange(false); }
+        if (mounted.current) {
+          continueAutomatically.current = false;
+          setIdentity(null); setReceipt(null); setCheckoutUrl(null); onActiveChange(false);
+        }
       } else if (action === 'recover') {
         const current = linkedToken !== null ? await readWebRequest(linkedToken)
           : identity !== null ? await recoverWebRequest(identity) : null;
         if (mounted.current && current !== null) { focusReceipt.current = true; setReceipt(current); }
-      } else if (action === 'checkout') {
-        if (receipt === null || !receipt.checkoutAvailable || receipt.totalMinor === null) return;
-        void trackAnalyticsEvent('checkout_start', { path: '/carrito' });
-        const checkout = await startWebRequestCheckout(receipt.publicToken, receipt.totalMinor);
-        void trackAnalyticsEvent('checkout_redirect', { path: '/carrito' });
-        window.location.assign(checkout.checkoutUrl);
       } else {
         if (!registrationEnabled || items.length === 0 || fulfillment === null || receipt !== null || linkedToken !== null) return;
         const saved = await getOrCreateWebRequestIdentity();
+        continueAutomatically.current = true;
         if (mounted.current) { setIdentity(saved); onActiveChange(true); }
         const result = await submitWebRequest(saved, items, fulfillment);
         if (mounted.current) { focusReceipt.current = true; setReceipt(result); }
       }
-    } catch (failure: unknown) { if (mounted.current) setError(message(failure)); }
+    } catch { if (mounted.current) setError(PUBLIC_ERROR); }
     finally {
       busyRef.current = false;
       if (mounted.current) { setBusy(false); onBusyChange(false); }
     }
   }
+  const preparing = (directPreparing && refreshState === 'watching' && error === '') ||
+    (busy && receipt === null && continueAutomatically.current);
+  const automaticCheckout = continueAutomatically.current && receipt !== null &&
+    receipt.checkoutAvailable && receipt.totalMinor !== null && error === '';
+  const simpleProgress = preparing || automaticCheckout;
+  const showRecovery = (identity !== null || linkedToken !== null) && !simpleProgress && checkoutUrl === null;
   if (!registrationEnabled && identity === null && linkedToken === null) return null;
   return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy}>
     <h2 id="web-request-title">Tu pedido</h2>
-    <p>Completá tus datos una sola vez. Verificamos disponibilidad y total antes de abrir Mercado Pago. Podés usar WhatsApp para coordinar con el negocio cuando lo necesites.</p>
-    {receipt !== null ? <>
-      <h3 ref={receiptTitle} tabIndex={-1}>Solicitud registrada</h3>
-      <p>Tu pedido está guardado. Podés volver a esta página para consultar el pago. Editar el carrito no modifica este pedido.</p>
-      <p role="status">{receipt.reference}: {receipt.preparationStatus === undefined ? `${webRequestStatusLabel(receipt.status)}. ` : ''}{receiptStatusMessage(receipt)}</p>
-      {awaitingUpdate ? <p aria-live="polite">{refreshState === 'watching'
-        ? 'El estado se actualiza automáticamente mientras esta página está visible. No necesitás volver a cargar tus datos.'
-        : refreshState === 'error'
-          ? 'No pudimos actualizar el estado. Tu solicitud sigue guardada; podés consultar su estado nuevamente.'
-          : 'Tu solicitud sigue guardada. La actualización automática terminó por ahora; podés consultar su estado más tarde.'}</p> : null}
+    {simpleProgress ? <div className="web-request-progress" role="status" aria-live="polite">
+      <span className="web-request-spinner" aria-hidden="true" />
+      <h3 ref={receiptTitle} tabIndex={-1}>{checkoutUrl === null ? 'Estamos preparando tu compra…' : 'Te estamos llevando a Mercado Pago…'}</h3>
+      <p>Estamos confirmando disponibilidad y total.</p>
+    </div> : receipt !== null ? <>
+      <h3 ref={receiptTitle} tabIndex={-1}>Tu compra</h3>
+      <p role="status">{receiptStatusMessage(receipt)}</p>
+      {awaitingUpdate && refreshState !== 'watching' ? <p aria-live="polite">{refreshState === 'error'
+        ? 'No pudimos actualizar tu compra. Podés volver a consultarla.'
+        : 'La confirmación está tardando más de lo esperado. Podés volver a consultar tu compra.'}</p> : null}
       {receipt.totalMinor === null ? null : <p><strong>Total confirmado:</strong> {formatMinor(receipt.totalMinor)}.</p>}
-      {receipt.checkoutAvailable ? <button className="button button-primary" type="button" disabled={disabled || busy}
-        onClick={() => void operate('checkout')}>{busy ? 'Preparando pago…' : 'Pagar con Mercado Pago'}</button> : null}
-      <a className="text-button" href={`/carrito#solicitud=${receipt.publicToken}`}>Enlace protegido de esta solicitud</a>
+      {receipt.checkoutAvailable && receipt.totalMinor !== null && checkoutUrl === null ? <button className="button button-primary" type="button" disabled={disabled || busy}
+        onClick={() => void startCheckout()}>{busy ? 'Abriendo Mercado Pago…' : 'Ir a Mercado Pago'}</button> : null}
       {whatsappNumber === null ? null : <a className="button button-secondary"
-        href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hola, consulto por la solicitud ${receipt.reference} registrada en Shekinah.`)}`}
+        href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`}
         target="_blank" rel="noopener noreferrer" onClick={() => { void trackAnalyticsEvent('whatsapp_open', { path: '/carrito' }); }}>
         Consultar por WhatsApp (opcional)
       </a>}
     </> : null}
+    {checkoutUrl === null ? null : <a className="button button-primary" href={checkoutUrl}>Ir a Mercado Pago</a>}
     {error !== '' ? <p role="alert">{error}</p> : null}
-    {receipt === null && linkedToken === null && registrationEnabled ? <>
+    {receipt === null && linkedToken === null && registrationEnabled && !simpleProgress ? <>
       <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : fulfillment.method === 'coordinated_pickup'
         ? 'El retiro no agrega costo. Verificamos los productos para mostrarte el total final antes de pagar.'
         : 'El envío por correo requiere una cotización confirmada. También podés elegir retiro y coordinarlo con el negocio.'}</p>
-      <button className="button button-primary" type="button" disabled={disabled || busy || fulfillment === null || items.length === 0}
-        onClick={() => void operate('create')}>{busy ? 'Guardando tus datos…' : identity === null ? 'Continuar con mi compra' : 'Reenviar el mismo intento'}</button>
+      <button className="button button-primary" type="button" disabled={disabled || busy || recovering || fulfillment === null || items.length === 0}
+        onClick={() => void operate('create')}>{busy ? 'Estamos preparando tu compra…' : fulfillment?.method === 'correo_argentino' ? 'Solicitar cotización de envío' : 'Continuar al pago'}</button>
     </> : null}
-    {identity !== null || linkedToken !== null ? <button className="button button-secondary" type="button" disabled={disabled || busy}
-      onClick={() => void operate('recover')}>Consultar estado de la solicitud</button> : null}
+    {showRecovery ? <button className="button button-secondary" type="button" disabled={disabled || busy || recovering}
+      onClick={() => void operate('recover')}>Consultar mi compra</button> : null}
     {linkedToken === null && receipt !== null && identity !== null && registrationEnabled && canPrepareAnother(receipt) ? <button className="text-button" type="button" disabled={disabled || busy}
-      onClick={() => void operate('new')}>Preparar otra solicitud</button> : null}
+      onClick={() => void operate('new')}>Iniciar otra compra</button> : null}
   </section>;
 }
 
 function receiptStatusMessage(receipt: WebRequestReceipt): string {
   if (receipt.paymentStatus === 'approved') {
     return receipt.paymentRequiresReview
-      ? 'Pago recibido. No vuelvas a pagar: la gestión de la reserva requiere revisión administrativa.'
+      ? 'Recibimos tu pago. Tu pedido está en revisión. No vuelvas a pagar. Nos pondremos en contacto si necesitamos algo.'
       : 'Pago recibido y acreditado.';
   }
   if (receipt.paymentStatus === 'refunded') {
     return receipt.paymentRequiresReview
-      ? 'Pago reintegrado. La devolución física y la reserva requieren revisión administrativa.'
-      : 'Pago reintegrado. El reintegro no repone inventario por sí solo.';
+      ? 'Tu pago fue reintegrado. Nos pondremos en contacto para revisar tu pedido.'
+      : 'Tu pago fue reintegrado.';
   }
   if (receipt.paymentStatus === 'pending') return 'El pago está pendiente de acreditación. No vuelvas a pagarlo.';
-  if (receipt.preparationStatus === 'preparing') return 'Estamos verificando tus productos y reservando el stock. El total final aparecerá aquí para continuar al pago.';
-  if (receipt.preparationStatus === 'uncertain') return 'Estamos recuperando la confirmación de Dux. Tu compra está guardada; no vuelvas a cargarla.';
+  if (receipt.preparationStatus === 'preparing' || receipt.preparationStatus === 'uncertain') return 'Estamos confirmando disponibilidad y total.';
   if (receipt.preparationStatus === 'failed') return 'No pudimos preparar esta compra. Revisá los productos y cantidades; podés corregir el carrito e iniciar otra.';
-  if (receipt.reservationStatus === 'requires_review') return 'La gestión de la reserva requiere revisión. El pago permanece bloqueado.';
-  if (receipt.reservationStatus === 'finalized') return 'La gestión del pedido está finalizada.';
-  if (receipt.reservationStatus === 'released') return 'La reserva de este pedido fue liberada.';
+  if (receipt.reservationStatus === 'requires_review' || receipt.preparationStatus === 'requires_review') return 'Necesitamos revisar tu pedido antes de continuar al pago. Nos pondremos en contacto.';
+  if (receipt.reservationStatus === 'finalized') return 'Tu pedido está finalizado.';
+  if (receipt.reservationStatus === 'released') return 'Esta compra ya no está disponible para pagar. Podés iniciar otra compra.';
   if (receipt.reservationStatus === 'confirmed') {
     if (receipt.checkoutAvailable) {
       return receipt.paymentStatus === 'rejected' || receipt.paymentStatus === 'cancelled'
-        ? 'La reserva sigue confirmada y el intento anterior no se acreditó. Podés volver a iniciar Mercado Pago.'
-        : 'Tu stock está reservado y el total está confirmado. Podés pagar con Mercado Pago.';
+        ? 'El pago anterior no se completó. Podés volver a Mercado Pago con esta misma compra.'
+        : 'Tu compra está lista para pagar. Podés continuar a Mercado Pago.';
     }
-    return 'Tu stock está reservado y el total está confirmado. El pago todavía no está disponible.';
+    return 'El total está confirmado. Te avisaremos cuando puedas continuar al pago.';
   }
-  if (receipt.status === 'rejected') return 'No hay cobro ni reserva acreditados para esta solicitud.';
-  if (receipt.status === 'accepted') return 'El comercio está preparando tu pedido. El pago se habilitará cuando confirme la reserva y el total.';
-  return 'Sin cobro ni reserva acreditados por este registro.';
+  if (receipt.status === 'rejected') return 'No pudimos completar esta compra. No se confirmó ningún cobro. Podés revisar el carrito e iniciar otra.';
+  return 'Estamos revisando disponibilidad y entrega. Te avisaremos cuando puedas continuar al pago.';
 }
 
 function shouldWatchRequest(receipt: WebRequestReceipt): boolean {
@@ -214,5 +250,3 @@ function canPrepareAnother(receipt: WebRequestReceipt): boolean {
 function formatMinor(value: number): string {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: value % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 }).format(value / 100);
 }
-
-function message(error: unknown): string { return error instanceof Error ? error.message : 'No se pudo completar la solicitud.'; }

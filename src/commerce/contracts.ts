@@ -65,6 +65,7 @@ export type PublicOrderStatus =
   | 'failed';
 
 export type PublicOrderStatusResponse = Readonly<{
+  orderNumber: string;
   status: PublicOrderStatus;
   payment?: OrderPaymentState;
   currency: 'ARS';

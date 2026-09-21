@@ -7,3 +7,21 @@
   max-inline-size: 100%;
   white-space: normal;
 }
+
+.web-request-spinner {
+  display: block;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 3px solid #c9d8c4;
+  border-block-start-color: #3f6f2a;
+  border-radius: 50%;
+  animation: web-request-spin 1s linear infinite;
+}
+
+@keyframes web-request-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .web-request-spinner { animation: none; }
+}

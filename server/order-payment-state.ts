@@ -1,4 +1,5 @@
 import type { PublicOrderStatusResponse } from '../src/commerce/contracts';
+import { formatOrderNumber } from '../src/commerce/contracts';
 import type { OrderPaymentState } from '../src/commerce/payment-state';
 import { parseOrderPaymentState } from '../src/commerce/payment-state';
 import { HttpError } from './http';
@@ -57,14 +58,15 @@ export async function getOrderPaymentState(database: D1Database, orderId: string
 /** Una sola lectura mantiene coherentes el pedido y su evidencia financiera. */
 export async function getPublicOrderState(database: D1Database, tokenHash: string): Promise<PublicOrderStatusResponse | null> {
   const row = await database.prepare(`WITH target AS (SELECT * FROM orders WHERE public_token_hash = ?)
-    SELECT o.status, o.currency, o.total_minor, o.item_count, o.updated_at, ${paymentColumns}
+    SELECT o.id, o.status, o.currency, o.total_minor, o.item_count, o.updated_at, ${paymentColumns}
     FROM target o ${paymentJoin('target')}`)
     .bind(tokenHash).first<PaymentSummaryRow & Readonly<{
-      status: PublicOrderStatusResponse['status']; currency: 'ARS';
+      id: string; status: PublicOrderStatusResponse['status']; currency: 'ARS';
       total_minor: number; item_count: number; updated_at: string;
     }>>();
   if (row === null) return null;
   return Object.freeze({
+    orderNumber: formatOrderNumber(row.id),
     status: row.status, currency: row.currency, totalMinor: row.total_minor,
     itemCount: row.item_count, updatedAt: row.updated_at, payment: readPayment(row),
   });
