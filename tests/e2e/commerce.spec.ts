@@ -242,7 +242,7 @@ test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar dat
   expect(checkouts).toBe(1);
 });
 
-test('compra directa: un solo CTA prepara y redirige sin mostrar la infraestructura interna', async ({ page }) => {
+test('compra directa: un solo CTA prepara y redirige sin pausas adicionales tras una respuesta lenta', async ({ page }) => {
   const token = 'c'.repeat(64);
   const receipt = { reference: 'WEB-abcdefghijklmnopqrstuvwx', status: 'submitted',
     createdAt: '2026-09-21T12:00:00.000Z', updatedAt: '2026-09-21T12:00:00.000Z',
@@ -251,11 +251,14 @@ test('compra directa: un solo CTA prepara y redirige sin mostrar la infraestruct
   let creates = 0;
   let preparations = 0;
   let checkouts = 0;
+  let releaseCreate: (() => void) | undefined;
+  const createGate = new Promise<void>((resolve) => { releaseCreate = resolve; });
   await page.clock.install();
   await page.route('**/api/orders/request-capability', (route) => route.fulfill({ json: { enabled: true } }));
-  await page.route('**/api/orders/request', (route) => {
+  await page.route('**/api/orders/request', async (route) => {
     creates += 1;
     expect(route.request().postDataJSON()).toMatchObject({ mode: 'create' });
+    await createGate;
     return route.fulfill({ status: 201, json: { ...receipt, publicToken: token } });
   });
   await page.route(`**/api/orders/${token}/prepare`, (route) => {
@@ -285,8 +288,10 @@ test('compra directa: un solo CTA prepara y redirige sin mostrar la infraestruct
   await expect(page.locator('body')).not.toContainText(/Solicitud registrada|WEB-|Enlace protegido|Consultar estado de la solicitud|Dux|verificaciones/u);
   await expect(page.getByRole('button', { name: 'Consultar mi compra' })).toHaveCount(0);
   expect(checkouts).toBe(0);
-  await page.clock.fastForward(5000);
-  await expect(page).toHaveURL('https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-direct-ux');
+  await expect.poll(() => creates).toBe(1);
+  await page.clock.fastForward(8000);
+  releaseCreate?.();
+  await expect(page).toHaveURL('https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=synthetic-direct-ux', { timeout: 2000 });
   expect(creates).toBe(1);
   expect(preparations).toBe(1);
   expect(checkouts).toBe(1);

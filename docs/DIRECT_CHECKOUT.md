@@ -29,6 +29,22 @@ Dux permanecen internamente y en administración, sin dominar la pantalla públi
 La validación y los límites del smoke de esta corrección se documentan en
 [UX de compra directa](validation/DIRECT_CHECKOUT_UX_2026-09-21.md).
 
+### Esperas del navegador — 2026-09-21
+
+La preparación automática cuenta el intervalo de cinco segundos entre inicios
+de peticiones, incluyendo el tiempo que ya consumió la respuesta anterior y el
+alta inicial. Nunca inicia dos avances simultáneos. Si la respuesta tarda más
+que ese intervalo, continúa sin añadir otra pausa de cinco segundos. Al volver
+a una pestaña visible retoma cuando vence el plazo pendiente, sin añadir un
+minuto. Una pestaña oculta no inicia consultas; errores, estados terminales y
+el límite de 120 avances siguen deteniendo la observación automática.
+
+Esto sólo elimina esperas del navegador. Conserva el coordinador compartido de
+Dux, sus ventanas separadas seis segundos, cada validación de la reserva y el
+requisito de total confirmado antes de Checkout Pro. La recuperación de una
+compra anterior sigue sin redirigir por sí sola. Véase la
+[comparación controlada y validación](validation/DIRECT_CHECKOUT_PERFORMANCE_2026-09-21.md).
+
 El [smoke productivo del 21 de septiembre](validation/DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md)
 acreditó ese recorrido sin aprobación administrativa, abrió Checkout Pro sin
 cobrar y cerró la reserva de prueba por Dux y Shekinah. Consultar

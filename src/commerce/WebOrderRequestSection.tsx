@@ -9,6 +9,7 @@ import { prepareWebRequest, readWebRequest, recoverWebRequest, startWebRequestCh
 import { finishWebRequestIdentity, getOrCreateWebRequestIdentity, readWebRequestIdentity } from './web-request-session';
 
 const MAX_AUTOMATIC_CHECKS = 8;
+const DIRECT_CHECK_INTERVAL_MS = 5000;
 const PUBLIC_ERROR = 'No pudimos continuar con tu compra. Volvé a consultar o intentá nuevamente.';
 
 export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange }: Readonly<{
@@ -30,6 +31,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     return token !== null && /^[a-f0-9]{64}$/u.test(token) ? token : null;
   });
   const busyRef = useRef(false);
+  const lastDirectRequestStartedAt = useRef<number | null>(null);
   // Sólo el gesto de compra de esta visita autoriza una continuación automática.
   // Recuperar desde IndexedDB o un enlace nunca vuelve a abrir Mercado Pago solo.
   const continueAutomatically = useRef(false);
@@ -78,29 +80,50 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
     const controller = new AbortController();
     let checks = 0;
     let timer: number | undefined;
+    let inFlight = false;
+    let stopped = false;
+    let nextCheckAt = directPreparing
+      ? (lastDirectRequestStartedAt.current ?? performance.now()) + DIRECT_CHECK_INTERVAL_MS
+      : performance.now() + 15_000;
     setRefreshState('watching');
     const schedule = () => {
-      if (checks >= (directPreparing ? 120 : MAX_AUTOMATIC_CHECKS)) { setRefreshState('paused'); return; }
-      timer = window.setTimeout(() => void refresh(), directPreparing ? 5000 : Math.min(15_000 * 2 ** checks, 60_000));
+      window.clearTimeout(timer);
+      if (controller.signal.aborted || stopped || inFlight) return;
+      if (checks >= (directPreparing ? 120 : MAX_AUTOMATIC_CHECKS)) { stopped = true; setRefreshState('paused'); return; }
+      if (document.visibilityState === 'hidden') return;
+      timer = window.setTimeout(() => void refresh(), Math.max(0, nextCheckAt - performance.now()));
     };
     const refresh = async () => {
-      if (controller.signal.aborted) return;
-      if (document.visibilityState === 'hidden' || busyRef.current) {
-        timer = window.setTimeout(() => void refresh(), 60_000);
+      if (controller.signal.aborted || stopped || inFlight || document.visibilityState === 'hidden') return;
+      if (busyRef.current) {
+        timer = window.setTimeout(() => void refresh(), 1000);
         return;
       }
       checks += 1;
+      inFlight = true;
+      const startedAt = performance.now();
+      if (directPreparing) lastDirectRequestStartedAt.current = startedAt;
       try {
         const current = directPreparing ? await prepareWebRequest(publicToken, controller.signal) : await readWebRequest(publicToken, controller.signal);
         if (controller.signal.aborted) return;
         setReceipt(current);
-        if (shouldWatchRequest(current)) schedule();
+        if (shouldWatchRequest(current)) {
+          // La respuesta ya consume el intervalo. Nunca solapar avances ni añadir
+          // otros cinco segundos a una llamada lenta; el servidor conserva su límite Dux.
+          nextCheckAt = directPreparing ? startedAt + DIRECT_CHECK_INTERVAL_MS
+            : performance.now() + Math.min(15_000 * 2 ** checks, 60_000);
+        } else stopped = true;
       } catch {
+        stopped = true;
         if (!controller.signal.aborted) { setRefreshState('error'); setError(PUBLIC_ERROR); }
+      } finally {
+        inFlight = false;
+        schedule();
       }
     };
+    document.addEventListener('visibilitychange', schedule);
     schedule();
-    return () => { controller.abort(); window.clearTimeout(timer); };
+    return () => { controller.abort(); window.clearTimeout(timer); document.removeEventListener('visibilitychange', schedule); };
   }, [publicToken, awaitingUpdate, refreshVersion, directPreparing]);
 
   const startCheckout = useCallback(async (): Promise<void> => {
@@ -143,6 +166,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         await finishWebRequestIdentity(identity.idempotencyKey);
         if (mounted.current) {
           continueAutomatically.current = false;
+          lastDirectRequestStartedAt.current = null;
           setIdentity(null); setReceipt(null); setCheckoutUrl(null); onActiveChange(false);
         }
       } else if (action === 'recover') {
@@ -154,6 +178,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         const saved = await getOrCreateWebRequestIdentity();
         continueAutomatically.current = true;
         if (mounted.current) { setIdentity(saved); onActiveChange(true); }
+        lastDirectRequestStartedAt.current = performance.now();
         const result = await submitWebRequest(saved, items, fulfillment);
         if (mounted.current) { focusReceipt.current = true; setReceipt(result); }
       }

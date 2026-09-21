@@ -47,6 +47,63 @@ afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks();
 const ready: WebRequestReceipt = { ...receipt, status: 'accepted', preparationStatus: 'prepared',
   reservationStatus: 'confirmed', checkoutAvailable: true, totalMinor: 350000 };
 
+it('no agrega cinco segundos entre respuestas lentas: seis pasos de ocho segundos llegan al pago en 48 segundos', async () => {
+  vi.useFakeTimers();
+  const preparing = { ...receipt, preparationStatus: 'preparing' as const };
+  doubles.submit.mockImplementation(() => new Promise(resolve => window.setTimeout(() => resolve(preparing), 8000)));
+  let steps = 0;
+  let inFlight = 0;
+  let maximumInFlight = 0;
+  doubles.prepare.mockImplementation(() => {
+    steps += 1;
+    inFlight += 1;
+    maximumInFlight = Math.max(maximumInFlight, inFlight);
+    return new Promise(resolve => window.setTimeout(() => {
+      inFlight -= 1;
+      resolve(steps === 5 ? ready : preparing);
+    }, 8000));
+  });
+  let checkoutAt = Number.POSITIVE_INFINITY;
+  doubles.checkout.mockImplementation(() => {
+    checkoutAt = performance.now();
+    return new Promise(() => undefined);
+  });
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  const startedAt = performance.now();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar al pago' }));
+    await Promise.resolve();
+  });
+  for (let timer = 0; timer < 20 && doubles.checkout.mock.calls.length === 0; timer += 1) {
+    await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
+  }
+  expect(doubles.submit).toHaveBeenCalledTimes(1);
+  expect(doubles.prepare).toHaveBeenCalledTimes(5);
+  expect(maximumInFlight).toBe(1);
+  expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(ready.publicToken, ready.totalMinor);
+  expect(checkoutAt - startedAt).toBeLessThanOrEqual(48_010);
+});
+
+it('mantiene cinco segundos entre inicios rápidos y el máximo de 120 avances directos', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity);
+  const preparing = { ...receipt, preparationStatus: 'preparing' as const };
+  doubles.recover.mockResolvedValue(preparing);
+  const starts: number[] = [];
+  doubles.prepare.mockImplementation(() => {
+    starts.push(performance.now());
+    return Promise.resolve(preparing);
+  });
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(starts).toHaveLength(120);
+  expect(starts.slice(1).every((start, index) => start - (starts[index] ?? start) >= 5000)).toBe(true);
+  expect(screen.getByText(/La confirmación está tardando más de lo esperado/u)).toBeVisible();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
 it('prepara una compra nueva y continúa automáticamente una sola vez, incluso en StrictMode', async () => {
   vi.useFakeTimers();
   doubles.submit.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
@@ -311,7 +368,7 @@ it('espacia y limita las lecturas automáticas sin cambiar cuotas ni reenviar el
   expect(doubles.checkout).not.toHaveBeenCalled();
 });
 
-it('pausa las lecturas en una pestaña oculta y retoma al volver a estar visible', async () => {
+it('pausa las lecturas en una pestaña oculta y retoma al volver sin esperar otro minuto', async () => {
   vi.useFakeTimers();
   const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(receipt);
@@ -321,8 +378,50 @@ it('pausa las lecturas en una pestaña oculta y retoma al volver a estar visible
   await act(async () => { await vi.advanceTimersByTimeAsync(75_000); });
   expect(doubles.token).not.toHaveBeenCalled();
   visibility.mockReturnValue('visible');
-  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+  });
   expect(doubles.token).toHaveBeenCalledTimes(1);
+});
+
+it('volver a la pestaña durante una preparación lenta no solapa otro avance', async () => {
+  vi.useFakeTimers();
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
+  doubles.prepare.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    visibility.mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(30_000);
+    visibility.mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it.each(['error', 'ready'] as const)('la visibilidad no reinicia avances tras %s', async (resolution) => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
+  if (resolution === 'error') doubles.prepare.mockRejectedValue(new Error('Proveedor no disponible'));
+  else doubles.prepare.mockResolvedValue(ready);
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  expect(doubles.checkout).not.toHaveBeenCalled();
 });
 
 it('un fallo detiene la consulta automática y permite recuperar el mismo intento', async () => {
