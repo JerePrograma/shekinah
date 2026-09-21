@@ -211,7 +211,11 @@ async function advanceReservation(database: D1Database, identity: Identity, toke
     database.prepare(`UPDATE dux_order_operations SET status = 'confirmed', response_json = ?, provider_operation_id = ?,
       error_code = NULL, confirmed_at = ?, updated_at = ? WHERE order_id = ? AND action = 'reserve' AND status IN ('pending','uncertain')
       AND EXISTS (SELECT 1 FROM checkout_intents WHERE web_request_id = ? AND direct_checkout_claim_token = ? AND direct_checkout_lease_until_ms > ?)`)
-      .bind(JSON.stringify({ order: confirmedOrder, stockAfter: progress.stockAfter }), String(confirmedOrder.id), timestamp, timestamp, operation.order_id,
+      // La comparación anterior acredita la referencia exacta o su forma ASCII
+      // en mayúsculas. D1 conserva la identidad interna original y la auditoría
+      // conserva por separado la referencia literal devuelta por el proveedor.
+      .bind(JSON.stringify({ order: { ...confirmedOrder, reference: request.referencia },
+        providerReference: confirmedOrder.reference, stockAfter: progress.stockAfter }), String(confirmedOrder.id), timestamp, timestamp, operation.order_id,
         identity.web_request_id, token, confirmedAt),
     database.prepare(`UPDATE dux_order_links SET reservation_state = 'confirmed', dux_order_id = ?, dux_order_number = ?,
       confirmed_at = ?, last_error_code = NULL, updated_at = ? WHERE order_id = ? AND reservation_state IN ('pending','uncertain')

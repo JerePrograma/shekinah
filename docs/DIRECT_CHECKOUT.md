@@ -37,6 +37,13 @@ La coordinación ocupa una consulta D1 por intento y reserva ventanas de inicio 
 
 ## Pago y cierre
 
+Dux puede devolver la referencia ASCII completa en mayúsculas. La recuperación
+acepta únicamente la identidad exacta o esa normalización, rechaza coincidencias
+múltiples y conserva todos los cotejos de empresa, sucursal, líneas y total. No
+reenvía el POST. La evidencia normalizada usa la identidad interna inmutable y
+`providerReference` conserva la referencia literal del proveedor; los guards D1
+y las migraciones aplicadas no se modifican.
+
 El endpoint de Checkout Pro existente acepta la reserva automática sólo con `DIRECT_CHECKOUT_ENABLED=true` y todos los guards 0024 presentes. Reutiliza su preferencia persistida y no inicia un pago antes de confirmar stock y total. Las evidencias autoritativas de Mercado Pago conservan su prioridad aunque exista una incidencia Dux. La redirección y el retorno no acreditan un pago; el webhook verifica al proveedor. El checkout legacy y el Link de Pago manual permanecen retirados.
 
 La API pública revisada no documenta anular o finalizar pedidos. El cierre operativo usa la [gestión de pedidos](https://ayuda.duxsoftware.com.ar/es/articles/8886589-gestion-de-pedidos) y la [reserva de stock](https://ayuda.duxsoftware.com.ar/es/articles/8736752-como-utilizar-reserva-de-stock) oficiales de Dux, y luego la confirmación administrativa existente en Shekinah. Se conservan los guards de 30 minutos desde el intento de pago, conciliación de hasta dos minutos y bloqueo de liberación con pago pendiente o aprobado. Finalizar requiere pago aprobado verificado. Un reintegro no repone stock automáticamente.

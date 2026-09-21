@@ -82,6 +82,25 @@ it('prepara automáticamente con precio vivo, stock decimal, total final y una s
   } finally {test.db.close();}
 });
 
+it('recupera el pedido que Dux normalizó a mayúsculas y verifica stock sin reenviar la creación', async () => {
+  const test = setup();
+  try {
+    await test.steps(3);
+    const created = await test.findOrder();
+    if (created === null) throw new Error('Falta el pedido de la prueba');
+    test.findOrder.mockResolvedValue({ ...created, reference: created.reference.toUpperCase() });
+    await test.steps(5);
+    expect(await readAssistedCheckoutAdminState(test.db, env, id))
+      .toMatchObject({ state: 'prepared', prepared: { reservationStatus: 'confirmed', totalMinor: 700000 } });
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(test.readItem).toHaveBeenCalledTimes(2);
+    expect(await test.db.prepare('SELECT dux_reference FROM dux_order_links').first())
+      .toEqual({ dux_reference: `shekinah:web:${id}` });
+    expect(await test.db.prepare("SELECT json_extract(response_json, '$.order.reference') AS reference, json_extract(response_json, '$.providerReference') AS providerReference FROM dux_order_operations").first())
+      .toEqual({ reference: `shekinah:web:${id}`, providerReference: `shekinah:web:${id}`.toUpperCase() });
+  } finally { test.db.close(); }
+});
+
 it('cierra idempotentemente una consulta Dux fallida sin orden, reserva ni pago y conserva el error', async () => {
   const test = setup();
   try {

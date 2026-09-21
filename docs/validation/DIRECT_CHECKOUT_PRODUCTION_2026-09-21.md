@@ -4,8 +4,10 @@
 
 Se autorizó habilitar compra directa para retiro coordinado, consultar Dux en vivo,
 crear una sola reserva automática y abrir Checkout Pro sin efectuar un pago real.
-La configuración quedó desplegada, pero el smoke todavía no acredita el circuito
-completo: la consulta real a Dux falló antes de crear una orden o reserva.
+La configuración quedó desplegada. El primer intento de smoke falló al consultar
+Dux antes de crear una orden o reserva; las secciones siguientes conservan ese
+intento y documentan la recuperación posterior. El circuito completo sólo puede
+declararse acreditado tras comprobar Checkout Pro y cerrar la prueba.
 
 ## Base y preservación
 
@@ -193,6 +195,74 @@ seguridad y automatización. `git diff --check` aprobó antes de preparar las ru
 explícitas del cambio. La modificación local preexistente mantiene su SHA-256.
 
 ## Pendientes al registrar este intento
+
+### Segundo hallazgo productivo: normalización de referencia
+
+La corrección `d50cb0db3bb6eccfbf1a665c9e4a358349e70a4a` se publicó en `main`.
+Pages `d590a97d-e5b4-4ce7-a6f0-21416dc88d6a` terminó `success`; la API confirmó
+ese SHA asociado canónicamente a `shekinah.ar` a las 05:03:12 UTC. La lectura
+autenticada posterior confirmó `directCheckout.ready=true`, sin blockers.
+CI `35562947391`, job `106219139820`, terminó `success` y publicó el artefacto
+`shekinah-dist-d50cb0db3bb6eccfbf1a665c9e4a358349e70a4a` (`10622777999`).
+
+Al recuperar la misma solicitud desde el carrito, la consulta viva avanzó y
+Shekinah la aceptó automáticamente con actor `system:direct_checkout`. Creó una
+sola orden interna `ord_wNdSN3hQXcKHU4SPz1DsRUks` y un único intento Dux, registrado
+a las 05:04:10.946 UTC. No hubo aceptación administrativa ni pedido manual.
+
+La UI de Dux acreditó el pedido **00000001**, una unidad de `799000001`, importe
+ARS 3.500, sin facturar ni remitir. El GET oficial `/v2/pedidos` devolvió HTTP 200,
+id `3417590`, número `1`, moneda `1`, total `3500`, no anulado, y referencia
+`SHEKINAH:WEB:REQ_KLYBZQNNZCZBF1NAUWVXDJJN`. Dux había convertido la referencia
+ASCII completa a mayúsculas; la comparación literal impedía recuperar el pedido.
+Se mantuvo la operación incierta y no se volvió a enviar el POST.
+
+La lectura de stock posterior tuvo primero un HTTP 400 `ERROR_VALIDACION`,
+conservando evidencia de la intermitencia del proveedor; una nueva lectura
+HTTP 200 acreditó stock real **14**, reservado **1** y disponible **13**.
+Se conserva así el stock real mientras la reserva ocupa una unidad.
+
+La corrección acotada reconoce la referencia exacta o su forma ASCII en mayúsculas,
+sin recortar, aceptar prefijos ni omitir cotejos comerciales. La evidencia final
+conserva la identidad interna original y además la referencia literal del
+proveedor en `providerReference`. No cambia migraciones ni guards financieros.
+La prueba inicial reprodujo cuatro fallas antes del arreglo. Una iteración
+intermedia detectó además el cotejo exacto del guard D1; se conservó ese guard y
+se ajustó la representación normalizada con auditoría del valor original.
+Las dos suites dirigidas finales aprobaron **56/56**, incluyendo recuperación,
+reserva física, ambigüedad tras normalización y ausencia de segundo POST.
+
+La primera invocación de pruebas filtradas mediante `npx.cmd` falló por la
+interpretación de `|` por CMD; se ejecutó después directamente el binario Node
+del repositorio. Ese intento no se cuenta como prueba ejecutada con éxito.
+El primer `verify` de este segundo arreglo detectó seis errores de lint en las
+pruebas nuevas (tipado de un resultado mock y continuación de línea). Se corrigió
+el test usando el retorno tipado del mock y una invocación sin ambigüedad; no se
+desactivaron reglas. La validación final se registra por separado.
+
+Con el POST de reserva ya realizado y la recuperación pausada en el navegador,
+se inició una nueva reconciliación controlada desde el botón existente del
+backoffice, en el despliegue corregido. Es una revalidación posterior al intento
+fallido conservado, no un cambio del umbral ni una secuencia de reintentos ciegos.
+Esa reconciliación `dux_sync_fd98f23c-3bc1-4841-aa4d-febfcfb3f87d` terminó
+`succeeded`: 862 procesados y cero fallas, desde 05:10:14.944 hasta
+05:12:17.220 UTC. Readiness autenticado confirmó `snapshotFresh=true` y
+`assistedCheckout.blockers=[]`. La única revisión Dux corresponde al smoke en
+recuperación; no hubo incidencias financieras.
+
+El endpoint productivo `POST /api/webhooks/mercadopago` rechazó un cuerpo vacío
+`{}` sin firma con HTTP **401**, `WEBHOOK_SIGNATURE_MISSING`. No se envió un
+identificador de pago ni se simuló aprobación. El primer intento mediante
+PowerShell había fallado localmente por TLS `PartialChain`, sin respuesta HTTP;
+la verificación acreditada se realizó después desde el navegador con TLS válido.
+
+### Pendientes posteriores al segundo hallazgo
+
+La validación final del arreglo de referencia terminó con exit 0 en
+`npm run verify` (**788 tests aprobados, 14 omitidos, 29 E2E aprobados**) y en
+`npm run build:pages` (**788 tests aprobados, 14 omitidos**, compilación y todos
+los verificadores aprobados). `git diff --check` aprobó. La modificación local
+preexistente conserva su SHA-256 y se excluye nuevamente del commit.
 
 1. Precisar y resolver el rechazo de Dux; recuperar la misma solicitud sin
    duplicar el intento, acreditar reserva y total, abrir Checkout Pro sin pagar y

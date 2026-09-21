@@ -58,8 +58,33 @@ it('una referencia sin resultados no demuestra que sea seguro repetir la creaci�
   expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
 });
 
+it('recupera la referencia ASCII que Dux devuelve en mayúsculas sin cambiar la identidad enviada', async () => {
+  const canonical = request.referencia.toUpperCase();
+  const { client, fetchMock } = setup(() => Response.json(page([order({ referencia: canonical })])));
+  const result = await client.findOrder(lookup);
+  expect(result?.reference).toBe(canonical);
+  expect(duxOrderMatchesRequest(result!, request)).toBe(true);
+  expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it('acepta la respuesta de creación normalizada por Dux sin un segundo POST', async () => {
+  const { client, fetchMock } = setup(() => Response.json({ datos: order({ referencia: request.referencia.toUpperCase() }) }));
+  expect((await client.createOrder(request)).number).toBe(101);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(request));
+});
+
+it.each(['SHEKINAH:WEB:REQ_TEST_ORDER_EXTRA', 'SHEKINAH:WEB:REQ-TEST-ORDER', ' SHEKINAH:WEB:REQ_TEST_ORDER'])(
+'no confunde otra referencia con la normalización del proveedor: %s', async (reference) => {
+  const { client } = setup(() => Response.json(page([order({ referencia: reference })])));
+  expect(await client.findOrder(lookup)).toBeNull();
+  expect(duxOrderMatchesRequest(parseDuxOrderEvidence(order({ referencia: reference })), request)).toBe(false);
+});
+
 it.each([
   ['duplicados', page([order(), order({ id_pedido: 102 })]), 'DUX_ORDER_REFERENCE_AMBIGUOUS'],
+  ['duplicados tras normalización', page([order(), order({ id_pedido: 102, referencia: request.referencia.toUpperCase() })]), 'DUX_ORDER_REFERENCE_AMBIGUOUS'],
   ['otra empresa', page([order({ id_empresa: 11 })]), 'DUX_ORDER_RESPONSE_INVALID'],
   ['otra sucursal', page([order({ id_sucursal_empresa: 21 })]), 'DUX_ORDER_RESPONSE_INVALID'],
   ['paginación incompleta', page([order()], { hay_mas: true }), 'DUX_ORDER_RESPONSE_INVALID'],

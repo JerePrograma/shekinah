@@ -114,7 +114,7 @@ export class DuxOrderApiClient {
     if (orders.some((order) => order.companyId !== lookup.companyId || order.branchId !== lookup.branchId)) throw invalid();
     // El filtro del proveedor no se presupone exacto: la referencia retornada
     // se coteja antes de recuperar un POST cuyo resultado sea desconocido.
-    const matching = orders.filter((order) => order.reference === lookup.reference);
+    const matching = orders.filter((order) => matchesDuxReference(order.reference, lookup.reference));
     if (matching.length > 1) {
       throw new HttpError(409, 'DUX_ORDER_REFERENCE_AMBIGUOUS', 'Dux devolvió más de un pedido para esta compra.');
     }
@@ -176,7 +176,7 @@ export class DuxOrderApiClient {
 
 export function duxOrderMatchesRequest(order: DuxOrderEvidence, input: DuxOrderRequest): boolean {
   if (order.companyId !== input.id_empresa || order.branchId !== input.id_sucursal ||
-      order.reference !== input.referencia || order.cancelled || order.lines.length !== input.items.length) return false;
+      !matchesDuxReference(order.reference, input.referencia) || order.cancelled || order.lines.length !== input.items.length) return false;
   const seen = new Set<string>();
   return order.lines.every((line) => {
     const expected = input.items.find((item) => item.cod_item === line.code);
@@ -185,6 +185,12 @@ export function duxOrderMatchesRequest(order: DuxOrderEvidence, input: DuxOrderR
     return line.quantity === expected.ctd && Math.abs(line.unitPrice - expected.precio_uni) < 0.00000001 &&
       line.vatPercent === expected.porc_iva && line.discountPercent === expected.porc_desc;
   });
+}
+
+function matchesDuxReference(actual: string, expected: string): boolean {
+  // Dux guarda las referencias ASCII en mayúsculas (acreditado por API).
+  // No recortar ni aceptar prefijos; conservar la identidad persistida original.
+  return actual === expected || (/^[A-Za-z0-9:_-]+$/u.test(expected) && actual === expected.toUpperCase());
 }
 
 export function parseDuxOrderEvidence(value: unknown): DuxOrderEvidence {
