@@ -345,6 +345,111 @@ h1 {
   filter: drop-shadow(0 1rem 1.3rem rgb(19 56 12 / 16%));
 }
 
+.maintenance-page {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(1.25rem, 5vw, 4rem);
+  background:
+    radial-gradient(circle at 15% 15%, rgb(182 202 177 / 58%), transparent 30rem),
+    radial-gradient(circle at 85% 80%, rgb(91 135 61 / 16%), transparent 28rem),
+    linear-gradient(145deg, #f8fbf7, var(--color-sage-light));
+}
+
+.maintenance-page::before {
+  position: absolute;
+  top: -8rem;
+  right: -7rem;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 50%;
+  background: rgb(91 135 61 / 10%);
+  content: "";
+}
+
+.maintenance-card {
+  position: relative;
+  width: min(100%, 44rem);
+  padding: clamp(2.25rem, 6vw, 4.5rem);
+  border: 1px solid rgb(19 56 12 / 12%);
+  border-radius: clamp(1.5rem, 4vw, 2.25rem);
+  background: rgb(255 255 255 / 88%);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  backdrop-filter: blur(18px);
+}
+
+.maintenance-logo {
+  display: block;
+  width: clamp(6.5rem, 16vw, 9rem);
+  height: auto;
+  margin: 0 auto 1.75rem;
+  filter: drop-shadow(0 0.9rem 1.4rem rgb(19 56 12 / 14%));
+}
+
+.maintenance-kicker {
+  display: inline-flex;
+  margin: 0 0 1.25rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  color: var(--color-action);
+  background: var(--color-sage-light);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.maintenance-card h1 {
+  max-width: none;
+  margin-bottom: 1.25rem;
+  font-size: clamp(2.5rem, 7vw, 4.75rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.maintenance-message {
+  max-width: 34rem;
+  margin: 0 auto;
+  color: #36552f;
+  font-size: clamp(1.05rem, 2.2vw, 1.2rem);
+  line-height: 1.7;
+}
+
+.maintenance-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 2rem 0 0;
+  color: var(--color-action);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.maintenance-status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--color-leaf);
+  box-shadow: 0 0 0 0.3rem rgb(91 135 61 / 12%);
+}
+
+@media (max-width: 30rem) {
+  .maintenance-card {
+    padding-inline: 1.4rem;
+  }
+
+  .maintenance-card h1 {
+    font-size: clamp(2.25rem, 13vw, 3.2rem);
+  }
+
+  .maintenance-kicker {
+    font-size: 0.7rem;
+  }
+}
+
 .section {
   padding-block: clamp(4.5rem, 9vw, 7rem);
 }

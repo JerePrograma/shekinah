@@ -216,27 +216,25 @@ export function App() {
 
 function MaintenancePage() {
   return (
-    <main id="main-content">
-      <section className="hero" aria-labelledby="maintenance-title">
-        <div className="container hero-grid">
-          <div className="hero-content">
-            <p className="eyebrow">Shekinah</p>
-            <h1 id="maintenance-title">Estamos realizando tareas de mantenimiento.</h1>
-            <p className="hero-summary">
-              El sitio se encuentra temporalmente inhabilitado mientras realizamos mejoras.
-              Volverá a estar disponible pronto.
-            </p>
-          </div>
-          <div className="hero-visual" aria-hidden="true">
-            <img
-              className="brand-mark"
-              src={authorizedAssets.logo.path}
-              width="144"
-              height="144"
-              alt=""
-            />
-          </div>
-        </div>
+    <main id="main-content" className="maintenance-page">
+      <section className="maintenance-card" aria-labelledby="maintenance-title">
+        <img
+          className="maintenance-logo"
+          src={authorizedAssets.logo.path}
+          width="160"
+          height="160"
+          alt={authorizedAssets.logo.alt}
+        />
+        <p className="maintenance-kicker">Estamos trabajando en Shekinah</p>
+        <h1 id="maintenance-title">Sitio en mantenimiento</h1>
+        <p className="maintenance-message">
+          Estamos realizando mejoras para dejar todo listo.
+          Volvé a visitarnos pronto.
+        </p>
+        <p className="maintenance-status" role="status">
+          <span className="maintenance-status-dot" aria-hidden="true" />
+          Temporalmente fuera de línea
+        </p>
       </section>
     </main>
   );
