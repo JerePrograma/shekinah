@@ -9,6 +9,7 @@ import {
   navigationItems,
   siteContent,
 } from './content/site-content';
+import { shouldShowPublicMaintenance } from './maintenance';
 import { CartPage } from './pages/CartPage';
 import type { ProductInteractionState } from './admin/ProductManager';
 import { CatalogPage } from './pages/CatalogPage';
@@ -58,21 +59,36 @@ export function App() {
     return confirmed;
   }, [adminInteraction]);
   const { navigate, pathname, route } = useBrowserRoute(shouldNavigate);
+  const publicMaintenanceActive = shouldShowPublicMaintenance(route.id);
   const mainRef = useRef<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
 
   useEffect(() => {
+    if (publicMaintenanceActive) {
+      document.title = 'Mantenimiento | Shekinah';
+      document
+        .querySelector<HTMLMetaElement>('meta[name="description"]')
+        ?.setAttribute(
+          'content',
+          'Shekinah se encuentra temporalmente en mantenimiento.',
+        );
+      return;
+    }
     document.title = route.title;
     document
       .querySelector<HTMLMetaElement>('meta[name="description"]')
       ?.setAttribute('content', route.description);
-  }, [route.description, route.title]);
+  }, [publicMaintenanceActive, route.description, route.title]);
 
   useEffect(() => {
-    if (route.id !== 'admin' && route.id !== 'resolving-product') {
+    if (
+      !publicMaintenanceActive &&
+      route.id !== 'admin' &&
+      route.id !== 'resolving-product'
+    ) {
       void trackAnalyticsEvent('page_view', { path: pathname });
     }
-  }, [pathname, route.id]);
+  }, [pathname, publicMaintenanceActive, route.id]);
 
   useEffect(() => {
     if (previousPathname.current === pathname) return;
@@ -95,6 +111,10 @@ export function App() {
       setNavigationFeedback('');
     }
   }, [adminInteraction.busy, adminInteraction.dirty]);
+
+  if (publicMaintenanceActive) {
+    return <MaintenancePage />;
+  }
 
   const activePath = route.id === 'not-found' || route.id === 'resolving-product'
     ? null
@@ -191,6 +211,34 @@ export function App() {
         </div>
       </footer>
     </>
+  );
+}
+
+function MaintenancePage() {
+  return (
+    <main id="main-content">
+      <section className="hero" aria-labelledby="maintenance-title">
+        <div className="container hero-grid">
+          <div className="hero-content">
+            <p className="eyebrow">Shekinah</p>
+            <h1 id="maintenance-title">Estamos realizando tareas de mantenimiento.</h1>
+            <p className="hero-summary">
+              El sitio se encuentra temporalmente inhabilitado mientras realizamos mejoras.
+              Volverá a estar disponible pronto.
+            </p>
+          </div>
+          <div className="hero-visual" aria-hidden="true">
+            <img
+              className="brand-mark"
+              src={authorizedAssets.logo.path}
+              width="144"
+              height="144"
+              alt=""
+            />
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
