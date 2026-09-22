@@ -1,5 +1,17 @@
 # Arquitectura
 
+## Capa editorial vigente — 2026-09-22
+
+El flujo público es snapshot Dux → contenido local preservado → contenido
+Mercado Libre activo y aprobado. Esta última capa sólo aporta nombre visible,
+descripción e imágenes, según [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md).
+No cambia ID, slug, SKU, categorías, precio, stock, disponibilidad ni versión
+comercial Dux. La publicación conserva JSON con digest y puntero atómico de
+0019, sin migración nueva. Metadata no activa, asociación inválida o identidad
+incompatible impiden aplicar la fuente; una falla de sincronización mantiene
+la publicación anterior válida. Mercado Pago sigue separado como proveedor de
+pagos. Este contrato actualiza el alcance sobre nombres de los apartados históricos.
+
 ## Catálogo tras el retiro manual — 2026-09-07
 
 El usuario autorizó eliminar todos los productos manuales y conservar las fotos/descripciones ya vinculadas a Dux. El contrato vigente está en [Retiro manual y stock Dux](DUX_MANUAL_CATALOG_RETIREMENT.md). La migración 0018 prepara contenido editorial independiente y un retiro atómico; después del retiro no se reconstruye el catálogo compilado, el administrador lista Dux y las fichas muestran stock real, reservado y disponible con fecha de lectura. Las compras permanecen cerradas. Los conteos de 510/513 productos manuales y el rollback a catálogo local que aparecen más abajo son históricos. CI, deployment y operaciones remotas se acreditan por separado en los recibos del nuevo informe.

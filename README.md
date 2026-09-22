@@ -1,5 +1,16 @@
 # Shekinah
 
+## Contenido editorial Mercado Libre — 2026-09-22
+
+Dux conserva identidad, universo de productos, precio, stock y comercio. Una
+asociación verificada y aprobada con una publicación exclusivamente `active` de
+HERBOLARIOMDP puede aportar nombre visible, descripción e imágenes. Los objetos
+históricos sin título conservan el nombre Dux; las fuentes no activas confirmadas
+vuelven al contenido local autorizado. No se modifica Checkout Pro. El
+[contrato editorial](docs/MERCADO_LIBRE_EDITORIAL.md) actualiza el alcance sobre
+nombre y pausadas de las secciones históricas. La operación sigue pendiente de
+credenciales y OAuth ML propios; las pruebas simuladas no acreditan importación.
+
 ## Compra directa productiva — 2026-09-21
 
 El retiro coordinado permite carrito → datos → consulta viva de precio/stock →

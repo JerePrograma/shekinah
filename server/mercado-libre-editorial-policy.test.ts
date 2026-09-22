@@ -5,13 +5,27 @@ const base = { id: 'MLA12345678', seller_id: 445638367, site_id: 'MLA', title: '
   attributes: [{ id: 'SELLER_SKU', value_name: 'SKU-123' }], seller_custom_field: null, pictures: [picture], variations: [],
   available_quantity: 999, price: 99999 };
 
-it('acepta activos y pausados del vendedor autorizado y excluye campos transaccionales', () => {
+it('acepta activos del vendedor autorizado y excluye campos transaccionales', () => {
   const item = parseEditorialItem(base)[0]!;
   expect(item).toMatchObject({ sku: 'SKU-123', status: 'active', pictures: [{ id: picture.id, url: picture.secure_url }] });
   expect(item).not.toHaveProperty('price'); expect(item).not.toHaveProperty('available_quantity');
-  expect(admittedEditorialStatus('active')).toBe(true); expect(admittedEditorialStatus('paused')).toBe(true);
-  expect(admittedEditorialStatus('closed')).toBe(false);
+  expect(admittedEditorialStatus('active')).toBe(true);
   expect(() => parseEditorialItem({ ...base, seller_id: 123 })).toThrow();
+});
+
+it.each(['paused', 'closed', 'under_review', 'inactive', 'deleted', 'unknown', 'ACTIVE', ''])('excluye el estado editorial %s', status => {
+  expect(admittedEditorialStatus(status)).toBe(false);
+  expect(editorialCandidates([{ code: 'SKU-123', barcodes: [] }], [{ ...parseEditorialItem(base)[0]!, status }])).toEqual([]);
+});
+
+it.each(['', '   ', 'x'.repeat(501), 'Producto\ninesperado', 'Producto\u0000', null, 123])('rechaza un título corrupto o fuera de contrato: %s', title => {
+  expect(() => parseEditorialItem({ ...base, title })).toThrow();
+});
+
+it('conserva el título como texto presentacional validado, sin usarlo como identificador', () => {
+  const unit = parseEditorialItem({ ...base, title: '  Producto Ñandú 500 Gr  ', attributes: [] })[0]!;
+  expect(unit.title).toBe('Producto Ñandú 500 Gr');
+  expect(editorialCandidates([{ code: unit.title, barcodes: [] }], [unit])).toEqual([]);
 });
 
 it('usa sólo imágenes y códigos propios de la variante exacta y conserva el orden del proveedor', () => {
@@ -38,6 +52,16 @@ it('separa duplicados de SKU de coincidencias únicas sin aprobar por nombre o c
   const duplicate = { ...unit, itemId: 'MLA87654321' };
   expect(editorialCandidates(dux, [unit, duplicate]).every(c => !c.unique && c.state === 'pending_review')).toBe(true);
   expect(editorialCandidates([{ code: 'OTRO', barcodes: [] }], [unit])).toEqual([]);
+});
+
+it('mantiene dos variantes con el mismo identificador pendientes de revisión', () => {
+  const units = parseEditorialItem({ ...base, variations: [1, 2].map(id => ({
+    id, attributes: [{ id: 'SELLER_SKU', value_name: 'SKU-123' }], picture_ids: [picture.id],
+  })) });
+  expect(editorialCandidates([{ code: 'SKU-123', barcodes: [] }], units)).toEqual([
+    expect.objectContaining({ variationId: '1', unique: false, state: 'pending_review' }),
+    expect.objectContaining({ variationId: '2', unique: false, state: 'pending_review' }),
+  ]);
 });
 
 it('retira únicamente líneas comerciales inequívocas sin alterar instrucciones o advertencias', () => {

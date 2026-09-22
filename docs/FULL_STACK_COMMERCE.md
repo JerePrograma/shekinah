@@ -1,5 +1,15 @@
 # Comercio full-stack
 
+## Actualización editorial — 2026-09-22
+
+La [política editorial Mercado Libre](MERCADO_LIBRE_EDITORIAL.md) permite nombre
+visible, descripción e imágenes exclusivamente desde publicaciones `active`
+asociadas y aprobadas para una identidad Dux vigente. No modifica el comercio,
+los snapshots de pedidos, la reserva Dux ni Checkout Pro. El nombre público
+no es una clave de identidad o de idempotencia y no determina peso ni unidades.
+El estado comercial vigente está en [CURRENT_STATE.md](CURRENT_STATE.md);
+los cierres de las secciones anteriores en el tiempo son históricos.
+
 ## Estado y alcance
 
 Este documento describe la arquitectura preparada en el repositorio. Las verificaciones externas se informan por fecha y no habilitan por sí solas el comercio.

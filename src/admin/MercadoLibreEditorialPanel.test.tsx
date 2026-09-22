@@ -6,6 +6,7 @@ it('explica la conexión pendiente y no habilita importación sin el titular',as
   const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json({enabled:false,configured:false,connection:{connected:false},latest:null}));
   vi.stubGlobal('fetch',fetchMock);render(<MercadoLibreEditorialPanel/>);
   expect(await screen.findByText(/Conexión editorial pendiente/u)).toBeVisible();
+  expect(screen.getByText(/sólo publicaciones activas.*nombre visible/u)).toBeVisible();
   expect(screen.getByRole('button',{name:'Actualizar contenido editorial'})).toBeDisabled();
   expect(screen.getByRole('button',{name:'Revisar asociación'})).toBeDisabled();
   expect(fetchMock).toHaveBeenCalledTimes(1);

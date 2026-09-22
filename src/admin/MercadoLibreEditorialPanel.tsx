@@ -65,7 +65,7 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
   }
   return <section className="admin-context-note" aria-labelledby="ml-editorial-title">
     <h3 id="ml-editorial-title">Contenido de Mercado Libre para Dux</h3>
-    <p>Fuente autorizada: HERBOLARIOMDP (445638367), publicaciones activas y pausadas. Dux conserva productos, precios y existencias.</p>
+    <p>Fuente autorizada: HERBOLARIOMDP (445638367), sólo publicaciones activas. La asociación aprobada aporta el nombre visible; Dux conserva identidad, productos, precios y existencias.</p>
     {status===null?<p>Consultando conexión editorial…</p>:!ready?<p role="status">Conexión editorial pendiente. Se necesita una aplicación oficial de Mercado Libre y la autorización del titular de HERBOLARIOMDP. Se conserva el contenido local ya vinculado.</p>:<p>Conexión editorial disponible para lectura.</p>}
     {status?.enabled&&status.configured&&!status.connection.connected?<button type="button" disabled={busy} onClick={()=>void operation(async()=>{
       const result=await api<{authorizationUrl:string}>('authorize',{});const url=new URL(result.authorizationUrl);

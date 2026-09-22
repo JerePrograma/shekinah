@@ -1,5 +1,17 @@
 # Shekinah — Autorreferencia operativa de Codex
 
+## Política editorial vigente — 2026-09-22
+
+Aplicar [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md): sólo una
+publicación `active` del seller 445638367, vinculada y aprobada para un producto
+Dux vigente, aporta nombre presentacional, descripción e imágenes. Dux conserva
+identidad, slug, precio, stock y comercio. El título no aprueba asociaciones.
+JSON y hashes existentes permiten persistirlo sin migración; un objeto histórico
+sin título mantiene el nombre Dux. Esta autorización sustituye la admisión de
+pausadas y las limitaciones editoriales anteriores sobre el nombre. Las reglas
+comerciales efectivas se consultan en [CURRENT_STATE.md](CURRENT_STATE.md); los
+estados fechados inferiores son históricos y no ordenan cerrar la compra directa.
+
 ## Contrato vigente de catálogo completo — 2026-09-06
 
 La iteración iniciada en `60bdbb62db4e39f1639978f422db0516745cec9c` se rige por [DUX_COMPLETE_CATALOG.md](DUX_COMPLETE_CATALOG.md). Dux determina existencia, nombre, código/SKU, precio/estado, stock y categorías; el contenido local reutilizable se limita a imágenes y descripción mediante vínculos explícitos. Los productos sin precio usable, sin vínculo, pendientes o descartados editorialmente siguen visibles como Dux-only cuando el catálogo público está habilitado. Descartar enriquecimiento no descarta el producto Dux.

@@ -1,5 +1,21 @@
 # Continuación
 
+## Continuar la política editorial activa — 2026-09-22
+
+Usar [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md). La asociación
+aprobada de un producto Dux vigente puede aportar nombre visible, descripción
+e imágenes sólo desde una publicación `active`. No volver a admitir pausadas,
+usar títulos para matching ni migrar destructivamente objetos sin título.
+0019 permanece intacta; la extensión usa su JSON y hashes existentes.
+
+La verificación remota encontró OAuth, credenciales ML e importación pendientes
+en ambos entornos. Completar la autorización oficial por el titular, validar
+seller 445638367 y una importación completa en Preview antes de activar
+producción. Conservar revisión humana, fallback, publicaciones atómicas y
+separación de Mercado Pago. No reabrir inventario legacy ni cambiar el flujo
+de compra directa ya acreditado. CI/deployment del commit editorial se informan
+por separado del acceso real al proveedor.
+
 ## Continuar desde la compra directa productiva — 2026-09-21
 
 Partir de `origin/main` real y del

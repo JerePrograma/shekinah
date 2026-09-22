@@ -81,7 +81,7 @@ Reglas:
 - No exponer secretos mediante Git, logs, respuestas, bundles ni variables `VITE_*`.
 - No reincorporar un Link de Pago ni simular Checkout Pro mediante parámetros no documentados.
 - No reincorporar recetas.
-- Además del inventario histórico del repositorio y del contenido local preservado, el encargo del 2026-09-08 autoriza imágenes y descripciones de publicaciones activas o pausadas de HERBOLARIOMDP (445638367), exclusivamente mediante asociaciones verificadas con productos Dux. Aplicar `docs/AUTHORIZED_ASSETS.md`; esta excepción editorial no habilita inventario ni transacciones de Mercado Libre.
+- El encargo del 2026-09-22 autoriza nombre visible (`title`), descripción e imágenes de publicaciones exclusivamente `active` de HERBOLARIOMDP (445638367), mediante asociaciones verificadas y aprobadas con productos Dux vigentes. Sustituye la admisión editorial de pausadas del 2026-09-08. Aplicar `docs/AUTHORIZED_ASSETS.md`; el nombre es presentacional y no cambia identidad, slug, inventario ni comercio Dux. Mercado Pago permanece separado como proveedor de pagos.
 - El historial anterior se conserva; no afirmar que fue eliminado.
 
 ## Política de cambios

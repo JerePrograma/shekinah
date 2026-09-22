@@ -16,7 +16,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({ 
       latest = row === null ? null : editorialProgress(row); }
     catch (error: unknown) { if (!(error instanceof Error && error.message.includes('no such table: ml_editorial_runs'))) throw error; }
     return jsonResponse({ enabled: env.MERCADO_LIBRE_EDITORIAL_ENABLED === 'true', configured,
-      expectedSellerId: EDITORIAL_SELLER_ID, admittedStatuses: ['active', 'paused'], inventoryEnabled: false,
+      expectedSellerId: EDITORIAL_SELLER_ID, admittedStatuses: ['active'], inventoryEnabled: false,
       latest, connection: connection.connected && connection.sellerId === EDITORIAL_SELLER_ID ? connection : { connected: false } });
   });
 };

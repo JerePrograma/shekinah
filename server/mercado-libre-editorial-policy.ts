@@ -14,7 +14,11 @@ export type EditorialDescription = Readonly<{
 }>;
 
 export function admittedEditorialStatus(status: string): boolean {
-  return status === 'active' || status === 'paused';
+  return status === 'active';
+}
+
+export function parseEditorialTitle(value: unknown): string {
+  return text(value, 500);
 }
 
 /** Metadata never imports prices, inventory, seller contact or payment fields. */
@@ -24,7 +28,7 @@ export function parseEditorialItem(value: unknown): readonly EditorialUnit[] {
   }
   const itemId = text(value.id, 30);
   if (!/^MLA\d{5,25}$/u.test(itemId)) throw invalid();
-  const title = text(value.title, 500);
+  const title = parseEditorialTitle(value.title);
   const status = text(value.status, 40);
   if (!/^[a-z_]+$/u.test(status)) throw invalid();
   const attributes = parseAttributes(value.attributes);

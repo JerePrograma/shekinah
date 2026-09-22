@@ -79,9 +79,9 @@ export function editorialProgress(run: EditorialRunRow) {
 }
 
 async function searchStep(database: D1Database, env: Env, state: EditorialRunState): Promise<EditorialRunRow['phase']> {
-  const status = ['active', 'paused'][state.searchStatus];
-  if (status === undefined) throw editorialError('ML_EDITORIAL_SEARCH_STATE');
-  const query = new URLSearchParams({ search_type: 'scan', status, limit: '100' });
+  // An old in-flight paused scan must restart, never publish under the new policy.
+  if (state.searchStatus !== 0) throw editorialError('ML_EDITORIAL_SEARCH_STATE');
+  const query = new URLSearchParams({ search_type: 'scan', status: 'active', limit: '100' });
   if (state.scroll !== null) query.set('scroll_id', state.scroll);
   const value = await editorialApiGet(database, env, `/users/${EDITORIAL_SELLER_ID}/items/search?${query}`);
   if (!isRecord(value) || !isRecord(value.paging) || !Number.isSafeInteger(value.paging.total) || Number(value.paging.total) < 0 ||
@@ -94,12 +94,11 @@ async function searchStep(database: D1Database, env: Env, state: EditorialRunSta
   state.ids.push(...ids as string[]); state.seen += ids.length;
   if (state.ids.length > ML_EDITORIAL_MAX_ITEMS || state.seen > total) throw editorialError('ML_EDITORIAL_ITEM_LIMIT');
   if (state.seen === total) {
-    state.searchStatus++; state.seen = 0; state.total = null; state.scroll = null;
-    if (state.searchStatus === 2) {
-      const links = await listEditorialLinks(database);
-      state.metadataQueue = [...new Set([...state.ids, ...links.map(link => link.item_id)])];
-      return state.metadataQueue.length === 0 ? 'content' : 'metadata';
-    }
+    // Keep the historical terminal marker readable without a state/schema migration.
+    state.searchStatus = 2; state.seen = 0; state.total = null; state.scroll = null;
+    const links = await listEditorialLinks(database);
+    state.metadataQueue = [...new Set([...state.ids, ...links.map(link => link.item_id)])];
+    return state.metadataQueue.length === 0 ? 'content' : 'metadata';
   } else {
     if (ids.length === 0 || typeof value.scroll_id !== 'string' || value.scroll_id.length > 4096 || value.scroll_id === '') throw editorialError('ML_EDITORIAL_SEARCH_INCOMPLETE');
     state.scroll = value.scroll_id;
@@ -178,7 +177,7 @@ async function contentStep(database: D1Database, env: Env, state: EditorialRunSt
   const contentHash = await storeEditorialObject(database, 'content', { code: selected.code,
     sellerId: EDITORIAL_SELLER_ID, itemId: unit.itemId, variationId: unit.variationId,
     duxIdentity: identity, sourceIdentity: link.source_identity_json, revision: selected.revision,
-    images: work.images, description: work.description }, now);
+    title: unit.title, images: work.images, description: work.description }, now);
   state.publications = { ...state.publications, [selected.code]: { hash: contentHash, revision: selected.revision } };
   return finish(work.description?.reviewLines.length ? 'description_requires_review' : undefined);
 }

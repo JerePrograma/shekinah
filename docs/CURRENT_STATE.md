@@ -1,5 +1,22 @@
 # Estado actual
 
+## Editorial ML activo y título presentacional — 2026-09-22
+
+La implementación extiende [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md)
+con `title` dentro del objeto JSON existente y excluye todos los estados salvo
+`active`, tanto al importar/revisar como al proyectar metadata histórica.
+La identidad Dux, los campos comerciales, las migraciones aplicadas y Checkout
+Pro se conservan. Los objetos sin título mantienen el nombre Dux y el fallback
+por campo sigue disponible. CI y Pages deben acreditarse sobre el SHA final.
+
+La lectura autenticada remota observó 863 productos en el snapshot Dux
+productivo. Ambas D1 tienen cero conexiones OAuth ML, cero runs editoriales y
+cero asociaciones aprobadas; Pages mantiene el flag editorial cerrado y carece
+de las credenciales ML propias. No se consultaron publicaciones del vendedor ni
+se ejecutó importación real. No se cambiaron configuración, inventario ni pagos.
+El [registro de validación](validation/MERCADO_LIBRE_EDITORIAL_ACTIVE_2026-09-22.md)
+detalla la base Git, el resguardo autorizado, los controles y los límites externos.
+
 ## Retiro directo operativo hasta Checkout Pro — 2026-09-21
 
 El SHA funcional `e788cba2904eed444afaf7763b2b5a96fdc14838` tiene CI aprobado y
