@@ -1,5 +1,10 @@
 # Contenido editorial Mercado Libre para identidades Dux
 
+La [preparación OAuth del 22 de septiembre](validation/MERCADO_LIBRE_OAUTH_PREPARATION_2026-09-22.md)
+registra la configuración parcial real: claves de cifrado y seller preparados en
+ambos entornos; aplicación, credenciales y acceso del titular todavía pendientes.
+Se conserva el mantenimiento público y no se afirma conexión ni importación.
+
 Contrato actualizado por autorización del 2026-09-22. Sustituye la admisión de pausadas del 2026-09-08 y agrega el título presentacional. El estado operativo se acredita por separado; tener código, OAuth o una programación configurada no demuestra una importación ni una ejecución automática.
 
 Sólo se admiten publicaciones cuyo estado sea exactamente `active` de HERBOLARIOMDP (`445638367`, sitio MLA). `paused`, `closed`, `under_review`, `inactive`, `deleted` y cualquier otro estado quedan excluidos. El acceso usa una aplicación oficial de Mercado Libre independiente de la aplicación de Mercado Pago. `MERCADO_LIBRE_EDITORIAL_ENABLED` habilita únicamente la autorización y lectura editorial; `MERCADO_LIBRE_CATALOG_ENABLED` permanece cerrado. Las rutas históricas de sincronización, inventario y webhooks no se reactivan.

@@ -2,6 +2,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MercadoLibreEditorialPanel } from './MercadoLibreEditorialPanel';
 
 afterEach(()=>vi.unstubAllGlobals());
+it.each([
+  { enabled: false, configured: true, connected: false, authorize: false, sync: false },
+  { enabled: true, configured: false, connected: false, authorize: false, sync: false },
+  { enabled: true, configured: true, connected: false, authorize: true, sync: false },
+  { enabled: true, configured: true, connected: true, authorize: false, sync: true },
+])('ofrece sólo las acciones permitidas por la conexión $enabled/$configured/$connected',async state=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({...state,connection:{connected:state.connected},latest:null})));
+  render(<MercadoLibreEditorialPanel/>);
+  await waitFor(()=>expect(screen.queryByText('Consultando conexión editorial…')).not.toBeInTheDocument());
+  expect(screen.queryByRole('button',{name:'Autorizar cuenta de Mercado Libre'})!==null).toBe(state.authorize);
+  expect(screen.getByRole('button',{name:'Actualizar contenido editorial'})).toHaveProperty('disabled',!state.sync);
+});
 it('explica la conexión pendiente y no habilita importación sin el titular',async()=>{
   const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json({enabled:false,configured:false,connection:{connected:false},latest:null}));
   vi.stubGlobal('fetch',fetchMock);render(<MercadoLibreEditorialPanel/>);

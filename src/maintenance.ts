@@ -1,10 +1,9 @@
 import type { AppRoute } from './routing/routes';
 
-const PUBLIC_MAINTENANCE_ENABLED = true;
-
 export function shouldShowPublicMaintenance(
   routeId: AppRoute['id'],
   isProduction = import.meta.env.PROD,
+  configuredValue = import.meta.env.VITE_PUBLIC_MAINTENANCE_ENABLED,
 ): boolean {
-  return PUBLIC_MAINTENANCE_ENABLED && isProduction && routeId !== 'admin';
+  return configuredValue !== 'false' && isProduction && routeId !== 'admin';
 }

@@ -1,5 +1,20 @@
 # Despliegue
 
+## Mantenimiento público y validación — 2026-09-22
+
+`VITE_PUBLIC_MAINTENANCE_ENABLED` controla el mantenimiento al compilar. El
+valor ausente, `true` o inválido conserva las rutas públicas cerradas; sólo
+`false` permite abrirlas. `/admin` sigue accesible. Durante la conexión editorial
+Mercado Libre debe permanecer cerrado hasta acreditar OAuth, seller, importación,
+asociaciones y catálogo reales según el encargo vigente. Cambiar la variable
+requiere un nuevo deployment y su smoke; no hay bypass mediante URL o navegador.
+
+Playwright compila dos salidas locales aisladas bajo `node_modules/.cache/`:
+una para los recorridos normales y otra para mantenimiento y acceso administrativo.
+Ninguna sustituye `dist`, que conserva la configuración del build publicable.
+Esto corrige la incompatibilidad del mantenimiento temporal con la suite pública
+sin omitir pruebas ni abrir producción.
+
 La activación vigente se rige por `docs/COMMERCE_DEPLOYMENT.md`. Dux es la autoridad de inventario y la integración directa Mercado Libre está retirada; `docs/MERCADO_LIBRE_CATALOG_AND_STOCK.md` es referencia histórica, no un procedimiento de activación.
 
 ## Configuración de Cloudflare Pages

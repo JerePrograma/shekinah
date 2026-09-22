@@ -5,6 +5,7 @@ interface ViteTypeOptions {
 }
 
 interface ImportMetaEnv {
+  readonly VITE_PUBLIC_MAINTENANCE_ENABLED?: string;
   readonly VITE_ANALYTICS_ENABLED?: string;
   readonly VITE_COMMERCE_ENABLED?: string;
   readonly VITE_WEB_ORDERS_ENABLED?: string;
