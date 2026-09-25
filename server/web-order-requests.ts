@@ -15,6 +15,7 @@ import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import type { DuxCatalogSnapshot } from './dux-catalog';
 import { HttpError } from './http';
 import { requireDirectCheckoutSchema } from './direct-checkout-schema';
+import { assertDuxProductsPublished } from './dux-product-web-settings';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database } from './platform';
 import { assertExactKeys, assertUuid, isRecord, readInteger, readSafeText } from './validation';
@@ -99,7 +100,10 @@ export async function createWebOrderRequest(database: D1Database, input: WebRequ
   const existing = await replay();
   if (existing !== null) return existing;
   let snapshot: WebRequestSnapshot;
-  try { snapshot = buildWebRequestSnapshot(input, await loadSnapshot()); }
+  try {
+    snapshot = buildWebRequestSnapshot(input, await loadSnapshot());
+    await assertDuxProductsPublished(database, snapshot.lines.map(line => line.duxCode));
+  }
   catch (error: unknown) { const raced = await replay(); if (raced !== null) return raced; throw error; }
   const requestId = `req_${randomToken(18)}`;
   const publicToken = await deriveRequestToken(input, tokenSecret);

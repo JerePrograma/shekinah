@@ -1,6 +1,7 @@
 import { hmacSha256Hex } from './crypto';
 import { HttpError } from './http';
 import type { D1Database, D1PreparedStatement } from './platform';
+import { isUnpublishedProductError, unpublishedProduct } from './dux-product-web-settings';
 
 export type WebRequestLimit = Readonly<{ key: string; limit: number }>;
 
@@ -38,6 +39,7 @@ export async function consumeWebRequestAccess(database: D1Database, scopes: read
 }
 
 export function throwWebRequestStorageError(error: unknown): never {
+  if (isUnpublishedProductError(error)) throw unpublishedProduct();
   if (error instanceof HttpError) throw error;
   const message = error instanceof Error ? error.message : '';
   if (message.includes('commerce_request_limit')) {

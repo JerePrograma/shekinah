@@ -25,6 +25,7 @@ type AdminProduct = {
   salePrice?: { amount: number; currency: 'ARS' };
   sku?: string;
   availability?: 'available' | 'unavailable';
+  publicationStatus?: 'published' | 'unpublished';
   commerce?: {
     source: 'dux';
     catalogVersion: string;
@@ -164,19 +165,97 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
 });
 
-test('catálogo administrativo Dux sin creación, edición, pausa ni stock manual', async ({ page }) => {
-  const api=await installStatefulAdminApi(page,[product('dux-readonly','Producto Dux E2E',{
-    categoryName:'Rubro Dux',categorySlug:'dux-rubro-1',price:1500,sku:'DUX-E2E-1',duxStock:{real:2.375,reserved:0.125,available:2.25}})]);
-  await page.goto('/admin');await loginWithFixture(page);
-  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Nuevo producto'})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:/Editar Producto|Pausar Producto|Quitar Producto/u})).toHaveCount(0);
-  await expect(page.getByText('Stock real',{exact:true})).toBeVisible();
-  await page.getByRole('searchbox',{name:'Buscar'}).fill('DUX-E2E-1');
-  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
-  await page.reload();await page.getByRole('button',{name:'Productos',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Producto Dux E2E'})).toBeVisible();
-  expect(api.requests.filter(request=>request.pathname.startsWith('/api/admin/products')&&request.method!=='GET')).toEqual([]);
+test('ABM simplificado: pliega descripción, guarda contenido y permite baja reversible con teclado', async ({ page }) => {
+  const original = {
+    ...product('dux-editorial', 'Producto Dux E2E', {
+      categoryName: 'Rubro Dux', categorySlug: 'dux-rubro-1', price: 1500, sku: 'DUX-E2E-1',
+      duxStock: { real: 2.375, reserved: 0.125, available: 2.25 },
+    }),
+    description: 'Descripción inicial autorizada de prueba.',
+  };
+  const api = await installStatefulAdminApi(page, [original, product('dux-otro', 'Z otro producto', {
+    categoryName: 'Rubro Dux', categorySlug: 'dux-rubro-1', price: 500, duxStock: { real: 2, reserved: 0, available: 2 },
+  })]);
+  await page.goto('/admin'); await loginWithFixture(page);
+  const row = page.getByRole('article', { name: original.name });
+  await expect(row).toBeVisible();
+  await expect(row.getByText(original.description)).toBeHidden();
+  const descriptionToggle = row.locator('summary').filter({ hasText: /^Descripción$/u });
+  await descriptionToggle.focus(); await page.keyboard.press('Enter');
+  await expect(row.getByText(original.description)).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(row.getByText(original.description)).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Nuevo producto' })).toHaveCount(0);
+  await row.locator('summary').filter({ hasText: 'Stock y detalles' }).click();
+  await expect(row.getByText('Stock real', { exact: true })).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Buscar' }).fill('DUX-E2E-1');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await page.getByRole('searchbox', { name: 'Buscar' }).clear();
+
+  await row.getByRole('button', { name: `Editar ${original.name}` }).click();
+  await expect(page.getByRole('heading', { name: `Editar ${original.name}` })).toBeFocused();
+  const editor = page.getByRole('complementary', { name: `Editar ${original.name}` });
+  await expect(editor.getByRole('textbox', { name: 'Descripción', exact: true })).toBeHidden();
+  await editor.locator('summary').filter({ hasText: 'Editar descripción' }).click();
+  await editor.getByRole('textbox', { name: 'Descripción', exact: true }).fill('Descripción editorial actualizada por el cliente.');
+  await expect(editor.getByRole('textbox', { name: 'Nombre', exact: true })).toHaveCount(0);
+  await expect(editor.getByRole('spinbutton')).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Guardar cambios' }).click();
+  await expect(editor.getByText('Todos los cambios están guardados.')).toBeVisible();
+  expect(api.requests.filter(request => request.pathname === '/api/admin/products/dux-editorial' && request.method === 'PATCH'))
+    .toEqual([{ method: 'PATCH', pathname: '/api/admin/products/dux-editorial', body: { description: 'Descripción editorial actualizada por el cliente.' } }]);
+  await editor.getByRole('button', { name: 'Cerrar editor' }).click();
+
+  const remove = row.getByRole('button', { name: `Dar de baja ${original.name}` });
+  await remove.click();
+  const confirmation = page.getByRole('dialog', { name: `¿Dar de baja ${original.name}?` });
+  await expect(confirmation.getByRole('button', { name: 'Cancelar' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(confirmation).toHaveCount(0);
+  await expect(remove).toBeFocused();
+  expect(api.requests.filter(request => request.method === 'DELETE')).toHaveLength(0);
+  await page.keyboard.press('Enter');
+  await confirmation.getByRole('button', { name: 'Confirmar baja' }).click();
+  await expect(row.getByText('Dado de baja', { exact: true })).toBeVisible();
+  await expect(page.getByRole('article').last()).toHaveAccessibleName(original.name);
+  await page.locator('summary').filter({ hasText: 'Más filtros y orden' }).click();
+  await page.getByRole('combobox', { name: 'Ordenar' }).selectOption('price-desc');
+  await expect(page.getByRole('article').last()).toHaveAccessibleName(original.name);
+  await page.reload(); await page.getByRole('button', { name: 'Productos', exact: true }).click();
+  await expect(row.getByText('Dado de baja', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('unpublished');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await row.getByRole('button', { name: `Volver a publicar ${original.name}` }).click();
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('all');
+  await expect(row.getByText('Publicado', { exact: true })).toBeVisible();
+  expect(requiredProduct(api.products(), original.id)).toMatchObject({
+    id: original.id, sku: original.sku, price: original.price, commerce: original.commerce, publicationStatus: 'published',
+  });
+});
+
+test('protege cambios editoriales sin guardar al cerrar el editor o la sesión', async ({ page }) => {
+  const api = await installStatefulAdminApi(page, [product('dux-borrador', 'Producto con borrador', {
+    categoryName: 'Rubro Dux', categorySlug: 'dux-rubro-1', price: 1500, duxStock: { real: 9, reserved: 0, available: 9 },
+  })]);
+  await page.goto('/admin'); await loginWithFixture(page);
+  await page.getByRole('button', { name: 'Editar Producto con borrador' }).click();
+  await page.locator('summary').filter({ hasText: 'Editar descripción' }).click();
+  const description = page.getByRole('textbox', { name: 'Descripción', exact: true });
+  await description.fill('Borrador todavía no publicado.');
+  await page.getByRole('button', { name: 'Cerrar editor' }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Hay cambios sin guardar' });
+  await expect(confirmation.getByRole('button', { name: 'Seguir editando' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(description).toHaveValue('Borrador todavía no publicado.');
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(description).toHaveValue('Borrador todavía no publicado.');
+  expect(api.authenticated()).toBe(true);
+  await page.getByRole('button', { name: 'Cerrar editor' }).click();
+  await confirmation.getByRole('button', { name: 'Descartar cambios' }).click();
+  await expect(page.getByRole('heading', { name: 'Editar Producto con borrador' })).toHaveCount(0);
+  expect(api.requests.filter(request => request.pathname.startsWith('/api/admin/products') && request.method !== 'GET')).toEqual([]);
 });
 
 test('abre bajo demanda un detalle completo de pedido sin controles financieros', async ({ page }) => {
@@ -380,7 +459,12 @@ test('mantiene el catálogo Dux dentro del viewport en desktop, notebook, tablet
     await expectNoGlobalHorizontalOverflow(page);
     await expectHorizontallyInsideViewport(page.getByRole('searchbox',{name:'Buscar'}),viewport.width);
     await expect(page.getByRole('button',{name:'Nuevo producto'})).toHaveCount(0);
-    if(process.env.ADMIN_VISUAL_REVIEW==='true')await page.screenshot({path:testInfo.outputPath('admin-readonly-'+viewport.width+'.png')});
+    await page.getByRole('button', { name: 'Editar Producto responsive E2E' }).click();
+    await page.locator('summary').filter({ hasText: 'Editar descripción' }).click();
+    await expectNoGlobalHorizontalOverflow(page);
+    await expectHorizontallyInsideViewport(page.getByRole('textbox', { name: 'Descripción', exact: true }), viewport.width);
+    if(process.env.ADMIN_VISUAL_REVIEW==='true')await page.screenshot({path:testInfo.outputPath('admin-products-'+viewport.width+'.png'),fullPage:true});
+    await page.getByRole('button', { name: 'Cerrar editor' }).click();
   }
 });
 
@@ -458,7 +542,7 @@ async function installStatefulAdminApi(
     requests.push(requestRecord);
 
     if (pathname === '/api/catalog' && method === 'GET') {
-      await json(route, { products });
+      await json(route, duxApiFixture({ products: products.filter(value => value.publicationStatus !== 'unpublished') }));
       return;
     }
     if (pathname.startsWith('/api/catalog-images/') && (method === 'GET' || method === 'HEAD')) {
@@ -613,13 +697,7 @@ async function installStatefulAdminApi(
       return;
     }
     if (pathname === '/api/admin/products' && method === 'POST') {
-      const created = request.postDataJSON() as AdminProduct;
-      if (products.some(({ id }) => id === created.id)) {
-        await json(route, { error: { message: 'El producto ya existe.' } }, 409);
-        return;
-      }
-      products = [...products, structuredClone(created)];
-      await json(route, { product: created }, 201);
+      await json(route, { error: { code: 'MANUAL_CATALOG_RETIRED' } }, 409);
       return;
     }
 
@@ -660,24 +738,25 @@ async function installStatefulAdminApi(
         return;
       }
       if (method === 'PUT') {
-        const updated = request.postDataJSON() as AdminProduct;
-        products = replaceProduct(products, structuredClone(updated));
-        await json(route, { product: updated });
+        await json(route, { error: { code: 'MANUAL_CATALOG_RETIRED' } }, 409);
         return;
       }
       if (method === 'PATCH') {
         const patch = request.postDataJSON() as {
-          availability?: 'available' | 'unavailable';
+          description?: string;
+          publicationStatus?: 'published';
         };
         const updated = { ...requiredProduct(products, id) };
-        if (patch.availability !== undefined) updated.availability = patch.availability;
+        if (patch.description !== undefined) updated.description = patch.description;
+        if (patch.publicationStatus !== undefined) updated.publicationStatus = patch.publicationStatus;
         products = replaceProduct(products, updated);
         await json(route, { product: updated });
         return;
       }
       if (method === 'DELETE') {
-        products = products.filter((productValue) => productValue.id !== id);
-        await route.fulfill({ status: 204 });
+        const updated: AdminProduct = { ...requiredProduct(products, id), publicationStatus: 'unpublished' };
+        products = replaceProduct(products, updated);
+        await json(route, { product: updated });
         return;
       }
     }

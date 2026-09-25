@@ -1,5 +1,13 @@
 # Shekinah
 
+## Gestión simplificada de productos — 2026-09-25
+
+El [ABM web](docs/PRODUCT_ABM.md) permite editar fotos y descripción de productos
+Dux, dar de baja su publicación con confirmación y volver a publicar. Las bajas
+permanecen al final de la lista. Descripción y detalle de stock se expanden a demanda.
+Altas de identidad, precio y existencias siguen en Dux. Requiere la migración aditiva
+0025; la [validación](docs/validation/PRODUCT_ABM_2026-09-25.md) distingue código y operación remota.
+
 ## Contenido editorial Mercado Libre — 2026-09-22
 
 Dux conserva identidad, universo de productos, precio, stock y comercio. Una

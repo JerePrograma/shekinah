@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { parseAssistedCheckoutInput, prepareAssistedCheckout, previewAssistedCheckout } from './assisted-checkout';
 import type { Env } from './platform';
 import { SqliteD1 } from './test/sqlite-d1';
+import { writeDuxProductWebSettings } from './dux-product-web-settings';
 
 const migrations = readdirSync(resolve(process.cwd(), 'migrations'))
   .filter((name) => /^\d{4}_.*\.sql$/u.test(name) && name <= '0022_assisted_dux_order_number_unique.sql')
@@ -94,6 +95,19 @@ function input(orderNumber: string, shippingMinor: number) {
 }
 
 describe('checkout Dux asistido', () => {
+  it('la baja impide nueva preparación pero conserva la recuperación de una reserva ya materializada', async () => {
+    const database = new SqliteD1(migrations + '\n' + readFileSync(resolve('migrations','0025_dux_product_web_settings.sql'),'utf8'));
+    try {
+      seedAuthority(database);
+      const existingId = seedRequest(database,'a','coordinated_pickup');
+      const newId = seedRequest(database,'b','coordinated_pickup');
+      const prepared = await prepareAssistedCheckout(database,env,existingId,input('PED-WEB',0),'test',new Date(now));
+      await writeDuxProductWebSettings(database,'A-001','test',{publicationStatus:'unpublished'});
+      await expect(prepareAssistedCheckout(database,env,newId,input('PED-WEB-NEW',0),'test',new Date(now))).rejects.toMatchObject({code:'PRODUCT_UNPUBLISHED'});
+      expect(await prepareAssistedCheckout(database,env,existingId,input('PED-WEB',0),'test',new Date(now))).toMatchObject({orderId:prepared.orderId,created:false});
+      expect(await database.prepare('SELECT COUNT(*) AS n FROM orders').first()).toEqual({n:1});
+    } finally {database.close();}
+  });
   it('usa el precio Dux vigente y materializa orden, reserva y operación en D1 sin pago', async () => {
     const database = new SqliteD1(migrations);
     try {

@@ -141,6 +141,7 @@ export type CatalogProductSummary = Readonly<{
   salePrice?: ProductPrice;
   sku?: string;
   availability?: 'available' | 'unavailable';
+  publicationStatus?: 'published' | 'unpublished';
   shortDescription?: string;
   primaryImage?: ProductImage;
   commerce?: ProductCommerceSnapshot;
@@ -230,13 +231,14 @@ export function isManagedCatalogImagePath(value: string): boolean {
 }
 
 export function isProductEffectivelyAvailable<T extends Pick<
-  CatalogProductSummary, 'availability' | 'commerce' | 'price' | 'priceStatus'
+  CatalogProductSummary, 'availability' | 'commerce' | 'price' | 'priceStatus' | 'publicationStatus'
 >>(product: T): product is T & { price: ProductPrice; priceStatus: 'usable' } {
   const commerce = product.commerce;
   return (
     product.priceStatus === 'usable' &&
     product.price !== null &&
     product.availability !== 'unavailable' &&
+    product.publicationStatus !== 'unpublished' &&
     commerce?.source === 'dux' &&
     commerce.mappingStatus === 'mapped' &&
     commerce.quantitySemanticsStatus === 'verified' &&
@@ -335,6 +337,10 @@ export function parseProduct(value: unknown): Product {
   const presentation = readOptionalText(value, 'presentation');
   const sku = readOptionalText(value, 'sku');
   const availability = readOptionalText(value, 'availability');
+  const publicationStatus = readOptionalText(value, 'publicationStatus');
+  if (publicationStatus !== undefined && publicationStatus !== 'published' && publicationStatus !== 'unpublished') {
+    throw new InvalidProductError('El estado de publicación del producto no es válido.');
+  }
   if (
     availability !== undefined &&
     availability !== 'available' &&
@@ -386,6 +392,7 @@ export function parseProduct(value: unknown): Product {
     ...(salePrice === undefined ? {} : { salePrice }),
     ...(sku === undefined ? {} : { sku }),
     ...(availability === undefined ? {} : { availability }),
+    ...(publicationStatus === undefined ? {} : { publicationStatus }),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(primaryImage === undefined ? {} : { primaryImage }),
     ...(commerce === undefined ? {} : { commerce }),

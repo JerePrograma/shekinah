@@ -3,6 +3,7 @@ import { parseAdminWebRequestDetail } from '../src/commerce/web-order-contracts'
 import type { AdminWebRequestDetail } from '../src/commerce/web-order-contracts';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import { readDuxCatalogSnapshot } from './dux-catalog';
+import { assertDuxProductsPublished, isUnpublishedProductError, unpublishedProduct } from './dux-product-web-settings';
 import { readDuxCatalogControl, requireExpectedDuxCompany } from './dux-catalog-control';
 import { readDuxInventoryConfig } from './dux-inventory';
 import { DuxOrderApiClient, duxOrderMatchesRequest } from './dux-order-api';
@@ -86,6 +87,7 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
       await advanceReservation(database, identity, token, progress, operation, config, gateway, now);
       return;
     }
+    await assertDuxProductsPublished(database, detail.snapshot.lines.map(line => line.duxCode));
     if (progress.lines.some(line => timestamp - Date.parse(line.observedAt) > MAX_QUOTE_AGE_MS || Date.parse(line.observedAt) > timestamp)) {
       progress = { ...progress, lines: [], order: null, stockAfter: [], stockObservedAt: null };
     }
@@ -111,17 +113,53 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
     // La siguiente petición reclama el POST: si esta respuesta se pierde el
     // ledger permanece recuperable y no se genera una segunda orden local.
   } catch (error: unknown) {
-    const code = error instanceof HttpError ? error.code : 'DIRECT_CHECKOUT_STORAGE_UNAVAILABLE';
-    const terminal = code === 'DIRECT_STOCK_INSUFFICIENT' || code === 'DIRECT_PRODUCT_CHANGED';
-    await database.prepare(`UPDATE checkout_intents SET direct_checkout_error_code = ?,
-      direct_checkout_state = CASE WHEN ? = 1 THEN 'failed' ELSE direct_checkout_state END,
-      direct_checkout_updated_at = ? WHERE web_request_id = ? AND direct_checkout_claim_token = ?`)
-      .bind(code, terminal ? 1 : 0, new Date(validNow(now)).toISOString(), identity.web_request_id, token).run();
-    throw error;
+    const failure = isUnpublishedProductError(error) ? unpublishedProduct() : error;
+    const code = failure instanceof HttpError ? failure.code : 'DIRECT_CHECKOUT_STORAGE_UNAVAILABLE';
+    if (code === 'PRODUCT_UNPUBLISHED') {
+      await closeUnpublishedDraft(database, identity.web_request_id, token, now);
+    } else {
+      const terminal = code === 'DIRECT_STOCK_INSUFFICIENT' || code === 'DIRECT_PRODUCT_CHANGED';
+      await database.prepare(`UPDATE checkout_intents SET direct_checkout_error_code = ?,
+        direct_checkout_state = CASE WHEN ? = 1 THEN 'failed' ELSE direct_checkout_state END,
+        direct_checkout_updated_at = ? WHERE web_request_id = ? AND direct_checkout_claim_token = ?`)
+        .bind(code, terminal ? 1 : 0, new Date(validNow(now)).toISOString(), identity.web_request_id, token).run();
+    }
+    throw failure;
   } finally {
     await database.prepare(`UPDATE checkout_intents SET direct_checkout_lease_until_ms = 0
       WHERE web_request_id = ? AND direct_checkout_claim_token = ?`).bind(identity.web_request_id, token).run();
   }
+}
+
+async function closeUnpublishedDraft(database: D1Database, requestId: string, token: string, now: () => number): Promise<void> {
+  const timestamp = new Date(validNow(now)).toISOString();
+  await database.batch([
+    database.prepare(`UPDATE orders SET status = 'failed', updated_at = ? WHERE web_request_id = ?
+      AND status = 'preference_pending' AND mp_preference_attempted_at IS NULL AND mp_preference_id IS NULL
+      AND EXISTS (SELECT 1 FROM checkout_intents WHERE web_request_id = ? AND direct_checkout_claim_token = ?)
+      AND EXISTS (SELECT 1 FROM dux_order_operations op JOIN dux_order_links link ON link.order_id = op.order_id
+        WHERE op.order_id = orders.id AND op.idempotency_key = 'automatic-reserve:' || orders.id
+          AND op.attempted_at IS NULL AND link.verification_method = 'automatic_api' AND link.reservation_state = 'not_attempted')`)
+      .bind(timestamp, requestId, requestId, token),
+    // Keep the immutable, never-attempted ledger. No upstream cancellation or
+    // release is invented; the failed order and explicit cause close the draft.
+    database.prepare(`UPDATE dux_order_operations SET error_code = 'PRODUCT_UNPUBLISHED', updated_at = ?
+      WHERE action = 'reserve' AND attempted_at IS NULL AND status = 'pending'
+        AND order_id IN (SELECT id FROM orders WHERE web_request_id = ? AND status = 'failed')
+        AND EXISTS (SELECT 1 FROM checkout_intents WHERE web_request_id = ? AND direct_checkout_claim_token = ?)`)
+      .bind(timestamp, requestId, requestId, token),
+    database.prepare(`UPDATE dux_order_links SET last_error_code = 'PRODUCT_UNPUBLISHED', updated_at = ?
+      WHERE verification_method = 'automatic_api' AND reservation_state = 'not_attempted' AND attempted_at IS NULL
+        AND order_id IN (SELECT id FROM orders WHERE web_request_id = ? AND status = 'failed')
+        AND EXISTS (SELECT 1 FROM checkout_intents WHERE web_request_id = ? AND direct_checkout_claim_token = ?)`)
+      .bind(timestamp, requestId, requestId, token),
+    database.prepare(`UPDATE checkout_intents SET direct_checkout_state = 'failed',
+      direct_checkout_error_code = 'PRODUCT_UNPUBLISHED', direct_checkout_updated_at = ?
+      WHERE web_request_id = ? AND direct_checkout_claim_token = ?
+        AND NOT EXISTS (SELECT 1 FROM orders o LEFT JOIN dux_order_operations op ON op.order_id = o.id AND op.action = 'reserve'
+          WHERE o.web_request_id = ? AND (o.status <> 'failed' OR op.attempted_at IS NOT NULL))`)
+      .bind(timestamp, requestId, token, requestId),
+  ]);
 }
 
 export function readDirectCheckoutConfig(env: Env) {
@@ -138,6 +176,7 @@ async function advanceReservation(database: D1Database, identity: Identity, toke
       JSON.stringify(quote.quote) !== JSON.stringify({ catalogVersion: progress.catalogVersion, lines: progress.lines })) throw evidenceInvalid();
   if (operation.status === 'confirmed') return;
   if (operation.attempted_at === null) {
+    await assertDuxProductsPublished(database, progress.lines.map(line => line.code));
     if (progress.lines.some(line => validNow(now) - Date.parse(line.observedAt) > MAX_QUOTE_AGE_MS)) {
       // Sólo se cierra un borrador que jamás reclamó el POST. Un intento
       // incierto no pasa por esta rama y nunca se reenvía por antigüedad.

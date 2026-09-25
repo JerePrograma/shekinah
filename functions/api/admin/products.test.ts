@@ -12,7 +12,7 @@ function context(database:NonNullable<Env['DB']>,method:string,data:AdminContext
   return{env:{DB:database,PUBLIC_SITE_URL:'https://example.test'},request:new Request('https://example.test/api/admin/products/old',{method,headers:{origin,'content-type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify({name:'Intento manual',stock:30,price:10})})}),
     params:{id:'old'},data,next:()=>Promise.resolve(new Response()),waitUntil:()=>{}};
 }
-it.each([['POST',collection],['PUT',resource],['PATCH',resource],['DELETE',resource],['PUT',image],['DELETE',image]] as const)('rechaza %s sin marcador de retiro y conserva auditoría e inventario',async(method,endpoint)=>{
+it.each([['POST',collection],['PUT',resource]] as const)('rechaza %s sin marcador de retiro y conserva auditoría e inventario',async(method,endpoint)=>{
   const db=createTestD1(...migrations);try{
     const response=await endpoint(context(db.database,method));expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({error:{code:'MANUAL_CATALOG_RETIRED'}});
@@ -26,6 +26,6 @@ it('mantiene autenticación, origen y método aun con la escritura retirada',asy
     expect((await resource(context(db.database,'PATCH',identity,'https://evil.test'))).status).toBe(403);
     expect((await collection(context(db.database,'PUT'))).status).toBe(405);
     expect((await image(context(db.database,'POST'))).status).toBe(405);
-    expect((await resource(context(db.database,'GET'))).status).toBe(404);
+    expect((await resource(context(db.database,'PATCH'))).status).toBe(400);
   }finally{db.close();}
 });

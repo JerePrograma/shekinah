@@ -17,6 +17,7 @@ import {
 import { HttpError } from './http';
 import { assertManualCatalogWritable, isManualCatalogRetired, isPreservedDuxImageReferenced } from './manual-catalog-retirement';
 import { isMercadoLibreEditorialImageReferenced } from './mercado-libre-editorial-public';
+import { isDuxWebImageReferenced } from './dux-product-web-settings';
 import type { D1Database, Env } from './platform';
 import { expireWhatsappReservations } from './stock-reservations';
 
@@ -323,6 +324,7 @@ export async function isCatalogImageReferenced(
   database: D1Database,
   source: string,
 ): Promise<boolean> {
+  if (await isDuxWebImageReferenced(database, source)) return true;
   if (await isMercadoLibreEditorialImageReferenced(database, source)) return true;
   if (await isManualCatalogRetired(database)) return isPreservedDuxImageReferenced(database, source);
   return (await listCatalogProductDetails(database)).some((product) =>
@@ -371,6 +373,7 @@ export function toProductSummary(detail: CatalogProductDetail): Product {
     ...(detail.salePrice === undefined ? {} : { salePrice: detail.salePrice }),
     ...(detail.sku === undefined ? {} : { sku: detail.sku }),
     ...(detail.availability === undefined ? {} : { availability: detail.availability }),
+    ...(detail.publicationStatus === undefined ? {} : { publicationStatus: detail.publicationStatus }),
     ...(detail.shortDescription === undefined
       ? {}
       : { shortDescription: detail.shortDescription }),

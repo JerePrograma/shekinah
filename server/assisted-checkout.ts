@@ -4,6 +4,7 @@ import type { AdminWebRequestDetail } from '../src/commerce/web-order-contracts'
 import { readDuxSnapshotMaxAgeSeconds } from './config';
 import { randomToken, sha256Hex } from './crypto';
 import { readDuxCatalogSnapshot } from './dux-catalog';
+import { assertDuxProductsPublished, isUnpublishedProductError, unpublishedProduct } from './dux-product-web-settings';
 import { readDuxCatalogControl, requireExpectedDuxCompany, requireVerifiedDuxCatalogTenant } from './dux-catalog-control';
 import { HttpError } from './http';
 import type { D1Database, Env } from './platform';
@@ -112,6 +113,7 @@ export async function previewAssistedCheckout(
   await requireAssistedSchema(database);
   const detail = await readAcceptedRequest(database, requestId);
   await requireAssistedAuthority(database, env);
+  await assertDuxProductsPublished(database, detail.snapshot.lines.map(line => line.duxCode));
   const snapshot = await readDuxCatalogSnapshot(database);
   const observedAt = snapshot.stockReadAt ?? snapshot.syncedAt;
   assertSnapshotFresh(observedAt, env, nowMilliseconds);
@@ -256,6 +258,7 @@ export async function prepareAssistedCheckout(
   } catch (error: unknown) {
     const raced = await readPrepared(database, requestId).catch(() => null);
     if (raced !== null) return validateReplay(raced, input);
+    if (isUnpublishedProductError(error)) throw unpublishedProduct();
     throw preparationStorageError(error);
   }
   const persisted = await readPrepared(database, requestId);

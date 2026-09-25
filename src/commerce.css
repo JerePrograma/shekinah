@@ -1475,3 +1475,130 @@
     width: calc(100% - 1.25rem);
   }
 }
+
+/* Client product management: keep routine actions compact and details optional. */
+.admin-simple-catalog-controls[hidden],
+.admin-list-results[hidden],
+.admin-catalog-totals[hidden] {
+  display: none;
+}
+
+.admin-catalog-totals,
+.admin-list-results {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.admin-catalog-totals {
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-small);
+  background: var(--color-sage-light);
+  color: #36552f;
+}
+
+.admin-simple-catalog-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-extra-filters,
+.admin-product-row-details {
+  grid-column: 1 / -1;
+}
+
+.admin-product-disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.admin-product-disclosure > summary {
+  min-height: 2.75rem;
+  padding: 0.7rem 0.25rem;
+  color: #36552f;
+  font-size: 0.88rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.admin-product-disclosure[open] > summary {
+  color: var(--color-action);
+}
+
+.admin-product-description {
+  padding: 0 0.25rem 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.admin-product-description p {
+  margin: 0.5rem 0;
+}
+
+.admin-simple-product-row {
+  grid-template-columns: 4.25rem minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.admin-simple-product-row .admin-product-thumbnail,
+.admin-simple-product-row .admin-product-thumbnail-placeholder {
+  width: 4.25rem;
+  height: 4.25rem;
+}
+
+.admin-simple-product-row .admin-product-row-actions {
+  grid-column: auto;
+  padding-top: 0;
+  border: 0;
+  align-items: center;
+}
+
+.admin-product-list > li.is-unpublished {
+  background: #f5f6f4;
+  border-style: dashed;
+}
+
+.admin-trash-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  padding: 0.55rem;
+}
+
+.admin-description-editor .admin-form-field {
+  padding: 0.25rem 0 1rem;
+}
+
+.admin-editor-heading h3 {
+  overflow-wrap: anywhere;
+}
+
+.admin-editor-actions p {
+  flex-basis: 100%;
+}
+
+@media (max-width: 1100px) {
+  .admin-simple-product-row {
+    grid-template-columns: 4.25rem minmax(0, 1fr);
+  }
+  .admin-simple-product-row .admin-product-row-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-simple-catalog-controls > .admin-search-field {
+    grid-column: 1 / -1;
+  }
+  .admin-simple-product-row .admin-product-row-actions .admin-trash-button {
+    flex: 0 0 2.75rem;
+  }
+  .admin-catalog-totals {
+    gap: 0.5rem 1rem;
+  }
+}

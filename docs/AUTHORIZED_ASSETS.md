@@ -1,5 +1,15 @@
 # Activos autorizados
 
+## Imágenes de gestión web — 2026-09-25
+
+El [ABM solicitado](PRODUCT_ABM.md) autoriza subir, reemplazar y quitar imágenes
+web mediante la sesión administrativa, únicamente para productos Dux vigentes.
+Conserva los controles de MIME/firma, máximo 4 MiB y almacenamiento R2 first-party.
+Una edición explícita tiene prioridad sobre el contenido heredado, que se conserva
+para trazabilidad. No habilita productos manuales ni fuentes remotas arbitrarias.
+El tachito solicitado se dibuja como SVG de interfaz accesible en el componente;
+no agrega dependencias ni un archivo comercial al manifiesto de imágenes.
+
 ## Nombre, descripción e imágenes de Mercado Libre
 
 El encargo del 2026-09-22 autoriza exclusivamente nombre visible (`title`), descripción e imágenes de publicaciones `active` de HERBOLARIOMDP, vendedor `445638367`, mediante asociaciones inequívocas y aprobadas con una identidad Dux vigente. Sustituye la admisión de publicaciones pausadas del 2026-09-08, conservada en el historial Git y los informes históricos. Cualquier otro estado queda excluido. No autoriza inventario, precios, creación de productos, pedidos, reservas ni pagos de Mercado Libre.

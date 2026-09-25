@@ -1,5 +1,13 @@
 # Continuación
 
+## Gestión web de productos — 2026-09-25
+
+Aplicar [PRODUCT_ABM.md](PRODUCT_ABM.md) y su
+[registro](validation/PRODUCT_ABM_2026-09-25.md). La baja es exclusivamente web y
+reversible; no usar disponibilidad Dux para representarla ni reactivar catálogo
+manual. Verificar 0025 y el SHA desplegado antes de afirmar capacidad operativa.
+Preservar la recuperación de reservas intentadas y la configuración de mantenimiento.
+
 ## Continuar la política editorial activa — 2026-09-22
 
 Usar [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md). La asociación

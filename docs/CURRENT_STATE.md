@@ -1,5 +1,15 @@
 # Estado actual
 
+## Gestión web de productos — 2026-09-25
+
+El [ABM simplificado](PRODUCT_ABM.md) habilita edición de descripción/imagen y
+baja/reactivación de publicación sobre productos Dux vigentes. Sustituye la pantalla
+exclusivamente de consulta, conserva el retiro manual y separa publicación de stock.
+La migración aditiva 0025 guarda las decisiones web y bloquea nuevas solicitudes o
+primeros intentos de reserva de productos dados de baja. No afecta reservas ya intentadas.
+El mantenimiento público, la configuración comercial y la política editorial ML se
+conservan. Consultar [validación y estado de rollout](validation/PRODUCT_ABM_2026-09-25.md).
+
 ## Editorial ML activo y título presentacional — 2026-09-22
 
 La implementación extiende [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md)

@@ -1,5 +1,15 @@
 # Shekinah — Autorreferencia operativa de Codex
 
+## Administración web autorizada — 2026-09-25
+
+El [ABM simplificado](PRODUCT_ABM.md) permite descripción e imagen propias y
+baja/reactivación de publicación por identidad Dux. Actualiza la restricción de
+solo lectura administrativa del retiro manual, conservando Dux como autoridad de
+alta, nombre base, código, categorías, precio y stock. Requiere 0025. Las bajas
+no borran productos y conservan reservas, pagos e intentos Dux existentes; el borrador
+local todavía no intentado se cierra de forma segura. Su
+[registro de validación](validation/PRODUCT_ABM_2026-09-25.md) acredita pruebas y rollout por separado.
+
 ## Política editorial vigente — 2026-09-22
 
 Aplicar [MERCADO_LIBRE_EDITORIAL.md](MERCADO_LIBRE_EDITORIAL.md): sólo una

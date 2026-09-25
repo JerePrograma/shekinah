@@ -12,6 +12,7 @@ import type { DirectGateway } from './direct-checkout';
 import type { DuxOrderEvidence, DuxOrderRequest } from './dux-order-api';
 import type { Env } from './platform';
 import { SqliteD1 } from './test/sqlite-d1';
+import { writeDuxProductWebSettings } from './dux-product-web-settings';
 
 const date = '2026-09-15T14:00:00.000Z';
 const token = 'a'.repeat(64);
@@ -64,6 +65,55 @@ function setup(quantity = 2, maxMigration = '0024') {
   const steps = async (count: number) => {for(let i=0;i<count;i+=1) await advance();};
   return {db,advance,steps,readItem,createOrder,findOrder,gateway,setClock:(value:number)=>{clock=value;}};
 }
+
+it.each([0, 2])('una baja bloquea preparación o primer POST Dux tras %s pasos sin reservar', async steps => {
+  const test = setup(2, '0025');
+  try {
+    await test.steps(steps);
+    await writeDuxProductWebSettings(test.db,'A-001','test',{publicationStatus:'unpublished'});
+    await expect(test.advance()).rejects.toMatchObject({code:'PRODUCT_UNPUBLISHED'});
+    expect(test.createOrder).not.toHaveBeenCalled();
+    expect(await test.db.prepare('SELECT direct_checkout_state FROM checkout_intents').first()).toEqual({direct_checkout_state:'failed'});
+    expect((await test.db.prepare('SELECT attempted_at FROM dux_order_operations').first())?.attempted_at ?? null).toBeNull();
+    if (steps === 2) {
+      expect(await test.db.prepare('SELECT status,mp_preference_attempted_at FROM orders').first()).toEqual({status:'failed',mp_preference_attempted_at:null});
+      expect(await test.db.prepare('SELECT reservation_state,last_error_code,attempted_at FROM dux_order_links').first())
+        .toEqual({reservation_state:'not_attempted',last_error_code:'PRODUCT_UNPUBLISHED',attempted_at:null});
+      expect(await test.db.prepare('SELECT status,error_code,attempted_at FROM dux_order_operations').first())
+        .toEqual({status:'pending',error_code:'PRODUCT_UNPUBLISHED',attempted_at:null});
+      await test.advance();
+      expect(test.createOrder).not.toHaveBeenCalled();
+    }
+  } finally {test.db.close();}
+});
+
+it('una baja concurrente al primer POST es detenida por D1 antes de llamar al proveedor', async () => {
+  const test = setup(2, '0025');
+  try {
+    await test.steps(2);
+    test.createOrder.mockImplementationOnce(async (_request,beforeSend) => {
+      await writeDuxProductWebSettings(test.db,'A-001','test',{publicationStatus:'unpublished'});
+      await beforeSend?.();
+      throw new Error('No debe alcanzar el envío');
+    });
+    await expect(test.advance()).rejects.toMatchObject({code:'PRODUCT_UNPUBLISHED'});
+    expect(await test.db.prepare('SELECT attempted_at FROM dux_order_operations').first()).toEqual({attempted_at:null});
+    expect(await test.db.prepare('SELECT status FROM orders').first()).toEqual({status:'failed'});
+    expect(await test.findOrder()).toBeNull();
+  } finally {test.db.close();}
+});
+
+it('una baja posterior al intento de reserva conserva consulta, evidencia y continuidad de ese pedido', async () => {
+  const test = setup(2, '0025');
+  try {
+    await test.steps(3);
+    await writeDuxProductWebSettings(test.db,'A-001','test',{publicationStatus:'unpublished'});
+    await test.steps(3);
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(await test.db.prepare('SELECT direct_checkout_state FROM checkout_intents').first()).toEqual({direct_checkout_state:'prepared'});
+    expect(await test.db.prepare('SELECT reservation_state FROM dux_order_links').first()).toEqual({reservation_state:'confirmed'});
+  } finally {test.db.close();}
+});
 
 it('prepara automáticamente con precio vivo, stock decimal, total final y una sola reserva', async () => {
   const test=setup(12);
