@@ -98,5 +98,67 @@ Node.js 24.18.0, npm 11.16.0, conforme a `.node-version` y `package.json`.
 - `src/commerce.css`
 - `tests/e2e/admin.spec.ts`
 
-La validación completa, CI, artefacto, migración y deployment se registran al cerrar.
-No se considera habilitación remota por la sola aprobación de pruebas simuladas.
+## Primera publicación y habilitación D1
+
+Commit funcional: `aec95f8ae0c7668886cd4b9f704eeb68b9d0de4f`, publicado con
+`git push origin main`; SHA remoto confirmado por `git ls-remote`.
+
+- **CI verificado:** [ejecución 552 / 36162880321](https://github.com/JerePrograma/shekinah/actions/runs/36162880321),
+  evento push/main, conclusión success; job Verify `108163487032` y todos sus
+  pasos success, finalizado a las 16:50:12 UTC.
+- **Artefacto verificado:** `shekinah-dist-aec95f8ae0c7668886cd4b9f704eeb68b9d0de4f`,
+  ID `10876543079`, 52.275.688 bytes, digest
+  `sha256:8151054dd613571e931adb9d869356159fe13643a6664e4b951819b11469839f`.
+- **Pages verificado:** deployment production `9a882777-7a53-441a-8f56-1394ff928f9e`,
+  success sobre el mismo SHA, comprobado a las 16:49:40 UTC.
+- **D1 verificado:** bookmarks previos conservados localmente; sólo 0025 pendiente.
+  Aplicación por Wrangler primero Preview (5 comandos / 1,95 ms), comprobación de
+  esquema/FK/historia y luego Production (5 comandos / 2,19 ms), ambas salida 0.
+- **Esquema verificado:** ambas bases con 0001–0025 contiguas, tabla nueva y tres
+  triggers presentes; `foreign_key_check` sin resultados. Tabla web vacía.
+- **Historia verificada:** Preview 14 pedidos / 1 pago, Production 18 / 0;
+  cero mutaciones manuales y cero decisiones web en ambas. Las lecturas posteriores
+  tienen `rows_written=0`.
+- **Configuración verificada:** mismos bindings DB/R2 y flags comerciales/editoriales.
+  No se cambia mantenimiento, no se activa Checkout Pro ni se reintroduce Link de Pago.
+- **HTTP técnico verificado:** URL inmutable HTTPS de Pages devuelve 200 en `/`,
+  `/admin` y `/api/catalog`; 401 `ACCESS_TOKEN_MISSING` al intentar leer productos
+  administrativos sin sesión. Catálogo observado: 878 productos con estado de publicación.
+- **HTTPS canónico desde CLI no disponible:** Node y Windows HTTP rechazaron la
+  cadena (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`); Node con almacén de confianza del
+  sistema tampoco resolvió el problema. Es consistente con la intermediación local
+  registrada en [el rollout previo](COMMERCE_D1_ROLLOUT_2026-09-13.md).
+  No se deshabilitó TLS ni se agregó una CA. Chrome sí abrió el administrador con
+  sesión vigente sin intersticial, pero el control de la pestaña sufrió timeouts al
+  abrir la lista; esa observación no se cuenta como smoke completo.
+
+## Comprobación de escala y ajuste
+
+La prueba adicional local con 863 productos sintéticos (1,92 MB) descartó un bucle
+de lecturas o renderizado: carga de lista 1,49 s, búsqueda 164 ms, un único GET,
+cero escrituras y consola limpia. Encontró una pausa de 7,04 s al abrir el editor
+manteniendo 35.466 nodos; se incorpora paginación de 50 filas después del filtro y
+orden global. El editor conserva su estado al cambiar de página. La búsqueda sigue
+abarcando todos los productos y las bajas siguen después de todos los publicados.
+
+Los tiempos sintéticos no acreditan rendimiento de red o datos productivos.
+La repetición local con 878 productos y paginación montó sólo 50 filas / 2.225 nodos:
+lista 292 ms, búsqueda 48 ms, restaurar resultados 110 ms, editor 158 ms y escritura
+104 ms. Consola sin errores/advertencias, cero mutaciones API y sin tareas largas
+durante cinco segundos de reposo. La comparación orienta el ajuste y no es un SLA.
+
+Pruebas del ajuste: 21/21 unitarias administrativas y 2/2 Playwright dirigidas.
+Cubren búsqueda más allá de la primera página, bajas al final del orden global,
+límites de navegación, estado del editor al cambiar página y actualización diferida
+mientras la confirmación está abierta. La revisión independiente acreditó filtro/orden
+previo a paginar y foco recuperable cuando una fila cambia de página.
+
+`npm run verify` repetido sobre el ajuste: **verificado**, salida 0; 123 archivos,
+901 pruebas aprobadas / 14 omitidas preexistentes y Playwright 38/38. Lint,
+TypeScript, catálogo, pesos, build, activos, seguridad y automatización aprobados.
+`npm run build:pages` repetido sobre el ajuste: **verificado**, salida 0;
+901 aprobadas / 14 omitidas y artefacto final generado. Controles de diff y de
+archivos preparados nuevamente con salida 0; dependencias sin cambios.
+
+La evidencia del SHA final, CI y Pages después del ajuste se informa en el cierre
+de entrega; la primera publicación precedente se conserva como secuencia histórica.

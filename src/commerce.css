@@ -1492,6 +1492,19 @@
   margin: 0;
 }
 
+.admin-product-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.admin-product-pagination p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 .admin-catalog-totals {
   padding: 0.8rem 1rem;
   border-radius: var(--radius-small);

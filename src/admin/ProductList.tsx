@@ -5,6 +5,8 @@ import type { CatalogCategory, CatalogProductDetail } from '../catalog/model';
 import { ALL_FILTERS, UNCATEGORIZED_FILTER } from './product-management-types';
 import type { AvailabilityFilter, ProductOperation, ProductSort, StockFilter } from './product-management-types';
 
+const PRODUCTS_PER_PAGE = 50;
+
 export function ProductList({ categories, availabilityFilter, categoryFilter, deleteCandidate, editingId, isDirty,
   loadError, loading, onAvailabilityFilterChange, onCancelDelete, onCategoryFilterChange, onConfirmDelete, onEdit,
   onOpenDelete, onQueryChange, onResetFilters, onRetryLoad, onSortChange, onStockFilterChange, onUpdateAvailability,
@@ -44,6 +46,11 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
   const previousCandidateRef = useRef<string | null>(null);
   const previousOperationRef = useRef<ProductOperation>(operation);
   const [stockObservedAt, setStockObservedAt] = useState(Date.now);
+  const [requestedPage, setRequestedPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(visibleProducts.length / PRODUCTS_PER_PAGE));
+  const page = Math.min(requestedPage, pageCount);
+  const pageProducts = visibleProducts.slice((page - 1) * PRODUCTS_PER_PAGE, page * PRODUCTS_PER_PAGE);
+  useEffect(() => { setRequestedPage(1); }, [visibleProducts]);
   useEffect(() => {
     let timer: number | undefined;
     const refresh = () => {
@@ -76,6 +83,13 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
   }
   const filtered = query !== '' || categoryFilter !== ALL_FILTERS || availabilityFilter !== ALL_FILTERS || stockFilter !== ALL_FILTERS;
   const filtersDisabled = remoteBusy || deleteCandidate !== null;
+  function changePage(nextPage: number): void {
+    setRequestedPage(nextPage);
+    window.requestAnimationFrame(() => {
+      listTitleRef.current?.focus({ preventScroll: true });
+      listTitleRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+    });
+  }
 
   return <section className="admin-product-list-panel" aria-labelledby="product-list-title">
     <div className="admin-panel-heading">
@@ -108,6 +122,13 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
       <p className="admin-results-count" role="status" aria-live="polite">{visibleProducts.length === 1 ? '1 producto encontrado' : `${visibleProducts.length} productos encontrados`}</p>
       {filtered ? <button className="button button-secondary admin-compact-button" type="button" disabled={filtersDisabled} onClick={onResetFilters}>Limpiar filtros</button> : null}
     </div>
+    {loading || loadError !== '' || pageCount <= 1 ? null : <nav className="admin-product-pagination" aria-label="Paginación de productos">
+      <button className="button button-secondary admin-compact-button" type="button" aria-controls="admin-product-results"
+        disabled={filtersDisabled || page === 1} onClick={() => changePage(page - 1)}>Anterior</button>
+      <p role="status" aria-live="polite" aria-atomic="true">Página {page} de {pageCount}</p>
+      <button className="button button-secondary admin-compact-button" type="button" aria-controls="admin-product-results"
+        disabled={filtersDisabled || page === pageCount} onClick={() => changePage(page + 1)}>Siguiente</button>
+    </nav>}
     {isDirty ? <p className="admin-field-note">Guardá o descartá la edición antes de dar de baja o volver a publicar.</p> : null}
     {loading ? <p role="status" aria-busy="true">Cargando productos…</p> : loadError !== '' ? <div className="admin-empty-state">
       <h4>No pudimos cargar los productos</h4><p className="form-error" role="alert">{loadError}</p>
@@ -115,8 +136,8 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
     </div> : visibleProducts.length === 0 ? <div className="admin-empty-state">
       <h4>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h4>
       <p>{totalProductCount === 0 ? 'Los productos aparecerán después de sincronizar el catálogo de Dux.' : 'Probá otra búsqueda o limpiá los filtros.'}</p>
-    </div> : <ul className="admin-product-list">
-      {visibleProducts.map(product => {
+    </div> : <ul className="admin-product-list" id="admin-product-results">
+      {pageProducts.map(product => {
         const unpublished = product.publicationStatus === 'unpublished';
         const selected = editingId === product.id;
         const rowBusy = operation.kind !== 'idle' && 'productId' in operation && operation.productId === product.id;

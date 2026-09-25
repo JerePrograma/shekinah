@@ -7,6 +7,8 @@ baja/reactivación de publicación sobre productos Dux vigentes. Sustituye la pa
 exclusivamente de consulta, conserva el retiro manual y separa publicación de stock.
 La migración aditiva 0025 guarda las decisiones web y bloquea nuevas solicitudes o
 primeros intentos de reserva de productos dados de baja. No afecta reservas ya intentadas.
+0025 quedó aplicada y verificada en Preview y Production, con historial conservado.
+La lista pagina de a 50 después de buscar y ordenar sobre el catálogo completo.
 El mantenimiento público, la configuración comercial y la política editorial ML se
 conservan. Consultar [validación y estado de rollout](validation/PRODUCT_ABM_2026-09-25.md).
 

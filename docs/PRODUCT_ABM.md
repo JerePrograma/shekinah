@@ -14,6 +14,8 @@ no reconstruye productos manuales ni cambia el contrato editorial de Mercado Lib
 - Lista compacta con imagen, nombre, código, categoría, precio y estado de publicación.
 - Descripción y stock detallado plegados por defecto, con expansión nativa accesible.
 - Búsqueda por nombre/código/categoría, filtros de estado y categoría; stock y orden en «Más filtros y orden».
+- Páginas de hasta 50 productos para mantener una respuesta ágil con el catálogo
+  completo; la búsqueda y el orden se aplican globalmente antes de paginar.
 - Tachito con nombre accesible «Dar de baja …», confirmación específica, foco inicial
   en Cancelar, cierre con Escape y recuperación del foco después de la operación.
 - La baja conserva su fila y aparece después de los publicados en los seis órdenes.

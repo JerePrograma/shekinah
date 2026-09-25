@@ -63,18 +63,18 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
 
   useEffect(() => {
     const refresh = () => {
-      if (isDirty || operationRef.current) { deferredInventoryRefreshRef.current = true; return; }
+      if (isDirty || operationRef.current || deleteCandidate !== null) { deferredInventoryRefreshRef.current = true; return; }
       void reload();
     };
     window.addEventListener('shekinah:admin-products-refresh', refresh);
     return () => window.removeEventListener('shekinah:admin-products-refresh', refresh);
-  }, [isDirty]);
+  }, [isDirty, deleteCandidate]);
 
   useEffect(() => {
-    if (isDirty || remoteBusy || !deferredInventoryRefreshRef.current) return;
+    if (isDirty || remoteBusy || deleteCandidate !== null || !deferredInventoryRefreshRef.current) return;
     deferredInventoryRefreshRef.current = false;
     void reload();
-  }, [isDirty, remoteBusy]);
+  }, [isDirty, remoteBusy, deleteCandidate]);
 
   useEffect(() => {
     if (!isDirty && !remoteBusy) return;

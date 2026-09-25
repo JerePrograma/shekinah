@@ -135,6 +135,89 @@ it('confirma una baja reversible, conserva la fila al final y vuelve a publicar 
   expect(api.products()[0]).toMatchObject({ id: product.id, commerce: product.commerce, publicationStatus: 'published' });
 });
 
+it('pagina de a 50 después del filtro y orden global, encuentra productos de otras páginas y deja las bajas al final', async () => {
+  const products = Array.from({ length: 56 }, (_, index) => {
+    const suffix = String(index).padStart(3, '0');
+    return { ...product, id: `dux-page-${suffix}`, slug: `dux-page-${suffix}`, path: `/dux-page-${suffix}/`,
+      name: `Producto ${suffix}`, sku: `PAGE-${suffix}` };
+  });
+  const api = installCatalogApi(products);
+  render(<ProductManager />);
+  await screen.findByRole('heading', { name: 'Producto 000' });
+  expect(screen.getAllByRole('article')).toHaveLength(50);
+  expect(screen.getByText('56 productos encontrados')).toBeVisible();
+  expect(screen.getByText('Página 1 de 2')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  expect(screen.getAllByRole('article')).toHaveLength(6);
+  expect(screen.getByRole('heading', { name: 'Producto 055' })).toBeVisible();
+  expect(screen.getByText('Página 2 de 2')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Productos', level: 3 })).toHaveFocus());
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar' }), { target: { value: 'PAGE-055' } });
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  expect(screen.getByRole('heading', { name: 'Producto 055' })).toBeVisible();
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar' }), { target: { value: '' } });
+  expect(screen.getByText('Página 1 de 2')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Dar de baja Producto 000' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar baja' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.queryByRole('article', { name: 'Producto 000' })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  expect(screen.getAllByRole('article').at(-1)).toHaveAccessibleName('Producto 000');
+  expect(api.products()[0]?.publicationStatus).toBe('unpublished');
+  fireEvent.click(screen.getByText('Más filtros y orden', { selector: 'summary' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Ordenar' }), { target: { value: 'price-desc' } });
+  expect(screen.getByText('Página 1 de 2')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  expect(screen.getAllByRole('article').at(-1)).toHaveAccessibleName('Producto 000');
+});
+
+it('conserva el editor y su borrador al cambiar de página', async () => {
+  const products = Array.from({ length: 51 }, (_, index) => {
+    const suffix = String(index).padStart(3, '0');
+    return { ...product, id: `dux-page-${suffix}`, slug: `dux-page-${suffix}`, path: `/dux-page-${suffix}/`, name: `Producto ${suffix}` };
+  });
+  const api = installCatalogApi(products);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Editar Producto 000' }));
+  fireEvent.click(screen.getByText('Editar descripción', { selector: 'summary' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Descripción' }), { target: { value: 'Borrador entre páginas.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  expect(screen.getByText('Página 2 de 2')).toBeVisible();
+  expect(screen.queryByRole('article', { name: 'Producto 000' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Editar Producto 000' })).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Descripción' })).toHaveValue('Borrador entre páginas.');
+  expect(api.mutations()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+  expect(screen.getByRole('article', { name: 'Producto 000' })).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Descripción' })).toHaveValue('Borrador entre páginas.');
+});
+
+it('difiere la actualización del catálogo mientras se confirma una baja en otra página', async () => {
+  const products = Array.from({ length: 51 }, (_, index) => {
+    const suffix = String(index).padStart(3, '0');
+    return { ...product, id: `dux-page-${suffix}`, slug: `dux-page-${suffix}`, path: `/dux-page-${suffix}/`, name: `Producto ${suffix}` };
+  });
+  const api = installCatalogApi(products);
+  render(<ProductManager />);
+  await screen.findByRole('heading', { name: 'Producto 000' });
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Dar de baja Producto 050' }));
+  const confirmation = screen.getByRole('dialog', { name: '¿Dar de baja Producto 050?' });
+  fireEvent(window, new Event('shekinah:admin-products-refresh'));
+  expect(api.request.mock.calls.filter(([url]) => url === '/api/admin/products')).toHaveLength(1);
+  expect(confirmation).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+  fireEvent.keyDown(confirmation, { key: 'Escape' });
+  await waitFor(() => expect(api.request.mock.calls.filter(([url]) => url === '/api/admin/products')).toHaveLength(2));
+  await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(50));
+  expect(screen.getByText('Página 1 de 2')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
+  expect(api.mutations()).toHaveLength(0);
+});
+
 it('devuelve el foco al control de publicación cuando termina un refresco público demorado', async () => {
   let finishRefresh: (() => void) | undefined;
   const refreshing = new Promise<void>(resolve => { finishRefresh = resolve; });

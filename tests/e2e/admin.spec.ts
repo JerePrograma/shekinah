@@ -234,6 +234,41 @@ test('ABM simplificado: pliega descripción, guarda contenido y permite baja rev
   });
 });
 
+test('pagina el catálogo completo, busca fuera de la primera página y conserva las bajas al final', async ({ page }) => {
+  const products = Array.from({ length: 56 }, (_, index) => {
+    const suffix = String(index).padStart(3, '0');
+    return product(`dux-page-${suffix}`, `Producto paginado ${suffix}`, {
+      categoryName: 'Rubro Dux', categorySlug: 'dux-rubro-1', price: 1000 + index, sku: `PAGE-${suffix}`,
+      duxStock: { real: 9, reserved: 0, available: 9 },
+    });
+  });
+  await installStatefulAdminApi(page, products);
+  await page.goto('/admin'); await loginWithFixture(page);
+  await expect(page.getByRole('article')).toHaveCount(50);
+  await expect(page.getByText('56 productos encontrados')).toBeVisible();
+  const pagination = page.getByRole('navigation', { name: 'Paginación de productos' });
+  await expect(pagination.getByText('Página 1 de 2')).toBeVisible();
+  await expect(pagination.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+  await pagination.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByRole('article')).toHaveCount(6);
+  await expect(pagination.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Productos', level: 3 })).toBeFocused();
+  await page.getByRole('searchbox', { name: 'Buscar' }).fill('PAGE-055');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article', { name: 'Producto paginado 055' })).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Buscar' }).clear();
+  await expect(pagination.getByText('Página 1 de 2')).toBeVisible();
+  await page.getByRole('button', { name: 'Dar de baja Producto paginado 000' }).click();
+  await page.getByRole('button', { name: 'Confirmar baja' }).click();
+  await expect(page.getByRole('article', { name: 'Producto paginado 000' })).toHaveCount(0);
+  await pagination.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByRole('article').last()).toHaveAccessibleName('Producto paginado 000');
+  await expect(page.getByRole('button', { name: 'Volver a publicar Producto paginado 000' })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoGlobalHorizontalOverflow(page);
+  await expectHorizontallyInsideViewport(pagination, 390);
+});
+
 test('protege cambios editoriales sin guardar al cerrar el editor o la sesión', async ({ page }) => {
   const api = await installStatefulAdminApi(page, [product('dux-borrador', 'Producto con borrador', {
     categoryName: 'Rubro Dux', categorySlug: 'dux-rubro-1', price: 1500, duxStock: { real: 9, reserved: 0, available: 9 },
