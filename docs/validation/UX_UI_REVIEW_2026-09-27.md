@@ -239,6 +239,33 @@ El bundle de producción conserva administración separada: entrada 303,59 kB
 SHA final, CI, artefacto y deployment se cotejan después del push y se informan
 separadamente en el cierre: este documento no puede contener su propio SHA.
 
+### Seguimiento de publicación — 2026-09-28
+
+El primer commit publicado, `56072a62762ce9b632e23f011681ea156c42e492`, pasó
+[CI 36371332244](https://github.com/JerePrograma/shekinah/actions/runs/36371332244),
+incluyendo el procedimiento Dux con mocks y la sintaxis del script D1. Generó
+el artefacto `shekinah-dist-56072a62762ce9b632e23f011681ea156c42e492`.
+Sin embargo, el deployment Pages `3e217521-0fc3-4261-b5c5-ba6a6e5499c6` falló:
+939 pruebas aprobadas, 14 omitidas y una carrera en el test de conservación del
+borrador tras un guardado fallido. La alerta ya estaba en el DOM, pero el efecto
+que comunica `busy: false` todavía no había notificado al consumidor.
+
+Se espera ahora la última llamada exacta del callback mediante `waitFor`, sin
+cambiar su aserción, los tiempos máximos ni el código del producto. También se
+comprueba que Guardar cambios esté habilitado antes del reintento. La prueba
+dirigida volvió a pasar: ProductManager 23/23. También volvieron a aprobar
+`npm run verify` (940 aprobadas, 14 omitidas, 45/45 E2E) y `npm run build:pages`
+(940 aprobadas, 14 omitidas y todos sus controles), ambos con salida 0.
+Los resultados remotos de la corrección se informan por SHA.
+
+El smoke público con Chromium y validación TLS estricta no estuvo disponible:
+`ERR_CERT_AUTHORITY_INVALID` antes de una respuesta HTTP utilizable. No acredita
+ni un problema general del dominio ni la versión servida. Un segundo intento
+sin esa validación se interrumpió sin resultados utilizables; el script temporal
+quedó restaurado a TLS estricto. No hubo login ni operaciones comerciales.
+La consulta HTTPS directa al dominio, también con validación de certificado,
+falló al establecer la conexión SSL; tampoco aporta evidencia de contenido.
+
 ## Límites reales
 
 No disponible: revisión manual con lector de pantalla, pruebas con usuarios reales

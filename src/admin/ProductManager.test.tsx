@@ -286,7 +286,8 @@ it('conserva el borrador y el error si falla el guardado y permite reintentarlo'
   expect(screen.getByRole('alert')).not.toHaveTextContent('D1_ERROR');
   expect(description).toHaveValue('Borrador que debe conservarse.');
   expect(api.products()[0]?.description).toBe(product.description);
-  expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true, busy: false }));
+  await waitFor(() => expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true, busy: false })));
+  expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
   await waitFor(() => expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: false, busy: false })));
   expect(api.products()[0]?.description).toBe('Borrador que debe conservarse.');
