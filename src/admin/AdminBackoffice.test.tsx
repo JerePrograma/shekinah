@@ -136,31 +136,31 @@ describe('autenticación del backoffice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ingresar' }));
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Administración de Shekinah' }),
+      await screen.findByRole('heading', { level: 1, name: 'Inicio' }),
     ).toBeVisible();
-    expect(await screen.findByRole('heading', { level: 2, name: 'Resumen del negocio' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Resumen del negocio' })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Inicio' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Inicio' })
       .compareDocumentPosition(screen.getByRole('heading', { name: 'Estado de la tienda' }))
       & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(screen.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Inicio' })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(screen.getByRole('button', { name: 'Ver pedidos' }));
     expect(screen.getByRole('heading', { name: 'Pedidos' }))
       .toHaveFocus();
     expect(screen.getByRole('heading', { name: 'Pedidos' })
       .compareDocumentPosition(screen.getByRole('button', { name: 'Consultar solicitudes web' }))
       & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Dux y Mercado Libre' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actualizaciones' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Dux Software' })).toBeVisible();
-    expect(screen.getByRole('heading', { level: 2, name: 'Dux Software' })).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'Dux y Mercado Libre' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 1, name: 'Actualizaciones' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Actualizaciones' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByText('Autorizar cuenta vendedora')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
-    expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
-    expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Productos' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Productos' })).toHaveFocus();
     expect(screen.queryByRole('button', {name:'Nuevo producto'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Visitas' }));
-    expect(await screen.findByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toBeVisible();
-    expect(screen.getByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toHaveFocus();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Visitas' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Visitas' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.queryByRole('textbox', {name:'Nombre'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));

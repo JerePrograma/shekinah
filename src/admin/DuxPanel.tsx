@@ -126,33 +126,41 @@ export function DuxPanel({
   }
 
   return (
-    <section className="admin-page section" aria-labelledby="admin-dux-title">
+    <section className="admin-page admin-updates-page" aria-labelledby="admin-dux-title">
       <div className="container admin-shell">
-        <div className="section-heading admin-report-heading">
-          <p className="eyebrow">Inventario</p>
-          <h2 id="admin-dux-title" ref={titleRef} tabIndex={-1}>Dux Software</h2>
-          <p>
-            Los productos, precios y existencias se administran en Dux. Actualizalos acá para
-            traer la información del negocio a Shekinah.
-          </p>
-        </div>
+        <header className="admin-page-header">
+          <div><h1 id="admin-dux-title" tabIndex={-1}>Actualizaciones</h1>
+            <p>Productos y contenido de la tienda.</p></div>
+        </header>
+        <section className="admin-update-provider" aria-labelledby="admin-dux-provider-title">
+        <div className="admin-provider-heading">
+          <div>
+            <h2 id="admin-dux-provider-title" ref={titleRef} tabIndex={-1}>Dux Software</h2>
+            <p>Productos, precios y existencias.</p>
+          </div>
         {status?.enabled === true ? (
-          <div className="admin-order-actions">
             <button className="button button-primary" type="button"
               disabled={busy || catalogBusy || editorialBusy || loading}
               onClick={() => void synchronize()}>
               {busy ? 'Actualizando productos…' : 'Actualizar productos desde Dux'}
             </button>
-          </div>
         ) : null}
+        </div>
         {loading ? <p role="status">Consultando los productos de Dux…</p> : null}
         {status === null ? null : (
           <>
-            <dl className="admin-summary-grid">
-              <Metric
-                label="Última actualización"
-                value={latestRunText(status.latestRun, 'Sin ejecutar')}
-              />
+            <div className="admin-provider-status">
+              <span className={`admin-badge ${status.latestRun?.status === 'succeeded' ? 'admin-badge-success'
+                : status.latestRun?.status === 'failed' || status.latestRun?.status === 'partial' ? 'admin-badge-warning' : 'admin-badge-neutral'}`}>
+                Última actualización: {latestRunText(status.latestRun, 'Sin ejecutar')}
+              </span>
+              {latestRunDate(status.latestRun) === null ? null : <span className="admin-provider-meta">
+                Terminada el {formatDate(latestRunDate(status.latestRun) ?? '')}
+              </span>}
+            </div>
+            <details className="admin-disclosure">
+              <summary>Ver detalles de Dux</summary>
+              <dl className="admin-summary-grid">
               <Metric
                 label="Productos y variantes revisados"
                 value={latestRunNumber(status.latestRun, 'processed', 'processed_count')}
@@ -161,15 +169,6 @@ export function DuxPanel({
                 label="Problemas en la última actualización"
                 value={latestRunNumber(status.latestRun, 'failed', 'failed_count')}
               />
-            </dl>
-            {latestRunDate(status.latestRun) === null ? null : (
-              <p className="admin-context-note">
-                Última actualización terminada: {formatDate(latestRunDate(status.latestRun) ?? '')}.
-              </p>
-            )}
-            <details>
-              <summary>Información del negocio y sus productos</summary>
-              <dl className="admin-summary-grid">
                 <Metric label="Actualización desde Dux" value={status.enabled ? 'Habilitada' : 'No habilitada'} />
                 <Metric label="Datos del negocio" value={status.tenant === null ? 'Sin verificar' : 'Verificada'} />
                 <Metric label="Empresa" value={status.tenant?.companyName ?? 'Sin verificar'} />
@@ -180,8 +179,9 @@ export function DuxPanel({
                 <Metric label="Productos con problemas de actualización" value={status.counts.errorCount} />
                 <Metric label="Ya no encontrados en Dux" value={status.counts.absentCount} />
               </dl>
+              <DuxCatalogControls disabled={busy || editorialBusy} onOperationStateChange={catalogOperation} onUnauthorized={onUnauthorized} />
             </details>
-            <details>
+            <details className="admin-disclosure admin-order-technical">
               <summary>Información para soporte: conexión con Dux</summary>
               <dl className="admin-summary-grid">
                 <Metric label="Estado de sincronización" value={textValue(status.latestRun?.status, 'Sin ejecutar')} />
@@ -212,10 +212,10 @@ export function DuxPanel({
         {error === '' ? null : <div><button type="button" className="button button-secondary"
           disabled={loading || busy || catalogBusy || editorialBusy}
           onClick={() => { titleRef.current?.focus(); void refresh(); }}>Volver a consultar Dux</button></div>}
+        </section>
         {status === null ? null : <>
-          <DuxCatalogControls disabled={busy || editorialBusy} onOperationStateChange={catalogOperation} onUnauthorized={onUnauthorized} />
           <MercadoLibreEditorialPanel onUnauthorized={onUnauthorized} />
-          <details><summary>Información para soporte: revisión histórica de contenido</summary>
+          <details className="admin-disclosure admin-order-technical"><summary>Información para soporte: revisión histórica de contenido</summary>
             <p>Este registro se conserva para consulta. Las decisiones de contenido actuales se revisan en Mercado Libre.</p>
             <DuxEditorialReviewPanel disabled onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
           </details>

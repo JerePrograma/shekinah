@@ -46,12 +46,12 @@ export function ProductEditor({ product, description, onDescriptionChange, image
 
   return <aside className="admin-product-editor" aria-labelledby="product-editor-title">
     <div className="admin-editor-heading">
-      <div><p className="eyebrow">Editar contenido</p><h3 id="product-editor-title" ref={titleRef} tabIndex={-1}>Editar {product.name}</h3></div>
+      <div><p className="admin-field-note">Contenido del producto</p><h2 id="product-editor-title" ref={titleRef} tabIndex={-1}>Editar {product.name}</h2></div>
       <button className="button button-secondary admin-compact-button" type="button" disabled={busy} onClick={event => onRequestClose(event.currentTarget)}>Cerrar editor</button>
     </div>
     {pendingNavigation === null ? null : <div className="admin-inline-confirmation" role="dialog" aria-labelledby="discard-title" aria-describedby="discard-description"
       onKeyDown={event => { if (event.key === 'Escape' && !busy) { event.preventDefault(); event.stopPropagation(); cancelNavigation(); } }}>
-      <div><h4 id="discard-title">Hay cambios sin guardar</h4><p id="discard-description">Si continuás, se perderán los cambios de este editor.</p></div>
+      <div><h3 id="discard-title">Hay cambios sin guardar</h3><p id="discard-description">Si continuás, se perderán los cambios de este editor.</p></div>
       <div className="admin-inline-actions">
         <button ref={continueRef} className="button button-secondary admin-compact-button" type="button" disabled={busy} onClick={cancelNavigation}>Seguir editando</button>
         <button className="button button-danger admin-compact-button" type="button" disabled={busy} onClick={onConfirmPendingNavigation}>Descartar cambios</button>

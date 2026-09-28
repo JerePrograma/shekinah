@@ -167,7 +167,7 @@ it('pagina de a 50 después del filtro y orden global, encuentra productos de ot
   expect(screen.getByRole('heading', { name: 'Producto 055' })).toBeVisible();
   expect(screen.getByText('Página 2 de 2')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Productos', level: 3 })).toHaveFocus());
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Productos de la tienda', level: 2 })).toHaveFocus());
   fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar' }), { target: { value: 'PAGE-055' } });
   expect(screen.getAllByRole('article')).toHaveLength(1);
   expect(screen.getByRole('heading', { name: 'Producto 055' })).toBeVisible();

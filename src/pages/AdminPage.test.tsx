@@ -20,10 +20,13 @@ describe('Backoffice V2', () => {
 
     render(<AdminPage navigate={vi.fn()} section="summary" />);
 
-    expect(await screen.findByRole('heading', { name: 'Visitas al sitio' })).toBeVisible();
-    expect(screen.getByText('No hay pedidos pendientes en este período.')).toBeVisible();
+    expect(await screen.findByText('No hay pedidos pendientes en este período.')).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Inicio' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Visitas al sitio' })).not.toBeVisible();
     expect(screen.queryByText(/Link de Pago manual/u)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Pedidos y cobros' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Pedidos y cobros' }).querySelectorAll('dl.admin-financial-metrics > div')).toHaveLength(4);
+    fireEvent.click(screen.getByText('Ver visitas al sitio'));
     expect(screen.getByRole('heading', { name: 'Pedidos y cobros' })
       .compareDocumentPosition(screen.getByRole('heading', { name: 'Visitas al sitio' }))
       & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
@@ -41,7 +44,7 @@ describe('Backoffice V2', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<AdminPage navigate={vi.fn()} onOpenOrders={onOpenOrders} section="summary" />);
     expect(await screen.findByText('3 pedidos pendientes en este período.')).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Para revisar' })
+    expect(screen.getByRole('heading', { name: 'Necesita tu atención' })
       .compareDocumentPosition(screen.getByRole('heading', { name: 'Pedidos y cobros' }))
       & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getByText('Pedidos con pago confirmado').nextElementSibling).toHaveTextContent('0');
@@ -85,9 +88,14 @@ describe('Backoffice V2', () => {
     expect(await screen.findByRole('table', { name: 'Pedidos del período y pedidos de WhatsApp pendientes' })).toBeVisible();
     expect(detailCalls(fetchMock)).toHaveLength(0);
     const openDetail = screen.getByRole('button', { name: 'Ver detalle' });
+    expect(openDetail).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(openDetail);
 
-    expect(await screen.findByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` })).toHaveFocus();
+    expect(await screen.findByRole('heading', { level: 2, name: `Detalle de ${ORDER_NUMBER}` })).toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pedidos' })).toBeVisible();
+    expect(openDetail).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(openDetail.getAttribute('aria-controls') ?? ''))
+      .toBe(screen.getByRole('article', { name: `Detalle de ${ORDER_NUMBER}` }));
     expect(detailCalls(fetchMock)).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Contacto y entrega' })).toBeVisible();
     expect(screen.getByText('ID interno')).not.toBeVisible();
@@ -102,6 +110,7 @@ describe('Backoffice V2', () => {
       key: 'Escape',
     });
     expect(screen.queryByRole('heading', { name: `Detalle de ${ORDER_NUMBER}` })).not.toBeInTheDocument();
+    expect(openDetail).toHaveAttribute('aria-expanded', 'false');
     await waitFor(() => expect(openDetail).toHaveFocus());
 
     fireEvent.click(openDetail);
@@ -110,6 +119,25 @@ describe('Backoffice V2', () => {
     fireEvent.keyDown(reopenedTitle, { key: 'Escape' });
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Pedidos' }))
       .toHaveFocus());
+  });
+
+  it('mantiene separado un pedido aprobado de la ausencia de pagos registrados', async () => {
+    const fetchMock = vi.fn<typeof fetch>(input => Promise.resolve(json(
+      requestPath(input).startsWith('/api/admin/orders?')
+        ? orderListFixture({ channel: 'whatsapp', status: 'approved' })
+        : { ...orderDetailFixture({ channel: 'whatsapp', status: 'approved' }), payments: [] },
+    )));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminPage navigate={vi.fn()} section="orders" />);
+    const table = await screen.findByRole('table', { name: 'Pedidos del período y pedidos de WhatsApp pendientes' });
+    expect(within(table).getByText('Aprobado')).toBeVisible();
+    expect(table).not.toHaveTextContent(/Pagado|Pago confirmado/u);
+    expect(detailCalls(fetchMock)).toHaveLength(0);
+    fireEvent.click(within(table).getByRole('button', { name: 'Ver detalle' }));
+    expect(await screen.findByRole('table', { name: 'Pagos del pedido' }))
+      .toHaveTextContent('No hay pagos registrados para este pedido.');
+    expect(detailCalls(fetchMock)).toHaveLength(1);
+    expect(screen.queryByText(/^Pagado$|^Pago confirmado$/u)).not.toBeInTheDocument();
   });
 
   it('concilia un pedido Checkout Pro y muestra el impacto de reserva y reintegro', async () => {

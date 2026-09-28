@@ -1,5 +1,15 @@
 # Continuación
 
+## Continuar desde el rediseño administrativo — 2026-09-28
+
+Conservar el [marco administrativo y su jerarquía](design/ADMIN_APPLICATION.md)
+y revisar [la evidencia de esta iteración](validation/ADMIN_REDESIGN_2026-09-28.md).
+Los estilos administrativos están en `src/admin/admin.css`; no trasladarlos de
+nuevo a la tienda pública. Mantener paneles de productos montados al cambiar de
+sección, continuidad de foco, búsqueda global y máximo de 50 filas. No confundir
+estado comercial con evidencia de pago ni interpretar el cambio visual como
+activación o validación productiva de proveedores. Preservar los registros previos.
+
 ## Gestión web de productos — 2026-09-25
 
 Aplicar [PRODUCT_ABM.md](PRODUCT_ABM.md) y su

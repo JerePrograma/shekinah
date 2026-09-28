@@ -139,7 +139,7 @@ export function App() {
   return (
     <>
       <a className="skip-link" href="#main-content">Saltar al contenido</a>
-      <header className="site-header">
+      {route.id === 'admin' ? null : <header className="site-header">
         <div className="container header-inner">
           <AppLink
             className="brand"
@@ -186,7 +186,7 @@ export function App() {
             </ul>
           </nav>
         </div>
-      </header>
+      </header>}
       {navigationFeedback === '' ? null : (
         <p className="container navigation-feedback" role="alert">{navigationFeedback}</p>
       )}
@@ -201,7 +201,7 @@ export function App() {
         </CatalogViewsContext.Provider>
       </main>
       {route.id === 'admin' ? null : <AnalyticsConsent />}
-      <footer className="site-footer">
+      {route.id === 'admin' ? null : <footer className="site-footer">
         <div className="container footer-inner">
           <p className="footer-brand">
             <strong>{siteContent.brand.name}</strong>
@@ -221,7 +221,7 @@ export function App() {
           </nav>
           <p className="copyright">© {currentYear} {siteContent.brand.name}.</p>
         </div>
-      </footer>
+      </footer>}
     </>
   );
 }

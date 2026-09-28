@@ -66,27 +66,36 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
     setMessage(decision==='approve'?'Publicación aprobada para este producto. Actualizá el contenido para aplicar los cambios.':decision==='reject'?'Publicación rechazada para este producto.':'Se retiró la autorización para usar esta publicación.');
     await loadReview();
   }
-  return <section className="admin-context-note" aria-labelledby="ml-editorial-title">
-    <h3 id="ml-editorial-title" ref={titleRef} tabIndex={-1}>Contenido de Mercado Libre</h3>
-    <p>Usá las publicaciones activas de HERBOLARIOMDP para el nombre, las fotos y la descripción de los productos que apruebes. Los precios y las existencias se siguen administrando en Dux.</p>
+  return <section className="admin-update-provider" aria-labelledby="ml-editorial-title">
+    <div className="admin-provider-heading">
+      <div><h2 id="ml-editorial-title" ref={titleRef} tabIndex={-1}>Mercado Libre</h2>
+        <p>Nombres, fotos y descripciones aprobados.</p></div>
+      <button className="button button-secondary" type="button" disabled={!ready||busy} onClick={()=>void operation(synchronize)}>{busy?'Procesando contenido…':progress?.status==='running'?'Continuar actualización de contenido':'Actualizar contenido de los productos'}</button>
+    </div>
+    {status===null?null:<div className="admin-provider-status">
+      <span className={`admin-badge ${ready?'admin-badge-success':'admin-badge-warning'}`}>{ready?'Cuenta conectada':'Conexión pendiente'}</span>
+      {progress?.completedAt===null||progress?.completedAt===undefined?null:<span className="admin-provider-meta">Última actualización terminada: {formatDate(progress.completedAt)}</span>}
+    </div>}
     {status===null?(error===''?<p role="status">Consultando la conexión con Mercado Libre…</p>:null):!ready?<p role="status">{!status.enabled||!status.configured
       ?'La conexión con Mercado Libre necesita preparación. Contactá a soporte para habilitar esta función.'
-      :'Falta autorizar la cuenta de HERBOLARIOMDP. El titular debe usar el botón de autorización para continuar.'} El contenido actual se conserva.</p>:<p>Cuenta conectada. Podés actualizar el contenido o revisar qué publicación corresponde a cada producto.</p>}
-    {status?.enabled&&status.configured&&!status.connection.connected?<button type="button" disabled={busy} onClick={()=>void operation(async()=>{
+      :'Falta autorizar la cuenta de HERBOLARIOMDP. El titular debe usar el botón de autorización para continuar.'} El contenido actual se conserva.</p>:null}
+    {status?.enabled&&status.configured&&!status.connection.connected?<button className="button button-primary" type="button" disabled={busy} onClick={()=>void operation(async()=>{
       const result=await api<{authorizationUrl:string}>('authorize',{});const url=new URL(result.authorizationUrl);
       if(url.protocol!=='https:'||url.hostname!=='auth.mercadolibre.com.ar')throw Error('El retorno de autorización no es válido.');
       window.location.assign(url.href);
     })}>Autorizar cuenta de Mercado Libre</button>:null}
-    <button type="button" disabled={!ready||busy} onClick={()=>void operation(synchronize)}>{busy?'Procesando contenido…':progress?.status==='running'?'Continuar actualización de contenido':'Actualizar contenido de los productos'}</button>
     {progress===null?null:<><p role="status">{progressMessage(progress)} Publicaciones revisadas: {progress.metadataCompleted} de {progress.metadataTotal}. Productos revisados: {progress.contentCompleted} de {progress.associations}.</p>
       {progress.issues.length===0?null:<p>{progress.issues.length} casos necesitan revisión. Consultá la información para soporte antes de aprobar nuevos contenidos.</p>}</>}
-    <form onSubmit={event=>{event.preventDefault();void operation(loadReview);}}>
+    <details className="admin-disclosure">
+    <summary>Revisar publicaciones por producto</summary>
+    <p>Se admiten publicaciones activas de HERBOLARIOMDP para el nombre, las fotos y la descripción. Los precios y las existencias se administran en Dux.</p>
+    <form className="admin-editorial-search" onSubmit={event=>{event.preventDefault();void operation(loadReview);}}>
       <label>Código del producto en Dux<input value={code} onChange={event=>setCode(event.target.value)} required maxLength={180} disabled={!ready||busy}/></label>
       <label>Número de publicación de Mercado Libre (opcional)<input value={itemId} onChange={event=>setItemId(event.target.value)} maxLength={30} disabled={!ready||busy}/></label>
-      <button type="submit" disabled={!ready||busy}>Buscar publicaciones para este producto</button>
+      <button className="button button-secondary" type="submit" disabled={!ready||busy}>Buscar publicaciones para este producto</button>
     </form>
     {review===null?null:<div>
-      <h4>{review.dux.name} · {review.dux.code}</h4>
+      <h3>{review.dux.name} · {review.dux.code}</h3>
       <p>Unidades por bulto en Dux: {review.dux.unitsPerPackage??'No informadas'}. Si no están informadas o figuran en cero, comprobá la presentación antes de aprobar.</p>
       <p>Comprobá que la publicación sea del mismo producto, presentación y cantidad. Coincidir en el código no alcanza.</p>
       {choices.length===0?<p>No encontramos publicaciones activas para revisar. Comprobá el código del producto o indicá el número de publicación y volvé a buscar.</p>:null}
@@ -105,14 +114,17 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
         <label><input type="checkbox" checked={description} onChange={event=>setDescription(event.target.checked)} disabled={busy}/>Usar la descripción de esta publicación.</label>
         <label>Qué comprobaste y por qué tomás esta decisión<textarea value={reason} onChange={event=>setReason(event.target.value)} maxLength={2000} disabled={busy}/></label>
         <p>Para aprobar, completá las tres comprobaciones, elegí fotos o descripción y escribí el motivo. El nombre de la publicación también se usará en la tienda.</p>
-        <button type="button" disabled={busy||!presentation||!pack||!variant||(!images&&!description)||!reason.trim()} onClick={()=>void operation(()=>decide('approve'))}>Usar esta publicación para el producto</button>
-        <button type="button" disabled={busy||!reason.trim()} onClick={()=>void operation(()=>decide('reject'))}>Rechazar esta publicación</button>
-        <button type="button" disabled={busy||!reason.trim()||review.association===null} onClick={()=>void operation(()=>decide('revoke'))}>Dejar de usar esta publicación</button>
+        <div className="admin-order-actions">
+          <button className="button button-primary" type="button" disabled={busy||!presentation||!pack||!variant||(!images&&!description)||!reason.trim()} onClick={()=>void operation(()=>decide('approve'))}>Usar esta publicación para el producto</button>
+          <button className="button button-secondary button-danger" type="button" disabled={busy||!reason.trim()} onClick={()=>void operation(()=>decide('reject'))}>Rechazar esta publicación</button>
+          <button className="button button-secondary button-danger" type="button" disabled={busy||!reason.trim()||review.association===null} onClick={()=>void operation(()=>decide('revoke'))}>Dejar de usar esta publicación</button>
+        </div>
       </>}
     </div>}
+    </details>
     {message===''?null:<p role="status">{message}</p>}{error===''?null:<><p role="alert">{editorialErrorMessage(error)}</p>
-      <button type="button" disabled={busy} onClick={()=>{titleRef.current?.focus();setRefreshVersion(value=>value+1);}}>Volver a consultar Mercado Libre</button></>}
-    <details><summary>Información para soporte: Mercado Libre</summary>
+      <button className="button button-secondary" type="button" disabled={busy} onClick={()=>{titleRef.current?.focus();setRefreshVersion(value=>value+1);}}>Volver a consultar Mercado Libre</button></>}
+    <details className="admin-disclosure admin-order-technical"><summary>Información para soporte: Mercado Libre</summary>
       <p>Vendedor autorizado: HERBOLARIOMDP (445638367).</p>
       {progress===null?null:<><p>Actualización: {progress.id}. Estado: {progress.status}. Etapa: {progress.phase}.</p>
         {progress.errorCode===null||progress.errorCode===undefined?null:<p>{progress.errorCode}</p>}
@@ -122,6 +134,11 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
       {error===''?null:<p>{error}</p>}
     </details>
   </section>;
+}
+
+function formatDate(value:string):string {
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?'fecha no disponible':date.toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',hour12:false});
 }
 
 function progressMessage(progress:Progress):string {

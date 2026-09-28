@@ -16,6 +16,9 @@ import { DuxPanel } from './DuxPanel';
 import { ProductManager } from './ProductManager';
 import type { ProductInteractionState } from './ProductManager';
 import { WebOrderRequestsPanel } from './WebOrderRequestsPanel';
+import { AdminShell } from './AdminShell';
+import { AppLink } from '../routing/AppLink';
+import './admin.css';
 
 type AdminIdentity = Readonly<{
   label: string;
@@ -199,7 +202,7 @@ export function AdminBackoffice({
 
   if (viewState.status === 'checking') {
     return (
-      <section className="admin-page section" aria-labelledby="admin-session-title" aria-busy="true">
+      <section className="admin-auth" aria-labelledby="admin-session-title" aria-busy="true">
         <div className="container admin-shell">
           <h1 id="admin-session-title">Administración de Shekinah</h1>
           <p role="status">Comprobando tu sesión…</p>
@@ -210,12 +213,15 @@ export function AdminBackoffice({
 
   if (viewState.status === 'anonymous') {
     return (
-      <section className="admin-page section" aria-labelledby="admin-login-title">
+      <section className="admin-auth" aria-labelledby="admin-login-title">
         <div className="container admin-shell">
           <div className="admin-login-card">
-            <p className="eyebrow">Administración</p>
+            <AppLink className="admin-brand" navigate={navigate} to="/" aria-label="Shekinah, ir al inicio">
+              <img src="/assets/favicon-shekinah.svg" alt="" width="40" height="40" />
+              <div><strong>Shekinah</strong><span>Administración</span></div>
+            </AppLink>
             <h1 id="admin-login-title">Acceso administrativo</h1>
-            <p>Ingresá para gestionar los productos y pedidos de tu negocio.</p>
+            <p>Gestioná los pedidos y productos de tu negocio.</p>
             <form
               className="admin-login-form"
               aria-describedby={error === '' ? undefined : 'admin-login-error'}
@@ -255,6 +261,7 @@ export function AdminBackoffice({
             {error === '' ? null : (
               <p className="form-error" id="admin-login-error" role="alert">{error}</p>
             )}
+            <AppLink className="admin-auth-back" navigate={navigate} to="/">Volver al sitio</AppLink>
           </div>
         </div>
       </section>
@@ -262,57 +269,15 @@ export function AdminBackoffice({
   }
 
   return (
-    <>
-      <h1 className="visually-hidden">Administración de Shekinah</h1>
-      <div className="admin-session-bar">
-        <div className="container admin-session-bar-inner">
-          <p>
-            Sesión iniciada como <strong>{viewState.identity.label}</strong>
-          </p>
-          <button
-            className="button button-secondary"
-            type="button"
-            disabled={loggingOut || activeInteraction.busy}
-            onClick={() => {
-              void logout();
-            }}
-          >
-            {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </button>
-        </div>
-      </div>
+    <AdminShell section={section} identity={viewState.identity.label} busy={activeInteraction.busy}
+      dirty={productInteraction.dirty} loggingOut={loggingOut} navigate={navigate}
+      onLogout={() => void logout()} onSectionChange={next => {
+        if (activeInteraction.busy && section !== next) { setError(activeOperationMessage(activeInteraction)); return; }
+        setError(''); setSection(next);
+      }}>
       {error === '' ? null : (
         <p className="container form-error admin-session-error" role="alert">{error}</p>
       )}
-      <nav className="admin-section-navigation" aria-label="Secciones administrativas">
-        <div className="container">
-          <ul>
-            {ADMIN_SECTIONS.map((item) => (
-              <li key={item.id}>
-                <button
-                  className="admin-section-navigation-button"
-                  type="button"
-                  aria-current={section === item.id ? 'page' : undefined}
-                  disabled={activeInteraction.busy && section !== item.id}
-                  onClick={() => {
-                    if (activeInteraction.busy && section !== item.id) {
-                      setError(activeOperationMessage(activeInteraction));
-                      return;
-                    }
-                    setError('');
-                    setSection(item.id);
-                  }}
-                >
-                  {item.label}
-                  {item.id === 'products' && productInteraction.dirty
-                    ? ' · cambios sin guardar'
-                    : ''}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </nav>
       <div hidden={section !== 'products'}>
         <ProductManager
           onInteractionStateChange={handleProductInteractionChange}
@@ -337,18 +302,9 @@ export function AdminBackoffice({
         section={section}
       />
       {section === 'summary' ? <CommerceReadinessPanel onOpenOrders={() => setSection('orders')} onUnauthorized={handleUnauthorized} /> : null}
-    </>
+    </AdminShell>
   );
 }
-
-const ADMIN_SECTIONS: readonly Readonly<{ id: AdminSection; label: string }>[] = [
-  { id: 'summary', label: 'Resumen' },
-  { id: 'products', label: 'Productos' },
-  { id: 'orders', label: 'Pedidos' },
-  { id: 'inventory', label: 'Dux y Mercado Libre' },
-  { id: 'analytics', label: 'Visitas' },
-  { id: 'audit', label: 'Actividad' },
-];
 
 async function readOptionalSession(response: Response): Promise<AdminSession> {
   if (response.status === 401) return Object.freeze({ authenticated: false });

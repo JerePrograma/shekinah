@@ -92,10 +92,7 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
   }
 
   return <section className="admin-product-list-panel" aria-labelledby="product-list-title">
-    <div className="admin-panel-heading">
-      <div><h3 id="product-list-title" ref={listTitleRef} tabIndex={-1}>Productos</h3><p>Los dados de baja aparecen al final.</p></div>
-    </div>
-    <div className="admin-simple-catalog-controls" aria-label="Buscar, filtrar y ordenar productos" hidden={loading || loadError !== ''}>
+    <div className="admin-simple-catalog-controls" role="group" aria-label="Buscar, filtrar y ordenar productos" hidden={loading || loadError !== ''}>
       <label className="admin-form-field admin-search-field"><span>Buscar</span><input type="search" value={query} disabled={filtersDisabled}
         placeholder="Nombre o código de producto" onChange={event => onQueryChange(event.currentTarget.value)} /></label>
       <label className="admin-form-field"><span>Estado</span><select value={availabilityFilter} disabled={filtersDisabled}
@@ -118,9 +115,10 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
         </div>
       </details>
     </div>
-    <div className="admin-list-results" hidden={loading || loadError !== ''}>
-      <p className="admin-results-count" role="status" aria-live="polite">{visibleProducts.length === 1 ? '1 producto encontrado' : `${visibleProducts.length} productos encontrados`}</p>
-      {filtered ? <button className="button button-secondary admin-compact-button" type="button" disabled={filtersDisabled} onClick={onResetFilters}>Limpiar filtros</button> : null}
+    <div className="admin-list-results">
+      <h2 className="admin-results-heading" id="product-list-title" ref={listTitleRef} tabIndex={-1}>Productos de la tienda</h2>
+      <p className="admin-results-count" role="status" aria-live="polite" hidden={loading || loadError !== ''}>{visibleProducts.length === 1 ? '1 producto encontrado' : `${visibleProducts.length} productos encontrados`}</p>
+      {filtered && !loading && loadError === '' ? <button className="button button-secondary admin-compact-button" type="button" disabled={filtersDisabled} onClick={onResetFilters}>Limpiar filtros</button> : null}
     </div>
     {loading || loadError !== '' || pageCount <= 1 ? null : <nav className="admin-product-pagination" aria-label="Paginación de productos">
       <button className="button button-secondary admin-compact-button" type="button" aria-controls="admin-product-results"
@@ -131,11 +129,11 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
     </nav>}
     {isDirty ? <p className="admin-field-note">Guardá o descartá la edición antes de dar de baja o volver a publicar.</p> : null}
     {loading ? <p role="status" aria-busy="true">Cargando productos…</p> : loadError !== '' ? <div className="admin-empty-state">
-      <h4>No pudimos cargar los productos</h4><p className="form-error" role="alert">{loadError}</p>
+      <h3>No pudimos cargar los productos</h3><p className="form-error" role="alert">{loadError}</p>
       <button className="button button-secondary admin-compact-button" type="button" onClick={onRetryLoad}>Reintentar carga</button>
     </div> : visibleProducts.length === 0 ? <div className="admin-empty-state">
-      <h4>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h4>
-      <p>{totalProductCount === 0 ? 'Para traer los productos, abrí Dux y Mercado Libre y elegí Actualizar productos desde Dux.' : 'Probá otra búsqueda o limpiá los filtros.'}</p>
+      <h3>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h3>
+      <p>{totalProductCount === 0 ? 'Para traer los productos, abrí Actualizaciones y elegí Actualizar productos desde Dux.' : 'Probá otra búsqueda o limpiá los filtros.'}</p>
     </div> : <ul className="admin-product-list" id="admin-product-results">
       {pageProducts.map(product => {
         const unpublished = product.publicationStatus === 'unpublished';
@@ -143,23 +141,23 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
         const rowBusy = operation.kind !== 'idle' && 'productId' in operation && operation.productId === product.id;
         const stock = product.commerce?.source === 'dux' ? product.commerce.observedStock?.available : undefined;
         return <li className={`${selected ? 'is-selected' : ''}${unpublished ? ' is-unpublished' : ''}`} key={product.id}>
-          <article className="admin-product-row admin-simple-product-row" aria-label={product.name} aria-busy={rowBusy}>
+          <article className="admin-product-row" aria-label={product.name} aria-busy={rowBusy}>
             {product.primaryImage === undefined ? <div className="admin-product-thumbnail-placeholder" role="img" aria-label="Imagen no disponible">Sin imagen</div> :
               <img className="admin-product-thumbnail" src={product.primaryImage.src} alt={product.primaryImage.alt} loading="lazy" decoding="async" />}
             <div className="admin-product-row-main">
-              <h4>{product.name}</h4>
+              <h3>{product.name}</h3>
               <p className="admin-product-id">{product.sku} · {product.categoryNames.join(' · ') || 'Sin categoría'}</p>
               <div className="admin-product-row-facts">
                 <span className={`admin-status-badge admin-status-${unpublished ? 'paused' : 'available'}`}>{unpublished ? 'Dado de baja' : 'Publicado'}</span>
-                <strong>{formatProductPrice(product.salePrice ?? product.price)}</strong>
                 {stock !== undefined && stock <= 0 ? <span className="admin-status-badge admin-status-out">Sin stock</span> : null}
               </div>
             </div>
+            <strong className="admin-product-price">{formatProductPrice(product.salePrice ?? product.price)}</strong>
             <div className="admin-product-row-actions">
               <button className="button button-secondary admin-compact-button" type="button" disabled={remoteBusy || deleteCandidate !== null}
                 aria-label={`Editar ${product.name}`} onClick={event => onEdit(product, event.currentTarget)}>{selected ? 'Editando' : 'Editar'}</button>
               <button ref={element => { if (element === null) publicationRefs.current.delete(product.id); else publicationRefs.current.set(product.id, element); }}
-                className={`button ${unpublished ? 'button-secondary' : 'button-danger'} admin-compact-button`} type="button"
+                className={`button ${unpublished ? 'button-secondary' : 'button-danger admin-row-danger'} admin-compact-button`} type="button"
                 disabled={remoteBusy || isDirty || deleteCandidate !== null} title={unpublished ? 'Volver a publicar' : 'Dar de baja de la web'}
                 aria-label={`${unpublished ? 'Volver a publicar' : 'Dar de baja'} ${product.name}`}
                 onClick={() => unpublished ? onUpdateAvailability(product) : onOpenDelete(product)}>
@@ -176,7 +174,7 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
             {deleteCandidate?.id !== product.id ? null : <div className="admin-inline-confirmation" role="dialog"
               aria-labelledby={`delete-title-${product.id}`} aria-describedby={`delete-description-${product.id}`}
               onKeyDown={event => { if (event.key === 'Escape' && !rowBusy) { event.preventDefault(); event.stopPropagation(); onCancelDelete(); } }}>
-              <div><h5 id={`delete-title-${product.id}`}>¿Dar de baja {product.name}?</h5>
+              <div><h4 id={`delete-title-${product.id}`}>¿Dar de baja {product.name}?</h4>
                 <p id={`delete-description-${product.id}`}>Dejará de mostrarse en la web. Podés volver a publicarlo cuando quieras. El producto y su stock se conservan en Dux.</p></div>
               <div className="admin-inline-actions">
                 <button ref={deleteCancelRef} className="button button-secondary admin-compact-button" type="button" disabled={rowBusy} onClick={onCancelDelete}>Cancelar</button>

@@ -74,7 +74,11 @@ it('prioriza pendientes comerciales y conserva la configuración bajo informaci�
 
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
-  expect(await screen.findByRole('heading', { name: 'Para revisar en Pedidos' })).toBeVisible();
+  expect(await screen.findByText('Compra directa: sin comprobar')).toBeVisible();
+  expect(screen.getByText('Para revisar en Pedidos')).not.toBeVisible();
+  expect(screen.getByText('Ver detalles del estado').closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByText('Ver detalles del estado'));
+  expect(screen.getByRole('heading', { name: 'Para revisar en Pedidos' })).toBeVisible();
   expect(screen.getByText(/Hay condiciones pendientes para registrar nuevas solicitudes/)).toBeVisible();
   expect(screen.getByText(/Esquema 0020: sí · Backend: cerrado/)).not.toBeVisible();
   expect(screen.getByText('Información para soporte').closest('details')).not.toHaveAttribute('open');
@@ -105,8 +109,11 @@ it('actualiza el diagnóstico sin mutaciones', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
   await screen.findByText(/Esquema 0020: sí/);
+  fireEvent.click(screen.getByText('Ver detalles del estado'));
   fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado de la tienda' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  await screen.findByText('Compra directa: sin comprobar');
+  fireEvent.click(screen.getByText('Ver detalles del estado'));
   expect(await screen.findByText('La configuración de solicitudes está completa. Su disponibilidad también depende del catálogo publicado.')).toBeVisible();
   fireEvent.click(screen.getByText('Información para soporte'));
   expect(screen.getByText(/Esquema 0020: sí · Backend: abierto/)).toBeVisible();
@@ -142,6 +149,8 @@ it('presenta la preparación directa por separado del checkout retirado', async 
   }})));
   render(<CommerceReadinessPanel />);
   fireEvent.click(screen.getByRole('button',{name:'Consultar estado de la tienda'}));
+  expect(await screen.findByText('Compra directa: configuración completa')).toBeVisible();
+  fireEvent.click(screen.getByText('Ver detalles del estado'));
   expect(await screen.findByText(/La configuración de compra directa está completa/)).toBeVisible();
   expect(screen.getByText('Checkout anterior retirado')).not.toBeVisible();
   fireEvent.click(screen.getByText('Información para soporte'));

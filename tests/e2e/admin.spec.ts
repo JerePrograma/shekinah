@@ -125,17 +125,17 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
 
   await loginWithFixture(page, 'summary');
   await expect(page.locator('#main-content')).toBeFocused();
-  await expect(page.getByRole('heading', { level: 2, name: 'Resumen del negocio' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { level: 1, name: 'Inicio', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Inicio', exact: true })).toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: 'Productos' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'Productos', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'Pedidos', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Visitas' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'Visitas', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Actividad' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Actividad de la administración' })).toBeFocused();
-  await expect(page.getByText(/Sesión iniciada como/u)).toContainText('Administración E2E');
+  await expect(page.getByRole('heading', { level: 1, name: 'Actividad', exact: true })).toBeFocused();
+  await expect(page.locator('.admin-session-identity')).toContainText('Administración E2E');
 
   const storedValues = await page.evaluate(() => JSON.stringify({
     local: Object.values(window.localStorage),
@@ -165,46 +165,134 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
 });
 
-test('el negocio encuentra pendientes y todas las secciones en móvil sin vocabulario técnico', async ({ page }, testInfo) => {
-  const item = product('producto-mobile', 'Producto de prueba móvil', { price: 1500, categoryName: 'Rubro de prueba', categorySlug: 'rubro-prueba' });
-  await installStatefulAdminApi(page, [item]);
-  await page.route('**/api/admin/summary?**', route => json(route, {
-    ...adminSummary(), order_count: 3, pending_count: 2, preference_pending_count: 1,
-  }));
-  await page.route('**/api/admin/dux/status', route => json(route, {
-    enabled: false, lifecycleReady: false, unitSemanticsReady: false, tenant: null, latestRun: null,
-    counts: { inventoryCount: 1, mappedCount: 1, unmappedCount: 0, ambiguousCount: 0, staleCount: 0,
-      errorCount: 0, absentCount: 0, checkoutEligibleCount: 0 }, maxAgeSeconds: 900,
-    blockers: ['DUX_API_DISABLED: token API no configurado'],
-  }));
-  await page.setViewportSize({ width: 360, height: 800 });
+for (const viewport of [{ width: 360, height: 800 }, { width: 390, height: 844 }]) {
+  test(`el menú móvil a ${viewport.width}px conserva destinos, foco y pendientes comprensibles`, async ({ page }, testInfo) => {
+    const item = product('producto-mobile', 'Producto de prueba móvil', { price: 1500, categoryName: 'Rubro de prueba', categorySlug: 'rubro-prueba' });
+    const orderId = 'ord_mobile_pending_e2e_1234567890';
+    await installStatefulAdminApi(page, [item], { orders: [whatsappOrderDetailFixture(orderId, item.id, item.name)] });
+    await page.route('**/api/admin/summary?**', route => json(route, {
+      ...adminSummary(), order_count: 3, pending_count: 2, preference_pending_count: 1,
+    }));
+    await page.route('**/api/admin/dux/status', route => json(route, {
+      enabled: false, lifecycleReady: false, unitSemanticsReady: false, tenant: null, latestRun: null,
+      counts: { inventoryCount: 1, mappedCount: 1, unmappedCount: 0, ambiguousCount: 0, staleCount: 0,
+        errorCount: 0, absentCount: 0, checkoutEligibleCount: 0 }, maxAgeSeconds: 900,
+      blockers: ['DUX_API_DISABLED: token API no configurado'],
+    }));
+    await page.setViewportSize(viewport);
+    await page.goto('/admin');
+    await loginWithFixture(page, 'summary');
+    const navigation = page.getByRole('navigation', { name: 'Secciones administrativas' });
+    const menu = page.getByRole('button', { name: 'Abrir menú', exact: true });
+    await expect(navigation).toBeHidden();
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toHaveAttribute('aria-controls', 'admin-navigation-panel');
+    await expectTouchTarget(menu);
+    await menu.click();
+    await expect(page.getByRole('button', { name: 'Cerrar menú', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    for (const label of ['Inicio', 'Pedidos', 'Productos', 'Actualizaciones', 'Visitas', 'Actividad']) {
+      const destination = navigation.getByRole('button', { name: label, exact: true });
+      await expectHorizontallyInsideViewport(destination, viewport.width);
+      await expectTouchTarget(destination);
+    }
+    await page.getByRole('button', { name: 'Cerrar menú', exact: true }).click();
+    await expect(navigation).toBeHidden();
+    await menu.click();
+    await navigation.getByRole('button', { name: 'Actividad', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await expect(navigation).toBeHidden();
+    await expect(menu).toBeFocused();
+    await expect(page.getByText('3 pedidos pendientes en este período.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revisar pedidos', exact: true })).toBeVisible();
+    await expect(page.getByText('Pedidos con pago confirmado', { exact: true })).toBeVisible();
+    const technicalWords = /\b(?:API|D1|OAuth|token|snapshot|reconcile|HTTP|Cloudflare|backend)\b/iu;
+    expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+    if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
+      await page.screenshot({ path: testInfo.outputPath(`admin-summary-${viewport.width}.png`), fullPage: true });
+    }
+    await page.getByRole('button', { name: 'Revisar pedidos', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeFocused();
+    expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+    await page.getByRole('button', { name: 'Ver detalle', exact: true }).click();
+    const detailHeading = page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` });
+    await expect(detailHeading).toBeFocused();
+    await expectBelowMobileHeader(detailHeading);
+    await page.getByRole('button', { name: 'Cerrar detalle', exact: true }).click();
+    await menu.click();
+    await navigation.getByRole('button', { name: 'Productos', exact: true }).click();
+    await expect(navigation).toBeHidden();
+    await expect(page.getByRole('heading', { level: 1, name: 'Productos', exact: true })).toBeFocused();
+    const edit = page.getByRole('button', { name: `Editar ${item.name}`, exact: true });
+    const unpublish = page.getByRole('button', { name: `Dar de baja ${item.name}`, exact: true });
+    await expect(unpublish).toHaveText('Dar de baja');
+    await expectTouchTarget(edit);
+    await edit.click();
+    const editor = page.getByRole('complementary', { name: `Editar ${item.name}` });
+    await expect(editor.getByRole('heading', { name: `Editar ${item.name}` })).toBeFocused();
+    await expect(editor.getByRole('heading', { name: `Editar ${item.name}` })).toBeInViewport();
+    await expectBelowMobileHeader(editor.getByRole('heading', { name: `Editar ${item.name}` }));
+    await editor.getByRole('button', { name: 'Cerrar editor', exact: true }).click();
+    await expect(edit).toBeFocused();
+    await unpublish.click();
+    const confirmation = page.getByRole('dialog', { name: `¿Dar de baja ${item.name}?` });
+    await expect(confirmation.getByRole('button', { name: 'Cancelar', exact: true })).toBeFocused();
+    await expectHorizontallyInsideViewport(confirmation, viewport.width);
+    await page.keyboard.press('Escape');
+    await expect(confirmation).toHaveCount(0);
+    await expect(unpublish).toBeFocused();
+    expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+    await menu.click();
+    await navigation.getByRole('button', { name: 'Actualizaciones', exact: true }).click();
+    await expect(navigation).toBeHidden();
+    await expect(page.getByRole('heading', { level: 1, name: 'Actualizaciones', exact: true })).toBeFocused();
+    await expect(page.getByRole('heading', { name: /Mercado Libre/u })).toBeVisible();
+    expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+    await page.getByText('Información para soporte: conexión con Dux', { exact: true }).click();
+    await expect(page.getByText('DUX_API_DISABLED: token API no configurado', { exact: true })).toBeVisible();
+    for (const label of ['Visitas', 'Actividad', 'Inicio']) {
+      await menu.click();
+      await navigation.getByRole('button', { name: label, exact: true }).click();
+      await expect(navigation).toBeHidden();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+      await expect(page.getByRole('heading', { level: 1, name: label, exact: true })).toBeFocused();
+    }
+    await expectNoGlobalHorizontalOverflow(page);
+  });
+}
+
+test('el escritorio mantiene la navegación y vincula el pedido seleccionado con su detalle', async ({ page }) => {
+  const orderId = 'ord_desktop_pending_1234567890123';
+  await installStatefulAdminApi(page, [], { orders: [
+    whatsappOrderDetailFixture(orderId),
+    orderDetailFixture('ord_desktop_paid_1234567890123456'),
+  ] });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
   const navigation = page.getByRole('navigation', { name: 'Secciones administrativas' });
-  for (const label of ['Resumen', 'Productos', 'Pedidos', 'Dux y Mercado Libre', 'Visitas', 'Actividad']) {
-    await expectHorizontallyInsideViewport(navigation.getByRole('button', { name: label, exact: true }), 360);
-  }
-  await expect(page.getByText('3 pedidos pendientes en este período.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Revisar pedidos', exact: true })).toBeVisible();
-  await expect(page.getByText('Pedidos con pago confirmado', { exact: true })).toBeVisible();
-  const technicalWords = /\b(?:API|D1|OAuth|token|snapshot|reconcile|HTTP|Cloudflare|backend)\b/iu;
-  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
-  if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
-    await page.screenshot({ path: testInfo.outputPath('admin-summary-360.png'), fullPage: true });
-  }
-  await page.getByRole('button', { name: 'Revisar pedidos', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeFocused();
-  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
-  await navigation.getByRole('button', { name: 'Productos', exact: true }).click();
-  await expect(page.getByRole('button', { name: `Dar de baja ${item.name}` })).toHaveText('Dar de baja');
-  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
-  await navigation.getByRole('button', { name: 'Dux y Mercado Libre', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Dux Software', exact: true })).toBeFocused();
-  await expect(page.getByRole('heading', { name: /Mercado Libre/u })).toBeVisible();
-  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
-  await page.getByText('Información para soporte: conexión con Dux', { exact: true }).click();
-  await expect(page.getByText('DUX_API_DISABLED: token API no configurado', { exact: true })).toBeVisible();
-  await expectNoGlobalHorizontalOverflow(page);
+  await expect(navigation).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Abrir menú', exact: true })).toBeHidden();
+  await navigation.getByRole('button', { name: 'Pedidos', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Pedidos', exact: true })).toBeFocused();
+  const table = page.getByRole('table', { name: 'Pedidos del período y pedidos de WhatsApp pendientes' });
+  const firstOrder = table.locator('tbody tr').first();
+  await expect(firstOrder).toContainText(formatOrderNumber(orderId));
+  await expect(firstOrder.getByRole('button', { name: 'Ver detalle', exact: true })).toBeInViewport();
+  await firstOrder.getByRole('button', { name: 'Ver detalle', exact: true }).click();
+  await expect(firstOrder).toHaveClass(/is-selected/u);
+  const detail = page.locator('.admin-order-detail');
+  await expect(detail.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toBeFocused();
+  await expect(navigation).toBeInViewport();
+  const listBox = await page.locator('.admin-orders-list').boundingBox();
+  const detailBox = await detail.boundingBox();
+  expect(listBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  if (listBox === null || detailBox === null) throw new Error('No se encontró la composición de lista y detalle.');
+  expect(detailBox.x).toBeGreaterThanOrEqual(listBox.x + listBox.width);
+  await detail.getByRole('button', { name: 'Cerrar detalle', exact: true }).click();
+  await expect(firstOrder.getByRole('button', { name: 'Ver detalle', exact: true })).toBeFocused();
+  await expect(firstOrder).not.toHaveClass(/is-selected/u);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
 });
 
 test('ABM simplificado: pliega descripción, guarda contenido y permite baja reversible con teclado', async ({ page }) => {
@@ -294,7 +382,14 @@ test('pagina el catálogo completo, busca fuera de la primera página y conserva
   await pagination.getByRole('button', { name: 'Siguiente' }).click();
   await expect(page.getByRole('article')).toHaveCount(6);
   await expect(pagination.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
-  await expect(page.getByRole('heading', { name: 'Productos', level: 3 })).toBeFocused();
+  const listHeading = page.getByRole('heading', { name: 'Productos de la tienda', level: 2 });
+  await expect(listHeading).toBeFocused();
+  await expect(listHeading).toBeInViewport();
+  const headingBounds = await listHeading.boundingBox();
+  expect(headingBounds?.height ?? 0).toBeGreaterThanOrEqual(16);
+  expect(headingBounds?.width ?? 0).toBeGreaterThan(20);
+  await expect(listHeading).toHaveCSS('clip', 'auto');
+  await expect(listHeading).toHaveCSS('clip-path', 'none');
   await page.getByRole('searchbox', { name: 'Buscar' }).fill('PAGE-055');
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.getByRole('article', { name: 'Producto paginado 055' })).toBeVisible();
@@ -575,11 +670,11 @@ async function loginWithFixture(
   await page.getByLabel('Contraseña').fill(FIXTURE_PASSWORD);
   await page.getByRole('button', { name: 'Ingresar' }).click();
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Administración de Shekinah' }),
+    page.getByRole('heading', { level: 1, name: 'Inicio', exact: true }),
   ).toBeVisible();
   if (section === 'products') {
     await page.getByRole('button', { name: 'Productos' }).click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Productos', exact: true })).toBeVisible();
   }
 }
 
@@ -602,6 +697,19 @@ async function expectHorizontallyInsideViewport(
   expect((box?.x ?? viewportWidth + 2) + (box?.width ?? 0)).toBeLessThanOrEqual(
     viewportWidth + 1,
   );
+}
+
+async function expectTouchTarget(locator: Locator): Promise<void> {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+}
+
+async function expectBelowMobileHeader(locator: Locator): Promise<void> {
+  await expect.poll(async () => {
+    const box = await locator.boundingBox();
+    return box !== null && box.y >= 64 && box.y <= 120;
+  }).toBe(true);
 }
 
 async function installStatefulAdminApi(

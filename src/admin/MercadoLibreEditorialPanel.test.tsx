@@ -18,8 +18,11 @@ it('explica la conexión pendiente y no habilita importación sin el titular',as
   const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json({enabled:false,configured:false,connection:{connected:false},latest:null}));
   vi.stubGlobal('fetch',fetchMock);render(<MercadoLibreEditorialPanel/>);
   expect(await screen.findByText(/La conexión con Mercado Libre necesita preparación/u)).toBeVisible();
-  expect(screen.getByText(/publicaciones activas.*nombre, las fotos y la descripción/u)).toBeVisible();
+  expect(screen.getByRole('heading',{level:2,name:'Mercado Libre'})).toBeVisible();
+  expect(screen.getByText(/publicaciones activas.*nombre, las fotos y la descripción/u)).not.toBeVisible();
   expect(screen.getByRole('button',{name:'Actualizar contenido de los productos'})).toBeDisabled();
+  expect(screen.getByText('Revisar publicaciones por producto').closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByText('Revisar publicaciones por producto'));
   expect(screen.getByRole('button',{name:'Buscar publicaciones para este producto'})).toBeDisabled();
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
@@ -54,6 +57,7 @@ it('explica cómo resolver la falta de una primera actualización sin mostrar el
   vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({enabled:true,configured:true,connection:{connected:true},latest:null}))
     .mockResolvedValueOnce(Response.json({error:{code:'ML_EDITORIAL_INITIAL_IMPORT_REQUIRED',message:'El estado editorial no existe.'}},{status:409})));
   render(<MercadoLibreEditorialPanel/>);
+  fireEvent.click(screen.getByText('Revisar publicaciones por producto'));
   await waitFor(()=>expect(screen.getByRole('button',{name:'Buscar publicaciones para este producto'})).toBeEnabled());
   fireEvent.change(screen.getByLabelText('Código del producto en Dux'),{target:{value:'DU1'}});
   fireEvent.click(screen.getByRole('button',{name:'Buscar publicaciones para este producto'}));
@@ -70,7 +74,7 @@ it('vuelve a consultar una conexión fallida sin iniciar una importación',async
   expect(await screen.findByRole('alert')).toHaveTextContent('Volvé a consultar el estado');
   fireEvent.click(screen.getByRole('button',{name:'Volver a consultar Mercado Libre'}));
   await waitFor(()=>expect(screen.getByRole('button',{name:'Actualizar contenido de los productos'})).toBeEnabled());
-  expect(screen.getByRole('heading',{name:'Contenido de Mercado Libre'})).toHaveFocus();
+  expect(screen.getByRole('heading',{name:'Mercado Libre'})).toHaveFocus();
   expect(fetchMock.mock.calls.map(([path])=>path)).toEqual(['/api/admin/mercadolibre/editorial/status','/api/admin/mercadolibre/editorial/status']);
 });
 
@@ -81,6 +85,7 @@ it('presenta la revisión en español y conserva las comprobaciones y el contrat
   const fetchMock=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({enabled:true,configured:true,connection:{connected:true},latest:null}))
     .mockResolvedValueOnce(Response.json(review)).mockResolvedValueOnce(Response.json({})).mockResolvedValueOnce(Response.json(review));
   vi.stubGlobal('fetch',fetchMock);render(<MercadoLibreEditorialPanel/>);
+  fireEvent.click(screen.getByText('Revisar publicaciones por producto'));
   await waitFor(()=>expect(screen.getByRole('button',{name:'Buscar publicaciones para este producto'})).toBeEnabled());
   fireEvent.change(screen.getByLabelText('Código del producto en Dux'),{target:{value:'DU1'}});
   fireEvent.click(screen.getByRole('button',{name:'Buscar publicaciones para este producto'}));
@@ -100,4 +105,15 @@ it('presenta la revisión en español y conserva las comprobaciones y el contrat
     code:'DU1',itemId:'MLA12345',variationId:'123',evidenceHash:'evidence',duxIdentityHash:'identity',decision:'approve',reason:'Presentación y cantidad comprobadas.',
     presentationVerified:true,packVerified:true,variantVerified:true,images:true,description:true,expectedRevision:0,
   })})));
+});
+
+it('muestra la fecha recibida de la última actualización y mantiene la revisión plegada',async()=>{
+  const latest={id:'ml_editorial_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',status:'succeeded',phase:'complete',completedAt:'2026-09-28T12:05:00.000Z',
+    items:2,metadataCompleted:2,metadataTotal:2,contentCompleted:1,associations:1,issues:[]};
+  vi.stubGlobal('fetch',vi.fn<typeof fetch>().mockResolvedValue(Response.json({enabled:true,configured:true,connection:{connected:true},latest})));
+  render(<MercadoLibreEditorialPanel/>);
+  expect(await screen.findByText(/Última actualización terminada:/)).toHaveTextContent('28/9/2026, 09:05:00');
+  expect(screen.getByText('Cuenta conectada')).toBeVisible();
+  expect(screen.getByLabelText('Código del producto en Dux')).not.toBeVisible();
+  expect(screen.getByText(/Estado: succeeded. Etapa: complete/)).not.toBeVisible();
 });

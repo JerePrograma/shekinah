@@ -122,23 +122,37 @@ export function CommerceReadinessPanel({
   }, [onUnauthorized, requested, revision]);
 
   return (
-    <section className="container section" aria-labelledby="commerce-readiness-title" aria-busy={requested && readiness === null && error === ''}>
-      <div className="section-heading">
-        <p className="eyebrow">Operación</p>
-        <h2 id="commerce-readiness-title">Estado de la tienda</h2>
-        <p>Consultá si hay compras para revisar o problemas para recibir pedidos.</p>
-      </div>
-      {!requested ? (
+    <section className="admin-store-status" aria-labelledby="commerce-readiness-title" aria-busy={requested && readiness === null && error === ''}>
+      <div className="admin-store-status-heading">
+        <div><h2 id="commerce-readiness-title">Estado de la tienda</h2>
+          <p className="admin-provider-meta">{readiness === null ? 'Compras, catálogo y conexiones.'
+            : `Última consulta: ${new Date(readiness.checkedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}.`}</p>
+        </div>
+        {!requested ? (
         <button className="button button-secondary" type="button" onClick={() => setRequested(true)}>
           Consultar estado de la tienda
         </button>
-      ) : null}
+        ) : (
+          <button className="button button-secondary" type="button"
+            disabled={readiness === null && error === ''}
+            onClick={() => setRevision((value) => value + 1)}>
+            {error === '' ? 'Actualizar estado de la tienda' : 'Reintentar consulta'}
+          </button>
+        )}
+      </div>
       {error !== '' ? <p className="form-error" role="alert">{error}</p> : null}
       {requested && readiness === null && error === '' ? <p role="status">Consultando el estado de la tienda…</p> : null}
       {readiness === null ? null : (
         <>
-          <div className="admin-dashboard-stack">
-            <section className="admin-metric-group" aria-labelledby="store-attention-title">
+          <p><span className={`admin-badge ${readiness.directCheckout === undefined ? 'admin-badge-neutral'
+            : readiness.directCheckout.ready ? 'admin-badge-success' : 'admin-badge-warning'}`}>
+            {readiness.directCheckout === undefined ? 'Compra directa: sin comprobar'
+              : readiness.directCheckout.ready ? 'Compra directa: configuración completa' : 'Compra directa: requiere atención'}
+          </span></p>
+          <details className="admin-disclosure">
+            <summary>Ver detalles del estado</summary>
+          <div className="admin-store-checks">
+            <section aria-labelledby="store-attention-title">
               <h3 id="store-attention-title">Para revisar en Pedidos</h3>
               <dl className="admin-summary-grid">
                 <div><dt>Problemas de pago registrados</dt><dd>{readiness.attention.paymentIncidentCount}</dd></div>
@@ -147,9 +161,9 @@ export function CommerceReadinessPanel({
                 <div><dt>Compras en preparación</dt><dd>{readiness.directCheckout?.preparingCount ?? 'Sin información'}</dd></div>
               </dl>
               <p>Son grupos distintos y pueden incluir la misma compra. Revisá el detalle antes de repetir un cobro o una reserva.</p>
-              {onOpenOrders === undefined ? null : <button type="button" className="button button-primary" onClick={onOpenOrders}>Ver pedidos y pendientes</button>}
+              {onOpenOrders === undefined ? null : <button type="button" className="button button-secondary" onClick={onOpenOrders}>Ver pedidos y pendientes</button>}
             </section>
-            <section className="admin-metric-group" aria-labelledby="store-availability-title">
+            <section aria-labelledby="store-availability-title">
               <h3 id="store-availability-title">Recepción de compras</h3>
               <p>{readiness.directCheckout === undefined ? 'No pudimos comprobar la configuración de compra directa.'
                 : readiness.directCheckout.ready ? 'La configuración de compra directa está completa. Cada compra verifica precio, stock y pago antes de confirmarse.'
@@ -158,11 +172,11 @@ export function CommerceReadinessPanel({
                 ? 'La configuración de solicitudes está completa. Su disponibilidad también depende del catálogo publicado.'
                 : 'Hay condiciones pendientes para registrar nuevas solicitudes. Pedí ayuda a soporte con la información de abajo.'}</p>
               <p>{readiness.dux.snapshotAvailable ? readiness.dux.snapshotFresh === false
-                ? 'La información de productos necesita actualizarse. Podés hacerlo en la sección Dux y Mercado Libre.'
+                ? 'La información de productos necesita actualizarse. Podés hacerlo en Actualizaciones.'
                 : 'Hay información de productos disponible.' : 'Todavía no hay información de productos disponible.'}</p>
             </section>
           </div>
-          <details className="admin-order-technical">
+          <details className="admin-disclosure admin-order-technical">
             <summary>Información para soporte</summary>
             <p>Comprobaciones de configuración. Consultar esta información no cambia pedidos, pagos ni stock.</p>
           <div className="cart-items">
@@ -222,19 +236,9 @@ export function CommerceReadinessPanel({
             </article>
           </div>
           </details>
-          <p className="cart-disclaimer">Última consulta: {new Date(readiness.checkedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}.</p>
+          </details>
         </>
       )}
-      {requested ? (
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={readiness === null && error === ''}
-          onClick={() => setRevision((value) => value + 1)}
-        >
-          {error === '' ? 'Actualizar estado de la tienda' : 'Reintentar consulta'}
-        </button>
-      ) : null}
     </section>
   );
 }

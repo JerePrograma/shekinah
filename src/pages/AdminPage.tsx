@@ -16,8 +16,6 @@ import {
   refreshRuntimeCatalog,
   useRuntimeCatalogProducts,
 } from '../data/runtime-catalog';
-import { AppLink } from '../routing/AppLink';
-import { appPaths } from '../routing/routes';
 import type { Navigate } from '../routing/routes';
 
 export type AdminSection = 'summary' | 'products' | 'inventory' | 'orders' | 'analytics' | 'audit';
@@ -160,7 +158,6 @@ const EMPTY_DATA: AdminData = Object.freeze({
 });
 
 export function AdminPage({
-  navigate,
   onOpenOrders,
   onOperationStateChange,
   onUnauthorized,
@@ -368,15 +365,15 @@ export function AdminPage({
   }
 
   return (
-    <section className="admin-page section" aria-labelledby={`admin-${section}-title`}>
+    <section className="admin-page" aria-labelledby={`admin-${section}-title`}>
       <div className="container admin-shell">
-        <div className="section-heading admin-report-heading">
-          <p className="eyebrow">Administración</p>
-          <h2 id={`admin-${section}-title`} ref={sectionTitleRef} tabIndex={-1}>
-            {heading.title}
-          </h2>
-          <p>{heading.description}</p>
-        </div>
+        <header className="admin-page-header">
+          <div>
+            <h1 id={`admin-${section}-title`} ref={sectionTitleRef} tabIndex={-1}>{heading.title}</h1>
+            <p>{heading.description}</p>
+          </div>
+          <ExportActions analyticsQuery={analyticsQuery} orderQuery={orderQuery} section={section} />
+        </header>
 
         {section === 'orders' ? orderOverview : null}
         {section !== 'summary' || loading || visibleReport?.data.summary == null ? null : (
@@ -385,13 +382,15 @@ export function AdminPage({
         )}
 
         <form
-          className="admin-filters"
+          className="admin-filters admin-period-toolbar"
+          aria-label="Período del informe"
           aria-describedby={rangeError === null ? undefined : 'admin-range-error'}
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             if (rangeError === null) setSubmittedRange({ from, to, status });
           }}
         >
+          <span className="admin-period-label">Período</span>
           <label>
             <span>Desde</span>
             <input
@@ -430,7 +429,7 @@ export function AdminPage({
               </select>
             </label>
           ) : null}
-          <button className="button button-primary" type="submit" disabled={rangeError !== null || loading}>
+          <button className="button button-secondary" type="submit" disabled={rangeError !== null || loading}>
             Actualizar período
           </button>
         </form>
@@ -441,15 +440,19 @@ export function AdminPage({
         {loading ? <p role="status">Cargando {heading.loadingLabel}…</p> : null}
         {visibleReport === null ? null : <PartialDataNotice issues={visibleReport.issues}
           onRetry={() => setReportRefresh(current => current + 1)} />}
+        <div className={section === 'orders' ? `admin-orders-workspace${selectedOrderId === null ? '' : ' has-detail'}` : undefined}>
+        <div className={section === 'orders' ? 'admin-orders-list' : undefined}>
         {visibleReport === null || loading ? null : (
           <SectionContent
             data={visibleReport.data}
             onOpenOrder={openOrderDetail}
             orderBusy={orderAction !== null}
             productNames={productNames}
+            selectedOrderId={selectedOrderId}
             section={section}
           />
         )}
+        </div>
 
         {section === 'orders' && selectedOrderId !== null ? (
           <OrderDetailPanel
@@ -471,12 +474,7 @@ export function AdminPage({
             onRetry={() => setDetailRefresh((current) => current + 1)}
           />
         ) : null}
-
-        <ExportActions analyticsQuery={analyticsQuery} orderQuery={orderQuery} section={section} />
-
-        <AppLink className="button button-secondary page-back-link" navigate={navigate} to={appPaths.home}>
-          Volver al sitio
-        </AppLink>
+        </div>
       </div>
     </section>
   );
@@ -487,12 +485,14 @@ function SectionContent({
   onOpenOrder,
   orderBusy,
   productNames,
+  selectedOrderId,
   section,
 }: Readonly<{
   data: AdminData;
   onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
   orderBusy: boolean;
   productNames: ReadonlyMap<string, string>;
+  selectedOrderId: string | null;
   section: AdminReportSection;
 }>) {
   switch (section) {
@@ -503,7 +503,7 @@ function SectionContent({
     case 'orders':
       return data.orders === null
         ? <UnavailableState label="los pedidos" />
-        : <OrdersView busy={orderBusy} onOpenOrder={onOpenOrder} orders={data.orders} />;
+        : <OrdersView busy={orderBusy} onOpenOrder={onOpenOrder} orders={data.orders} selectedOrderId={selectedOrderId} />;
     case 'analytics':
       return (
         <AnalyticsView
@@ -523,14 +523,13 @@ function SummaryAttention({ onOpenOrders, pendingOrders }: Readonly<{
   pendingOrders: number;
 }>) {
   return (
-      <section className="admin-summary-attention" aria-labelledby="summary-attention-title">
+      <section className={`admin-summary-attention${pendingOrders === 0 ? ' is-clear' : ''}`} aria-labelledby="summary-attention-title">
         <div>
-          <h3 id="summary-attention-title">Para revisar</h3>
+          <h2 id="summary-attention-title">{pendingOrders === 0 ? 'Sin pedidos pendientes' : 'Necesita tu atención'}</h2>
           <p>{pendingOrders === 0 ? 'No hay pedidos pendientes en este período.'
             : `${pendingOrders.toLocaleString('es-AR')} pedido${pendingOrders === 1 ? '' : 's'} pendiente${pendingOrders === 1 ? '' : 's'} en este período.`}</p>
-          {pendingOrders === 0 ? null : <p>Revisá el estado de pago y entrega de cada pedido.</p>}
         </div>
-        {onOpenOrders === undefined ? null : <button className="button button-primary" type="button" onClick={onOpenOrders}>
+        {onOpenOrders === undefined ? null : <button className={`button ${pendingOrders === 0 ? 'button-secondary' : 'button-primary'}`} type="button" onClick={onOpenOrders}>
           {pendingOrders === 0 ? 'Ver pedidos' : 'Revisar pedidos'}
         </button>}
       </section>
@@ -542,10 +541,9 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
     <div className="admin-dashboard-stack">
       <section className="admin-metric-group" aria-labelledby="financial-summary-title">
         <div className="admin-subsection-heading">
-          <h3 id="financial-summary-title">Pedidos y cobros</h3>
-          <p>Resultados del período seleccionado.</p>
+          <h2 id="financial-summary-title">Pedidos y cobros</h2>
         </div>
-        <dl className="admin-summary-grid">
+        <dl className="admin-summary-grid admin-financial-metrics">
           <Metric label="Pedidos registrados" value={summary.orderCount} />
           <Metric label="Pedidos con pago confirmado" value={summary.approvedCount} />
           <Metric label="Importe de pedidos pagados" value={formatMoney(summary.approvedRevenueMinor)} />
@@ -555,7 +553,7 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
           Los cobros incluyen sólo pedidos aprobados con un pago confirmado. Aprobar un pedido
           de WhatsApp no confirma que esté pagado.
         </p>
-        <details><summary>Ver desglose de pedidos y pagos</summary>
+        <details className="admin-report-secondary"><summary>Ver desglose de pedidos y pagos</summary>
           <dl className="admin-summary-grid">
             <Metric label="Pagos aprobados" value={summary.approvedPaymentCount} />
             <Metric label="Pedidos pendientes" value={summary.pendingCount} />
@@ -569,9 +567,10 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
         </details>
       </section>
 
+      <details className="admin-report-secondary"><summary>Ver visitas al sitio</summary>
       <section className="admin-metric-group" aria-labelledby="interaction-summary-title">
         <div className="admin-subsection-heading">
-          <h3 id="interaction-summary-title">Visitas al sitio</h3>
+          <h2 id="interaction-summary-title">Visitas al sitio</h2>
           <p>Sólo se cuentan las visitas que aceptaron la medición. Una persona puede visitar el sitio más de una vez.</p>
         </div>
         <dl className="admin-summary-grid admin-summary-grid-interaction">
@@ -595,6 +594,7 @@ function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
       </section>
 
       <p className="admin-context-note">Las visitas, los clics y las aperturas de WhatsApp no confirman pagos.</p>
+      </details>
 
     </div>
   );
@@ -618,26 +618,32 @@ function OrdersView({
   busy,
   onOpenOrder,
   orders,
+  selectedOrderId,
 }: Readonly<{
   busy: boolean;
   onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
   orders: readonly AdminOrder[];
+  selectedOrderId: string | null;
 }>) {
   return (
     <AdminTable
       caption="Pedidos del período y pedidos de WhatsApp pendientes"
+      className="admin-orders-table"
+      rowClassNames={orders.map(order => order.id === selectedOrderId ? 'is-selected' : '')}
       stackOnMobile
       columns={['Pedido y cliente', 'Estado del pedido', 'Entrega', 'Total', 'Acción']}
       rows={orders.map((order) => [
         <div className="admin-order-identity"><strong>{formatOrderNumber(order.id)}</strong>
           <span>{order.fullName}</span><small>{formatDate(order.createdAt)} · {channelLabel(order.channel)}</small></div>,
-        <div>{orderStatusLabel(order.status, order.lastErrorCode)}
+        <div><StatusBadge status={order.status} label={orderStatusLabel(order.status, order.lastErrorCode)} />
           {order.lastErrorCode === '—' ? null : <p className="admin-order-issue">{orderIssueLabel(order.lastErrorCode)}</p>}</div>,
-        deliveryLabel(order.deliveryMethod),
+        <span className="admin-badge admin-badge-neutral">{deliveryLabel(order.deliveryMethod)}</span>,
         formatMoney(order.totalMinor, order.currency),
         <button
-          className="button button-secondary admin-table-action"
+          className="button button-tertiary admin-table-action"
           type="button"
+          aria-controls={order.id === selectedOrderId ? 'admin-order-detail' : undefined}
+          aria-expanded={order.id === selectedOrderId}
           disabled={busy}
           onClick={(event) => onOpenOrder(order.id, event.currentTarget)}
         >
@@ -654,8 +660,17 @@ function AnalyticsView({
 }: Readonly<{ data: AdminData; productNames: ReadonlyMap<string, string> }>) {
   return (
     <div className="admin-dashboard-stack">
+      {data.summary === null ? null : <section className="admin-metric-group" aria-labelledby="visit-summary-title">
+        <h2 id="visit-summary-title">Recorrido de las visitas</h2>
+        <dl className="admin-summary-grid">
+          <Metric label="Visitas registradas" value={data.summary.consentedSessionCount} />
+          <Metric label="Vieron productos" value={data.summary.productViewSessionCount} />
+          <Metric label="Agregaron al carrito" value={data.summary.cartAddSessionCount} />
+          <Metric label="Abrieron WhatsApp" value={data.summary.whatsappOpenSessionCount} />
+        </dl>
+      </section>}
       <InteractionNotice />
-      {data.funnel === null ? <UnavailableState label="el embudo de eventos" /> : (
+      {data.funnel === null ? <UnavailableState label="las acciones de las visitas" /> : (
         <FunnelTable rows={data.funnel} />
       )}
       {data.products === null ? <UnavailableState label="el ranking de productos" /> : (
@@ -682,8 +697,7 @@ function AnalyticsView({
 function InteractionNotice() {
   return (
     <p className="admin-semantic-notice">
-      Sólo se cuentan las visitas que aceptaron la medición. Una persona puede visitar el sitio
-      más de una vez. Los clics para pagar o abrir WhatsApp no confirman pagos.
+      Se cuentan visitas con consentimiento, no personas únicas. Los clics para pagar o abrir WhatsApp no confirman pagos.
     </p>
   );
 }
@@ -698,7 +712,7 @@ function ManualFlow({ summary }: Readonly<{ summary: AdminSummary }>) {
   return (
     <section className="admin-flow" aria-labelledby="manual-flow-title">
       <div className="admin-subsection-heading">
-        <h3 id="manual-flow-title">Historial del enlace de pago retirado</h3>
+        <h2 id="manual-flow-title">Historial del enlace de pago retirado</h2>
         <p>El anterior enlace de pago ya no se ofrece en la tienda. Sus clics se conservan como historial y no confirman pagos.</p>
       </div>
       <ol>
@@ -800,7 +814,7 @@ function TrendView({ rows }: Readonly<{ rows: readonly AnalyticsTrendRow[] }>) {
   return (
     <section className="admin-trend" aria-labelledby="analytics-trend-title">
       <div className="admin-subsection-heading">
-        <h3 id="analytics-trend-title">Tendencia diaria</h3>
+        <h2 id="analytics-trend-title">Tendencia diaria</h2>
         <p>Visitas registradas y acciones realizadas dentro del período.</p>
       </div>
       {rows.length === 0 ? <p>No hay días para el rango seleccionado.</p> : (
@@ -848,14 +862,19 @@ function AuditView({ rows }: Readonly<{ rows: readonly UnknownRow[] }>) {
   return (
     <AdminTable
       caption="Historial de actividad"
-      columns={['Quién', 'Actividad', 'Resultado', 'Fecha', 'Detalle']}
+      stackOnMobile
+      className="admin-activity-table"
+      columns={['Actividad', 'Fecha', 'Resultado', 'Detalle']}
       rows={rows.map((row) => {
         const outcome = readNonNegativeInteger(row.outcome_status);
         return [
-          readText(row, 'actor_email'),
-          auditActionLabel(readText(row, 'action')),
-          outcome >= 200 && outcome < 400 ? 'Completada' : outcome === 401 || outcome === 403 ? 'Acceso no autorizado' : 'No se completó',
+          <div className="admin-activity-entry"><strong>{auditActionLabel(readText(row, 'action'))}</strong>
+            <span>{readText(row, 'actor_email')}</span>
+            {readText(row, 'target_type') === 'order' && readText(row, 'target_id').startsWith('ord_')
+              ? <small>Pedido {formatOrderNumber(readText(row, 'target_id'))}</small> : null}</div>,
           formatDate(readText(row, 'created_at')),
+          <span className={`admin-badge admin-badge-${outcome >= 200 && outcome < 400 ? 'success' : 'warning'}`}>
+            {outcome >= 200 && outcome < 400 ? 'Completada' : outcome === 401 || outcome === 403 ? 'Acceso no autorizado' : 'No se completó'}</span>,
           <details><summary>Información para soporte</summary>
             <dl><dt>Acción</dt><dd>{readText(row, 'action')}</dd>
               <dt>Tipo</dt><dd>{readText(row, 'target_type')}</dd>
@@ -905,8 +924,14 @@ function OrderDetailPanel({
   const rejectCancelRef = useRef<HTMLButtonElement | null>(null);
   const rejectTriggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    titleRef.current?.focus();
+    titleRef.current?.focus({ preventScroll: true });
+    titleRef.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
   }, [orderId]);
+  useEffect(() => {
+    if (!loading && detail !== null && document.activeElement === titleRef.current) {
+      titleRef.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+    }
+  }, [detail, loading]);
   useEffect(() => {
     if (confirmingReject) rejectCancelRef.current?.focus();
   }, [confirmingReject]);
@@ -917,6 +942,7 @@ function OrderDetailPanel({
   return (
     <article
       className="admin-order-detail"
+      id="admin-order-detail"
       aria-labelledby="order-detail-title"
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
         if (event.key !== 'Escape') return;
@@ -926,10 +952,9 @@ function OrderDetailPanel({
     >
       <header>
         <div>
-          <p className="eyebrow">Gestión de pedido</p>
-          <h3 id="order-detail-title" ref={titleRef} tabIndex={-1}>Detalle de {formatOrderNumber(orderId)}</h3>
+          <h2 id="order-detail-title" ref={titleRef} tabIndex={-1}>Detalle de {formatOrderNumber(orderId)}</h2>
         </div>
-        <button className="button button-secondary" type="button" disabled={action !== null} onClick={onClose}>
+        <button className="button button-tertiary" type="button" disabled={action !== null} onClick={onClose}>
           Cerrar detalle
         </button>
       </header>
@@ -939,33 +964,35 @@ function OrderDetailPanel({
         <div><button className="button button-secondary" type="button" disabled={loading || action !== null}
           onClick={() => { titleRef.current?.focus(); onRetry(); }}>Reintentar detalle</button></div>
       </div>}
-      {detail === null || loading ? null : <DetailGroup title="Resumen del pedido" entries={[
-        ['Estado del pedido', orderStatusLabel(detail.order.status, detail.order.lastErrorCode)],
-        ['Cliente', detail.order.fullName],
-        ['Modalidad', deliveryLabel(detail.order.deliveryMethod)],
-        ['Total', formatMoney(detail.order.totalMinor, detail.order.currency)],
-        ['Reserva', reservationStateLabel(detail.order.stockReservationState)],
-        ['Canal', channelLabel(detail.order.channel)],
-      ]} />}
+      {detail === null || loading ? null : <section className="admin-order-summary" aria-label="Resumen del pedido">
+        <div><h3>{detail.order.fullName}</h3>
+          <p>{channelLabel(detail.order.channel)} · {formatDate(detail.order.createdAt)}</p></div>
+        <p className="admin-detail-total"><span>Total del pedido</span><strong>{formatMoney(detail.order.totalMinor, detail.order.currency)}</strong></p>
+        <div className="admin-order-statuses">
+          <StatusBadge status={detail.order.status} label={`Pedido: ${orderStatusLabel(detail.order.status, detail.order.lastErrorCode)}`} />
+          <span className="admin-badge admin-badge-neutral">{deliveryLabel(detail.order.deliveryMethod)}</span>
+        </div>
+        <p className="admin-context-note">{reservationStateLabel(detail.order.stockReservationState)}</p>
+      </section>}
       {detail === null || loading || detail.order.lastErrorCode === '—' || detail.order.lastErrorCode === '' ? null : (
         <p className="admin-partial-warning">{orderIssueLabel(detail.order.lastErrorCode)}</p>
       )}
       {detail === null || loading ? null : <AdminTable
         caption="Pagos del pedido"
         emptyMessage="No hay pagos registrados para este pedido."
-        columns={['Proveedor', 'Estado del pago', 'Importe', 'Aprobación', 'Última actualización']}
+        stackOnMobile
+        className="admin-order-payments"
+        columns={['Estado del pago', 'Importe', 'Proveedor']}
         rows={detail.payments.map((payment) => [
-          providerLabel(payment.provider),
-          humanStatus(payment.mappedStatus),
+          <StatusBadge status={payment.mappedStatus} label={humanStatus(payment.mappedStatus)} />,
           formatMoney(payment.amountMinor, payment.currency),
-          formatDate(payment.approvedAt),
-          formatDate(payment.providerUpdatedAt === '—' ? payment.updatedAt : payment.providerUpdatedAt),
+          providerLabel(payment.provider),
         ])}
       />}
       {detail?.order.channel === 'whatsapp' && detail.order.status === 'pending' ? (
         <section className="admin-order-actions" aria-labelledby="order-actions-title" aria-busy={action !== null}>
           <div>
-            <h4 id="order-actions-title">Resolver pedido pendiente</h4>
+            <h3 id="order-actions-title">Resolver pedido pendiente</h3>
             <p>
               Aprobar consume la reserva y descuenta el stock físico. Rechazar libera las
               unidades sin registrar una venta.
@@ -984,7 +1011,7 @@ function OrderDetailPanel({
                 cancelReject();
               }}
             >
-              <h5 id="reject-order-title">Rechazar {formatOrderNumber(orderId)}</h5>
+              <h4 id="reject-order-title">Rechazar {formatOrderNumber(orderId)}</h4>
               <p id="reject-order-description">
                 El pedido quedará rechazado y todas sus unidades reservadas volverán a estar disponibles.
               </p>
@@ -1012,7 +1039,7 @@ function OrderDetailPanel({
       {detail?.order.channel === 'checkout_pro' ? (
         <section className="admin-order-actions" aria-labelledby="reconcile-order-title" aria-busy={action !== null}>
           <div>
-            <h4 id="reconcile-order-title">Consultar el estado del pago</h4>
+            <h3 id="reconcile-order-title">Consultar el estado del pago</h3>
             <p>
               Consultá el estado confirmado por Mercado Pago. El sistema actualizará el pedido
               y su reserva cuando corresponda, sin duplicar el movimiento de stock.
@@ -1043,14 +1070,20 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
   const { order } = detail;
   return (
     <div className="admin-order-detail-content">
-      <DetailGroup
-        title="Reserva e inventario"
-        entries={[
-          ['Reserva creada', formatDate(order.stockReservedAt)],
-          ['Vencimiento de reserva', formatDate(order.stockReservationExpiresAt)],
-          ['Stock descontado', formatDate(order.stockConsumedAt)],
-          ['Política de reintegro', 'No repone stock automáticamente'],
-        ]}
+      <AdminTable
+        caption={order.channel === 'whatsapp' && order.status === 'pending'
+          ? 'Productos y unidades reservadas'
+          : 'Productos del pedido'}
+        stackOnMobile
+        className="admin-order-items"
+        columns={['Producto', 'Cantidad', 'Subtotal']}
+        rows={detail.items.map((item) => [
+          <div className="admin-order-item"><strong>{item.name === '—' ? 'Producto sin nombre disponible' : item.name}</strong>
+            {item.presentation === '—' ? null : <small>{item.presentation}</small>}
+            <small>{formatMoney(item.unitPriceMinor, order.currency)} por unidad</small></div>,
+          item.quantity.toLocaleString('es-AR'),
+          formatMoney(item.subtotalMinor, order.currency),
+        ])}
       />
       <DetailGroup
         title="Totales"
@@ -1071,20 +1104,14 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
           ['Código postal', order.postalCode],
         ]}
       />
-      <AdminTable
-        caption={order.channel === 'whatsapp' && order.status === 'pending'
-          ? 'Productos y unidades reservadas'
-          : 'Productos del pedido'}
-        columns={['Producto', 'Presentación', 'Código de producto', 'Cantidad', 'Precio unitario', 'Subtotal']}
-        rows={detail.items.map((item) => [
-          item.name === '—' ? 'Producto sin nombre disponible' : item.name,
-          item.presentation,
-          item.sku,
-          item.quantity.toLocaleString('es-AR'),
-          formatMoney(item.unitPriceMinor, order.currency),
-          formatMoney(item.subtotalMinor, order.currency),
-        ])}
-      />
+      <details className="admin-report-secondary"><summary>Reserva e inventario</summary>
+        <DetailGroup title="Seguimiento de la reserva" entries={[
+          ['Reserva creada', formatDate(order.stockReservedAt)],
+          ['Vencimiento de reserva', formatDate(order.stockReservationExpiresAt)],
+          ['Stock descontado', formatDate(order.stockConsumedAt)],
+          ['Política de reintegro', 'No repone stock automáticamente'],
+        ]} />
+      </details>
       <details className="admin-order-technical">
         <summary>Información para soporte</summary>
         <DetailGroup title="Registro del pedido" entries={[
@@ -1102,12 +1129,13 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
           ['Modalidad', order.deliveryMethod],
           ['Canal', order.channel],
         ]} />
-        <AdminTable caption="Referencias de productos" columns={['Producto', 'ID', 'Control de stock']}
-          rows={detail.items.map(item => [item.name, item.productId, item.stockControlled ? 'Sí' : 'No'])} />
+        <AdminTable caption="Referencias de productos" columns={['Producto', 'Código de producto', 'ID', 'Control de stock']}
+          rows={detail.items.map(item => [item.name, item.sku, item.productId, item.stockControlled ? 'Sí' : 'No'])} />
         <AdminTable caption="Referencias de pagos" emptyMessage="No hay referencias de pagos para este pedido."
-          columns={['Proveedor', 'ID proveedor', 'Estado proveedor', 'Detalle']}
+          columns={['Proveedor', 'ID proveedor', 'Estado proveedor', 'Detalle', 'Aprobación', 'Última actualización']}
           rows={detail.payments.map(payment => [providerLabel(payment.provider), payment.providerPaymentId,
-            payment.providerStatus, payment.statusDetail])} />
+            payment.providerStatus, payment.statusDetail, formatDate(payment.approvedAt),
+            formatDate(payment.providerUpdatedAt === '—' ? payment.updatedAt : payment.providerUpdatedAt)])} />
       </details>
       <p className="admin-context-note">
         Los importes y datos registrados no se editan desde esta vista. Sólo los pedidos
@@ -1124,7 +1152,7 @@ function DetailGroup({
 }: Readonly<{ entries: readonly (readonly [string, string])[]; title: string }>) {
   return (
     <section className="admin-detail-group">
-      <h4>{title}</h4>
+      <h3>{title}</h3>
       <dl>
         {entries.map(([label, value]) => (
           <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
@@ -1141,14 +1169,14 @@ function ExportActions({
 }: Readonly<{ analyticsQuery: string; orderQuery: string; section: AdminReportSection }>) {
   if (section === 'audit') return null;
   return (
-    <div className="admin-export-actions" aria-label="Exportaciones">
+    <div className="admin-export-actions" role="group" aria-label="Exportaciones">
       {section === 'summary' || section === 'orders' ? (
-        <a className="button button-secondary" href={`/api/admin/exports/orders.csv?${orderQuery}`}>
+        <a className="button button-tertiary" href={`/api/admin/exports/orders.csv?${orderQuery}`}>
           Descargar pedidos (CSV)
         </a>
       ) : null}
       {section === 'summary' || section === 'analytics' ? (
-        <a className="button button-secondary" href={`/api/admin/exports/analytics.csv?${analyticsQuery}`}>
+        <a className="button button-tertiary" href={`/api/admin/exports/analytics.csv?${analyticsQuery}`}>
           Descargar visitas (CSV)
         </a>
       ) : null}
@@ -1184,20 +1212,24 @@ function AdminErrorMessage({ error, fallback }: Readonly<{ error: string; fallba
 
 function AdminTable({
   caption,
+  className = '',
   columns,
   emptyMessage = 'No hay datos para el período seleccionado.',
   rows,
+  rowClassNames,
   stackOnMobile = false,
 }: Readonly<{
   caption: string;
+  className?: string;
   columns: readonly string[];
   emptyMessage?: string;
   rows: readonly (readonly ReactNode[])[];
+  rowClassNames?: readonly string[];
   stackOnMobile?: boolean;
 }>) {
   return (
     <div className="admin-table-wrap">
-      <table className={`admin-table${stackOnMobile ? ' admin-table-mobile-stack' : ''}`} role={stackOnMobile ? 'table' : undefined}>
+      <table className={`admin-table${stackOnMobile ? ' admin-table-mobile-stack' : ''} ${className}`} role={stackOnMobile ? 'table' : undefined}>
         <caption>{caption}</caption>
         <thead role={stackOnMobile ? 'rowgroup' : undefined}>
           <tr role={stackOnMobile ? 'row' : undefined}>{columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr>
@@ -1206,7 +1238,7 @@ function AdminTable({
           {rows.length === 0 ? (
             <tr><td colSpan={columns.length}>{emptyMessage}</td></tr>
           ) : rows.map((row, rowIndex) => (
-            <tr key={`${caption}-${rowIndex}`} role={stackOnMobile ? 'row' : undefined}>
+            <tr key={`${caption}-${rowIndex}`} className={rowClassNames?.[rowIndex]} role={stackOnMobile ? 'row' : undefined}>
               {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} role={stackOnMobile ? 'cell' : undefined}>
                 {stackOnMobile ? <span className="admin-mobile-cell-label" aria-hidden="true">{columns[cellIndex]}</span> : null}{cell}
               </td>)}
@@ -1630,6 +1662,14 @@ function humanStatus(value: string): string {
   return Object.hasOwn(labels, value) ? labels[value]! : 'Requiere revisión';
 }
 
+function StatusBadge({ status, label }: Readonly<{ status: string; label: string }>) {
+  const tone = status === 'approved' ? 'success'
+    : status === 'failed' || status === 'rejected' ? 'danger'
+      : status === 'refunded' ? 'info'
+        : status === 'cancelled' ? 'neutral' : 'warning';
+  return <span className={`admin-badge admin-badge-${tone}`}>{label}</span>;
+}
+
 function orderStatusLabel(status: string, errorCode: string): string {
   return errorCode === 'WHATSAPP_RESERVATION_EXPIRED' ? 'Vencido' : humanStatus(status);
 }
@@ -1747,26 +1787,26 @@ function sectionHeading(section: AdminReportSection) {
   switch (section) {
     case 'summary':
       return {
-        title: 'Resumen del negocio',
-        description: 'Revisá los pedidos pendientes, los cobros y las visitas de tu tienda.',
+        title: 'Inicio',
+        description: 'Lo que necesita atención en tu tienda.',
         loadingLabel: 'el resumen',
       } as const;
     case 'orders':
       return {
         title: 'Pedidos',
-        description: 'Consultá qué se pidió, quién compra, cómo se entrega y el estado de cada pago.',
+        description: 'Gestioná las compras de tus clientes.',
         loadingLabel: 'los pedidos',
       } as const;
     case 'analytics':
       return {
-        title: 'Visitas a la tienda',
-        description: 'Conocé qué productos se consultan y cómo llegan las visitas a tu tienda.',
+        title: 'Visitas',
+        description: 'Conocé cómo llegan y qué consultan en tu tienda.',
         loadingLabel: 'las visitas',
       } as const;
     case 'audit':
       return {
-        title: 'Actividad de la administración',
-        description: 'Consultá quién realizó cada acción y si se completó.',
+        title: 'Actividad',
+        description: 'El historial de acciones de tu negocio.',
         loadingLabel: 'la actividad',
       } as const;
   }

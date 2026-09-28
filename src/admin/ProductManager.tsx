@@ -92,8 +92,8 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
 
   useEffect(() => {
     if (editingId !== undefined) {
-      editorTitleRef.current?.focus();
-      editorTitleRef.current?.scrollIntoView?.({ block: 'nearest' });
+      editorTitleRef.current?.focus({ preventScroll: true });
+      window.requestAnimationFrame(() => editorTitleRef.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' }));
     }
   }, [editingId]);
   useEffect(() => { onInteractionStateChange?.(interactionState); }, [interactionState, onInteractionStateChange]);
@@ -223,12 +223,10 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
 
   return <section className="admin-page section" aria-labelledby="backoffice-title">
     <div className="container admin-product-shell">
-      <header className="admin-product-header">
-        <div className="section-heading">
-          <p className="eyebrow">Administración</p>
-          <h2 id="backoffice-title" tabIndex={-1}>Catálogo de productos</h2>
-          <p>Editá fotos y descripciones, o elegí qué productos mostrar en la web.</p>
-          <p className="admin-field-note">Los productos nuevos, los precios y el stock se administran en Dux.</p>
+      <header className="admin-page-header">
+        <div>
+          <h1 id="backoffice-title" tabIndex={-1}>Productos</h1>
+          <p>Fotos, descripciones y publicación en tu tienda.</p>
         </div>
       </header>
       <p className="admin-catalog-totals" hidden={loading || loadError !== ''}>
@@ -263,6 +261,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
           }} onDiscardImage={() => { setPendingImage(null); clearFileInput(); }} onRequestClose={requestClose}
           onSelectImage={selectImage} onSubmit={event => void submit(event)} onToggleRemoveImage={() => setRemoveImage(current => !current)} />}
       </div>
+      <details className="admin-product-help"><summary>¿Qué puedo editar?</summary><p>Los productos nuevos, los precios y el stock se administran en Dux. Acá podés editar imágenes y descripción, dar de baja y volver a publicar.</p></details>
     </div>
   </section>;
 }

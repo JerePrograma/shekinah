@@ -1,5 +1,16 @@
 # Estado actual
 
+## Aplicación administrativa — 2026-09-28
+
+La segunda iteración visual incorpora navegación lateral/móvil, Inicio orientado
+a pendientes, lista/detalle de pedidos y lista/editor de productos conectados.
+Actualizaciones reúne Dux y Mercado Libre con soporte plegado. Conserva búsqueda
+global, paginación de 50, borradores, baja reversible y todas las autoridades y
+operaciones comerciales existentes. Consultar el [diseño](design/ADMIN_APPLICATION.md)
+y la [validación visual y técnica](validation/ADMIN_REDESIGN_2026-09-28.md).
+No modifica backend, D1, flags ni mantenimiento público. CI y Pages se acreditan
+separadamente sobre el SHA publicado.
+
 ## Relevamiento y mejoras UX/UI — 2026-09-27
 
 La [auditoría integral](validation/UX_UI_REVIEW_2026-09-27.md) registra los recorridos
