@@ -609,6 +609,7 @@ h1 {
 
   .header-inner {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.55rem;
     padding-block: 0.75rem;
   }
@@ -623,7 +624,7 @@ h1 {
 
   .primary-navigation ul {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .primary-navigation a {

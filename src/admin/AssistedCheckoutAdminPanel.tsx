@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import { formatOrderNumber } from '../commerce/contracts';
 
 type PreviewLine = Readonly<{
   productId: string; duxCode: string; name: string; quantity: number; unitPriceMinor: number; subtotalMinor: number;
@@ -18,6 +20,10 @@ type Prepared = Readonly<{
 type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>
   | Readonly<{state:'direct_preparing';requestId:string;preparationStatus:string;duxReference:string;errorCode:string|null}>;
 type LifecycleAction = 'release' | 'finalize';
+const PREPARATION_ERROR = 'No pudimos confirmar la preparación del cobro. Actualizá el estado antes de repetirla.';
+const VERIFICATION_ERROR = 'No pudimos comprobar el pedido en Dux. Actualizá el estado antes de continuar; no crees otra reserva.';
+const LIFECYCLE_ERROR = 'No pudimos confirmar el cambio de la reserva. Actualizá el estado antes de repetirlo.';
+class AdminActionError extends Error {}
 
 export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyChange }: Readonly<{
   requestId: string; onUnauthorized: () => void; onBusyChange: (busy: boolean, label?: string) => void;
@@ -32,10 +38,30 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const busyRef = useRef(false);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const confirmationTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (confirming || lifecycleConfirmation !== null) cancelRef.current?.focus();
+  }, [confirming, lifecycleConfirmation]);
+
+  function cancelConfirmation(): void {
+    if (busyRef.current) return;
+    setConfirming(false);
+    setLifecycleConfirmation(null);
+    window.requestAnimationFrame(() => confirmationTriggerRef.current?.focus());
+  }
+
+  function handleConfirmationKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== 'Escape' || busyRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelConfirmation();
+  }
 
   async function load(): Promise<void> {
     if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError(''); onBusyChange(true, 'Consultando preparación Dux');
+    busyRef.current = true; setBusy(true); setError(''); onBusyChange(true, 'Consultando pedido y reserva');
     try {
       const response = await fetch(`/api/admin/web-order-requests/${requestId}/prepare`, {
         credentials: 'same-origin', redirect: 'error',
@@ -44,11 +70,13 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       if (!response.ok) throw new Error('No se pudo consultar la preparación del cobro.');
       const next = parseState(await response.json(), requestId);
       setState(next);
+      setConfirming(false);
       setLifecycleConfirmation(null);
       if (next.state === 'preview') {
+        setConfirmed(false);
         if (next.preview.deliveryMethod === 'coordinated_pickup') setShippingAmount('0');
       }
-    } catch (failure: unknown) { setError(message(failure)); }
+    } catch { setError('No pudimos consultar el pedido. Reintentá en unos instantes.'); }
     finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
   }
 
@@ -73,11 +101,11 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
         }),
       });
       if (response.status === 401) { onUnauthorized(); return; }
-      if (!response.ok) throw new Error(await errorMessage(response, 'No se pudo confirmar la preparación del cobro.'));
+      if (!response.ok) throw new AdminActionError(await errorMessage(response, PREPARATION_ERROR));
       const next = await reloadPreparedState();
       setState(next);
       setConfirming(false);
-    } catch (failure: unknown) { setConfirming(false); setError(message(failure)); }
+    } catch (failure: unknown) { setConfirming(false); setError(message(failure, PREPARATION_ERROR)); }
     finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
   }
 
@@ -87,9 +115,9 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
     try {
       const response=await fetch(`/api/admin/web-order-requests/${requestId}/resume`,{method:'POST',credentials:'same-origin',redirect:'error'});
       if(response.status===401){onUnauthorized();return;}
-      if(!response.ok) throw new Error(await errorMessage(response,'No se pudo continuar la verificación Dux.'));
+      if(!response.ok) throw new AdminActionError(await errorMessage(response,VERIFICATION_ERROR));
       setState(parseState(await response.json(),requestId));
-    } catch(failure:unknown){setError(message(failure));}
+    } catch(failure:unknown){setError(message(failure,VERIFICATION_ERROR));}
     finally{busyRef.current=false;setBusy(false);onBusyChange(false);}
   }
 
@@ -111,9 +139,7 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       });
       if (response.status === 401) { onUnauthorized(); return; }
       if (!response.ok) {
-        throw new Error(await errorMessage(response, action === 'release'
-          ? 'No se pudo confirmar la liberación Dux.'
-          : 'No se pudo confirmar la finalización Dux.'));
+        throw new AdminActionError(await errorMessage(response, LIFECYCLE_ERROR));
       }
       const next = await reloadPreparedState();
       const expected = action === 'release' ? 'released' : 'finalized';
@@ -122,7 +148,7 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       }
       setState(next);
       setLifecycleConfirmation(null);
-    } catch (failure: unknown) { setLifecycleConfirmation(null); setError(message(failure)); }
+    } catch (failure: unknown) { setLifecycleConfirmation(null); setError(message(failure, LIFECYCLE_ERROR)); }
     finally { busyRef.current = false; setBusy(false); onBusyChange(false); }
   }
 
@@ -141,21 +167,23 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
   const lifecycleAction = state?.state === 'prepared' ? lifecycleActionFor(state.prepared) : null;
 
   return <section className="web-request-panel" aria-labelledby={`assisted-checkout-${requestId}`} aria-busy={busy}>
-    <h4 id={`assisted-checkout-${requestId}`}>Reserva Dux y cobro</h4>
-    <p>Shekinah toma los precios de Dux. Este formulario sólo registra una reserva verificada y, si hay correo, la cotización final del envío.</p>
+    <h4 id={`assisted-checkout-${requestId}`}>Reserva y cobro</h4>
+    <p>Consultá la reserva y el total antes de cobrar. Los precios vienen de Dux; el envío por correo requiere una cotización final.</p>
     {state === null ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void load()}>
       {busy ? 'Consultando…' : 'Consultar preparación de cobro'}
     </button> : null}
     {error === '' ? null : <p role="alert">{error}</p>}
     {state?.state === 'direct_preparing' ? <>
-      <p role="status">Compra directa: {state.preparationStatus === 'failed' ? 'no se pudo preparar; sin cobro habilitado' : 'verificación automática en curso'}.</p>
-      <p>Referencia Dux: <code>{state.duxReference}</code>. No crees otro pedido para esta referencia. Un resultado incierto debe verificarse antes de cualquier nueva reserva.</p>
-      {state.errorCode === null ? null : <p>Diagnóstico: <code>{state.errorCode}</code>.</p>}
+      <p role="status">{preparationLabel(state.preparationStatus)}</p>
+      <p>No crees otro pedido ni otra reserva hasta comprobar el resultado en Dux.</p>
+      <details><summary>Datos para revisar el pedido en Dux</summary>
+        <p>Referencia: <code>{state.duxReference}</code>.</p>
+        {state.errorCode !== null && /^[A-Z][A-Z0-9_]{0,99}$/u.test(state.errorCode) ? <p>Código para soporte: <code>{state.errorCode}</code>.</p> : null}
+      </details>
       {state.preparationStatus === 'preparing' || state.preparationStatus === 'uncertain' ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void resumeDirect()}>Continuar verificación Dux</button> : null}
-      <button className="button button-secondary" type="button" disabled={busy} onClick={() => void load()}>Actualizar estado</button>
     </> : null}
     {state?.state === 'preview' ? <>
-      <p>Catálogo Dux observado: {formatDate(state.preview.catalogObservedAt)}.</p>
+      <p>Precios de Dux consultados el {formatDate(state.preview.catalogObservedAt)}.</p>
       <div className="cart-items">{state.preview.lines.map((line) => <article className="cart-line" key={line.productId}>
         <div className="cart-line-content"><h4>{line.name}</h4>
           <p>Código Dux: {line.duxCode} · Cantidad: {line.quantity} · Precio Dux actual: {formatMinor(line.unitPriceMinor)}.</p></div>
@@ -172,44 +200,48 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
         <input id={`assisted-dux-number-${requestId}`} value={duxOrderNumber} disabled={busy} maxLength={120}
           onChange={(event) => setDuxOrderNumber(event.currentTarget.value)} />
       </label>
-      <label htmlFor={`assisted-dux-id-${requestId}`}>ID interno Dux (opcional)
+      <details><summary>Identificador adicional de Dux (opcional)</summary>
+      <label htmlFor={`assisted-dux-id-${requestId}`}>ID interno Dux
         <input id={`assisted-dux-id-${requestId}`} value={duxOrderId} disabled={busy} maxLength={120}
           onChange={(event) => setDuxOrderId(event.currentTarget.value)} />
       </label>
+      </details>
       <label className="whatsapp-consent" htmlFor={`assisted-confirm-${requestId}`}>
         <input id={`assisted-confirm-${requestId}`} type="checkbox" checked={confirmed} disabled={busy}
           onChange={(event) => setConfirmed(event.currentTarget.checked)} />
         <span>Confirmo que verifiqué en Dux este pedido, las cantidades exactas y la reserva de stock.</span>
       </label>
-      {!confirming ? <button className="button button-primary" type="button" disabled={busy || !confirmed || duxOrderNumber.trim() === ''}
+      {!confirming ? <button ref={confirmationTriggerRef} className="button button-primary" type="button" disabled={busy || !confirmed || duxOrderNumber.trim() === ''}
         onClick={() => { setError(''); setConfirming(true); }}>Preparar cobro</button>
-        : <div role="alertdialog" aria-label="Confirmar preparación de cobro">
-          <p>Se registrará la reserva Dux como evidencia administrativa y se fijará el total que luego podrá pagarse por Mercado Pago. Esta acción no crea ni modifica el pedido en Dux.</p>
-          <button className="button button-secondary" type="button" disabled={busy} onClick={() => setConfirming(false)}>Cancelar</button>
+        : <div role="alertdialog" aria-label="Confirmar preparación de cobro"
+          aria-describedby={`assisted-confirm-description-${requestId}`} onKeyDown={handleConfirmationKeyDown}>
+          <p id={`assisted-confirm-description-${requestId}`}>Se guardará la reserva que verificaste y el total que podrá pagarse por Mercado Pago. Esta acción no crea ni modifica el pedido en Dux.</p>
+          <button ref={cancelRef} className="button button-secondary" type="button" disabled={busy} onClick={cancelConfirmation}>Cancelar</button>
           <button className="button button-primary" type="button" disabled={busy} onClick={() => void prepare()}>Confirmar preparación</button>
         </div>}
     </> : null}
     {state?.state === 'prepared' ? <>
-      <p role="status"><strong>Pedido preparado:</strong> {state.prepared.orderId}. Pedido Dux: {state.prepared.duxOrderNumber}.</p>
-      <p>Total fijado: {formatMinor(state.prepared.totalMinor)}. Reserva: {reservationLabel(state.prepared.reservationStatus)}. Pago: {paymentLabel(state.prepared.paymentStatus)}.</p>
+      <p role="status"><strong>Pedido preparado:</strong> {formatOrderNumber(state.prepared.orderId)}. Pedido Dux: {state.prepared.duxOrderNumber}.</p>
+      <p>Total confirmado: {formatMinor(state.prepared.totalMinor)}. Reserva: {reservationLabel(state.prepared.reservationStatus)}. Pago: {paymentLabel(state.prepared.paymentStatus)}.</p>
       {state.prepared.paymentRequiresReview || state.prepared.reservationStatus === 'requires_review'
-        ? <p className="form-error">Existe una incidencia que requiere revisión antes de continuar.</p> : null}
-      {lifecycleAction !== null && lifecycleConfirmation === null ? <button className="button button-secondary" type="button" disabled={busy}
+        ? <p className="form-error">Revisá el pago en Mercado Pago y la reserva en Dux antes de continuar. No solicites otro pago mientras se revisa el pedido.</p> : null}
+      {lifecycleAction !== null && lifecycleConfirmation === null ? <button ref={confirmationTriggerRef} className="button button-secondary" type="button" disabled={busy}
         onClick={() => { setError(''); setLifecycleConfirmation(lifecycleAction); }}>
         {lifecycleAction === 'release' ? 'Confirmar liberación en Dux' : 'Confirmar finalización en Dux'}
       </button> : null}
-      {lifecycleConfirmation === null ? null : <div role="alertdialog" aria-label={lifecycleConfirmation === 'release' ? 'Confirmar liberación Dux' : 'Confirmar finalización Dux'}>
-        <p>{lifecycleConfirmation === 'release'
+      {lifecycleConfirmation === null ? null : <div role="alertdialog" aria-label={lifecycleConfirmation === 'release' ? 'Confirmar liberación Dux' : 'Confirmar finalización Dux'}
+        aria-describedby={`assisted-lifecycle-description-${requestId}`} onKeyDown={handleConfirmationKeyDown}>
+        <p id={`assisted-lifecycle-description-${requestId}`}>{lifecycleConfirmation === 'release'
           ? `Confirmá únicamente si el pedido ${state.prepared.duxOrderNumber} ya fue liberado en Dux y verificaste que la reserva dejó de retener stock.`
           : `Confirmá únicamente si el pedido ${state.prepared.duxOrderNumber} ya fue finalizado en Dux y verificaste el pago acreditado.`}</p>
-        <p>Shekinah no ejecutará esta operación en Dux: sólo guardará la evidencia administrativa y volverá a validar el estado financiero.</p>
-        <button className="button button-secondary" type="button" disabled={busy} onClick={() => setLifecycleConfirmation(null)}>Cancelar</button>
+        <p>Shekinah no ejecutará esta operación en Dux: guardará tu confirmación y volverá a comprobar el estado del pago.</p>
+        <button ref={cancelRef} className="button button-secondary" type="button" disabled={busy} onClick={cancelConfirmation}>Cancelar</button>
         <button className="button button-primary" type="button" disabled={busy} onClick={() => void confirmLifecycle()}>
           {lifecycleConfirmation === 'release' ? 'Sí, ya está liberado en Dux' : 'Sí, ya está finalizado en Dux'}
         </button>
       </div>}
-      <button className="button button-secondary" type="button" disabled={busy} onClick={() => { setState(null); setLifecycleConfirmation(null); void load(); }}>Actualizar estado</button>
     </> : null}
+    {state === null ? null : <button className="button button-secondary" type="button" disabled={busy} onClick={() => void load()}>{busy ? 'Esperá un momento…' : 'Actualizar estado'}</button>}
   </section>;
 }
 
@@ -269,16 +301,42 @@ function moneyToMinor(value: string): number | null {
   return Number.isFinite(amount) && amount > 0 && Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 }
 async function errorMessage(response: Response, fallback: string): Promise<string> {
-  try { const value: unknown = await response.json(); if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string' && value.error.message.trim() !== '') return value.error.message; }
+  try {
+    const value: unknown = await response.json();
+    if (isRecord(value) && isRecord(value.error) && typeof value.error.code === 'string') {
+      const messages: Readonly<Record<string, string>> = {
+        ASSISTED_RELEASE_PAYMENT_BLOCKED: 'El pedido tiene un pago aprobado o pendiente. No liberes la reserva; actualizá el estado y revisá el pago en Mercado Pago.',
+        ASSISTED_RELEASE_PAYMENT_WINDOW_ACTIVE: 'El plazo para pagar sigue vigente. Esperá a que termine y comprobá los pagos en Mercado Pago antes de liberar la reserva.',
+        ASSISTED_FINALIZE_PAYMENT_REQUIRED: 'Falta confirmar un pago aprobado. Revisá el pago en Mercado Pago antes de finalizar el pedido.',
+        ASSISTED_DUX_PAYMENT_REVIEW_REQUIRED: 'El pago requiere revisión. Comprobalo en Mercado Pago antes de cambiar la reserva.',
+        PAYMENT_RECONCILIATION_REQUIRED: 'Falta comprobar el estado actual del pago en Mercado Pago. Revisalo antes de confirmar la operación en Dux.',
+        PAYMENT_RECONCILIATION_STALE: 'La última comprobación del pago ya no está vigente. Revisá el pago en Mercado Pago antes de confirmar la operación en Dux.',
+        ASSISTED_CHECKOUT_CONFLICT: 'La solicitud ya fue preparada o cambió durante la operación. Actualizá el estado para consultar el pedido existente.',
+        DUX_ORDER_NUMBER_ALREADY_LINKED: 'Este número de pedido Dux ya se usa en otra solicitud. Revisá el número antes de continuar.',
+        DUX_CATALOG_SNAPSHOT_STALE: 'Los precios de Dux necesitan actualizarse. Actualizá el catálogo desde la sección Dux y volvé a consultar este pedido.',
+        ASSISTED_SHIPPING_INVALID: 'Revisá la cotización final del envío: debe ser mayor que cero para correo. El retiro no tiene costo de envío.',
+        DUX_ASSISTED_PRODUCT_CHANGED: 'Un producto cambió en Dux. Actualizá el catálogo y revisá los productos del pedido antes de cobrar.',
+        DUX_ASSISTED_PRICE_UNAVAILABLE: 'Un producto no tiene un precio confirmado en Dux. Revisalo en Dux antes de preparar el cobro.',
+        DIRECT_CHECKOUT_IN_PROGRESS: 'La compra ya se está preparando. Esperá unos instantes y actualizá el estado.',
+      };
+      if (Object.hasOwn(messages, value.error.code)) return messages[value.error.code] ?? fallback;
+    }
+  }
   catch { /* Usa el fallback. */ }
   return fallback;
 }
 function formatMinor(value: number): string { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: value % 100 === 0 ? 0 : 2, maximumFractionDigits:2 }).format(value / 100); }
 function formatDate(value: string): string { return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value)); }
 function reservationLabel(value: Prepared['reservationStatus']): string { return ({ confirmed: 'confirmada', released: 'liberada', finalized: 'finalizada', requires_review: 'requiere revisión' })[value]; }
-function paymentLabel(value: Prepared['paymentStatus']): string { return ({ none: 'sin pago', pending: 'pendiente', approved: 'aprobado', rejected: 'rechazado', cancelled: 'cancelado', refunded: 'reintegrado' })[value]; }
+function paymentLabel(value: Prepared['paymentStatus']): string { return ({ none: 'sin pago confirmado', pending: 'pendiente', approved: 'aprobado', rejected: 'rechazado', cancelled: 'cancelado', refunded: 'reintegrado o revertido' })[value]; }
+function preparationLabel(value: string): string {
+  if (value === 'requires_review') return 'La compra necesita revisión. Comprobá el pedido en Dux antes de continuar; el cobro no está habilitado.';
+  if (value === 'failed') return 'No se pudo preparar la compra. El cobro no está habilitado.';
+  if (value === 'uncertain') return 'Todavía no pudimos confirmar la reserva. Continuá la verificación para consultar el resultado en Dux.';
+  return 'La compra se está preparando. Actualizá el estado para consultar el resultado.';
+}
 function positive(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0; }
 function nonNegative(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0; }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function invalid(): Error { return new Error('La respuesta de preparación asistida no es válida.'); }
-function message(error: unknown): string { return error instanceof Error ? error.message : 'No se pudo completar la preparación.'; }
+function message(error: unknown, fallback: string): string { return error instanceof AdminActionError ? error.message : fallback; }

@@ -12,10 +12,11 @@ const MAX_AUTOMATIC_CHECKS = 8;
 const DIRECT_CHECK_INTERVAL_MS = 5000;
 const PUBLIC_ERROR = 'No pudimos continuar con tu compra. Volvé a consultar o intentá nuevamente.';
 
-export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange }: Readonly<{
+export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange, onValidateBeforeCreate }: Readonly<{
   registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
   onBusyChange: (busy: boolean) => void; onActiveChange: (active: boolean) => void;
   onConfirmedTotalChange?: (total: number | null) => void;
+  onValidateBeforeCreate?: () => boolean;
 }>) {
   const whatsappNumber = getAuthorizedWhatsappNumber();
   const [identity, setIdentity] = useState<WebRequestIdentity | null>(null);
@@ -154,6 +155,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
 
   async function operate(action: 'create' | 'recover' | 'new'): Promise<void> {
     if (busyRef.current || disabled || recovering) return;
+    if (action === 'create' && onValidateBeforeCreate?.() === false) return;
     busyRef.current = true; setBusy(true); onBusyChange(true); setError('');
     setRefreshVersion((value) => value + 1);
     try {
@@ -195,8 +197,9 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   const simpleProgress = preparing || automaticCheckout;
   const showRecovery = (identity !== null || linkedToken !== null) && !simpleProgress && checkoutUrl === null;
   if (!registrationEnabled && identity === null && linkedToken === null) return null;
-  return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy}>
+  return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy || recovering}>
     <h2 id="web-request-title">Tu pedido</h2>
+    {recovering ? <p role="status">Buscando una compra guardada…</p> : null}
     {simpleProgress ? <div className="web-request-progress" role="status" aria-live="polite">
       <span className="web-request-spinner" aria-hidden="true" />
       <h3 ref={receiptTitle} tabIndex={-1}>{checkoutUrl === null ? 'Estamos preparando tu compra…' : 'Te estamos llevando a Mercado Pago…'}</h3>
@@ -222,7 +225,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
       <p>{fulfillment === null ? 'Completá los datos de entrega del carrito.' : fulfillment.method === 'coordinated_pickup'
         ? 'El retiro no agrega costo. Verificamos los productos para mostrarte el total final antes de pagar.'
         : 'El envío por correo requiere una cotización confirmada. También podés elegir retiro y coordinarlo con el negocio.'}</p>
-      <button className="button button-primary" type="button" disabled={disabled || busy || recovering || fulfillment === null || items.length === 0}
+      <button className="button button-primary" type="button" disabled={disabled || busy || recovering || (fulfillment === null && onValidateBeforeCreate === undefined) || items.length === 0}
         onClick={() => void operate('create')}>{busy ? 'Estamos preparando tu compra…' : fulfillment?.method === 'correo_argentino' ? 'Solicitar cotización de envío' : 'Continuar al pago'}</button>
     </> : null}
     {showRecovery ? <button className="button button-secondary" type="button" disabled={disabled || busy || recovering}

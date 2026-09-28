@@ -121,6 +121,9 @@ export function PaymentReturnPage({
         >
           {presentation.message}
         </p>
+        {status !== null && ((status.payment?.status ?? status.status) !== 'approved' || status.payment?.requiresReview === true) ? (
+          <p>Tu pedido es <strong>{status.orderNumber}</strong>.</p>
+        ) : null}
         {confirmed ? <p>Pronto nos pondremos en contacto para coordinar la entrega.</p> : null}
         <div className="payment-return-actions">
           {whatsappUrl === null ? null : <a className="button button-primary" href={whatsappUrl}

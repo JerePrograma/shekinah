@@ -1,5 +1,13 @@
 # Accesibilidad
 
+## Revisión integral — 2026-09-27
+
+La [auditoría UX/UI](validation/UX_UI_REVIEW_2026-09-27.md) corrige errores visibles
+en el formulario de compra, cantidades inválidas, navegación y recuperación de
+foco, confirmaciones administrativas y superposición del consentimiento analítico.
+Comprueba móvil, tablet y escritorio con fixtures locales. Conserva las limitaciones
+de lector de pantalla y evaluación con usuarios; no certifica conformidad total.
+
 ## Objetivo
 
 La interfaz prioriza lectura clara, navegación predecible y funcionamiento completo por teclado en escritorio y móvil.

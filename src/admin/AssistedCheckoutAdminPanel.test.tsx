@@ -43,6 +43,8 @@ it('recupera una preparación directa por el servidor sin pedir otra reserva man
   vi.stubGlobal('fetch',fetchMock);
   render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()}/>);
   fireEvent.click(screen.getByRole('button',{name:'Consultar preparación de cobro'}));
+  expect(await screen.findByRole('status')).toHaveTextContent('Todavía no pudimos confirmar la reserva');
+  expect(screen.getByText('DUX_ORDER_RESULT_UNCERTAIN')).not.toBeVisible();
   fireEvent.click(await screen.findByRole('button',{name:'Continuar verificación Dux'}));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Pedido preparado'));
   expect(fetchMock.mock.calls[1]).toEqual([`/api/admin/web-order-requests/${requestId}/resume`,{method:'POST',credentials:'same-origin',redirect:'error'}]);
@@ -155,7 +157,7 @@ it('no ofrece un cierre Dux mientras el pago está pendiente o hay una incidenci
   vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json(review)));
   render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
-  expect(await screen.findByText('Existe una incidencia que requiere revisión antes de continuar.')).toBeVisible();
+  expect(await screen.findByText(/Revisá el pago en Mercado Pago y la reserva en Dux/u)).toBeVisible();
   expect(screen.queryByRole('button', { name: /Confirmar (?:liberación|finalización) en Dux/u })).not.toBeInTheDocument();
 });
 
@@ -170,7 +172,8 @@ it('un conflicto server-side no se convierte en liberación exitosa local', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Confirmar liberación en Dux' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sí, ya está liberado en Dux' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('El estado financiero cambió');
+  expect(await screen.findByRole('alert')).toHaveTextContent('El pedido tiene un pago aprobado o pendiente. No liberes la reserva');
+  expect(screen.queryByText(/El estado financiero cambió/u)).not.toBeInTheDocument();
   expect(screen.getByText(/Reserva: confirmada/u)).toBeVisible();
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
@@ -182,6 +185,96 @@ it('una sesión vencida no expone estado administrativo', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
   await waitFor(() => expect(unauthorized).toHaveBeenCalledTimes(1));
   expect(screen.queryByText(/Precio Dux actual:/u)).not.toBeInTheDocument();
+});
+
+it.each([
+  ['Preparar cobro', preview],
+  ['Confirmar liberación en Dux', prepared],
+  ['Confirmar finalización en Dux', { ...prepared, prepared: { ...prepared.prepared, paymentStatus: 'approved' } }],
+] as const)('permite cancelar %s con Escape y recupera el foco sin mutar', async (triggerName, initialState) => {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(initialState));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  if (triggerName === 'Preparar cobro') {
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Número de pedido Dux' }), { target: { value: 'PED-1' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que verifiqué en Dux/u }));
+  }
+  fireEvent.click(await screen.findByRole('button', { name: triggerName }));
+  expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('button', { name: triggerName })).toHaveFocus());
+  fireEvent.click(screen.getByRole('button', { name: triggerName }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: triggerName })).toHaveFocus());
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+});
+
+it('distingue una revisión necesaria de una preparación en curso', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+    state: 'direct_preparing', requestId, preparationStatus: 'requires_review',
+    duxReference: `shekinah:web:${requestId}`, errorCode: 'DIRECT_RESERVATION_UNVERIFIED',
+  })));
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('La compra necesita revisión');
+  expect(screen.getByRole('status')).toHaveTextContent('el cobro no está habilitado');
+  expect(screen.queryByRole('button', { name: 'Continuar verificación Dux' })).not.toBeInTheDocument();
+  expect(screen.getByText('DIRECT_RESERVATION_UNVERIFIED')).not.toBeVisible();
+  fireEvent.click(screen.getByText('Datos para revisar el pedido en Dux'));
+  expect(screen.getByText('DIRECT_RESERVATION_UNVERIFIED')).toBeVisible();
+});
+
+it('recupera un pedido preparado tras un fallo sin exponer errores ni repetir la preparación', async () => {
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(preview))
+    .mockResolvedValueOnce(Response.json({ error: { code: 'UNKNOWN_FAILURE', message: 'D1 table trace privado' } }, { status: 503 }))
+    .mockResolvedValueOnce(Response.json(prepared));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Número de pedido Dux' }), { target: { value: 'PED-1' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que verifiqué en Dux/u }));
+  fireEvent.click(screen.getByRole('button', { name: 'Preparar cobro' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar preparación' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Actualizá el estado antes de repetirla');
+  expect(screen.queryByText(/D1 table trace/u)).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Número de pedido Dux' })).toHaveValue('PED-1');
+  fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('SHK-BBBBBBBB');
+  expect(screen.getByRole('status')).not.toHaveTextContent(prepared.prepared.orderId);
+  expect(screen.getByText(/Pago: sin pago confirmado/u)).toBeVisible();
+  expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+  expect(fetchMock.mock.calls[2]?.[1]?.method).toBeUndefined();
+});
+
+it('al actualizar precios conserva los datos pero requiere volver a confirmar la reserva', async () => {
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(Response.json(preview)));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Número de pedido Dux' }), { target: { value: 'PED-1' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que verifiqué en Dux/u }));
+  expect(screen.getByRole('button', { name: 'Preparar cobro' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado' }));
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: /Confirmo que verifiqué en Dux/u })).not.toBeChecked());
+  expect(screen.getByRole('textbox', { name: 'Número de pedido Dux' })).toHaveValue('PED-1');
+  expect(screen.getByRole('button', { name: 'Preparar cobro' })).toBeDisabled();
+  expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
+});
+
+it('conserva el pedido preparado si actualizar falla y oculta detalles técnicos', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(prepared))
+    .mockRejectedValueOnce(new Error('SQL internal private trace')));
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('SHK-BBBBBBBB');
+  fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos consultar el pedido. Reintentá');
+  expect(screen.getByRole('status')).toHaveTextContent('SHK-BBBBBBBB');
+  expect(screen.queryByText(/SQL internal/u)).not.toBeInTheDocument();
 });
 
 function parseRequestBody(call: readonly unknown[] | undefined): unknown {

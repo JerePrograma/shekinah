@@ -6,7 +6,8 @@ import { CartProvider } from '../cart/CartContext';
 import { authorizedProducts } from '../data/authorized-commercial-data';
 import { refreshRuntimeCatalog } from '../data/runtime-catalog';
 import { catalogProductFixtures } from '../test/fixtures/catalog-products';
-import { CatalogSection } from './CatalogSection';
+import { CatalogSection, CatalogViewsContext } from './CatalogSection';
+import type { CatalogView } from './CatalogSection';
 import { parseProduct } from './model';
 
 function renderCatalog(element: ReactElement) {
@@ -138,6 +139,33 @@ describe('CatalogSection', () => {
     expect(screen.getByText('El catálogo no tiene productos disponibles en este momento.'))
       .toBeVisible();
     expect(screen.queryByRole('button', { name: /Limpiar/u })).not.toBeInTheDocument();
+  });
+
+  it('distingue carga y falla de red del catálogo vacío', () => {
+    const { rerender } = renderCatalog(<CatalogSection navigate={vi.fn()} products={[]} status="loading" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando productos');
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('No hay productos disponibles')).not.toBeInTheDocument();
+    rerender(<CartProvider><CatalogSection navigate={vi.fn()} products={[]} status="error" /></CartProvider>);
+    expect(screen.getByRole('alert')).toHaveTextContent('No pudimos actualizar el catálogo');
+    expect(screen.getByRole('button', { name: 'Reintentar carga' })).toBeEnabled();
+    expect(screen.queryByText('No hay productos disponibles')).not.toBeInTheDocument();
+  });
+
+  it('conserva filtros al volver de una ficha y permite limpiarlos con resultados presentes', () => {
+    const props = { navigate: vi.fn(), products: catalogProductFixtures, viewKey: 'test-return' };
+    const views = new Map<string, CatalogView>();
+    const element = <CatalogViewsContext.Provider value={views}><CatalogSection {...props} /></CatalogViewsContext.Provider>;
+    const first = renderCatalog(element);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'menta' } });
+    first.unmount();
+    renderCatalog(element);
+    expect(screen.getByRole('searchbox')).toHaveValue('menta');
+    expect(screen.getByRole('status')).toHaveTextContent('1 producto encontrado');
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda y categoría' }));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(screen.getByRole('searchbox')).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Pimentón dulce' })).toBeVisible();
   });
 
   it('muestra en la tarjeta la cantidad agregada tras confirmar el catálogo runtime', async () => {

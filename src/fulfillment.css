@@ -36,6 +36,12 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.fulfillment-field {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+}
+
 .fulfillment-form input,
 .fulfillment-form select {
   width: 100%;

@@ -3,13 +3,13 @@ export const commercePrivacySections = [
     id: 'privacy-commerce',
     title: 'Carrito y pagos',
     description:
-      'El carrito se guarda localmente en el navegador sin nombre, celular ni domicilio. El sitio no solicita ni copia un importe manual para Mercado Pago: cuando Checkout Pro está habilitado, Shekinah envía identidades y cantidades al backend, que revalida Dux, calcula productos, envío y total, registra la orden y crea la preferencia antes de redirigir. Los datos de entrega sólo se incluyen en el pedido confirmado por el comprador. Shekinah no recibe datos de tarjeta.',
+      'El carrito se guarda en tu navegador sin nombre, celular ni domicilio. Cuando el pago online está disponible, Shekinah verifica precio y disponibilidad y confirma el total, incluido el envío cuando corresponde, antes de llevarte a Mercado Pago. El pago se realiza allí; volver a la tienda no confirma por sí solo un cobro. Shekinah no recibe datos de tarjeta.',
   },
   {
     id: 'privacy-web-requests',
     title: 'Solicitudes registradas en la web',
     description:
-      'Cuando este registro está habilitado, al enviar una solicitud se conservan en el servidor los productos solicitados, nombre y celular y, sólo para envío por correo, el domicilio necesario para gestionarla. Estos datos son de acceso administrativo y no se envían a WhatsApp por registrar la solicitud. El navegador conserva claves técnicas para recuperar el intento, no los datos de entrega. La aceptación o el rechazo se registran para su seguimiento; no prueban un cobro ni una reserva de mercadería.',
+      'Al continuar la compra o enviar una solicitud, se guardan los productos, nombre y celular y, sólo para envío por correo, el domicilio necesario para gestionarla. Estos datos son de acceso administrativo y no se envían a WhatsApp por registrar la solicitud. El navegador conserva una referencia para recuperar la compra, sin guardar los datos de entrega. Registrar o aceptar una solicitud no confirma un cobro ni una reserva de mercadería.',
   },
   {
     id: 'privacy-analytics',

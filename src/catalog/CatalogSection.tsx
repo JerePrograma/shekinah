@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 
 import { AddToCartButton } from '../cart/AddToCartButton';
 import { siteContent } from '../content/site-content';
+import { refreshRuntimeCatalog } from '../data/runtime-catalog';
+import type { RuntimeCatalogStatus } from '../data/runtime-catalog';
 import { AppLink } from '../routing/AppLink';
 import type { Navigate } from '../routing/routes';
 import {
@@ -22,7 +24,12 @@ type CatalogSectionProps = Readonly<{
   products: readonly Product[];
   summary?: string;
   title?: string;
+  status?: RuntimeCatalogStatus;
+  viewKey?: string;
 }>;
+export type CatalogView = Readonly<{ query: string; category: string; page: number }>;
+// Only navigation context in this tab's memory; no searches are persisted or sent.
+export const CatalogViewsContext = createContext<Map<string, CatalogView> | null>(null);
 export function CatalogSection({
   fixedCategorySlug,
   headingLevel = 2,
@@ -30,10 +37,16 @@ export function CatalogSection({
   products,
   summary = siteContent.catalog.summary,
   title = siteContent.catalog.title,
+  status = 'ready',
+  viewKey,
 }: CatalogSectionProps) {
-  const [query, setQuery] = useState('');
-  const [selectedCategorySlug, setSelectedCategorySlug] = useState(ALL_CATEGORIES);
-  const [requestedPage, setRequestedPage] = useState(1);
+  const catalogViews = useContext(CatalogViewsContext);
+  const previousView = viewKey === undefined ? undefined : catalogViews?.get(viewKey);
+  const [query, setQuery] = useState(previousView?.query ?? '');
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState(previousView?.category ?? ALL_CATEGORIES);
+  const [requestedPage, setRequestedPage] = useState(previousView?.page ?? 1);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const catalogGridRef = useRef<HTMLDivElement>(null);
   const focusNextPageResult = useRef(false);
   const categorySlug = fixedCategorySlug ?? selectedCategorySlug;
@@ -53,6 +66,12 @@ export function CatalogSection({
       : `${filteredProducts.length} productos encontrados`;
 
   useEffect(() => {
+    if (viewKey !== undefined) {
+      catalogViews?.set(viewKey, { query, category: selectedCategorySlug, page: requestedPage });
+    }
+  }, [catalogViews, query, requestedPage, selectedCategorySlug, viewKey]);
+
+  useEffect(() => {
     if (!focusNextPageResult.current) return;
     focusNextPageResult.current = false;
     catalogGridRef.current?.querySelector<HTMLAnchorElement>('[data-product] h2 a, [data-product] h3 a')?.focus();
@@ -62,16 +81,39 @@ export function CatalogSection({
     setQuery('');
     setSelectedCategorySlug(ALL_CATEGORIES);
     setRequestedPage(1);
+    searchRef.current?.focus();
   }
   return (
-    <section className="catalog-section section" aria-labelledby="catalog-title">
+    <section className="catalog-section section" aria-labelledby="catalog-title" ref={sectionRef}>
       <div className="container catalog-shell">
         <CatalogHeading level={headingLevel} summary={summary} title={title} />
+        {fixedCategorySlug === undefined ? null : (
+          <AppLink className="page-back-link" navigate={navigate} to="/catalogo">Ver todas las categorías</AppLink>
+        )}
+        {status === 'ready' || (status === 'loading' && products.length > 0) ? null : (
+          <div className="catalog-feedback">
+            <p role={status === 'error' ? 'alert' : 'status'}>
+              {status === 'loading'
+                ? 'Cargando productos…'
+                : 'No pudimos actualizar el catálogo. Revisá tu conexión y reintentá.'}
+            </p>
+            {status === 'error' ? (
+              <button className="button button-secondary" type="button" onClick={() => {
+                sectionRef.current?.querySelector<HTMLElement>('#catalog-title')?.focus();
+                void refreshRuntimeCatalog();
+              }}>
+                Reintentar carga
+              </button>
+            ) : null}
+          </div>
+        )}
+        {products.length === 0 && status !== 'ready' ? null : <>
         <div className="catalog-controls" aria-label="Controles del catálogo">
           <label className="catalog-field">
             <span>{siteContent.catalog.searchLabel}</span>
             <input
               type="search"
+              ref={searchRef}
               value={query}
               placeholder={siteContent.catalog.searchPlaceholder}
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
@@ -93,6 +135,8 @@ export function CatalogSection({
                 <option value={ALL_CATEGORIES}>
                   {siteContent.catalog.allCategoriesLabel}
                 </option>
+                {selectedCategorySlug !== ALL_CATEGORIES && !categoryOptions.some(({ slug }) => slug === selectedCategorySlug)
+                  ? <option value={selectedCategorySlug}>Categoría no disponible</option> : null}
                 {categoryOptions.map((category) => (
                   <option value={category.slug} key={category.slug}>
                     {category.name}
@@ -101,6 +145,11 @@ export function CatalogSection({
               </select>
             </label>
           ) : null}
+          {query === '' && selectedCategorySlug === ALL_CATEGORIES ? null : (
+            <button className="text-button catalog-reset" type="button" onClick={resetFilters}>
+              {fixedCategorySlug === undefined ? 'Limpiar búsqueda y categoría' : 'Limpiar búsqueda'}
+            </button>
+          )}
         </div>
         <p className="catalog-results" role="status" aria-live="polite">
           {resultLabel}. Página {pageResult.page} de {pageResult.totalPages}.
@@ -121,11 +170,6 @@ export function CatalogSection({
                   ? 'El catálogo no tiene productos disponibles en este momento.'
                   : siteContent.catalog.noResultsDescription}
               </p>
-              {products.length === 0 ? null : (
-                <button className="text-button" type="button" onClick={resetFilters}>
-                  {fixedCategorySlug === undefined ? 'Limpiar búsqueda y categoría' : 'Limpiar búsqueda'}
-                </button>
-              )}
             </div>
           </div>
         ) : (
@@ -167,6 +211,7 @@ export function CatalogSection({
             </nav>
           </>
         )}
+        </>}
       </div>
     </section>
   );
@@ -245,7 +290,7 @@ function CatalogHeading({
   return (
     <div className="section-heading catalog-heading">
       <p className="eyebrow">{siteContent.catalog.eyebrow}</p>
-      <Heading id="catalog-title">{title}</Heading>
+      <Heading id="catalog-title" tabIndex={-1}>{title}</Heading>
       <p>{summary}</p>
     </div>
   );

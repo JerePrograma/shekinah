@@ -3,6 +3,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { trackAnalyticsEvent } from './analytics/client';
 import { AnalyticsConsent } from './analytics/AnalyticsConsent';
 import { useCart } from './cart/CartContext';
+import { CatalogViewsContext } from './catalog/CatalogSection';
+import type { CatalogView } from './catalog/CatalogSection';
 import { authorizedAssets } from './config/authorized-assets';
 import {
   footerNavigationItems,
@@ -10,6 +12,7 @@ import {
   siteContent,
 } from './content/site-content';
 import { shouldShowPublicMaintenance } from './maintenance';
+import { refreshRuntimeCatalog, useRuntimeCatalogStatus } from './data/runtime-catalog';
 import { CartPage } from './pages/CartPage';
 import type { ProductInteractionState } from './admin/ProductManager';
 import { CatalogPage } from './pages/CatalogPage';
@@ -62,6 +65,8 @@ export function App() {
   const publicMaintenanceActive = shouldShowPublicMaintenance(route.id);
   const mainRef = useRef<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
+  const previousRouteId = useRef(route.id);
+  const catalogViews = useRef(new Map<string, CatalogView>());
 
   useEffect(() => {
     if (publicMaintenanceActive) {
@@ -91,10 +96,15 @@ export function App() {
   }, [pathname, publicMaintenanceActive, route.id]);
 
   useEffect(() => {
-    if (previousPathname.current === pathname) return;
+    const pathChanged = previousPathname.current !== pathname;
+    const catalogResolved = previousRouteId.current === 'resolving-product' &&
+      route.id !== 'resolving-product';
     previousPathname.current = pathname;
+    previousRouteId.current = route.id;
+    if (!pathChanged && !catalogResolved) return;
     mainRef.current?.focus({ preventScroll: false });
-  }, [pathname]);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [pathname, route.id]);
 
   useEffect(() => {
     if (!adminInteraction.busy && !adminInteraction.dirty) return;
@@ -181,12 +191,14 @@ export function App() {
         <p className="container navigation-feedback" role="alert">{navigationFeedback}</p>
       )}
       <main id="main-content" ref={mainRef} tabIndex={-1}>
-        <RouteView
-          navigate={navigate}
-          pathname={pathname}
-          route={route}
-          onAdminInteractionStateChange={setAdminInteraction}
-        />
+        <CatalogViewsContext.Provider value={catalogViews.current}>
+          <RouteView
+            navigate={navigate}
+            pathname={pathname}
+            route={route}
+            onAdminInteractionStateChange={setAdminInteraction}
+          />
+        </CatalogViewsContext.Provider>
       </main>
       {route.id === 'admin' ? null : <AnalyticsConsent />}
       <footer className="site-footer">
@@ -296,18 +308,32 @@ function RouteView({
         </Suspense>
       );
     case 'resolving-product':
-      return (
-        <section className="section" aria-labelledby="resolving-product-title">
-          <div className="container">
-            <h1 id="resolving-product-title">Cargando producto…</h1>
-            <p role="status">Verificando el catálogo público.</p>
-          </div>
-        </section>
-      );
+      return <ResolvingCatalogPage navigate={navigate} />;
     case 'not-found':
       return <NotFoundPage navigate={navigate} pathname={pathname} />;
   }
   return assertNever(route);
+}
+
+function ResolvingCatalogPage({ navigate }: Readonly<{ navigate: Navigate }>) {
+  const status = useRuntimeCatalogStatus();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const failed = status === 'error';
+  return (
+    <section className="section" aria-labelledby="resolving-product-title">
+      <div className="container product-page-shell">
+        <h1 id="resolving-product-title" ref={titleRef} tabIndex={-1}>{failed ? 'No pudimos cargar esta página' : 'Cargando catálogo…'}</h1>
+        <p role={failed ? 'alert' : 'status'}>
+          {failed ? 'Revisá tu conexión y reintentá. Todavía no pudimos verificar el producto o la categoría.' : 'Buscando el producto o la categoría.'}
+        </p>
+        {failed ? <button className="button button-primary" type="button" onClick={() => {
+          titleRef.current?.focus();
+          void refreshRuntimeCatalog();
+        }}>Reintentar carga</button> : null}
+        <AppLink className="page-back-link" navigate={navigate} to={appPaths.catalog}>Volver al catálogo</AppLink>
+      </div>
+    </section>
+  );
 }
 
 function assertNever(value: never): never {

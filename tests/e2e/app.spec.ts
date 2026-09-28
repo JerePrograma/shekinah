@@ -217,9 +217,9 @@ test('resuelve un producto dinámico confirmado en acceso directo, refresh y Bac
   await expect(page).toHaveURL(/\/$/u);
 });
 
-test('mantiene teclado, foco y ancho usable en 320, 390, 768 y 1440 px', async ({ page }) => {
+test('mantiene teclado, foco y ancho usable en móvil, tablet y desktop', async ({ page }) => {
   const observation = observePage(page);
-  for (const width of [320, 390, 768, 1440]) {
+  for (const width of [320, 360, 390, 768, 1366, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/catalogo');
     const dimensions = await page.evaluate(() => ({
@@ -236,4 +236,56 @@ test('mantiene teclado, foco y ancho usable en 320, 390, 768 y 1440 px', async (
   await page.getByRole('link', { name: 'Catálogo', exact: true }).first().click();
   await expect(page.locator('#main-content')).toBeFocused();
   expectCleanRuntime(page, observation);
+});
+
+test('recupera una carga de catálogo fallida sin anunciar un catálogo vacío', async ({ page }) => {
+  let failed = true;
+  await page.route('**/api/catalog', (route) => route.fulfill(failed
+    ? { status: 503, json: { error: 'UNAVAILABLE' } }
+    : { json: duxApiFixture({ products: publicCatalogProducts }) }));
+  await page.goto('/catalogo');
+  await expect(page.getByRole('alert')).toContainText('No pudimos actualizar el catálogo');
+  await expect(page.getByRole('heading', { name: 'No hay productos disponibles' })).toHaveCount(0);
+  failed = false;
+  await page.getByRole('button', { name: 'Reintentar carga' }).click();
+  await expect(page.locator('[data-product]')).toHaveCount(24);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('una falla de red al entrar a una ficha no se convierte en 404 y permite reintentar', async ({ page }) => {
+  let failed = true;
+  await page.route('**/api/catalog', (route) => route.fulfill(failed
+    ? { status: 503, json: { error: 'UNAVAILABLE' } }
+    : { json: duxApiFixture({ products: publicCatalogProducts }) }));
+  await page.goto('/guayaba/');
+  await expect(page.getByRole('heading', { name: 'No pudimos cargar esta página' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Página no encontrada.' })).toHaveCount(0);
+  failed = false;
+  await page.getByRole('button', { name: 'Reintentar carga' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Guayaba hojas x 50 gr' })).toBeVisible();
+  await expect(page.locator('#main-content')).toBeFocused();
+});
+
+test('reintenta el detalle fallido y conserva búsqueda y página al volver al catálogo', async ({ page }) => {
+  let detailFailed = true;
+  await page.route('**/api/catalog/guayaba', async (route) => {
+    if (detailFailed) await route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
+    else await route.fallback();
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/catalogo');
+  await page.getByRole('searchbox').fill('guayaba');
+  await page.getByRole('link', { name: 'Guayaba hojas x 50 gr', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No pudimos cargar el producto' })).toBeVisible();
+  detailFailed = false;
+  await page.getByRole('button', { name: 'Reintentar carga' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Guayaba hojas x 50 gr' })).toBeVisible();
+  await page.getByRole('link', { name: 'Volver al catálogo' }).click();
+  await expect(page.getByRole('searchbox')).toHaveValue('guayaba');
+  await page.getByRole('button', { name: 'Limpiar búsqueda y categoría' }).click();
+  await expect(page.getByRole('searchbox')).toBeFocused();
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await page.locator('[data-product] h2 a').first().click();
+  await page.goBack();
+  await expect(page.getByText('Página 2 de 22', { exact: true })).toBeVisible();
 });

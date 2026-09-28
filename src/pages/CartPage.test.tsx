@@ -14,7 +14,7 @@ const {
   trackAnalyticsEvent,
   webOrderState,
 } = vi.hoisted(() => ({
-  commerceState: { enabled: false, assistedOnly: false },
+  commerceState: { enabled: false, assistedOnly: false, multipleProducts: false },
   createCheckoutPreference: vi.fn(),
   createWhatsappOrder: vi.fn(),
   getOrCreateWhatsappOrderIdempotencyKey: vi.fn(() => Promise.resolve('whatsapp-test-key')),
@@ -50,10 +50,15 @@ vi.mock('../data/runtime-catalog', () => {
   const assistedProduct = Object.freeze({ ...product,
     commerce: Object.freeze({ ...product.commerce, checkoutEligible: false }),
   });
+  const secondProduct = Object.freeze({ ...product,
+    id: 'otro-producto', slug: 'otro-producto', path: '/otro-producto/', name: 'Otro producto',
+  });
   return {
     isRuntimeCatalogResolved: () => true,
     refreshRuntimeCatalog,
-    useRuntimeCatalogProducts: () => [commerceState.assistedOnly ? assistedProduct : product],
+    useRuntimeCatalogProducts: () => commerceState.multipleProducts
+      ? [product, secondProduct]
+      : [commerceState.assistedOnly ? assistedProduct : product],
   };
 });
 vi.mock('../commerce/env', () => ({
@@ -68,6 +73,13 @@ vi.mock('../commerce/checkout-session', () => ({
   getOrCreateCheckoutIdempotencyKey: () => Promise.resolve('checkout-test-key'),
   getOrCreateWhatsappOrderIdempotencyKey,
   rememberCheckoutOrder: vi.fn(),
+}));
+vi.mock('../commerce/web-request-session', () => ({
+  readWebRequestIdentity: () => Promise.resolve(null),
+  getOrCreateWebRequestIdentity: () => Promise.resolve({
+    idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64),
+  }),
+  finishWebRequestIdentity: vi.fn(),
 }));
 
 describe('CartPage', () => {
@@ -85,6 +97,7 @@ describe('CartPage', () => {
     refreshRuntimeCatalog.mockReset().mockResolvedValue([product]);
     commerceState.enabled = false;
     commerceState.assistedOnly = false;
+    commerceState.multipleProducts = false;
     webOrderState.enabled = false;
   });
 
@@ -106,6 +119,107 @@ describe('CartPage', () => {
     fireEvent.click(screen.getByRole('button', { name: `Aumentar cantidad de ${product.name}` }));
     expect(quantity).toHaveValue(2);
     expect(screen.getByText('2 unidades en el carrito.')).toBeVisible();
+  });
+
+  it('no prepara un pago con una cantidad visible inválida ni usa silenciosamente la anterior', async () => {
+    commerceState.enabled = true;
+    renderCart();
+    fillFulfillment();
+    const quantity = screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` });
+    fireEvent.change(quantity, { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar con Mercado Pago' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Revisá las cantidades del carrito');
+    await waitFor(() => expect(quantity).toHaveFocus());
+    expect(createCheckoutPreference).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeDisabled();
+    expect(screen.getByText('Revisá las cantidades del carrito para continuar por WhatsApp.')).toBeVisible();
+
+    fireEvent.change(quantity, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Acepto compartir/iu }));
+    expect(screen.getByRole('button', { name: 'Pedir por WhatsApp' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('identifica datos incompletos y cantidades inválidas antes de registrar una compra web', async () => {
+    webOrderState.enabled = true;
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      reference: `WEB-${'b'.repeat(24)}`, publicToken: 'a'.repeat(64),
+      status: 'submitted', createdAt: '2026-09-27T12:00:00Z', updatedAt: '2026-09-27T12:00:00Z',
+      paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved',
+      checkoutAvailable: false, totalMinor: null,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderCart();
+    const continueButton = screen.getByRole('button', { name: 'Continuar al pago' });
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    fireEvent.click(continueButton);
+    const name = screen.getByRole('textbox', { name: 'Nombre completo' });
+    const phone = screen.getByRole('textbox', { name: 'Celular' });
+    await waitFor(() => expect(name).toHaveFocus());
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription(/nombre completo/u);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(name, { target: { value: 'Cliente de prueba' } });
+    fireEvent.change(phone, { target: { value: '12' } });
+    fireEvent.click(continueButton);
+    await waitFor(() => expect(phone).toHaveFocus());
+    expect(phone).toHaveAttribute('type', 'tel');
+    expect(phone).toHaveAccessibleDescription('El celular debe contener entre 8 y 15 dígitos.');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(phone, { target: { value: '2235550100' } });
+    const quantity = screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` });
+    fireEvent.change(quantity, { target: { value: '0' } });
+    fireEvent.click(continueButton);
+    await waitFor(() => expect(quantity).toHaveFocus());
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(quantity, { target: { value: '2' } });
+    fireEvent.click(continueButton);
+    expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]?.[1];
+    if (typeof request?.body !== 'string') throw new Error('Falta el cuerpo de la compra.');
+    const body: unknown = JSON.parse(request.body);
+    expect(body).toMatchObject({
+      mode: 'create', items: [{ productId: product.id, quantity: 2 }],
+      fulfillment: { fullName: 'Cliente de prueba', phone: '2235550100' },
+    });
+  });
+
+  it('retira el error de cantidad al eliminar la línea inválida y permite continuar con la restante', async () => {
+    commerceState.enabled = true;
+    commerceState.multipleProducts = true;
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      items: [{ productId: product.id, quantity: 1 }, { productId: 'otro-producto', quantity: 1 }],
+      updatedAt: '2026-09-27T00:00:00.000Z',
+    }));
+    createCheckoutPreference.mockRejectedValueOnce(new Error('No pudimos abrir Mercado Pago.'));
+    renderCart();
+    fillFulfillment();
+    fireEvent.change(screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` }), {
+      target: { value: '0' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar con Mercado Pago' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Revisá las cantidades del carrito');
+    expect(createCheckoutPreference).not.toHaveBeenCalled();
+    expect(createWhatsappOrder).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: `Eliminar ${product.name} del carrito` }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: product.name })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Otro producto' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar con Mercado Pago' }));
+    await waitFor(() => expect(createCheckoutPreference).toHaveBeenCalledTimes(1));
+    const checkoutCall: unknown = createCheckoutPreference.mock.calls[0];
+    expect(checkoutCall).toMatchObject([
+      [{ product: { id: 'otro-producto' }, quantity: 1 }],
+      'checkout-test-key',
+      { fullName: 'Cliente de prueba' },
+    ]);
   });
 
   it('confirma el vaciado con contexto, Escape cancela y el resultado queda explícito', async () => {

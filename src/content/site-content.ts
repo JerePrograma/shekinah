@@ -45,7 +45,7 @@ export const siteContent = {
         id: 'privacy-personal-data',
         title: 'Datos personales',
         description:
-          'El sitio no solicita cuentas, nombre, email, teléfono ni documento. Shekinah no recopila ni procesa datos de tarjeta.',
+          'Podés navegar y armar el carrito sin crear una cuenta. Para gestionar tu compra pedimos nombre completo y celular; si elegís envío, también los datos de entrega. Shekinah no solicita ni guarda datos de tarjeta.',
       },
       {
         id: 'privacy-third-parties',

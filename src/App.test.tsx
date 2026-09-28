@@ -61,6 +61,7 @@ function renderApp() {
 
 describe('App', () => {
   beforeEach(() => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
@@ -68,6 +69,7 @@ describe('App', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('mantiene el backoffice fuera del consentimiento analítico público', async () => {
@@ -108,7 +110,7 @@ describe('App', () => {
     window.history.replaceState(null, '', '/producto-creado-desde-backoffice/');
     const rendered = renderApp();
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Cargando producto…' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Cargando catálogo…' })).toBeVisible();
     expect(
       await screen.findByRole('heading', {
         level: 1,

@@ -84,12 +84,12 @@ const BLOCKER_LABELS: Readonly<Record<string, string>> = Object.freeze({
 
 export function CommerceReadinessPanel({
   onUnauthorized,
-}: Readonly<{ onUnauthorized?: (() => void) | undefined }>) {
+  onOpenOrders,
+}: Readonly<{ onUnauthorized?: (() => void) | undefined; onOpenOrders?: () => void }>) {
   const [requested, setRequested] = useState(false);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const frontendWebRequestsEnabled = import.meta.env.VITE_WEB_ORDERS_ENABLED === 'true';
 
   useEffect(() => {
     if (!requested) return undefined;
@@ -104,7 +104,7 @@ export function CommerceReadinessPanel({
       .then(async (response) => {
         if (response.status === 401) {
           onUnauthorized?.();
-          throw new Error('La sesión administrativa venció.');
+          throw new Error('Tu sesión venció. Volvé a ingresar.');
         }
         if (!response.ok) throw new Error('No se pudo evaluar la preparación comercial.');
         return parseReadiness(await response.json());
@@ -114,7 +114,8 @@ export function CommerceReadinessPanel({
       })
       .catch((loadError: unknown) => {
         if (!controller.signal.aborted) {
-          setError(loadError instanceof Error ? loadError.message : 'No se pudo evaluar la preparación comercial.');
+          setError(loadError instanceof Error && loadError.message === 'Tu sesión venció. Volvé a ingresar.'
+            ? loadError.message : 'No pudimos consultar el estado de la tienda. Intentá nuevamente.');
         }
       });
     return () => controller.abort();
@@ -124,18 +125,46 @@ export function CommerceReadinessPanel({
     <section className="container section" aria-labelledby="commerce-readiness-title" aria-busy={requested && readiness === null && error === ''}>
       <div className="section-heading">
         <p className="eyebrow">Operación</p>
-        <h2 id="commerce-readiness-title">Preparación comercial</h2>
-        <p>Diagnóstico de sólo lectura del entorno actual. No activa flags, no llama proveedores y no modifica stock.</p>
+        <h2 id="commerce-readiness-title">Estado de la tienda</h2>
+        <p>Consultá si hay compras para revisar o problemas para recibir pedidos.</p>
       </div>
       {!requested ? (
         <button className="button button-secondary" type="button" onClick={() => setRequested(true)}>
-          Comprobar preparación comercial
+          Consultar estado de la tienda
         </button>
       ) : null}
       {error !== '' ? <p className="form-error" role="alert">{error}</p> : null}
-      {requested && readiness === null && error === '' ? <p role="status">Comprobando esquema, configuración y pendientes…</p> : null}
+      {requested && readiness === null && error === '' ? <p role="status">Consultando el estado de la tienda…</p> : null}
       {readiness === null ? null : (
         <>
+          <div className="admin-dashboard-stack">
+            <section className="admin-metric-group" aria-labelledby="store-attention-title">
+              <h3 id="store-attention-title">Para revisar en Pedidos</h3>
+              <dl className="admin-summary-grid">
+                <div><dt>Problemas de pago registrados</dt><dd>{readiness.attention.paymentIncidentCount}</dd></div>
+                <div><dt>Compras que requieren revisión</dt><dd>{readiness.directCheckout?.reviewCount ?? 'Sin información'}</dd></div>
+                <div><dt>Solicitudes pendientes</dt><dd>{readiness.webRequests.submittedCount ?? 'Sin información'}</dd></div>
+                <div><dt>Compras en preparación</dt><dd>{readiness.directCheckout?.preparingCount ?? 'Sin información'}</dd></div>
+              </dl>
+              <p>Son grupos distintos y pueden incluir la misma compra. Revisá el detalle antes de repetir un cobro o una reserva.</p>
+              {onOpenOrders === undefined ? null : <button type="button" className="button button-primary" onClick={onOpenOrders}>Ver pedidos y pendientes</button>}
+            </section>
+            <section className="admin-metric-group" aria-labelledby="store-availability-title">
+              <h3 id="store-availability-title">Recepción de compras</h3>
+              <p>{readiness.directCheckout === undefined ? 'No pudimos comprobar la configuración de compra directa.'
+                : readiness.directCheckout.ready ? 'La configuración de compra directa está completa. Cada compra verifica precio, stock y pago antes de confirmarse.'
+                  : 'La compra directa necesita atención antes de recibir nuevos pagos. Pedí ayuda a soporte con la información de abajo.'}</p>
+              <p>{readiness.webRequests.blockers.length === 0
+                ? 'La configuración de solicitudes está completa. Su disponibilidad también depende del catálogo publicado.'
+                : 'Hay condiciones pendientes para registrar nuevas solicitudes. Pedí ayuda a soporte con la información de abajo.'}</p>
+              <p>{readiness.dux.snapshotAvailable ? readiness.dux.snapshotFresh === false
+                ? 'La información de productos necesita actualizarse. Podés hacerlo en la sección Dux y Mercado Libre.'
+                : 'Hay información de productos disponible.' : 'Todavía no hay información de productos disponible.'}</p>
+            </section>
+          </div>
+          <details className="admin-order-technical">
+            <summary>Información para soporte</summary>
+            <p>Comprobaciones de configuración. Consultar esta información no cambia pedidos, pagos ni stock.</p>
           <div className="cart-items">
             {readiness.directCheckout === undefined ? null : <article className="cart-line"><div className="cart-line-content">
               <h3>Compra directa con Mercado Pago</h3>
@@ -148,7 +177,7 @@ export function CommerceReadinessPanel({
               <div className="cart-line-content">
                 <h3>Solicitudes desde la página</h3>
                 <p>
-                  Esquema 0020: {yesNo(readiness.webRequests.schemaReady)} · Backend: {openClosed(readiness.webRequests.serverEnabled)} · Frontend: {openClosed(frontendWebRequestsEnabled)}.
+                  Esquema 0020: {yesNo(readiness.webRequests.schemaReady)} · Backend: {openClosed(readiness.webRequests.serverEnabled)}.
                 </p>
                 <p>
                   Snapshot Dux: {readiness.webRequests.catalogSnapshotAvailable ? 'disponible' : 'ausente'}{readiness.webRequests.catalogSnapshotFresh === null ? '' : readiness.webRequests.catalogSnapshotFresh ? ' y fresco' : ' pero obsoleto'}.
@@ -192,7 +221,8 @@ export function CommerceReadinessPanel({
               </div>
             </article>
           </div>
-          <p className="cart-disclaimer">Comprobado por el servidor: {readiness.checkedAt}.</p>
+          </details>
+          <p className="cart-disclaimer">Última consulta: {new Date(readiness.checkedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}.</p>
         </>
       )}
       {requested ? (
@@ -202,7 +232,7 @@ export function CommerceReadinessPanel({
           disabled={readiness === null && error === ''}
           onClick={() => setRevision((value) => value + 1)}
         >
-          {error === '' ? 'Actualizar diagnóstico' : 'Reintentar diagnóstico'}
+          {error === '' ? 'Actualizar estado de la tienda' : 'Reintentar consulta'}
         </button>
       ) : null}
     </section>

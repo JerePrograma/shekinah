@@ -120,21 +120,21 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await page.getByLabel('Contraseña').fill('Credencial-ficticia-incorrecta');
   await page.getByRole('button', { name: 'Ingresar' }).click();
   await expect(page.getByRole('alert')).toHaveText(
-    'No se pudo iniciar sesión. Revisá las credenciales e intentá nuevamente.',
+    'No pudimos iniciar sesión. Revisá el usuario y la contraseña e intentá nuevamente.',
   );
 
   await loginWithFixture(page, 'summary');
   await expect(page.locator('#main-content')).toBeFocused();
-  await expect(page.getByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Resumen del negocio' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: 'Productos' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
-  await page.getByRole('button', { name: 'Pedidos' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos' })).toBeVisible();
-  await page.getByRole('button', { name: 'Analítica' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
-  await page.getByRole('button', { name: 'Auditoría' }).click();
-  await expect(page.getByRole('heading', { level: 2, name: 'Auditoría administrativa' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeFocused();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Pedidos', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Visitas' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toBeFocused();
+  await page.getByRole('button', { name: 'Actividad' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Actividad de la administración' })).toBeFocused();
   await expect(page.getByText(/Sesión iniciada como/u)).toContainText('Administración E2E');
 
   const storedValues = await page.evaluate(() => JSON.stringify({
@@ -163,6 +163,48 @@ test('UI simulada: inicia y cierra una sesión administrativa sin persistir cred
   await expect(page).toHaveURL(/\/$/u);
   await page.goBack();
   await expect(page.getByRole('heading', { level: 1, name: 'Acceso administrativo' })).toBeVisible();
+});
+
+test('el negocio encuentra pendientes y todas las secciones en móvil sin vocabulario técnico', async ({ page }, testInfo) => {
+  const item = product('producto-mobile', 'Producto de prueba móvil', { price: 1500, categoryName: 'Rubro de prueba', categorySlug: 'rubro-prueba' });
+  await installStatefulAdminApi(page, [item]);
+  await page.route('**/api/admin/summary?**', route => json(route, {
+    ...adminSummary(), order_count: 3, pending_count: 2, preference_pending_count: 1,
+  }));
+  await page.route('**/api/admin/dux/status', route => json(route, {
+    enabled: false, lifecycleReady: false, unitSemanticsReady: false, tenant: null, latestRun: null,
+    counts: { inventoryCount: 1, mappedCount: 1, unmappedCount: 0, ambiguousCount: 0, staleCount: 0,
+      errorCount: 0, absentCount: 0, checkoutEligibleCount: 0 }, maxAgeSeconds: 900,
+    blockers: ['DUX_API_DISABLED: token API no configurado'],
+  }));
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/admin');
+  await loginWithFixture(page, 'summary');
+  const navigation = page.getByRole('navigation', { name: 'Secciones administrativas' });
+  for (const label of ['Resumen', 'Productos', 'Pedidos', 'Dux y Mercado Libre', 'Visitas', 'Actividad']) {
+    await expectHorizontallyInsideViewport(navigation.getByRole('button', { name: label, exact: true }), 360);
+  }
+  await expect(page.getByText('3 pedidos pendientes en este período.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Revisar pedidos', exact: true })).toBeVisible();
+  await expect(page.getByText('Pedidos con pago confirmado', { exact: true })).toBeVisible();
+  const technicalWords = /\b(?:API|D1|OAuth|token|snapshot|reconcile|HTTP|Cloudflare|backend)\b/iu;
+  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+  if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
+    await page.screenshot({ path: testInfo.outputPath('admin-summary-360.png'), fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Revisar pedidos', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeFocused();
+  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+  await navigation.getByRole('button', { name: 'Productos', exact: true }).click();
+  await expect(page.getByRole('button', { name: `Dar de baja ${item.name}` })).toHaveText('Dar de baja');
+  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+  await navigation.getByRole('button', { name: 'Dux y Mercado Libre', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Dux Software', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: /Mercado Libre/u })).toBeVisible();
+  expect(await page.locator('body').innerText()).not.toMatch(technicalWords);
+  await page.getByText('Información para soporte: conexión con Dux', { exact: true }).click();
+  await expect(page.getByText('DUX_API_DISABLED: token API no configurado', { exact: true })).toBeVisible();
+  await expectNoGlobalHorizontalOverflow(page);
 });
 
 test('ABM simplificado: pliega descripción, guarda contenido y permite baja reversible con teclado', async ({ page }) => {
@@ -293,10 +335,16 @@ test('protege cambios editoriales sin guardar al cerrar el editor o la sesión',
   expect(api.requests.filter(request => request.pathname.startsWith('/api/admin/products') && request.method !== 'GET')).toEqual([]);
 });
 
-test('abre bajo demanda un detalle completo de pedido sin controles financieros', async ({ page }) => {
+test('recupera un detalle de pedido, separa diagnóstico y permite operar por teclado en cada viewport', async ({ page }, testInfo) => {
   const orderId = 'ord_e2e_123456789012345678901234';
+  let detailAttempts = 0;
   await installStatefulAdminApi(page, []);
   await page.route('**/api/admin/orders/*', async (route) => {
+    detailAttempts += 1;
+    if (detailAttempts === 1) {
+      await json(route, { error: { message: 'No pudimos cargar el detalle del pedido.' } }, 503);
+      return;
+    }
     await json(route, orderDetailFixture(orderId));
   });
   await page.route('**/api/admin/orders?*', async (route) => {
@@ -317,19 +365,35 @@ test('abre bajo demanda un detalle completo de pedido sin controles financieros'
 
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
-  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
   await expect(page.getByRole('table', {
     name: 'Pedidos del período y pedidos de WhatsApp pendientes',
   })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Detalle de/u })).toHaveCount(0);
   await page.getByRole('button', { name: 'Ver detalle' }).click();
   await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toBeFocused();
-  await expect(page.getByRole('table', { name: 'Items del pedido' })).toContainText('Producto E2E');
-  await expect(page.getByRole('table', { name: 'Pagos reportados por el proveedor' })).toContainText('Mercado Pago');
+  await expect(page.getByRole('alert')).toContainText('No pudimos cargar el detalle del pedido.');
+  await page.getByRole('button', { name: 'Reintentar detalle' }).click();
+  await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toBeFocused();
+  await expect(page.getByRole('table', { name: 'Productos del pedido' })).toContainText('Producto E2E');
+  expect(detailAttempts).toBe(2);
+  await expect(page.getByRole('table', { name: 'Pagos del pedido' })).toContainText('Mercado Pago');
   await expect(page.getByText(/Sólo los pedidos de WhatsApp pendientes admiten aprobación o rechazo/u)).toBeVisible();
   await expect(page.getByRole('button', { name: /aprobar|rechazar|cambiar estado/i })).toHaveCount(0);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expectNoGlobalHorizontalOverflow(page);
+  await expect(page.getByText('ID interno', { exact: true })).not.toBeVisible();
+  const technical = page.locator('.admin-order-technical > summary');
+  await technical.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('ID interno', { exact: true })).toBeVisible();
+  for (const viewport of [{ width: 360, height: 800 }, { width: 390, height: 844 },
+    { width: 768, height: 1024 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await expectNoGlobalHorizontalOverflow(page);
+    await expectHorizontallyInsideViewport(page.locator('.admin-order-detail'), viewport.width);
+    if (process.env.ADMIN_VISUAL_REVIEW === 'true') {
+      await page.screenshot({ path: testInfo.outputPath(`admin-order-${viewport.width}.png`), fullPage: true });
+    }
+  }
   await expect(page.getByRole('button', { name: 'Cerrar detalle' })).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar detalle' }).click();
   await expect(page.getByRole('heading', { name: `Detalle de ${formatOrderNumber(orderId)}` })).toHaveCount(0);
@@ -348,11 +412,11 @@ test('concilia Checkout Pro y hace visible que un reintegro no repone stock', as
 
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
-  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
   await page.getByRole('button', { name: 'Ver detalle' }).click();
 
-  await expect(page.getByText('Reservado')).toBeVisible();
-  await page.getByRole('button', { name: 'Conciliar con Mercado Pago' }).click();
+  await expect(page.getByText('Unidades reservadas')).toBeVisible();
+  await page.getByRole('button', { name: 'Verificar pago' }).click();
   await expect(page.locator('.admin-feedback-success')).toContainText('1 pago verificado');
   await expect(page.getByText(/El reintegro no repone stock automáticamente/u)).toBeVisible();
   expect(api.requests.filter(({ method, pathname }) => (
@@ -380,7 +444,7 @@ test('prioriza la reserva WhatsApp pendiente y la aprueba una sola vez', async (
 
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
-  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
 
   const table = page.getByRole('table', {
     name: 'Pedidos del período y pedidos de WhatsApp pendientes',
@@ -428,7 +492,7 @@ test('confirma el rechazo sin mutar el snapshot autoritativo Dux', async ({ page
 
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
-  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
   await page.getByRole('button', { name: 'Ver detalle' }).click();
   await page.getByRole('button', { name: 'Rechazar' }).click();
 
@@ -473,11 +537,11 @@ test('ante un conflicto 409 refresca el estado autoritativo del pedido', async (
 
   await page.goto('/admin');
   await loginWithFixture(page, 'summary');
-  await page.getByRole('button', { name: 'Pedidos' }).click();
+  await page.getByRole('button', { name: 'Pedidos', exact: true }).click();
   await page.getByRole('button', { name: 'Ver detalle' }).click();
   await page.getByRole('button', { name: 'Aprobar' }).click();
 
-  await expect(page.getByRole('alert')).toContainText('El pedido ya fue resuelto por otra persona.');
+  await expect(page.getByRole('alert')).toContainText('El pedido cambió. Revisá su estado actualizado antes de continuar.');
   await expect(page.locator('.admin-order-detail')).toContainText('Rechazado');
   await expect(page.getByRole('button', { name: /Aprobar|Rechazar/u })).toHaveCount(0);
   expect(actionRequests(api.requests, orderId, 'approve')).toHaveLength(1);
@@ -488,7 +552,7 @@ test('mantiene el catálogo Dux dentro del viewport en desktop, notebook, tablet
   await installStatefulAdminApi(page,[product('responsive-e2e','Producto responsive E2E',{
     categoryName:'Rubro Dux',categorySlug:'dux-rubro-1',price:1500,duxStock:{real:9,reserved:0,available:9}})]);
   await page.goto('/admin');await loginWithFixture(page);
-  for(const viewport of [{width:1440,height:900},{width:1024,height:768},{width:768,height:1024},{width:390,height:844}]){
+  for(const viewport of [{width:1440,height:900},{width:1366,height:768},{width:1024,height:768},{width:768,height:1024},{width:390,height:844},{width:360,height:800}]){
     await page.setViewportSize(viewport);
     await expect(page.getByRole('heading',{name:'Producto responsive E2E'})).toBeVisible();
     await expectNoGlobalHorizontalOverflow(page);
@@ -511,7 +575,7 @@ async function loginWithFixture(
   await page.getByLabel('Contraseña').fill(FIXTURE_PASSWORD);
   await page.getByRole('button', { name: 'Ingresar' }).click();
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Administración / Backoffice' }),
+    page.getByRole('heading', { level: 1, name: 'Administración de Shekinah' }),
   ).toBeVisible();
   if (section === 'products') {
     await page.getByRole('button', { name: 'Productos' }).click();

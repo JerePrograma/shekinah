@@ -193,6 +193,58 @@ test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no est�
   expect(legacyRequests).toBe(0);
 });
 
+test('compra web móvil identifica errores y nunca envía una cantidad distinta de la visible', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.route('**/api/orders/request-capability', (route) => route.fulfill({ json: { enabled: true } }));
+  const requests: unknown[] = [];
+  await page.route('**/api/orders/request', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: {
+      reference: 'WEB-abcdefghijklmnopqrstuvwx', publicToken: 'e'.repeat(64), status: 'submitted',
+      createdAt: '2026-09-27T12:00:00.000Z', updatedAt: '2026-09-27T12:00:00.000Z',
+      paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved',
+      checkoutAvailable: false, totalMinor: null,
+    } });
+  });
+  await page.goto('/catalogo');
+  await page.locator('[data-product]').first().getByRole('button', { name: /Agregar .* al carrito/u }).click();
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  const continueButton = page.getByRole('button', { name: 'Continuar al pago' });
+  await expect(continueButton).toBeEnabled();
+  await continueButton.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Nombre completo')).toBeFocused();
+  await expect(page.getByLabel('Nombre completo')).toHaveAttribute('aria-invalid', 'true');
+  expect(requests).toHaveLength(0);
+
+  await page.getByLabel('Nombre completo').fill('Cliente de prueba');
+  await page.getByLabel('Celular').fill('12');
+  await continueButton.click();
+  await expect(page.getByLabel('Celular')).toBeFocused();
+  await expect(page.getByText('El celular debe contener entre 8 y 15 dígitos.')).toBeVisible();
+  expect(requests).toHaveLength(0);
+
+  await page.getByLabel('Celular').fill('2235550100');
+  const quantity = page.getByRole('spinbutton', { name: /Cantidad de /u });
+  await quantity.fill('0');
+  await continueButton.click();
+  await expect(quantity).toBeFocused();
+  await expect(page.getByRole('alert')).toContainText('Revisá las cantidades del carrito');
+  expect(requests).toHaveLength(0);
+  const widths = await page.evaluate(() => ({
+    content: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+    viewport: document.documentElement.clientWidth,
+  }));
+  expect(widths.content).toBeLessThanOrEqual(widths.viewport + 1);
+
+  await quantity.fill('2');
+  await continueButton.click();
+  await expect(page.getByRole('heading', { name: 'Tu compra' })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ mode: 'create', items: [{ quantity: 2 }],
+    fulfillment: { fullName: 'Cliente de prueba', phone: '2235550100' } });
+});
+
 test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar datos', async ({ page }) => {
   const token = 'a'.repeat(64);
   let reads = 0;
@@ -399,6 +451,7 @@ test('el retorno del navegador sólo muestra el estado confirmado por el servido
   });
   await page.goto(`/pago/exito?order=${publicToken}&status=approved`);
   await expect(page.getByText('Tu pedido está registrado. No vuelvas a pagar mientras verificamos la acreditación.')).toBeVisible();
+  await expect(page.getByText('SHK-1234ABCD')).toBeVisible();
   await expect(page.getByRole('heading', { name: '¡Compra confirmada!' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Estamos confirmando tu pago' })).toBeVisible();
 });

@@ -13,7 +13,10 @@ it('carga bajo demanda y muestra el pago separado de la tarea Dux sin ofrecer mu
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Consultar pendientes comerciales' }));
   expect(await screen.findByText(/No solicitar otro pago/)).toBeVisible();
-  expect(screen.getByText(/Pago: Pago recibido. Dux: Resultado incierto/)).toBeVisible();
+  expect(screen.getByText(/Pago: Pago recibido. Dux: Resultado por comprobar/)).toBeVisible();
+  expect(screen.getByText('shekinah:example')).not.toBeVisible();
+  fireEvent.click(screen.getByText('Referencia para buscar en Dux'));
+  expect(screen.getByText('shekinah:example')).toBeVisible();
   expect(screen.queryByRole('button', { name: /liberar|finalizar|reembolsar/iu })).not.toBeInTheDocument();
   expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
 });
@@ -24,7 +27,7 @@ it('no muestra como vacío un error de lectura y permite reintentar', async () =
     .mockResolvedValueOnce(new Response(JSON.stringify({ rows: [], hasMore: false }))));
   render(<CommerceAttentionPanel />);
   fireEvent.click(screen.getByRole('button', { name: 'Consultar pendientes comerciales' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron consultar');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos cargar los pendientes. Reintentá con «Actualizar pendientes».');
   expect(screen.queryByText('No hay pendientes en esta página.')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Actualizar pendientes' }));
   expect(await screen.findByText('No hay pendientes en esta página.')).toBeVisible();
@@ -36,7 +39,7 @@ it('respeta el vencimiento de sesión', async () => {
   render(<CommerceAttentionPanel onUnauthorized={unauthorized} />);
   fireEvent.click(screen.getByRole('button', { name: 'Consultar pendientes comerciales' }));
   await waitFor(() => expect(unauthorized).toHaveBeenCalledTimes(1));
-  expect(await screen.findByRole('alert')).toHaveTextContent('sesión administrativa venció');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tu sesión venció. Volvé a ingresar');
 });
 
 it('rechaza una acción desconocida sin mostrar instrucciones no validadas', async () => {
@@ -46,6 +49,14 @@ it('rechaza una acción desconocida sin mostrar instrucciones no validadas', asy
   }], hasMore: false }))));
   render(<CommerceAttentionPanel />);
   fireEvent.click(screen.getByRole('button', { name: 'Consultar pendientes comerciales' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('respuesta de pendientes no es válida');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos cargar los pendientes');
   expect(screen.queryByText('No hay pendientes en esta página.')).not.toBeInTheDocument();
+});
+
+it('no muestra detalles técnicos de una falla de red', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('fetch internal stack SQL migration')));
+  render(<CommerceAttentionPanel />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar pendientes comerciales' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Actualizar pendientes');
+  expect(screen.queryByText(/internal stack/u)).not.toBeInTheDocument();
 });

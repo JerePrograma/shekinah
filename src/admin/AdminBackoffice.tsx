@@ -31,7 +31,7 @@ type AdminViewState =
   | Readonly<{ status: 'anonymous' }>
   | Readonly<{ status: 'authenticated'; identity: AdminIdentity }>;
 
-const LOGIN_ERROR = 'No se pudo iniciar sesión. Revisá las credenciales e intentá nuevamente.';
+const LOGIN_ERROR = 'No pudimos iniciar sesión. Revisá el usuario y la contraseña e intentá nuevamente.';
 const IDLE_PRODUCT_INTERACTION: ProductInteractionState = Object.freeze({
   dirty: false,
   busy: false,
@@ -107,7 +107,7 @@ export function AdminBackoffice({
         setError(
           sessionError instanceof Error && sessionError.name === 'AbortError'
             ? ''
-            : 'No se pudo comprobar la sesión administrativa. Intentá ingresar nuevamente.',
+            : 'No pudimos comprobar tu sesión. Intentá ingresar nuevamente.',
         );
       });
     return () => controller.abort();
@@ -121,10 +121,16 @@ export function AdminBackoffice({
     }
   }, [viewState.status]);
 
+  useEffect(() => {
+    const headingId = section === 'products' ? 'backoffice-title'
+      : section === 'inventory' ? 'admin-dux-title' : `admin-${section}-title`;
+    document.getElementById(headingId)?.focus();
+  }, [section]);
+
   const handleUnauthorized = useCallback(() => {
     setViewState({ status: 'anonymous' });
     setPassword('');
-    setError('La sesión administrativa venció. Ingresá nuevamente.');
+    setError('Tu sesión venció. Ingresá nuevamente.');
   }, []);
 
   async function login(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -162,7 +168,7 @@ export function AdminBackoffice({
     if (
       activeInteraction.dirty &&
       !window.confirm(
-        'Cerrar sesión administrativa\n\nHay cambios de producto sin guardar. Si cerrás sesión ahora, se perderán.',
+        'Cerrar sesión\n\nHay cambios de producto sin guardar. Si cerrás sesión ahora, se perderán.',
       )
     ) {
       setError('La sesión sigue abierta y los cambios continúan sin guardar.');
@@ -195,8 +201,8 @@ export function AdminBackoffice({
     return (
       <section className="admin-page section" aria-labelledby="admin-session-title" aria-busy="true">
         <div className="container admin-shell">
-          <h1 id="admin-session-title">Administración / Backoffice</h1>
-          <p role="status">Comprobando sesión administrativa…</p>
+          <h1 id="admin-session-title">Administración de Shekinah</h1>
+          <p role="status">Comprobando tu sesión…</p>
         </div>
       </section>
     );
@@ -209,7 +215,7 @@ export function AdminBackoffice({
           <div className="admin-login-card">
             <p className="eyebrow">Administración</p>
             <h1 id="admin-login-title">Acceso administrativo</h1>
-            <p>Ingresá con la cuenta administrativa autorizada.</p>
+            <p>Ingresá para gestionar los productos y pedidos de tu negocio.</p>
             <form
               className="admin-login-form"
               aria-describedby={error === '' ? undefined : 'admin-login-error'}
@@ -257,12 +263,11 @@ export function AdminBackoffice({
 
   return (
     <>
-      <h1 className="visually-hidden">Administración / Backoffice</h1>
+      <h1 className="visually-hidden">Administración de Shekinah</h1>
       <div className="admin-session-bar">
         <div className="container admin-session-bar-inner">
           <p>
             Sesión iniciada como <strong>{viewState.identity.label}</strong>
-            {' '}mediante {identitySourceLabel(viewState.identity.source)}.
           </p>
           <button
             className="button button-secondary"
@@ -308,7 +313,6 @@ export function AdminBackoffice({
           </ul>
         </div>
       </nav>
-      {section === 'summary' ? <CommerceReadinessPanel onUnauthorized={handleUnauthorized} /> : null}
       <div hidden={section !== 'products'}>
         <ProductManager
           onInteractionStateChange={handleProductInteractionChange}
@@ -321,14 +325,18 @@ export function AdminBackoffice({
           onUnauthorized={handleUnauthorized}
         />
       </div>
-      {section === 'orders' ? <WebOrderRequestsPanel onUnauthorized={handleUnauthorized} onBusyChange={handleOrderInteractionChange} /> : null}
-      {section === 'orders' ? <CommerceAttentionPanel onUnauthorized={handleUnauthorized} /> : null}
       <AdminPage
         navigate={navigate}
+        onOpenOrders={() => setSection('orders')}
         onOperationStateChange={handleOrderInteractionChange}
         onUnauthorized={handleUnauthorized}
+        orderOverview={section === 'orders' ? <div className="admin-order-overview">
+          <WebOrderRequestsPanel onUnauthorized={handleUnauthorized} onBusyChange={handleOrderInteractionChange} />
+          <CommerceAttentionPanel onUnauthorized={handleUnauthorized} />
+        </div> : null}
         section={section}
       />
+      {section === 'summary' ? <CommerceReadinessPanel onOpenOrders={() => setSection('orders')} onUnauthorized={handleUnauthorized} /> : null}
     </>
   );
 }
@@ -336,10 +344,10 @@ export function AdminBackoffice({
 const ADMIN_SECTIONS: readonly Readonly<{ id: AdminSection; label: string }>[] = [
   { id: 'summary', label: 'Resumen' },
   { id: 'products', label: 'Productos' },
-  { id: 'inventory', label: 'Dux' },
   { id: 'orders', label: 'Pedidos' },
-  { id: 'analytics', label: 'Analítica' },
-  { id: 'audit', label: 'Auditoría' },
+  { id: 'inventory', label: 'Dux y Mercado Libre' },
+  { id: 'analytics', label: 'Visitas' },
+  { id: 'audit', label: 'Actividad' },
 ];
 
 async function readOptionalSession(response: Response): Promise<AdminSession> {
@@ -384,10 +392,6 @@ function parseSession(value: unknown): AdminSession {
       source: value.identity.source,
     }),
   });
-}
-
-function identitySourceLabel(source: AdminIdentity['source']): string {
-  return source === 'cloudflare-access' ? 'Cloudflare Access' : 'credencial propia';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -5,7 +5,7 @@ describe('catálogo runtime autoritativo', () => {
     }), { headers: { 'content-type': 'application/json' } })).mockResolvedValue(new Response(null, { status: 503 })));
     const runtime = await import('./runtime-catalog');
     await runtime.refreshRuntimeCatalog();
-    expect(await runtime.loadRuntimeProductDetail('guayaba')).toBeNull();
+    await expect(runtime.loadRuntimeProductDetail('guayaba')).rejects.toThrow('No pudimos cargar el producto');
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -23,12 +23,24 @@ describe('catálogo runtime autoritativo', () => {
     expect(runtimeCatalog.isRuntimeCatalogResolved()).toBe(false);
   });
 
+  it('distingue una ficha ausente de una consulta de red fallida', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = await import('./runtime-catalog');
+    expect(await runtime.loadRuntimeProductDetail('ausente')).toBeNull();
+    await expect(runtime.loadRuntimeProductDetail('existente')).rejects.toThrow('Revisá tu conexión y reintentá');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/catalog/existente');
+    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it.each(['legacy-bootstrap','manual'])('rechaza productos manuales de una respuesta %s incluso con SKU y precio',async source=>{
     const product={id:'manual',slug:'manual',path:'/manual/',name:'Manual retirado',sku:'OLD',price:{amount:1000,currency:'ARS'},priceStatus:'usable',categorySlugs:[],categoryNames:[],images:[],variants:[]};
     window.localStorage.setItem('catalog',JSON.stringify([product]));
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({schemaVersion:2,source,products:[product],product,categories:[]})));
+    vi.stubGlobal('fetch',vi.fn().mockImplementation(() => Promise.resolve(Response.json({schemaVersion:2,source,products:[product],product,categories:[]}))));
     const runtime=await import('./runtime-catalog');
-    expect(await runtime.refreshRuntimeCatalog()).toEqual([]);expect(await runtime.loadRuntimeProductDetail('manual')).toBeNull();
+    expect(await runtime.refreshRuntimeCatalog()).toEqual([]);await expect(runtime.loadRuntimeProductDetail('manual')).rejects.toThrow('No pudimos cargar el producto');
     window.localStorage.removeItem('catalog');
   });
 
@@ -50,9 +62,8 @@ describe('catálogo runtime autoritativo', () => {
     const runtimeCatalog = await import('./runtime-catalog');
     const products = await runtimeCatalog.refreshRuntimeCatalog();
     expect(products).toHaveLength(expected);
-    const detail = await runtimeCatalog.loadRuntimeProductDetail(product.slug);
-    if (expected === 0) expect(detail).toBeNull();
-    else expect(detail).toMatchObject({ price: null, priceStatus, commerce: { checkoutEligible: false } });
+    if (expected === 0) await expect(runtimeCatalog.loadRuntimeProductDetail(product.slug)).rejects.toThrow('No pudimos cargar el producto');
+    else expect(await runtimeCatalog.loadRuntimeProductDetail(product.slug)).toMatchObject({ price: null, priceStatus, commerce: { checkoutEligible: false } });
   });
 
   it('acepta productos y categorías Dux publicados por la API first-party', async () => {
@@ -118,6 +129,6 @@ describe('catálogo runtime autoritativo', () => {
     expect(await runtimeCatalog.loadRuntimeProductDetail(product.slug)).toMatchObject({
       categorySlugs: ['dux-rubro-123'], price: null, priceStatus: 'placeholder',
     });
-    expect(await runtimeCatalog.loadRuntimeProductDetail('otro-producto')).toBeNull();
+    await expect(runtimeCatalog.loadRuntimeProductDetail('otro-producto')).rejects.toThrow('No pudimos cargar el producto');
   });
 });

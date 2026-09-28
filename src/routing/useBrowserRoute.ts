@@ -6,6 +6,7 @@ import {
   getRuntimeCatalogProduct,
   isRuntimeCatalogResolved,
   refreshRuntimeCatalog,
+  useRuntimeCatalogStatus,
 } from '../data/runtime-catalog';
 import {
   createNotFoundRoute,
@@ -25,6 +26,7 @@ const HISTORY_INDEX_KEY = '__shekinahHistoryIndex';
 
 export function useBrowserRoute(shouldNavigate: () => boolean = () => true) {
   const [pathname, setPathname] = useState(readCurrentPathname);
+  const catalogStatus = useRuntimeCatalogStatus();
   const [runtimeResolution, setRuntimeResolution] = useState<Readonly<{
     pathname: string;
     route: AppRoute;
@@ -117,7 +119,7 @@ export function useBrowserRoute(shouldNavigate: () => boolean = () => true) {
     }
     let active = true;
     void refreshRuntimeCatalog().then((products) => {
-      if (!active) return;
+      if (!active || !isRuntimeCatalogResolved()) return;
       let route: AppRoute;
       if (potentialProductSlug !== null) {
         const product = products.find(({ slug }) => slug === potentialProductSlug);
@@ -163,6 +165,7 @@ export function useBrowserRoute(shouldNavigate: () => boolean = () => true) {
     potentialProductSlug,
     runtimeResolution,
     staticRoute,
+    catalogStatus,
   ]);
 
   return {

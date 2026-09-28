@@ -24,8 +24,9 @@ export function AnalyticsConsent() {
       <div>
         <h2 id="analytics-consent-title">Analítica opcional</h2>
         <p>
-          Shekinah puede medir visitas y uso del catálogo con datos first-party,
-          sin publicidad ni identificadores de terceros. No se envía nada hasta que aceptes.
+          Podemos medir las visitas y el uso del catálogo, sin publicidad ni
+          rastreadores de terceros. Es opcional: no enviamos datos de uso hasta que aceptes.
+          Podés cambiar tu elección en Privacidad.
         </p>
       </div>
       <div className="consent-actions">

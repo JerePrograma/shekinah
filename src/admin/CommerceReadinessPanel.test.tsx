@@ -65,15 +65,23 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it('muestra por separado esquema, flags, Dux y bloqueos de Checkout', async () => {
+it('prioriza pendientes comerciales y conserva la configuración bajo información para soporte', async () => {
   vi.stubEnv('VITE_WEB_ORDERS_ENABLED', 'false');
   const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload));
   vi.stubGlobal('fetch', fetchMock);
-  render(<CommerceReadinessPanel />);
+  const openOrders = vi.fn();
+  render(<CommerceReadinessPanel onOpenOrders={openOrders} />);
 
   expect(fetchMock).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Comprobar preparación comercial' }));
-  expect(await screen.findByText(/Esquema 0020: sí · Backend: cerrado · Frontend: cerrado/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
+  expect(await screen.findByRole('heading', { name: 'Para revisar en Pedidos' })).toBeVisible();
+  expect(screen.getByText(/Hay condiciones pendientes para registrar nuevas solicitudes/)).toBeVisible();
+  expect(screen.getByText(/Esquema 0020: sí · Backend: cerrado/)).not.toBeVisible();
+  expect(screen.getByText('Información para soporte').closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByRole('button', { name: 'Ver pedidos y pendientes' }));
+  expect(openOrders).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByText('Información para soporte'));
+  expect(screen.getByText(/Esquema 0020: sí · Backend: cerrado/)).toBeVisible();
   expect(screen.getByText(/Snapshot Dux: disponible y fresco/)).toBeVisible();
   expect(screen.getByText(/Solicitudes registradas: 3 · pendientes: 2/)).toBeVisible();
   expect(screen.getByText(/Mutación Dux automática segura: no habilitada/)).toBeVisible();
@@ -95,11 +103,13 @@ it('actualiza el diagnóstico sin mutaciones', async () => {
   vi.stubGlobal('fetch', fetchMock);
   render(<CommerceReadinessPanel />);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Comprobar preparación comercial' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
   await screen.findByText(/Esquema 0020: sí/);
-  fireEvent.click(screen.getByRole('button', { name: 'Actualizar diagnóstico' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado de la tienda' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  expect(await screen.findByText(/Esquema 0020: sí · Backend: abierto · Frontend: abierto/)).toBeVisible();
+  expect(await screen.findByText('La configuración de solicitudes está completa. Su disponibilidad también depende del catálogo publicado.')).toBeVisible();
+  fireEvent.click(screen.getByText('Información para soporte'));
+  expect(screen.getByText(/Esquema 0020: sí · Backend: abierto/)).toBeVisible();
   expect(fetchMock.mock.calls.every((call) => call[1]?.method === undefined)).toBe(true);
 });
 
@@ -108,9 +118,9 @@ it('expulsa la vista ante sesión vencida y no presenta un falso OK', async () =
   vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 401 })));
   render(<CommerceReadinessPanel onUnauthorized={unauthorized} />);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Comprobar preparación comercial' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
   await waitFor(() => expect(unauthorized).toHaveBeenCalledTimes(1));
-  expect(await screen.findByRole('alert')).toHaveTextContent('sesión administrativa venció');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tu sesión venció. Volvé a ingresar.');
   expect(screen.queryByText(/Mutación Dux automática segura/)).not.toBeInTheDocument();
 });
 
@@ -121,8 +131,9 @@ it('rechaza respuestas mal formadas', async () => {
   })));
   render(<CommerceReadinessPanel />);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Comprobar preparación comercial' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('diagnóstico comercial inválido');
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar estado de la tienda' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos consultar el estado de la tienda. Intentá nuevamente.');
+  expect(screen.queryByText(/diagnóstico comercial inválido/u)).not.toBeInTheDocument();
 });
 
 it('presenta la preparación directa por separado del checkout retirado', async () => {
@@ -130,8 +141,11 @@ it('presenta la preparación directa por separado del checkout retirado', async 
     schemaReady:true,serverEnabled:true,identitiesConfigured:true,ready:true,preparingCount:2,reviewCount:1,blockers:[],
   }})));
   render(<CommerceReadinessPanel />);
-  fireEvent.click(screen.getByRole('button',{name:'Comprobar preparación comercial'}));
-  expect(await screen.findByRole('heading',{name:'Compra directa con Mercado Pago'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Consultar estado de la tienda'}));
+  expect(await screen.findByText(/La configuración de compra directa está completa/)).toBeVisible();
+  expect(screen.getByText('Checkout anterior retirado')).not.toBeVisible();
+  fireEvent.click(screen.getByText('Información para soporte'));
+  expect(screen.getByRole('heading',{name:'Compra directa con Mercado Pago'})).toBeVisible();
   expect(screen.getByText(/Configuración: lista · Backend: abierto · Esquema 0024: sí/)).toBeVisible();
   expect(screen.getByText(/En preparación: 2 · requieren revisión: 1/)).toBeVisible();
   expect(screen.getByRole('heading',{name:'Checkout anterior retirado'})).toBeVisible();

@@ -2,6 +2,7 @@ import { CatalogSection } from '../catalog/CatalogSection';
 import {
   useRuntimeCatalogCategories,
   useRuntimeCatalogProducts,
+  useRuntimeCatalogStatus,
 } from '../data/runtime-catalog';
 import type { Navigate } from '../routing/routes';
 
@@ -13,12 +14,10 @@ type CatalogPageProps = Readonly<{
 export function CatalogPage({ categorySlug, navigate }: CatalogPageProps) {
   const products = useRuntimeCatalogProducts();
   const categories = useRuntimeCatalogCategories();
+  const status = useRuntimeCatalogStatus();
   const category = categorySlug === undefined
     ? undefined
     : categories.find(({ slug }) => slug === categorySlug);
-  if (categorySlug !== undefined && category === undefined) {
-    throw new Error(`No existe la categoría pública "${categorySlug}".`);
-  }
   const categoryProducts = category === undefined
     ? products
     : products.filter((product) => product.categorySlugs.includes(category.slug));
@@ -35,6 +34,8 @@ export function CatalogPage({ categorySlug, navigate }: CatalogPageProps) {
       headingLevel={1}
       navigate={navigate}
       products={products}
+      status={status}
+      viewKey={`catalog:${categorySlug ?? 'all'}`}
     />
   );
 }

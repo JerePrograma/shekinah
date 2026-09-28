@@ -66,6 +66,7 @@ it.each([
       : payment === 'cancelled' ? 'Podés retomar tu compra cuando quieras continuar.'
         : 'Se registró el reintegro o la reversión de tu pago. Si necesitás coordinar una devolución, contactanos.');
   expect(screen.getByRole('heading', { name: title })).toBeVisible();
+  expect(screen.getByText(base.orderNumber)).toBeVisible();
   expect(screen.queryByRole('heading', { name: '¡Compra confirmada!' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Enviar mensaje por WhatsApp' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Retomar mi compra' }) !== null).toBe(canResume);
@@ -88,12 +89,14 @@ it('muestra el cobro recibido con incidencia y no lo oculta si falla una consult
   render(<PaymentReturnPage expected="failure" navigate={vi.fn()} />);
   expect(await screen.findByRole('heading', { name: 'Recibimos tu pago' })).toBeVisible();
   expect(screen.getByRole('status')).toHaveTextContent('No vuelvas a pagar');
+  expect(screen.getByText(base.orderNumber)).toBeVisible();
   expect(screen.queryByRole('heading', { name: '¡Compra confirmada!' })).not.toBeInTheDocument();
   expect(screen.queryByText('Pronto nos pondremos en contacto para coordinar la entrega.')).not.toBeInTheDocument();
   expect(doubles.clear).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar verificación' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Tu pedido está en revisión. No vuelvas a pagar.');
   expect(screen.getByRole('heading', { name: 'Recibimos tu pago' })).toBeVisible();
+  expect(screen.getByText(base.orderNumber)).toBeVisible();
 });
 
 it('una aprobación sin evidencia financiera no anuncia pago ni vacía el carrito', async () => {

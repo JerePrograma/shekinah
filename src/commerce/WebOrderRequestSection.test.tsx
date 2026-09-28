@@ -197,8 +197,20 @@ it('espera la recuperación inicial antes de permitir un alta que podría ser ot
   render(component());
   const button = screen.getByRole('button', { name: 'Continuar al pago' });
   expect(button).toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent('Buscando una compra guardada…');
+  expect(screen.getByRole('region', { name: 'Tu pedido' })).toHaveAttribute('aria-busy', 'true');
   fireEvent.click(button);
   expect(doubles.create).not.toHaveBeenCalled();
+});
+
+it('valida antes de reclamar una identidad o enviar la compra', async () => {
+  const validate = vi.fn(() => false);
+  render(<WebOrderRequestSection registrationEnabled items={items} fulfillment={fulfillment} disabled={false}
+    onBusyChange={vi.fn()} onActiveChange={vi.fn()} onValidateBeforeCreate={validate} />);
+  await continueToPayment();
+  expect(validate).toHaveBeenCalledTimes(1);
+  expect(doubles.create).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
 });
 
 it('avanza la compra directa sin aprobación humana y ofrece pago sólo tras confirmar el servidor', async () => {
@@ -303,7 +315,7 @@ it('un pago pendiente o aprobado se muestra y nunca ofrece otro botón de pago',
     paymentStatus: 'approved', paymentRequiresReview: true, checkoutAvailable: false, totalMinor: 123_400 };
   doubles.read.mockResolvedValue(identity); doubles.recover.mockResolvedValue(approved);
   render(component());
-  expect(await screen.findByRole('status')).toHaveTextContent('No vuelvas a pagar');
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No vuelvas a pagar'));
   expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
   expect(doubles.checkout).not.toHaveBeenCalled();
 });

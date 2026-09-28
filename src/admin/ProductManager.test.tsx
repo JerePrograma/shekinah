@@ -24,11 +24,11 @@ it('actualiza el aviso del catálogo al vencer la lectura sin refrescar stock ni
   await act(async () => { render(<ProductManager />); await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByRole('heading', { name: 'Producto Dux' })).toBeVisible();
   fireEvent.click(screen.getByText('Stock y detalles', { selector: 'summary' }));
-  expect(screen.queryByText(/El stock supera el objetivo/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/La información de stock tiene más de 15 minutos/)).not.toBeInTheDocument();
   await act(() => vi.advanceTimersByTime(1000));
-  expect(screen.queryByText(/El stock supera el objetivo/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/La información de stock tiene más de 15 minutos/)).not.toBeInTheDocument();
   await act(() => vi.advanceTimersByTime(1));
-  expect(screen.getByText(/El stock supera el objetivo/)).toBeVisible();
+  expect(screen.getByText(/La información de stock tiene más de 15 minutos/)).toBeVisible();
   expect(document.querySelector('time')).toHaveAttribute('datetime', product.commerce.stockSyncedAt);
   expect(request).toHaveBeenCalledTimes(1);
 });
@@ -43,6 +43,7 @@ it('presenta descripción y stock plegados y conserva altas y stock en Dux', asy
   expect(within(row).getByText(product.description)).not.toBeVisible();
   expect(within(row).getByText('Stock y detalles', { selector: 'summary' }).closest('details')).not.toHaveAttribute('open');
   expect(within(row).getByText('Publicado', { exact: true })).toBeVisible();
+  expect(within(row).getByRole('button', { name: `Dar de baja ${product.name}` })).toHaveTextContent('Dar de baja');
   expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
   expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
   fireEvent.click(description);
@@ -53,6 +54,19 @@ it('presenta descripción y stock plegados y conserva altas y stock en Dux', asy
   expect(within(row).getByText('Stock real')).toBeVisible();
   expect(within(row).getByText('Reservado')).toBeVisible();
   expect(api.mutations()).toHaveLength(0);
+});
+
+it('explica la carga de fotos deshabilitada y permite editar la descripción', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(Response.json(
+    duxApiFixture({ products: [product], imageStorageConfigured: false }),
+  ))));
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${product.name}` }));
+  expect(screen.getByLabelText('Seleccionar imagen')).toBeDisabled();
+  expect(screen.getByText(/La carga de imágenes no está habilitada/)).toHaveTextContent('Podés editar la descripción');
+  fireEvent.click(screen.getByText('Editar descripción', { selector: 'summary' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Descripción' }), { target: { value: 'Descripción permitida.' } });
+  expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled();
 });
 
 it.each([undefined, false])('rechaza respuestas antiguas aunque el indicador de retiro sea %s', async marker => {
@@ -201,7 +215,7 @@ it('difiere la actualización del catálogo mientras se confirma una baja en otr
     return { ...product, id: `dux-page-${suffix}`, slug: `dux-page-${suffix}`, path: `/dux-page-${suffix}/`, name: `Producto ${suffix}` };
   });
   const api = installCatalogApi(products);
-  render(<ProductManager />);
+  await act(async () => { render(<ProductManager />); await Promise.resolve(); });
   await screen.findByRole('heading', { name: 'Producto 000' });
   fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
   fireEvent.click(screen.getByRole('button', { name: 'Dar de baja Producto 050' }));
@@ -268,7 +282,8 @@ it('conserva el borrador y el error si falla el guardado y permite reintentarlo'
   const description = screen.getByRole('textbox', { name: 'Descripción' });
   fireEvent.change(description, { target: { value: 'Borrador que debe conservarse.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo guardar la prueba.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('D1_ERROR');
   expect(description).toHaveValue('Borrador que debe conservarse.');
   expect(api.products()[0]?.description).toBe(product.description);
   expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true, busy: false }));
@@ -302,12 +317,30 @@ it('protege el borrador al cerrar, cambiar de producto o salir y permite descart
   window.dispatchEvent(cleanUnload); expect(cleanUnload.defaultPrevented).toBe(false);
 });
 
+it('no atribuye el error de guardado de un producto al siguiente editor', async () => {
+  const other = { ...product, id: 'dux-otro', slug: 'dux-otro', path: '/dux-otro/', name: 'Otro producto' };
+  const api = installCatalogApi([product, other], { failFirstMutation: true });
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${product.name}` }));
+  fireEvent.click(screen.getByText('Editar descripción', { selector: 'summary' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Descripción' }), { target: { value: 'Borrador pendiente.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tus cambios siguen en el editor');
+  fireEvent.click(screen.getByRole('button', { name: `Editar ${other.name}` }));
+  expect(screen.getByRole('dialog', { name: 'Hay cambios sin guardar' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Descartar cambios' }));
+  expect(screen.getByRole('heading', { name: `Editar ${other.name}` })).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(api.mutations()).toHaveLength(1);
+});
+
 it('una baja fallida conserva el producto publicado y la confirmación para reintentar', async () => {
   const api = installCatalogApi([product], { failFirstMutation: true });
   render(<ProductManager />);
   fireEvent.click(await screen.findByRole('button', { name: `Dar de baja ${product.name}` }));
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar baja' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo guardar la prueba.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('D1_ERROR');
   expect(screen.getByRole('dialog', { name: `¿Dar de baja ${product.name}?` })).toBeVisible();
   expect(within(screen.getByRole('article', { name: product.name })).getByText('Publicado', { exact: true })).toBeVisible();
   expect(api.products()[0]?.publicationStatus).toBeUndefined();
@@ -334,7 +367,7 @@ function installCatalogApi(initialProducts: readonly FixtureProduct[], options: 
     mutations.push({ method, path, ...(body === undefined ? {} : { body }) });
     await options.beforeMutation?.();
     if (options.failFirstMutation === true && mutations.length === 1) {
-      return Response.json({ error: { message: 'No se pudo guardar la prueba.' } }, { status: 503 });
+      return Response.json({ error: { code: 'toString', message: 'D1_ERROR: UPDATE product payload failed HTTP 500' } }, { status: 503 });
     }
     const id = decodeURIComponent(path.split('/').at(-1) ?? '');
     const current = products.find(value => value.id === id);

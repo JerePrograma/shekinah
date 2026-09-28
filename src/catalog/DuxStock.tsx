@@ -31,9 +31,9 @@ export function DuxStockDetails({ product, now }: Readonly<{ product: Product; n
       </dl>
     </div>)}
     {readAt === undefined ? <p>Fecha de lectura del inventario no disponible.</p> : <p>Última lectura: <time dateTime={readAt}>{new Date(readAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false })}</time> (Argentina).</p>}
-    {stale ? <p role="status">El stock supera el objetivo de 15 minutos o no tiene una fecha verificable. Las existencias pueden haber cambiado.</p> : null}
+    {stale ? <p role="status">La información de stock tiene más de 15 minutos o no tiene fecha de actualización. Las existencias pueden haber cambiado.</p> : null}
     {inventory.availabilityState === 'updating'
       ? <p>Esta lectura necesita actualizarse para confirmar las existencias actuales.</p> : null}
-    {!inventory.checkoutEligible ? <p>Las compras todavía no están habilitadas.</p> : null}
+    {!inventory.checkoutEligible ? <p>El precio y la disponibilidad deben confirmarse antes del pago.</p> : null}
   </section>;
 }

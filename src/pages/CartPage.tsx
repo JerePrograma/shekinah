@@ -111,6 +111,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const cartOperationPending = checkoutPending || whatsappOrderPending || webRequestPending;
   const cartHasAvailabilityConflict = items.some(({ product, quantity }) =>
     quantity > getProductCartLimit(product));
+  const cartHasQuantityError = items.some(({ product }) => quantityErrors[product.id] !== undefined);
   const addressRequired = requiresDeliveryAddress(fulfillmentDraft.method);
   const whatsappReady = validation.value !== null && whatsappConsent;
   const whatsappUrl = whatsappOrderResult === null || whatsappNumber === null
@@ -153,12 +154,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   async function startCheckout() {
     if (usesWebRequestFlow || items.length === 0 || cartOperationPending || webRequestActive || !commerceEnabled) return;
-    setShowErrors(true);
-    setCheckoutError('');
-    if (validation.value === null) {
-      focusFirstError(validation.errors);
-      return;
-    }
+    if (!validateBeforeCreate() || validation.value === null) return;
     if (quote.kind === 'manual') {
       setCheckoutError(manualQuoteMessage(quote.tier));
       return;
@@ -206,6 +202,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     field: keyof FulfillmentDraft,
     value: string,
   ) {
+    setCheckoutError('');
     setWhatsappOrderResult(null);
     setWhatsappConsent(false);
     setFulfillmentDraft((current) => field === 'method' && value === 'coordinated_pickup'
@@ -231,12 +228,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       !whatsappConsent
     ) return;
 
-    if (validation.value === null) {
-      setShowErrors(true);
-      setCheckoutError('Completá o corregí todos los datos antes de continuar por WhatsApp.');
-      focusFirstError(validation.errors);
-      return;
-    }
+    if (!validateBeforeCreate() || validation.value === null) return;
 
     const fulfillment = validation.value;
     whatsappOrderPendingRef.current = true;
@@ -268,6 +260,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   }
 
   function updateQuantity(productId: string, rawValue: string, maximum: number) {
+    setCheckoutError('');
     setWhatsappOrderResult(null);
     setWhatsappConsent(false);
     setQuantityDrafts((current) => Object.freeze({ ...current, [productId]: rawValue }));
@@ -288,6 +281,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
 
   function changeQuantity(productId: string, nextQuantity: number, maximum: number) {
     if (nextQuantity < 1 || nextQuantity > maximum) return;
+    setCheckoutError('');
     setWhatsappOrderResult(null);
     setWhatsappConsent(false);
     setQuantityErrors((current) => withoutKey(current, productId));
@@ -299,6 +293,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   function removeProduct(productId: string) {
     const currentIndex = items.findIndex(({ product }) => product.id === productId);
     const focusTargetId = items[currentIndex + 1]?.product.id ?? items[currentIndex - 1]?.product.id;
+    setCheckoutError('');
     setWhatsappOrderResult(null);
     setWhatsappConsent(false);
     remove(productId);
@@ -340,6 +335,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           onBusyChange={setWebRequestPending}
           onActiveChange={setWebRequestActive}
           onConfirmedTotalChange={setConfirmedRequestTotal}
+          onValidateBeforeCreate={validateBeforeCreate}
         />
   );
 
@@ -423,7 +419,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                         {product.presentation === undefined ? null : ` · ${product.presentation}`}
                       </p>
                       {availabilityConflict ? (
-                        <p className="form-error" role="status">
+                        <p className="form-error" id={`availability-error-${product.id}`} role="status">
                           {maximum === 0
                             ? product.commerce?.availabilityState === 'updating'
                               ? 'Estamos actualizando la disponibilidad. El producto se conserva en tu carrito, pero no se puede reservar todavía.'
@@ -452,8 +448,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                             disabled={cartOperationPending || maximum === 0}
                             aria-label={`Cantidad de ${product.name}`}
                             value={quantityDrafts[product.id] ?? String(quantity)}
-                            aria-invalid={quantityError === undefined ? undefined : true}
-                            aria-describedby={quantityError === undefined ? undefined : `quantity-error-${product.id}`}
+                            aria-invalid={quantityError !== undefined || availabilityConflict ? true : undefined}
+                            aria-describedby={[
+                              quantityError === undefined ? null : `quantity-error-${product.id}`,
+                              availabilityConflict ? `availability-error-${product.id}` : null,
+                            ].filter(Boolean).join(' ') || undefined}
                             onChange={(event: ChangeEvent<HTMLInputElement>) => {
                               updateQuantity(product.id, event.currentTarget.value, maximum);
                             }}
@@ -518,23 +517,26 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   {fields.filter((field) => addressRequired || field.key === 'fullName' || field.key === 'phone').map((field) => {
                     const error = showErrors ? validation.errors[field.key] : undefined;
                     return (
-                      <label htmlFor={`fulfillment-${field.key}`} key={field.key}>
-                        {field.label}
-                        <input
-                          id={`fulfillment-${field.key}`}
-                          value={fulfillmentDraft[field.key]}
-                          autoComplete={field.autoComplete}
-                          inputMode={field.inputMode}
-                          disabled={cartOperationPending}
-                          required
-                          aria-invalid={error !== undefined}
-                          aria-describedby={error === undefined ? undefined : `error-${field.key}`}
-                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                            updateField(field.key, event.currentTarget.value);
-                          }}
-                        />
+                      <div className="fulfillment-field" key={field.key}>
+                        <label htmlFor={`fulfillment-${field.key}`}>
+                          {field.label}
+                          <input
+                            id={`fulfillment-${field.key}`}
+                            type={field.key === 'phone' ? 'tel' : 'text'}
+                            value={fulfillmentDraft[field.key]}
+                            autoComplete={field.autoComplete}
+                            inputMode={field.inputMode}
+                            disabled={cartOperationPending}
+                            required
+                            aria-invalid={error !== undefined}
+                            aria-describedby={error === undefined ? undefined : `error-${field.key}`}
+                            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                              updateField(field.key, event.currentTarget.value);
+                            }}
+                          />
+                        </label>
                         <FieldError id={`error-${field.key}`} message={error} />
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
@@ -614,7 +616,9 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     <span>Acepto compartir los datos ingresados mediante WhatsApp para gestionar este pedido.</span>
                   </label>
                   <p className="cart-configuration-note" id="whatsapp-readiness" aria-live="polite">
-                    {validation.value === null
+                    {cartHasQuantityError || cartHasAvailabilityConflict
+                      ? 'Revisá las cantidades del carrito para continuar por WhatsApp.'
+                      : validation.value === null
                       ? 'Completá los datos obligatorios para habilitar el pedido por WhatsApp.'
                       : whatsappConsent
                         ? 'Los datos están completos y el consentimiento fue aceptado.'
@@ -624,7 +628,7 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                     className="button button-secondary"
                     type="button"
                     aria-describedby="whatsapp-readiness"
-                    disabled={cartOperationPending || webRequestActive || whatsappNumber === null || !whatsappReady || cartHasAvailabilityConflict}
+                    disabled={cartOperationPending || webRequestActive || whatsappNumber === null || !whatsappReady || cartHasAvailabilityConflict || cartHasQuantityError}
                     onClick={() => void registerWhatsappOrder()}
                   >
                     {whatsappOrderPending ? 'Creando pedido…' : 'Pedir por WhatsApp'}
@@ -695,6 +699,28 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
       </div>
     </section>
   );
+
+  function validateBeforeCreate(): boolean {
+    setShowErrors(true);
+    setCheckoutError('');
+    const invalidLine = items.find(({ product, quantity }) =>
+      quantityErrors[product.id] !== undefined || quantity > getProductCartLimit(product));
+    if (invalidLine !== undefined) {
+      setCheckoutError('Revisá las cantidades del carrito antes de continuar.');
+      window.requestAnimationFrame(() => {
+        const input = document.getElementById(`quantity-${invalidLine.product.id}`);
+        if (input instanceof HTMLInputElement && !input.disabled) input.focus();
+        else lineRefs.current.get(invalidLine.product.id)?.focus();
+      });
+      return false;
+    }
+    if (validation.value === null) {
+      setCheckoutError('Completá o corregí los datos de entrega para continuar.');
+      window.requestAnimationFrame(() => focusFirstError(validation.errors));
+      return false;
+    }
+    return true;
+  }
 
   function focusFirstError(errors: Readonly<Partial<Record<FulfillmentField, string>>>) {
     const first = ['method', 'fullName', 'phone', 'address', 'locality', 'province', 'postalCode']

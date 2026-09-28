@@ -12,31 +12,33 @@ describe('panel administrativo Dux', () => {
     vi.restoreAllMocks();
   });
 
-  it('muestra autoridad, tenant, mapping y bloqueos sin controles de Mercado Libre', async () => {
+  it('prioriza el negocio y reserva códigos, métricas y bloqueos técnicos para soporte', async () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(json(enabledStatus())));
     vi.stubGlobal('fetch', fetchMock);
 
     render(<DuxPanel />);
 
     expect(await screen.findByRole('heading', { level: 2, name: 'Dux Software' })).toBeVisible();
-    expect(screen.getByText(/Dux es la fuente autoritativa de stock/)).toBeVisible();
-    expect(metric('Plan / token API')).toHaveTextContent('Acceso configurado');
-    expect(metric('Configuración Dux')).toHaveTextContent('Verificada');
+    expect(screen.getByText(/Los productos, precios y existencias se administran en Dux/)).toBeVisible();
+    expect(metric('Actualización desde Dux')).toHaveTextContent('Habilitada');
+    expect(metric('Datos del negocio')).toHaveTextContent('Verificada');
     expect(metric('Empresa')).toHaveTextContent('Shekinah Pruebas');
     expect(metric('Sucursal')).toHaveTextContent('Mar del Plata');
     expect(metric('Depósito')).toHaveTextContent('Depósito central');
-    expect(metric('Items observados')).toHaveTextContent('12');
+    expect(metric('Productos y variantes consultados')).toHaveTextContent('12');
+    expect(metric('Última actualización')).toHaveTextContent('Completada');
+    expect(screen.getByText('succeeded')).not.toBeVisible();
     expect(metric('Vinculados')).toHaveTextContent('7');
     expect(metric('Sin vincular a Dux')).toHaveTextContent('3');
     expect(metric('Vínculos ambiguos')).toHaveTextContent('2');
     expect(metric('Semántica de unidades')).toHaveTextContent('Pendiente');
     expect(metric('Ciclo de reservas')).toHaveTextContent('Bloqueado');
-    expect(screen.getByText(/Último ciclo completado:/)).toHaveTextContent('26/8/2026, 13:05:00');
-    expect(screen.getByRole('heading', { level: 3, name: 'Bloqueos de activación' })).toBeVisible();
+    expect(screen.getByText(/Última actualización terminada:/)).toHaveTextContent('26/8/2026, 13:05:00');
+    expect(screen.queryByRole('heading', { level: 3, name: 'Revisión necesaria' })).not.toBeInTheDocument();
+    expect(screen.getByText('Upgrade Dux a PRO/FULL + token API requerido')).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Actualizar productos desde Dux' })).toBeEnabled();
+    fireEvent.click(screen.getByText('Información para soporte: conexión con Dux'));
     expect(screen.getByText('Upgrade Dux a PRO/FULL + token API requerido')).toBeVisible();
-    expect(screen.getByText('La semántica de unidades y cantidades no está verificada.')).toBeVisible();
-    expect(screen.getByText('La liberación y finalización de reservas no está demostrada.')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Sincronizar ahora' })).toBeEnabled();
     expect(screen.queryByText('Mercado Libre')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/dux/status', {
       credentials: 'same-origin',
@@ -64,16 +66,16 @@ describe('panel administrativo Dux', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<DuxPanel onOperationStateChange={onOperationStateChange} />);
-    const synchronize = await screen.findByRole('button', { name: 'Sincronizar ahora' });
+    const synchronize = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
     fireEvent.click(synchronize);
     fireEvent.click(synchronize);
 
-    expect(screen.getByRole('button', { name: 'Sincronizando…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Actualizando productos…' })).toBeDisabled();
     expect(syncRequests(fetchMock)).toHaveLength(1);
     await waitFor(() => {
       expect(onOperationStateChange).toHaveBeenCalledWith(
         true,
-        'Sincronizando inventario Dux',
+        'Actualizando productos desde Dux',
       );
     });
 
@@ -90,7 +92,7 @@ describe('panel administrativo Dux', () => {
     }));
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Sincronización succeeded: 12 procesados, 7 vinculados, 3 sin vincular, 2 ambiguos, 1 ausentes y 0 errores.',
+      'Actualización completada. 12 productos y variantes revisados y 0 problemas de actualización.',
     );
     await waitFor(() => expect(statusRequests).toBe(2));
     expect(refreshListener).toHaveBeenCalledTimes(1);
@@ -109,11 +111,11 @@ describe('panel administrativo Dux', () => {
 
     render(<DuxPanel />);
 
-    expect(await screen.findByText(/La sincronización permanece deshabilitada/)).toBeVisible();
-    expect(metric('Plan / token API')).toHaveTextContent('Pendiente o no disponible');
-    expect(metric('Configuración Dux')).toHaveTextContent('Sin verificar');
+    expect(await screen.findByText(/La actualización desde Dux no está habilitada/)).toBeVisible();
+    expect(metric('Actualización desde Dux')).toHaveTextContent('No habilitada');
+    expect(metric('Datos del negocio')).toHaveTextContent('Sin verificar');
     expect(metric('Empresa')).toHaveTextContent('Sin verificar');
-    expect(screen.queryByRole('button', { name: /Sincronizar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar productos desde Dux' })).not.toBeInTheDocument();
   });
 
   it('rechaza una respuesta incompleta y no habilita operaciones', async () => {
@@ -132,9 +134,24 @@ describe('panel administrativo Dux', () => {
     render(<DuxPanel />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'El servidor devolvió métricas Dux inválidas.',
+      'No pudimos consultar o actualizar los productos de Dux.',
     );
-    expect(screen.queryByRole('button', { name: /Sincronizar/ })).not.toBeInTheDocument();
+    expect(screen.getByText('El servidor devolvió métricas Dux inválidas.')).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Actualizar productos desde Dux' })).not.toBeInTheDocument();
+  });
+
+  it('recupera una consulta fallida sin iniciar una sincronización', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error('No pudimos consultar Dux.'))
+      .mockResolvedValueOnce(json(enabledStatus()));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos consultar o actualizar los productos de Dux.');
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a consultar Dux' }));
+    expect(await screen.findByRole('button', { name: 'Actualizar productos desde Dux' })).toBeEnabled();
+    expect(screen.getByRole('heading', { name: 'Dux Software' })).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(syncRequests(fetchMock)).toHaveLength(0);
   });
 });
 

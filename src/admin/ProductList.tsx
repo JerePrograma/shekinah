@@ -135,7 +135,7 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
       <button className="button button-secondary admin-compact-button" type="button" onClick={onRetryLoad}>Reintentar carga</button>
     </div> : visibleProducts.length === 0 ? <div className="admin-empty-state">
       <h4>{totalProductCount === 0 ? 'No hay productos cargados' : 'No encontramos productos con estos filtros'}</h4>
-      <p>{totalProductCount === 0 ? 'Los productos aparecerán después de sincronizar el catálogo de Dux.' : 'Probá otra búsqueda o limpiá los filtros.'}</p>
+      <p>{totalProductCount === 0 ? 'Para traer los productos, abrí Dux y Mercado Libre y elegí Actualizar productos desde Dux.' : 'Probá otra búsqueda o limpiá los filtros.'}</p>
     </div> : <ul className="admin-product-list" id="admin-product-results">
       {pageProducts.map(product => {
         const unpublished = product.publicationStatus === 'unpublished';
@@ -149,8 +149,9 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
             <div className="admin-product-row-main">
               <h4>{product.name}</h4>
               <p className="admin-product-id">{product.sku} · {product.categoryNames.join(' · ') || 'Sin categoría'}</p>
-              <div className="admin-product-row-facts"><strong>{formatProductPrice(product.salePrice ?? product.price)}</strong>
+              <div className="admin-product-row-facts">
                 <span className={`admin-status-badge admin-status-${unpublished ? 'paused' : 'available'}`}>{unpublished ? 'Dado de baja' : 'Publicado'}</span>
+                <strong>{formatProductPrice(product.salePrice ?? product.price)}</strong>
                 {stock !== undefined && stock <= 0 ? <span className="admin-status-badge admin-status-out">Sin stock</span> : null}
               </div>
             </div>
@@ -158,11 +159,11 @@ export function ProductList({ categories, availabilityFilter, categoryFilter, de
               <button className="button button-secondary admin-compact-button" type="button" disabled={remoteBusy || deleteCandidate !== null}
                 aria-label={`Editar ${product.name}`} onClick={event => onEdit(product, event.currentTarget)}>{selected ? 'Editando' : 'Editar'}</button>
               <button ref={element => { if (element === null) publicationRefs.current.delete(product.id); else publicationRefs.current.set(product.id, element); }}
-                className={`button ${unpublished ? 'button-secondary' : 'button-danger admin-trash-button'} admin-compact-button`} type="button"
+                className={`button ${unpublished ? 'button-secondary' : 'button-danger'} admin-compact-button`} type="button"
                 disabled={remoteBusy || isDirty || deleteCandidate !== null} title={unpublished ? 'Volver a publicar' : 'Dar de baja de la web'}
                 aria-label={`${unpublished ? 'Volver a publicar' : 'Dar de baja'} ${product.name}`}
                 onClick={() => unpublished ? onUpdateAvailability(product) : onOpenDelete(product)}>
-                {unpublished ? rowBusy ? 'Publicando…' : 'Volver a publicar' : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>}
+                {unpublished ? rowBusy ? 'Publicando…' : 'Volver a publicar' : 'Dar de baja'}
               </button>
             </div>
             <div className="admin-product-row-details">

@@ -9,16 +9,16 @@ type AttentionRow = Readonly<{
 }>;
 const ACTIONS: Record<AttentionAction, string> = {
   duplicate_payment: 'Revisar cobros múltiples. No generar otro cobro ni un reintegro automático.',
-  payment_review: 'Conciliar el pago registrado con el pedido. No solicitar otro pago.',
+  payment_review: 'Comprobar que el pago registrado corresponde a este pedido y revisar la reserva en Dux. No solicitar otro pago.',
   reconcile: 'Buscar la referencia exacta en Dux y comprobar el resultado antes de repetir una operación.',
-  release_review: 'Revisar pagos pendientes y la vigencia de la preferencia antes de tramitar la liberación en Dux.',
+  release_review: 'Comprobar que no haya pagos pendientes y que haya vencido el plazo para pagar antes de liberar la reserva en Dux.',
   finalize: 'Finalizar o facturar en Dux y verificar el alcance completo; un comprobante parcial no completa el pedido.',
-  reservation_review: 'Verificar unidad, depósito y compromiso real de stock en Dux antes de ofrecer el cobro.',
+  reservation_review: 'Verificar en Dux las unidades, el depósito y la reserva de stock antes de ofrecer el cobro.',
 };
 const RESERVATIONS: Record<string, string> = {
-  not_attempted: 'Sin reserva acreditada', pending: 'Operación pendiente', confirmed: 'Reserva confirmada',
-  uncertain: 'Resultado incierto', compensation_pending: 'Compensación pendiente', released: 'Liberada',
-  finalized: 'Finalizada', blocked: 'Requiere revisión', none: 'Sin vínculo Dux',
+  not_attempted: 'Sin reserva confirmada', pending: 'Operación pendiente', confirmed: 'Reserva confirmada',
+  uncertain: 'Resultado por comprobar', compensation_pending: 'Reserva pendiente de revisión', released: 'Reserva liberada',
+  finalized: 'Pedido finalizado', blocked: 'Requiere revisión', none: 'Sin pedido asociado',
 };
 
 export function CommerceAttentionPanel({ onUnauthorized }: Readonly<{ onUnauthorized?: (() => void) | undefined }>) {
@@ -39,8 +39,11 @@ export function CommerceAttentionPanel({ onUnauthorized }: Readonly<{ onUnauthor
           credentials: 'same-origin', redirect: 'error', signal: controller.signal,
         });
         if (response.status === 401) {
-          if (!controller.signal.aborted) onUnauthorized?.();
-          throw new Error('La sesión administrativa venció.');
+          if (!controller.signal.aborted) {
+            onUnauthorized?.();
+            setError('Tu sesión venció. Volvé a ingresar para consultar los pendientes.');
+          }
+          return;
         }
         if (!response.ok) throw new Error('No se pudieron consultar los pendientes comerciales.');
         const value: unknown = await response.json();
@@ -51,9 +54,9 @@ export function CommerceAttentionPanel({ onUnauthorized }: Readonly<{ onUnauthor
         if (controller.signal.aborted) return;
         setRows(parsed);
         setHasMore(value.hasMore);
-      } catch (loadError: unknown) {
+      } catch {
         if (controller.signal.aborted) return;
-        setError(loadError instanceof Error ? loadError.message : 'No se pudieron consultar los pendientes.');
+        setError('No pudimos cargar los pendientes. Reintentá con «Actualizar pendientes».');
       }
     })();
     return () => controller.abort();
@@ -65,7 +68,7 @@ export function CommerceAttentionPanel({ onUnauthorized }: Readonly<{ onUnauthor
         {open ? 'Ocultar pendientes comerciales' : 'Consultar pendientes comerciales'}
       </button>
       {!open ? null : <>
-      <p>Pagos y tareas Dux, incluidos pedidos anteriores al período del informe. Esta vista no confirma ni modifica inventario.</p>
+      <p>Pedidos que necesitan una revisión del pago o de la reserva en Dux. Incluye pendientes anteriores al período del informe.</p>
       {error !== '' ? <p role="alert">{error}</p> : rows === null ? <p role="status">Consultando pendientes…</p> : rows.length === 0 ? <p role="status">No hay pendientes en esta página.</p> : (
         <div className="cart-items">
           {rows.map((row) => (
@@ -73,8 +76,8 @@ export function CommerceAttentionPanel({ onUnauthorized }: Readonly<{ onUnauthor
               <div className="cart-line-content">
                 <h3>{formatOrderNumber(row.id)}</h3>
                 <p>Pago: {paymentStateLabel(row.payment)}. Dux: {RESERVATIONS[row.reservation]}.</p>
-                {row.reference === '' ? null : <p>Referencia Dux: {row.reference}</p>}
                 <p>{ACTIONS[row.action]}</p>
+                {row.reference === '' ? null : <details><summary>Referencia para buscar en Dux</summary><p>{row.reference}</p></details>}
               </div>
             </article>
           ))}

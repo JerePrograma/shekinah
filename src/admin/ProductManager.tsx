@@ -123,7 +123,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       if (signal?.aborted === true || sequence !== loadSequenceRef.current) return;
       setProducts(catalog.products); setCategories(catalog.categories); setImageStorageConfigured(catalog.imageStorageConfigured);
     } catch (cause: unknown) {
-      if (signal?.aborted !== true && sequence === loadSequenceRef.current) setLoadError(errorMessage(cause));
+      if (signal?.aborted !== true && sequence === loadSequenceRef.current) setLoadError(errorMessage(cause, 'Revisá tu conexión e intentá cargar los productos nuevamente.'));
     } finally {
       if (signal?.aborted !== true && sequence === loadSequenceRef.current) setLoading(false);
     }
@@ -162,7 +162,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       setMessage(`Cambios de ${persisted.name} guardados.`);
       await refreshRuntimeCatalog();
     } catch (cause: unknown) {
-      setError(`${descriptionSaved ? 'La descripción se guardó, pero la imagen no pudo actualizarse. ' : ''}${errorMessage(cause)}`);
+      setError(`${descriptionSaved ? 'La descripción se guardó, pero no pudimos actualizar la imagen. ' : 'No pudimos confirmar el guardado. '}${errorMessage(cause, 'Tus cambios siguen en el editor. Revisalos e intentá guardar nuevamente.')}`);
       if (descriptionSaved) await refreshRuntimeCatalog();
     } finally { operationRef.current = false; setOperation({ kind: 'idle' }); }
   }
@@ -180,7 +180,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       setDeleteCandidate(null);
       setMessage(published ? `${product.name} volvió a publicarse.` : `${product.name} se dio de baja de la web. Podés volver a publicarlo al final de la lista.`);
       await refreshRuntimeCatalog();
-    } catch (cause: unknown) { setError(errorMessage(cause)); }
+    } catch (cause: unknown) { setError(`No pudimos confirmar ${published ? 'la publicación' : 'la baja'} de ${product.name}. ${errorMessage(cause, 'Intentá nuevamente. Si el problema continúa, pedí ayuda a soporte.')}`); }
     finally { operationRef.current = false; setOperation({ kind: 'idle' }); }
   }
 
@@ -189,9 +189,11 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
     setPendingImage(null); setRemoveImage(false); setImageError(undefined); setPendingNavigation(null); clearFileInput();
   }
   function openEdit(product: CatalogProductDetail): void {
+    setError(''); setMessage('');
     setEditingProduct(product); setDescription(product.description ?? ''); resetEditor(); setDeleteCandidate(null);
   }
   function closeEditor(): void {
+    setError('');
     setEditingProduct(null); resetEditor();
     window.requestAnimationFrame(() => {
       if (editorTriggerRef.current?.isConnected === true) editorTriggerRef.current.focus();
@@ -224,7 +226,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       <header className="admin-product-header">
         <div className="section-heading">
           <p className="eyebrow">Administración</p>
-          <h2 id="backoffice-title">Catálogo de productos</h2>
+          <h2 id="backoffice-title" tabIndex={-1}>Catálogo de productos</h2>
           <p>Editá fotos y descripciones, o elegí qué productos mostrar en la web.</p>
           <p className="admin-field-note">Los productos nuevos, los precios y el stock se administran en Dux.</p>
         </div>
@@ -305,7 +307,8 @@ function parseAdminProduct(payload: unknown, categories: readonly CatalogCategor
 }
 function validateImage(file: File): string | null {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return 'Seleccioná una imagen JPEG, PNG o WebP.';
-  if (file.size <= 0 || file.size > 4 * 1024 * 1024) return 'La imagen debe pesar más de 0 bytes y como máximo 4 MiB.';
+  if (file.size <= 0) return 'La imagen está vacía. Seleccioná otro archivo.';
+  if (file.size > 4 * 1024 * 1024) return 'La imagen es demasiado grande. Seleccioná una de hasta 4 MB.';
   return null;
 }
 async function adminJson(path: string, init?: RequestInit, onUnauthorized?: () => void): Promise<unknown> {
@@ -313,14 +316,29 @@ async function adminJson(path: string, init?: RequestInit, onUnauthorized?: () =
 }
 async function adminRequest(path: string, init: RequestInit, onUnauthorized?: () => void): Promise<unknown> {
   const response = await fetch(path, { credentials: 'same-origin', ...init });
-  if (response.status === 401) { onUnauthorized?.(); throw new Error('La sesión administrativa venció.'); }
+  if (response.status === 401) { onUnauthorized?.(); throw new ProductRequestError('Tu sesión venció. Volvé a ingresar.'); }
   let payload: unknown = null;
   try { payload = await response.json(); } catch { /* Normalize invalid responses below. */ }
   if (!response.ok) {
-    throw new Error(isRecord(payload) && isRecord(payload.error) && typeof payload.error.message === 'string'
-      ? payload.error.message : 'No se pudo completar la operación administrativa.');
+    const code = isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === 'string' ? payload.error.code : '';
+    const knownMessages: Readonly<Record<string, string>> = {
+      PRODUCT_NOT_FOUND: 'El producto ya no está disponible en Dux. Consultá el listado actualizado.',
+      INVALID_PRODUCT_WEB_SETTINGS: 'Revisá la descripción: admite hasta 12.000 caracteres.',
+      CATALOG_IMAGE_STORAGE_UNAVAILABLE: 'La carga de imágenes no está habilitada. Pedí ayuda a soporte.',
+      PRODUCT_WEB_SETTINGS_MIGRATION_REQUIRED: 'La edición de productos necesita una actualización. Pedí ayuda a soporte.',
+      CATALOG_IMAGE_UPLOAD_FAILED: 'No pudimos guardar la imagen. Conservamos tu selección para que puedas reintentar.',
+      UNSUPPORTED_IMAGE_TYPE: 'Seleccioná una imagen JPG, PNG o WebP.',
+      IMAGE_SIGNATURE_MISMATCH: 'No reconocemos el formato de la imagen. Seleccioná otro archivo JPG, PNG o WebP.',
+      INVALID_IMAGE: 'La imagen está vacía. Seleccioná otro archivo.',
+      IMAGE_TOO_LARGE: 'La imagen es demasiado grande. Seleccioná una de hasta 4 MB.',
+    };
+    const message = (Object.hasOwn(knownMessages, code) ? knownMessages[code] : undefined) ?? (response.status === 403 ? 'No tenés permiso para realizar este cambio. Pedí ayuda a soporte.'
+      : response.status === 429 ? 'Se realizaron demasiados intentos. Esperá un momento antes de reintentar.' : null);
+    if (message !== null) throw new ProductRequestError(message);
+    throw new Error('Product request failed');
   }
   return payload;
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
-function errorMessage(error: unknown): string { return error instanceof Error ? error.message : 'No se pudo completar la operación.'; }
+class ProductRequestError extends Error {}
+function errorMessage(error: unknown, fallback: string): string { return error instanceof ProductRequestError ? error.message : fallback; }

@@ -54,8 +54,8 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
         const nextDetail = current === null ? null : parseAdminWebRequestDetail(await current.json());
         if (controller.signal.aborted) return;
         setRows(parsed); setHasMore(value.hasMore); setDetail(nextDetail);
-      } catch (failure: unknown) {
-        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'La consulta falló.');
+      } catch {
+        if (!controller.signal.aborted) setError('No pudimos cargar las solicitudes. Reintentá con «Actualizar solicitudes».');
       }
     })();
     return () => controller.abort();
@@ -63,7 +63,7 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
 
   async function resolveRequest(): Promise<void> {
     if (busyRef.current || confirmation === null || detail === null) return;
-    setPanelBusy(true, 'Resolviendo solicitud web'); setError('');
+    setPanelBusy(true, 'Guardando el estado de la solicitud'); setError('');
     const target = detail.id; const status = confirmation;
     try {
       const response = await fetch(`/api/admin/web-order-requests/${target}/resolve`, { method: 'POST', credentials: 'same-origin', redirect: 'error',
@@ -73,8 +73,8 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
       const next = parseAdminWebRequestDetail(await response.json());
       if (next.id !== target || next.status !== status) throw invalid();
       if (mounted.current) { setConfirmation(null); setRevision((value) => value + 1); }
-    } catch (failure: unknown) {
-      if (mounted.current) { setConfirmation(null); setError(failure instanceof Error ? failure.message : 'La resolución no pudo confirmarse.'); }
+    } catch {
+      if (mounted.current) { setConfirmation(null); setError('No pudimos confirmar el cambio. Actualizá las solicitudes antes de repetirlo.'); }
     } finally { setPanelBusy(false); }
   }
 
@@ -90,7 +90,7 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
       {open ? 'Ocultar solicitudes web' : 'Consultar solicitudes web'}
     </button>
     {!open ? null : <>
-      <p>Son solicitudes previas a la compra: aceptar permite gestionarlas, pero no acredita pago ni reserva. El total y la unidad comercial deben confirmarse antes de cobrar.</p>
+      <p>Revisá los productos y los datos del cliente antes de aceptar una solicitud. Aceptarla permite preparar el cobro; no confirma un pago ni reserva stock.</p>
       {error !== '' ? <p role="alert">{error}</p> : rows === null ? <p role="status">Consultando solicitudes…</p> : rows.length === 0 ? <p role="status">No hay solicitudes en esta página.</p> : (
         <div className="cart-items">{rows.map((row) => <article className="cart-line" key={row.id}>
           <div className="cart-line-content"><h3>{webRequestReference(row.id)}</h3><p>{row.name} · {webRequestStatusLabel(row.status)}</p>
@@ -101,15 +101,15 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
         <h3>{webRequestReference(detail.id)} · {webRequestStatusLabel(detail.status)}</h3>
         <p>Cliente: {detail.snapshot.fulfillment.fullName}. Celular: {detail.snapshot.fulfillment.phone}.</p>
         {detail.snapshot.fulfillment.method === 'correo_argentino' ? <p>Envío a cotizar: {detail.snapshot.fulfillment.address}, {detail.snapshot.fulfillment.locality}, {detail.snapshot.fulfillment.province}, {detail.snapshot.fulfillment.postalCode}.</p> : <p>Retiro o entrega personal coordinada.</p>}
-        <p>Observación del catálogo: {detail.snapshot.observedAt}. Total pendiente de confirmación.</p>
+        <p>Precios consultados el {formatDate(detail.snapshot.observedAt)}. Total pendiente de confirmación.</p>
         {detail.snapshot.lines.map((line) => <p key={line.productId}>{line.name} · Código Dux: {line.duxCode} · Cantidad solicitada: {line.requestedQuantity}. Presentación y unidad por confirmar.</p>)}
         {detail.status !== 'submitted' ? null : confirmation === null ? <div className="payment-return-actions">
           <button className="button button-primary" type="button" disabled={busy} onClick={(event) => { resolveTrigger.current = event.currentTarget; setConfirmation('accepted'); }}>Aceptar para gestión</button>
           <button className="button button-secondary" type="button" disabled={busy} onClick={(event) => { resolveTrigger.current = event.currentTarget; setConfirmation('rejected'); }}>Rechazar solicitud</button>
         </div> : <div role="alertdialog" aria-label="Confirmar resolución de solicitud">
-          <p>{confirmation === 'accepted' ? 'Aceptar para gestión no confirma pago, stock ni total.' : 'Se rechazará la solicitud, sin simular una liberación de stock.'} Esta resolución quedará auditada.</p>
-          <button className="button button-secondary" type="button" ref={cancelRef} disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => resolveTrigger.current?.focus()); }}>Cancelar resolución</button>
-          <button className="button button-primary" type="button" disabled={busy} onClick={() => void resolveRequest()}>Confirmar resolución</button>
+          <p>{confirmation === 'accepted' ? 'Aceptar la solicitud permite preparar el cobro. No confirma pago, stock ni total.' : 'Se rechazará la solicitud. Esta acción no libera reservas en Dux.'}</p>
+          <button className="button button-secondary" type="button" ref={cancelRef} disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => resolveTrigger.current?.focus()); }}>Volver sin cambiar</button>
+          <button className="button button-primary" type="button" disabled={busy} onClick={() => void resolveRequest()}>{confirmation === 'accepted' ? 'Sí, aceptar solicitud' : 'Sí, rechazar solicitud'}</button>
         </div>}
         {detail.status === 'accepted' ? <AssistedCheckoutAdminPanel requestId={detail.id} onUnauthorized={onUnauthorized} onBusyChange={setPanelBusy} /> : null}
       </article>}
@@ -121,6 +121,7 @@ export function WebOrderRequestsPanel({ onUnauthorized, onBusyChange }: Readonly
     </>}
   </section>;
 }
+function formatDate(value: string): string { return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value)); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function invalid(): Error { return new Error('La respuesta administrativa no es válida.'); }
 function parseRow(value: unknown): Row {

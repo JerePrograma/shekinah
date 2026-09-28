@@ -60,6 +60,7 @@ export function DuxPanel({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const requestRef = useRef(0);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
   const catalogOperation = useCallback((active: boolean) => setCatalogBusy(active), []);
   const editorialOperation = useCallback((active: boolean) => setEditorialBusy(active), []);
 
@@ -93,7 +94,7 @@ export function DuxPanel({
 
   useEffect(() => {
     const active = busy || catalogBusy || editorialBusy;
-    onOperationStateChange?.(active, busy ? 'Sincronizando inventario Dux' : active ? 'Actualizando catálogo Dux' : undefined);
+    onOperationStateChange?.(active, busy ? 'Actualizando productos desde Dux' : active ? 'Actualizando catálogo Dux' : undefined);
     return () => onOperationStateChange?.(false);
   }, [busy, catalogBusy, editorialBusy, onOperationStateChange]);
 
@@ -129,119 +130,97 @@ export function DuxPanel({
       <div className="container admin-shell">
         <div className="section-heading admin-report-heading">
           <p className="eyebrow">Inventario</p>
-          <h2 id="admin-dux-title">Dux Software</h2>
+          <h2 id="admin-dux-title" ref={titleRef} tabIndex={-1}>Dux Software</h2>
           <p>
-            Dux es la fuente autoritativa de stock, unidades y depósitos. Shekinah sólo conserva
-            una observación operativa y el vínculo con su catálogo editorial.
+            Los productos, precios y existencias se administran en Dux. Actualizalos acá para
+            traer la información del negocio a Shekinah.
           </p>
         </div>
-        {loading ? <p role="status">Consultando configuración y sincronización Dux…</p> : null}
+        {status?.enabled === true ? (
+          <div className="admin-order-actions">
+            <button className="button button-primary" type="button"
+              disabled={busy || catalogBusy || editorialBusy || loading}
+              onClick={() => void synchronize()}>
+              {busy ? 'Actualizando productos…' : 'Actualizar productos desde Dux'}
+            </button>
+          </div>
+        ) : null}
+        {loading ? <p role="status">Consultando los productos de Dux…</p> : null}
         {status === null ? null : (
           <>
             <dl className="admin-summary-grid">
               <Metric
-                label="Plan / token API"
-                value={status.enabled ? 'Acceso configurado' : 'Pendiente o no disponible'}
-              />
-              <Metric
-                label="Configuración Dux"
-                value={status.tenant === null ? 'Sin verificar' : 'Verificada'}
-              />
-              <Metric label="Empresa" value={status.tenant?.companyName ?? 'Sin verificar'} />
-              <Metric label="Sucursal" value={status.tenant?.branchName ?? 'Sin verificar'} />
-              <Metric label="Depósito" value={status.tenant?.depositName ?? 'Sin verificar'} />
-              <Metric
-                label="Última sincronización"
+                label="Última actualización"
                 value={latestRunText(status.latestRun, 'Sin ejecutar')}
               />
               <Metric
-                label="Procesados en el último ciclo"
+                label="Productos y variantes revisados"
                 value={latestRunNumber(status.latestRun, 'processed', 'processed_count')}
               />
               <Metric
-                label="Errores en el último ciclo"
+                label="Problemas en la última actualización"
                 value={latestRunNumber(status.latestRun, 'failed', 'failed_count')}
               />
-              <Metric label="Items observados" value={status.counts.inventoryCount} />
-              <Metric label="Vinculados" value={status.counts.mappedCount} />
-              <Metric label="Sin vincular a Dux" value={status.counts.unmappedCount} />
-              <Metric label="Vínculos ambiguos" value={status.counts.ambiguousCount} />
-              <Metric label="Elegibles para Checkout" value={status.counts.checkoutEligibleCount} />
-              <Metric label="Datos obsoletos" value={status.counts.staleCount} />
-              <Metric label="Errores de sincronización" value={status.counts.errorCount} />
-              <Metric label="Ausentes en Dux" value={status.counts.absentCount} />
-              <Metric
-                label="Semántica de unidades"
-                value={status.unitSemanticsReady ? 'Verificada' : 'Pendiente'}
-              />
-              <Metric
-                label="Ciclo de reservas"
-                value={status.lifecycleReady ? 'Verificado' : 'Bloqueado'}
-              />
             </dl>
-            <p className="admin-context-note">
-              Umbral de frescura: {status.maxAgeSeconds.toLocaleString('es-AR')} segundos. Un dato
-              obsoleto nunca autoriza una venta.
-            </p>
-            {status.tenant === null ? null : (
-              <p className="admin-context-note">
-                Configuración verificada el {formatDate(status.tenant.verifiedAt)}. Identificadores:
-                empresa {status.tenant.companyId}, sucursal {status.tenant.branchId}, depósito{' '}
-                {status.tenant.depositId}.
-              </p>
-            )}
             {latestRunDate(status.latestRun) === null ? null : (
               <p className="admin-context-note">
-                Último ciclo completado: {formatDate(latestRunDate(status.latestRun) ?? '')}.
+                Última actualización terminada: {formatDate(latestRunDate(status.latestRun) ?? '')}.
               </p>
             )}
-            <Blockers status={status} />
+            <details>
+              <summary>Información del negocio y sus productos</summary>
+              <dl className="admin-summary-grid">
+                <Metric label="Actualización desde Dux" value={status.enabled ? 'Habilitada' : 'No habilitada'} />
+                <Metric label="Datos del negocio" value={status.tenant === null ? 'Sin verificar' : 'Verificada'} />
+                <Metric label="Empresa" value={status.tenant?.companyName ?? 'Sin verificar'} />
+                <Metric label="Sucursal" value={status.tenant?.branchName ?? 'Sin verificar'} />
+                <Metric label="Depósito" value={status.tenant?.depositName ?? 'Sin verificar'} />
+                <Metric label="Productos y variantes consultados" value={status.counts.inventoryCount} />
+                <Metric label="Sin actualización reciente" value={status.counts.staleCount} />
+                <Metric label="Productos con problemas de actualización" value={status.counts.errorCount} />
+                <Metric label="Ya no encontrados en Dux" value={status.counts.absentCount} />
+              </dl>
+            </details>
+            <details>
+              <summary>Información para soporte: conexión con Dux</summary>
+              <dl className="admin-summary-grid">
+                <Metric label="Estado de sincronización" value={textValue(status.latestRun?.status, 'Sin ejecutar')} />
+                <Metric label="Vinculados" value={status.counts.mappedCount} />
+                <Metric label="Sin vincular a Dux" value={status.counts.unmappedCount} />
+                <Metric label="Vínculos ambiguos" value={status.counts.ambiguousCount} />
+                <Metric label="Elegibles para Checkout" value={status.counts.checkoutEligibleCount} />
+                <Metric label="Semántica de unidades" value={status.unitSemanticsReady ? 'Verificada' : 'Pendiente'} />
+                <Metric label="Ciclo de reservas" value={status.lifecycleReady ? 'Verificado' : 'Bloqueado'} />
+              </dl>
+              <p>Antigüedad máxima de datos: {status.maxAgeSeconds.toLocaleString('es-AR')} segundos.</p>
+              <p>Este diagnóstico de inventario no determina por sí solo la disponibilidad del pago.</p>
+              {status.tenant === null ? null : <p>Configuración verificada el {formatDate(status.tenant.verifiedAt)}.
+                Identificadores: empresa {status.tenant.companyId}, sucursal {status.tenant.branchId}, depósito {status.tenant.depositId}.</p>}
+              {status.blockers.length === 0 ? null : <ul>{status.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>}
+            </details>
           </>
         )}
-        {status?.enabled === true ? (
-          <div className="admin-order-actions">
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={busy || catalogBusy || editorialBusy || loading}
-              onClick={() => void synchronize()}
-            >
-              {busy ? 'Sincronizando…' : 'Sincronizar ahora'}
-            </button>
-          </div>
-        ) : null}
         {status?.enabled === false ? (
           <p className="admin-context-note">
-            La sincronización permanece deshabilitada hasta contar con un plan, token y
-            configuración Dux válidos.
+            La actualización desde Dux no está habilitada.
+            Contactá a soporte para revisar la preparación del negocio.
           </p>
         ) : null}
         {message === '' ? null : <p role="status" className="admin-context-note">{message}</p>}
-        {error === '' ? null : <p role="alert" className="form-error">{error}</p>}
+        {error === '' ? null : <><p role="alert" className="form-error">No pudimos consultar o actualizar los productos de Dux. Volvé a consultar su estado antes de intentar una actualización.</p>
+          <details><summary>Información para soporte: error de Dux</summary><p>{error}</p></details></>}
+        {error === '' ? null : <div><button type="button" className="button button-secondary"
+          disabled={loading || busy || catalogBusy || editorialBusy}
+          onClick={() => { titleRef.current?.focus(); void refresh(); }}>Volver a consultar Dux</button></div>}
         {status === null ? null : <>
           <DuxCatalogControls disabled={busy || editorialBusy} onOperationStateChange={catalogOperation} onUnauthorized={onUnauthorized} />
           <MercadoLibreEditorialPanel onUnauthorized={onUnauthorized} />
-          <DuxEditorialReviewPanel disabled onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
+          <details><summary>Información para soporte: revisión histórica de contenido</summary>
+            <p>Este registro se conserva para consulta. Las decisiones de contenido actuales se revisan en Mercado Libre.</p>
+            <DuxEditorialReviewPanel disabled onOperationStateChange={editorialOperation} onUnauthorized={onUnauthorized} />
+          </details>
         </>}
       </div>
-    </section>
-  );
-}
-
-function Blockers({ status }: Readonly<{ status: DuxStatus }>) {
-  const implicitBlockers = [
-    ...(status.unitSemanticsReady ? [] : ['La semántica de unidades y cantidades no está verificada.']),
-    ...(status.lifecycleReady ? [] : ['La liberación y finalización de reservas no está demostrada.']),
-  ];
-  const blockers = [...status.blockers, ...implicitBlockers]
-    .filter((value, index, values) => values.indexOf(value) === index);
-  if (blockers.length === 0) return null;
-  return (
-    <section className="admin-context-note" aria-labelledby="dux-blockers-title">
-      <h3 id="dux-blockers-title">Bloqueos de activación</h3>
-      <ul>
-        {blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
-      </ul>
     </section>
   );
 }
@@ -358,7 +337,10 @@ function parseSyncSummary(value: unknown): SyncSummary {
 }
 
 function syncMessage(summary: SyncSummary): string {
-  return `Sincronización ${summary.status}: ${summary.processed.toLocaleString('es-AR')} procesados, ${summary.mapped.toLocaleString('es-AR')} vinculados, ${summary.unmapped.toLocaleString('es-AR')} sin vincular, ${summary.ambiguous.toLocaleString('es-AR')} ambiguos, ${summary.absent.toLocaleString('es-AR')} ausentes y ${summary.failed.toLocaleString('es-AR')} errores.`;
+  const result = summary.status === 'succeeded' ? 'Actualización completada.'
+    : summary.status === 'partial' ? 'La actualización quedó incompleta. Revisá los problemas antes de volver a actualizar.'
+      : 'No pudimos completar la actualización. Consultá el estado de Dux antes de reintentar.';
+  return `${result} ${summary.processed.toLocaleString('es-AR')} productos y variantes revisados y ${summary.failed.toLocaleString('es-AR')} problemas de actualización.`;
 }
 
 function latestRunText(
@@ -366,7 +348,9 @@ function latestRunText(
   fallback: string,
 ): string {
   if (latestRun === null) return fallback;
-  return textValue(latestRun.status, fallback);
+  const labels: Readonly<Record<string, string>> = { succeeded: 'Completada', partial: 'Incompleta: requiere revisión', failed: 'No se completó', running: 'En curso' };
+  const status = textValue(latestRun.status, '');
+  return (Object.hasOwn(labels, status) ? labels[status] : undefined) ?? 'Estado no reconocido: consultar soporte';
 }
 
 function latestRunNumber(

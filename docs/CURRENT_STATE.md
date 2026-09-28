@@ -1,5 +1,13 @@
 # Estado actual
 
+## Relevamiento y mejoras UX/UI — 2026-09-27
+
+La [auditoría integral](validation/UX_UI_REVIEW_2026-09-27.md) registra los recorridos
+públicos y administrativos, las correcciones de errores/foco/recuperación y sus
+pruebas. Conserva compra directa, paginación de productos, autoridades comerciales
+y mantenimiento. El código no modifica backend, migraciones, datos ni configuración
+productiva; CI y despliegue se acreditan separadamente sobre el SHA publicado.
+
 ## Gestión web de productos — 2026-09-25
 
 El [ABM simplificado](PRODUCT_ABM.md) habilita edición de descripción/imagen y

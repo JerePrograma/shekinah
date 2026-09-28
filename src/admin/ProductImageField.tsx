@@ -61,15 +61,15 @@ export function ProductImageField({
               onChange={onSelect}
             />
           </label>
-          <small id="product-image-hint">JPEG, PNG o WebP. Máximo 4 MiB.</small>
+          <small id="product-image-hint">JPG, PNG o WebP. Hasta 4 MB.</small>
           {imageStorageConfigured ? null : (
             <p className="admin-field-note">
-              La carga de imágenes estará disponible cuando se configure el almacenamiento administrativo.
+              La carga de imágenes no está habilitada. Podés editar la descripción; para cargar fotos, pedí ayuda a soporte.
             </p>
           )}
           {pendingImage === null ? null : (
             <p>
-              <strong>Vista previa local.</strong>{' '}
+              <strong>Imagen sin guardar.</strong>{' '}
               {pendingImage.name} · {formatFileSize(pendingImage.size)}. Se subirá al guardar.
             </p>
           )}
@@ -105,5 +105,6 @@ function describedBy(hintId: string, error: string | undefined, errorId: string)
 }
 
 function formatFileSize(bytes: number): string {
-  return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(bytes / 1024)} KiB`;
+  const divisor = bytes < 1024 * 1024 ? 1024 : 1024 * 1024;
+  return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(bytes / divisor)} ${divisor === 1024 ? 'KB' : 'MB'}`;
 }

@@ -161,13 +161,17 @@ const EMPTY_DATA: AdminData = Object.freeze({
 
 export function AdminPage({
   navigate,
+  onOpenOrders,
   onOperationStateChange,
   onUnauthorized,
+  orderOverview,
   section,
 }: Readonly<{
   navigate: Navigate;
+  onOpenOrders?: (() => void) | undefined;
   onOperationStateChange?: ((busy: boolean, label?: string) => void) | undefined;
   onUnauthorized?: (() => void) | undefined;
+  orderOverview?: ReactNode;
   section: AdminSection;
 }>) {
   const initialRange = useMemo(defaultDateRange, []);
@@ -204,7 +208,7 @@ export function AdminPage({
         : orderAction === 'reject'
           ? 'Rechazando pedido'
           : orderAction === 'reconcile'
-            ? 'Conciliando pedido con Mercado Pago'
+            ? 'Verificando el pago con Mercado Pago'
             : undefined,
     );
     return () => onOperationStateChange?.(false);
@@ -276,6 +280,21 @@ export function AdminPage({
     });
   }
 
+  function openOrderDetail(id: string, returnFocusTarget: HTMLButtonElement): void {
+    if (orderAction !== null) return;
+    orderDetailReturnFocusRef.current = returnFocusTarget;
+    if (selectedOrderId === id) {
+      document.getElementById('order-detail-title')?.focus();
+      return;
+    }
+    setOrderDetail(null);
+    setDetailError('');
+    setOrderActionError('');
+    setOrderActionMessage('');
+    setConfirmingReject(false);
+    setSelectedOrderId(id);
+  }
+
   async function transitionOrder(action: 'approve' | 'reject'): Promise<void> {
     if (
       selectedOrderId === null ||
@@ -328,8 +347,8 @@ export function AdminPage({
       setOrderDetail(parseOrderDetail(payload));
       setOrderActionMessage(
         checkedPayments === 0
-          ? 'Conciliación completada: Mercado Pago no informó pagos para este pedido.'
-          : `Conciliación completada: ${checkedPayments.toLocaleString('es-AR')} pago${checkedPayments === 1 ? '' : 's'} verificado${checkedPayments === 1 ? '' : 's'} contra Mercado Pago.`,
+          ? 'Verificación terminada: Mercado Pago no informó pagos para este pedido.'
+          : `Verificación terminada: ${checkedPayments.toLocaleString('es-AR')} pago${checkedPayments === 1 ? '' : 's'} verificado${checkedPayments === 1 ? '' : 's'} con Mercado Pago. Revisá su estado en Pagos del pedido.`,
       );
       setReportRefresh((current) => current + 1);
       await refreshRuntimeCatalog().catch(() => undefined);
@@ -342,6 +361,12 @@ export function AdminPage({
     }
   }
 
+  function openOrdersFromSummary(): void {
+    setStatus('');
+    setSubmittedRange({ ...submittedRange, status: '' });
+    onOpenOrders?.();
+  }
+
   return (
     <section className="admin-page section" aria-labelledby={`admin-${section}-title`}>
       <div className="container admin-shell">
@@ -352,6 +377,12 @@ export function AdminPage({
           </h2>
           <p>{heading.description}</p>
         </div>
+
+        {section === 'orders' ? orderOverview : null}
+        {section !== 'summary' || loading || visibleReport?.data.summary == null ? null : (
+          <SummaryAttention pendingOrders={visibleReport.data.summary.preferencePendingCount + visibleReport.data.summary.pendingCount}
+            onOpenOrders={onOpenOrders === undefined ? undefined : openOrdersFromSummary} />
+        )}
 
         <form
           className="admin-filters"
@@ -389,7 +420,7 @@ export function AdminPage({
                 }}
               >
                 <option value="">Todos</option>
-                <option value="preference_pending">Preparando preferencia</option>
+                <option value="preference_pending">Preparando pago</option>
                 <option value="pending">Pendiente</option>
                 <option value="approved">Aprobado</option>
                 <option value="rejected">Rechazado</option>
@@ -407,21 +438,14 @@ export function AdminPage({
           <p className="form-error" id="admin-range-error" role="alert">{rangeError}</p>
         )}
 
-        <ExportActions
-          analyticsQuery={analyticsQuery}
-          orderQuery={orderQuery}
-          section={section}
-        />
-
         {loading ? <p role="status">Cargando {heading.loadingLabel}…</p> : null}
-        {visibleReport === null ? null : <PartialDataNotice issues={visibleReport.issues} />}
+        {visibleReport === null ? null : <PartialDataNotice issues={visibleReport.issues}
+          onRetry={() => setReportRefresh(current => current + 1)} />}
         {visibleReport === null || loading ? null : (
           <SectionContent
             data={visibleReport.data}
-            onOpenOrder={(id, returnFocusTarget) => {
-              orderDetailReturnFocusRef.current = returnFocusTarget;
-              setSelectedOrderId(id);
-            }}
+            onOpenOrder={openOrderDetail}
+            orderBusy={orderAction !== null}
             productNames={productNames}
             section={section}
           />
@@ -429,6 +453,7 @@ export function AdminPage({
 
         {section === 'orders' && selectedOrderId !== null ? (
           <OrderDetailPanel
+            key={selectedOrderId}
             detail={orderDetail}
             error={detailError}
             loading={detailLoading}
@@ -443,8 +468,11 @@ export function AdminPage({
             onConfirmReject={() => void transitionOrder('reject')}
             onReconcile={() => void reconcileOrder()}
             onRequestReject={() => setConfirmingReject(true)}
+            onRetry={() => setDetailRefresh((current) => current + 1)}
           />
         ) : null}
+
+        <ExportActions analyticsQuery={analyticsQuery} orderQuery={orderQuery} section={section} />
 
         <AppLink className="button button-secondary page-back-link" navigate={navigate} to={appPaths.home}>
           Volver al sitio
@@ -457,11 +485,13 @@ export function AdminPage({
 function SectionContent({
   data,
   onOpenOrder,
+  orderBusy,
   productNames,
   section,
 }: Readonly<{
   data: AdminData;
   onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
+  orderBusy: boolean;
   productNames: ReadonlyMap<string, string>;
   section: AdminReportSection;
 }>) {
@@ -473,7 +503,7 @@ function SectionContent({
     case 'orders':
       return data.orders === null
         ? <UnavailableState label="los pedidos" />
-        : <OrdersView onOpenOrder={onOpenOrder} orders={data.orders} />;
+        : <OrdersView busy={orderBusy} onOpenOrder={onOpenOrder} orders={data.orders} />;
     case 'analytics':
       return (
         <AnalyticsView
@@ -483,73 +513,89 @@ function SectionContent({
       );
     case 'audit':
       return data.audit === null
-        ? <UnavailableState label="la auditoría" />
+        ? <UnavailableState label="la actividad" />
         : <AuditView rows={data.audit} />;
   }
+}
+
+function SummaryAttention({ onOpenOrders, pendingOrders }: Readonly<{
+  onOpenOrders?: (() => void) | undefined;
+  pendingOrders: number;
+}>) {
+  return (
+      <section className="admin-summary-attention" aria-labelledby="summary-attention-title">
+        <div>
+          <h3 id="summary-attention-title">Para revisar</h3>
+          <p>{pendingOrders === 0 ? 'No hay pedidos pendientes en este período.'
+            : `${pendingOrders.toLocaleString('es-AR')} pedido${pendingOrders === 1 ? '' : 's'} pendiente${pendingOrders === 1 ? '' : 's'} en este período.`}</p>
+          {pendingOrders === 0 ? null : <p>Revisá el estado de pago y entrega de cada pedido.</p>}
+        </div>
+        {onOpenOrders === undefined ? null : <button className="button button-primary" type="button" onClick={onOpenOrders}>
+          {pendingOrders === 0 ? 'Ver pedidos' : 'Revisar pedidos'}
+        </button>}
+      </section>
+  );
 }
 
 function SummaryView({ summary }: Readonly<{ summary: AdminSummary }>) {
   return (
     <div className="admin-dashboard-stack">
+      <section className="admin-metric-group" aria-labelledby="financial-summary-title">
+        <div className="admin-subsection-heading">
+          <h3 id="financial-summary-title">Pedidos y cobros</h3>
+          <p>Resultados del período seleccionado.</p>
+        </div>
+        <dl className="admin-summary-grid">
+          <Metric label="Pedidos registrados" value={summary.orderCount} />
+          <Metric label="Pedidos con pago confirmado" value={summary.approvedCount} />
+          <Metric label="Importe de pedidos pagados" value={formatMoney(summary.approvedRevenueMinor)} />
+          <Metric label="Promedio por pedido pagado" value={formatMoney(summary.averageTicketMinor)} />
+        </dl>
+        <p className="admin-context-note">
+          Los cobros incluyen sólo pedidos aprobados con un pago confirmado. Aprobar un pedido
+          de WhatsApp no confirma que esté pagado.
+        </p>
+        <details><summary>Ver desglose de pedidos y pagos</summary>
+          <dl className="admin-summary-grid">
+            <Metric label="Pagos aprobados" value={summary.approvedPaymentCount} />
+            <Metric label="Pedidos pendientes" value={summary.pendingCount} />
+            <Metric label="Pedidos preparando el pago" value={summary.preferencePendingCount} />
+            <Metric label="Pedidos rechazados" value={summary.rejectedCount} />
+            <Metric label="Pedidos cancelados" value={summary.cancelledCount} />
+            <Metric label="Pedidos reintegrados" value={summary.refundedCount} />
+            <Metric label="Pedidos con error" value={summary.failedCount} />
+          </dl>
+          <p>Un pedido puede tener más de un registro de pago. Los pagos y los pedidos se cuentan por separado.</p>
+        </details>
+      </section>
+
       <section className="admin-metric-group" aria-labelledby="interaction-summary-title">
         <div className="admin-subsection-heading">
-          <h3 id="interaction-summary-title">Métricas de interacción</h3>
-          <p>Actividad first-party consentida dentro del período.</p>
+          <h3 id="interaction-summary-title">Visitas al sitio</h3>
+          <p>Sólo se cuentan las visitas que aceptaron la medición. Una persona puede visitar el sitio más de una vez.</p>
         </div>
         <dl className="admin-summary-grid admin-summary-grid-interaction">
-          <Metric label="Sesiones consentidas" value={summary.consentedSessionCount} />
+          <Metric label="Visitas registradas" value={summary.consentedSessionCount} />
           <Metric
-            label="Vistas de página"
-            value={summary.pageViewCount}
-            note={`${summary.pageViewSessionCount.toLocaleString('es-AR')} sesiones`}
-          />
-          <Metric
-            label="Sesiones que vieron productos"
+            label="Visitas que vieron productos"
             value={summary.productViewSessionCount}
             note={reachLabel(summary.productViewSessionCount, summary.consentedSessionCount)}
           />
           <Metric
-            label="Sesiones que agregaron al carrito"
+            label="Visitas que agregaron al carrito"
             value={summary.cartAddSessionCount}
             note={reachLabel(summary.cartAddSessionCount, summary.consentedSessionCount)}
           />
           <Metric
-            label="Sesiones históricas con Link de Pago manual"
-            value={summary.manualPaymentClickSessionCount}
-            note={`${summary.manualPaymentClickCount.toLocaleString('es-AR')} clics válidos`}
-          />
-          <Metric
-            label="Sesiones que abrieron WhatsApp"
+            label="Visitas que abrieron WhatsApp"
             value={summary.whatsappOpenSessionCount}
             note={`${summary.whatsappOpenCount.toLocaleString('es-AR')} aperturas`}
           />
         </dl>
       </section>
 
-      <InteractionNotice />
+      <p className="admin-context-note">Las visitas, los clics y las aperturas de WhatsApp no confirman pagos.</p>
 
-      <section className="admin-metric-group" aria-labelledby="financial-summary-title">
-        <div className="admin-subsection-heading">
-          <h3 id="financial-summary-title">Métricas financieras confirmadas</h3>
-          <p>Pedidos persistidos y, por separado, pagos aprobados confirmados en D1.</p>
-        </div>
-        <dl className="admin-summary-grid">
-          <Metric label="Pedidos persistidos" value={summary.orderCount} />
-          <Metric label="Pedidos con pago aprobado confirmado" value={summary.approvedCount} />
-          <Metric label="Pagos aprobados" value={summary.approvedPaymentCount} />
-          <Metric
-            label="Pedidos pendientes"
-            value={summary.preferencePendingCount + summary.pendingCount}
-          />
-          <Metric label="Facturación aprobada" value={formatMoney(summary.approvedRevenueMinor)} />
-          <Metric label="Ticket promedio aprobado" value={formatMoney(summary.averageTicketMinor)} />
-        </dl>
-        <p className="admin-context-note">
-          La disponibilidad pública de Checkout Pro depende de los flags de despliegue y del
-          catálogo vigente. Los pedidos de WhatsApp pueden aparecer aquí, pero su aprobación
-          manual no se convierte en facturación sin un pago compatible persistido y verificado.
-        </p>
-      </section>
     </div>
   );
 }
@@ -569,27 +615,30 @@ function Metric({
 }
 
 function OrdersView({
+  busy,
   onOpenOrder,
   orders,
 }: Readonly<{
+  busy: boolean;
   onOpenOrder: (id: string, returnFocusTarget: HTMLButtonElement) => void;
   orders: readonly AdminOrder[];
 }>) {
   return (
     <AdminTable
       caption="Pedidos del período y pedidos de WhatsApp pendientes"
-      columns={['Pedido', 'Canal', 'Estado', 'Fecha', 'Cliente', 'Modalidad', 'Total', 'Acción']}
+      stackOnMobile
+      columns={['Pedido y cliente', 'Estado del pedido', 'Entrega', 'Total', 'Acción']}
       rows={orders.map((order) => [
-        formatOrderNumber(order.id),
-        channelLabel(order.channel),
-        orderStatusLabel(order.status, order.lastErrorCode),
-        formatDate(order.createdAt),
-        order.fullName,
+        <div className="admin-order-identity"><strong>{formatOrderNumber(order.id)}</strong>
+          <span>{order.fullName}</span><small>{formatDate(order.createdAt)} · {channelLabel(order.channel)}</small></div>,
+        <div>{orderStatusLabel(order.status, order.lastErrorCode)}
+          {order.lastErrorCode === '—' ? null : <p className="admin-order-issue">{orderIssueLabel(order.lastErrorCode)}</p>}</div>,
         deliveryLabel(order.deliveryMethod),
         formatMoney(order.totalMinor, order.currency),
         <button
           className="button button-secondary admin-table-action"
           type="button"
+          disabled={busy}
           onClick={(event) => onOpenOrder(order.id, event.currentTarget)}
         >
           Ver detalle
@@ -606,9 +655,6 @@ function AnalyticsView({
   return (
     <div className="admin-dashboard-stack">
       <InteractionNotice />
-      {data.summary === null ? <UnavailableState label="el historial del flujo manual" /> : (
-        <ManualFlow summary={data.summary} />
-      )}
       {data.funnel === null ? <UnavailableState label="el embudo de eventos" /> : (
         <FunnelTable rows={data.funnel} />
       )}
@@ -626,6 +672,9 @@ function AnalyticsView({
       {data.trend === null ? <UnavailableState label="la tendencia diaria" /> : (
         <TrendView rows={data.trend} />
       )}
+      <details><summary>Historial del anterior enlace de pago</summary>
+        {data.summary === null ? <UnavailableState label="el historial del enlace de pago" /> : <ManualFlow summary={data.summary} />}
+      </details>
     </div>
   );
 }
@@ -633,16 +682,15 @@ function AnalyticsView({
 function InteractionNotice() {
   return (
     <p className="admin-semantic-notice">
-      Los inicios de Checkout Pro y las aperturas de WhatsApp son interacciones, no pagos
-      confirmados. Los eventos del Link de Pago manual corresponden al flujo público retirado
-      y se conservan sólo como historial; no alimentan la facturación aprobada.
+      Sólo se cuentan las visitas que aceptaron la medición. Una persona puede visitar el sitio
+      más de una vez. Los clics para pagar o abrir WhatsApp no confirman pagos.
     </p>
   );
 }
 
 function ManualFlow({ summary }: Readonly<{ summary: AdminSummary }>) {
   const stages = [
-    ['Sesiones consentidas', summary.consentedSessionCount],
+    ['Visitas registradas', summary.consentedSessionCount],
     ['Ven productos', summary.productViewSessionCount],
     ['Agregan al carrito', summary.cartAddSessionCount],
     ['Histórico: abrieron Link de Pago manual', summary.manualPaymentClickSessionCount],
@@ -650,21 +698,21 @@ function ManualFlow({ summary }: Readonly<{ summary: AdminSummary }>) {
   return (
     <section className="admin-flow" aria-labelledby="manual-flow-title">
       <div className="admin-subsection-heading">
-        <h3 id="manual-flow-title">Histórico del flujo manual retirado</h3>
-        <p>El Link de Pago ya no se muestra públicamente. Estos conteos preservan registros anteriores.</p>
+        <h3 id="manual-flow-title">Historial del enlace de pago retirado</h3>
+        <p>El anterior enlace de pago ya no se ofrece en la tienda. Sus clics se conservan como historial y no confirman pagos.</p>
       </div>
       <ol>
         {stages.map(([label, count]) => (
           <li key={label}>
             <span>{label}</span>
             <strong>{count.toLocaleString('es-AR')}</strong>
-            <small>{label === 'Sesiones consentidas' ? 'Base del período' : reachLabel(count, summary.consentedSessionCount)}</small>
+            <small>{label === 'Visitas registradas' ? 'Base del período' : reachLabel(count, summary.consentedSessionCount)}</small>
           </li>
         ))}
       </ol>
       <div className="admin-assisted-channel">
-        <span>Canal asistido: aperturas de WhatsApp</span>
-        <strong>{summary.whatsappOpenSessionCount.toLocaleString('es-AR')} sesiones</strong>
+        <span>Visitas que abrieron WhatsApp</span>
+        <strong>{summary.whatsappOpenSessionCount.toLocaleString('es-AR')}</strong>
       </div>
     </section>
   );
@@ -682,8 +730,8 @@ function FunnelTable({ rows }: Readonly<{ rows: readonly UnknownRow[] }>) {
   ] as const;
   return (
     <AdminTable
-      caption="Eventos y sesiones por acción"
-      columns={['Acción', 'Eventos', 'Sesiones', 'Semántica']}
+      caption="Qué hacen las visitas"
+      columns={['Acción', 'Veces que ocurrió', 'Visitas', 'Qué significa']}
       rows={names.map((name) => {
         const row = rows.find((candidate) => readText(candidate, 'event_name') === name);
         return [
@@ -703,14 +751,14 @@ function ProductAnalytics({
 }: Readonly<{ productNames: ReadonlyMap<string, string>; rows: readonly UnknownRow[] }>) {
   return (
     <AdminTable
-      caption="Ranking de productos por interacción"
-      columns={['Producto', 'Vistas', 'Agregados', 'Sesiones vista → carrito', 'Tasa vista → carrito']}
+      caption="Productos más consultados"
+      columns={['Producto', 'Vistas', 'Agregados al carrito', 'Visitas que vieron y agregaron', 'Porcentaje que agregó al carrito']}
       rows={rows.map((row) => {
         const id = readText(row, 'product_id');
         const viewSessions = readNonNegativeInteger(row.view_sessions);
         const convertedSessions = readNonNegativeInteger(row.converted_sessions);
         return [
-          productNames.get(id) ?? id,
+          productNames.get(id) ?? <div>Producto no disponible<details><summary>Información para soporte</summary>{id}</details></div>,
           readNumberText(row, 'views'),
           readNumberText(row, 'cart_adds'),
           convertedSessions.toLocaleString('es-AR'),
@@ -734,7 +782,7 @@ function ParticipationTable({
   return (
     <AdminTable
       caption={title}
-      columns={[title.slice(0, -1), 'Sesiones', 'Eventos', 'Participación de eventos']}
+      columns={[title.slice(0, -1), 'Visitas', 'Acciones', 'Porcentaje de acciones']}
       rows={rows.map((row) => [
         dimensionLabel(dimension, readText(row, dimension)),
         readNumberText(row, 'session_count'),
@@ -753,19 +801,19 @@ function TrendView({ rows }: Readonly<{ rows: readonly AnalyticsTrendRow[] }>) {
     <section className="admin-trend" aria-labelledby="analytics-trend-title">
       <div className="admin-subsection-heading">
         <h3 id="analytics-trend-title">Tendencia diaria</h3>
-        <p>Sesiones consentidas y eventos relevantes dentro del período.</p>
+        <p>Visitas registradas y acciones realizadas dentro del período.</p>
       </div>
       {rows.length === 0 ? <p>No hay días para el rango seleccionado.</p> : (
-        <ul className="admin-trend-chart" aria-label="Evolución diaria de sesiones y eventos">
+        <ul className="admin-trend-chart" aria-label="Evolución diaria de visitas y acciones">
           {rows.map((row, index) => (
             <li key={row.day}>
               <time dateTime={row.day}>{formatDay(row.day)}</time>
               <label>
-                <span>Sesiones: {row.sessionCount.toLocaleString('es-AR')}</span>
+                <span>Visitas: {row.sessionCount.toLocaleString('es-AR')}</span>
                 <progress max={maxSessions} value={row.sessionCount} />
               </label>
               <label>
-                <span>Eventos: {(eventTotals[index] ?? 0).toLocaleString('es-AR')}</span>
+                <span>Acciones: {(eventTotals[index] ?? 0).toLocaleString('es-AR')}</span>
                 <progress max={maxEvents} value={eventTotals[index] ?? 0} />
               </label>
             </li>
@@ -773,12 +821,12 @@ function TrendView({ rows }: Readonly<{ rows: readonly AnalyticsTrendRow[] }>) {
         </ul>
       )}
       <details>
-        <summary>Ver tabla diaria accesible</summary>
+        <summary>Ver cifras por día</summary>
         <AdminTable
-          caption="Detalle diario de analítica"
+          caption="Visitas y acciones por día"
           columns={[
-            'Día', 'Sesiones', 'Páginas', 'Productos', 'Carrito',
-            'Mercado Pago manual', 'WhatsApp', 'Checkout integrado',
+            'Día', 'Visitas', 'Páginas', 'Productos', 'Carrito',
+            'Enlace de pago anterior', 'WhatsApp', 'Ir a pagar',
           ]}
           rows={rows.map((row) => [
             formatDay(row.day),
@@ -799,17 +847,23 @@ function TrendView({ rows }: Readonly<{ rows: readonly AnalyticsTrendRow[] }>) {
 function AuditView({ rows }: Readonly<{ rows: readonly UnknownRow[] }>) {
   return (
     <AdminTable
-      caption="Auditoría administrativa de sólo lectura"
-      columns={['Actor', 'Acción', 'Destino', 'Resultado', 'Fecha']}
-      rows={rows.map((row) => [
-        readText(row, 'actor_email'),
-        readText(row, 'action'),
-        [readText(row, 'target_type'), readText(row, 'target_id')]
-          .filter((value) => value !== '—')
-          .join(': ') || '—',
-        readNumberText(row, 'outcome_status'),
-        formatDate(readText(row, 'created_at')),
-      ])}
+      caption="Historial de actividad"
+      columns={['Quién', 'Actividad', 'Resultado', 'Fecha', 'Detalle']}
+      rows={rows.map((row) => {
+        const outcome = readNonNegativeInteger(row.outcome_status);
+        return [
+          readText(row, 'actor_email'),
+          auditActionLabel(readText(row, 'action')),
+          outcome >= 200 && outcome < 400 ? 'Completada' : outcome === 401 || outcome === 403 ? 'Acceso no autorizado' : 'No se completó',
+          formatDate(readText(row, 'created_at')),
+          <details><summary>Información para soporte</summary>
+            <dl><dt>Acción</dt><dd>{readText(row, 'action')}</dd>
+              <dt>Tipo</dt><dd>{readText(row, 'target_type')}</dd>
+              <dt>Referencia</dt><dd>{readText(row, 'target_id')}</dd>
+              <dt>Resultado</dt><dd>{readNumberText(row, 'outcome_status')}</dd></dl>
+          </details>,
+        ];
+      })}
     />
   );
 }
@@ -828,6 +882,7 @@ function OrderDetailPanel({
   onConfirmReject,
   onReconcile,
   onRequestReject,
+  onRetry,
   orderId,
 }: Readonly<{
   action: OrderAction | null;
@@ -843,6 +898,7 @@ function OrderDetailPanel({
   onConfirmReject: () => void;
   onReconcile: () => void;
   onRequestReject: () => void;
+  onRetry: () => void;
   orderId: string;
 }>) {
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -878,8 +934,34 @@ function OrderDetailPanel({
         </button>
       </header>
       {loading ? <p role="status">Cargando detalle del pedido…</p> : null}
-      {error === '' ? null : <p className="form-error" role="alert">{error}</p>}
-      {detail === null || loading ? null : <OrderDetailContent detail={detail} />}
+      {error === '' ? null : <div className="admin-detail-group">
+        <AdminErrorMessage error={error} fallback="No pudimos cargar el detalle del pedido. Volvé a intentarlo." />
+        <div><button className="button button-secondary" type="button" disabled={loading || action !== null}
+          onClick={() => { titleRef.current?.focus(); onRetry(); }}>Reintentar detalle</button></div>
+      </div>}
+      {detail === null || loading ? null : <DetailGroup title="Resumen del pedido" entries={[
+        ['Estado del pedido', orderStatusLabel(detail.order.status, detail.order.lastErrorCode)],
+        ['Cliente', detail.order.fullName],
+        ['Modalidad', deliveryLabel(detail.order.deliveryMethod)],
+        ['Total', formatMoney(detail.order.totalMinor, detail.order.currency)],
+        ['Reserva', reservationStateLabel(detail.order.stockReservationState)],
+        ['Canal', channelLabel(detail.order.channel)],
+      ]} />}
+      {detail === null || loading || detail.order.lastErrorCode === '—' || detail.order.lastErrorCode === '' ? null : (
+        <p className="admin-partial-warning">{orderIssueLabel(detail.order.lastErrorCode)}</p>
+      )}
+      {detail === null || loading ? null : <AdminTable
+        caption="Pagos del pedido"
+        emptyMessage="No hay pagos registrados para este pedido."
+        columns={['Proveedor', 'Estado del pago', 'Importe', 'Aprobación', 'Última actualización']}
+        rows={detail.payments.map((payment) => [
+          providerLabel(payment.provider),
+          humanStatus(payment.mappedStatus),
+          formatMoney(payment.amountMinor, payment.currency),
+          formatDate(payment.approvedAt),
+          formatDate(payment.providerUpdatedAt === '—' ? payment.updatedAt : payment.providerUpdatedAt),
+        ])}
+      />}
       {detail?.order.channel === 'whatsapp' && detail.order.status === 'pending' ? (
         <section className="admin-order-actions" aria-labelledby="order-actions-title" aria-busy={action !== null}>
           <div>
@@ -930,27 +1012,29 @@ function OrderDetailPanel({
       {detail?.order.channel === 'checkout_pro' ? (
         <section className="admin-order-actions" aria-labelledby="reconcile-order-title" aria-busy={action !== null}>
           <div>
-            <h4 id="reconcile-order-title">Conciliar pago y stock</h4>
+            <h4 id="reconcile-order-title">Consultar el estado del pago</h4>
             <p>
-              Consulta Mercado Pago con la credencial del entorno. Si encuentra un pago autoritativo,
-              actualiza el pedido y consume la reserva exactamente una vez cuando corresponda.
+              Consultá el estado confirmado por Mercado Pago. El sistema actualizará el pedido
+              y su reserva cuando corresponda, sin duplicar el movimiento de stock.
             </p>
             {detail.order.status === 'refunded' ? (
               <p className="admin-context-note">
                 El reintegro no repone stock automáticamente. Cualquier reposición física requiere
-                una decisión y un ajuste manual trazable.
+                un ajuste en el sistema de inventario.
               </p>
             ) : null}
           </div>
           <div className="admin-inline-actions">
             <button className="button button-primary" type="button" disabled={action !== null} onClick={onReconcile}>
-              {action === 'reconcile' ? 'Conciliando…' : 'Conciliar con Mercado Pago'}
+              {action === 'reconcile' ? 'Verificando pago…' : 'Verificar pago'}
             </button>
           </div>
         </section>
       ) : null}
       {actionMessage === '' ? null : <p className="admin-feedback admin-feedback-success" role="status">{actionMessage}</p>}
-      {actionError === '' ? null : <p className="form-error" role="alert">{actionError}</p>}
+      {actionError === '' ? null : <AdminErrorMessage error={actionError}
+        fallback="No pudimos confirmar el resultado de la operación. Revisá el estado del pedido antes de volver a intentarlo." />}
+      {detail === null || loading ? null : <OrderDetailContent detail={detail} />}
     </article>
   );
 }
@@ -960,29 +1044,11 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
   return (
     <div className="admin-order-detail-content">
       <DetailGroup
-        title="Datos generales"
-        entries={[
-          ['Número de pedido', formatOrderNumber(order.id)],
-          ['ID interno', order.id],
-          ['Canal', channelLabel(order.channel)],
-          ['Estado', humanStatus(order.status)],
-          ['Creación', formatDate(order.createdAt)],
-          ['Actualización', formatDate(order.updatedAt)],
-          ['Aprobación', formatDate(order.approvedAt)],
-          ['Resolución', formatDate(order.resolvedAt)],
-          ['Resuelto por', order.resolvedBy],
-          ['Moneda', order.currency],
-          ['Preferencia Mercado Pago', order.preferenceId],
-          ['Incidencia conocida', orderIssueLabel(order.lastErrorCode)],
-        ]}
-      />
-      <DetailGroup
         title="Reserva e inventario"
         entries={[
-          ['Estado de stock', reservationStateLabel(order.stockReservationState)],
           ['Reserva creada', formatDate(order.stockReservedAt)],
           ['Vencimiento de reserva', formatDate(order.stockReservationExpiresAt)],
-          ['Consumo de stock', formatDate(order.stockConsumedAt)],
+          ['Stock descontado', formatDate(order.stockConsumedAt)],
           ['Política de reintegro', 'No repone stock automáticamente'],
         ]}
       />
@@ -991,16 +1057,13 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
         entries={[
           ['Productos', formatMoney(order.productsTotalMinor, order.currency)],
           ['Envío', formatMoney(order.shippingMinor, order.currency)],
-          ['Total', formatMoney(order.totalMinor, order.currency)],
           ['Unidades', order.itemCount.toLocaleString('es-AR')],
           ['Peso', formatWeight(order.totalWeightGrams)],
         ]}
       />
       <DetailGroup
-        title="Fulfillment"
+        title="Contacto y entrega"
         entries={[
-          ['Modalidad', deliveryLabel(order.deliveryMethod)],
-          ['Cliente', order.fullName],
           ['Teléfono', order.phone],
           ['Dirección', order.address],
           ['Localidad', order.locality],
@@ -1011,39 +1074,45 @@ function OrderDetailContent({ detail }: Readonly<{ detail: AdminOrderDetail }>) 
       <AdminTable
         caption={order.channel === 'whatsapp' && order.status === 'pending'
           ? 'Productos y unidades reservadas'
-          : 'Items del pedido'}
-        columns={['Producto', 'Presentación', 'SKU', 'Stock', 'Cantidad', 'Precio unitario', 'Subtotal']}
+          : 'Productos del pedido'}
+        columns={['Producto', 'Presentación', 'Código de producto', 'Cantidad', 'Precio unitario', 'Subtotal']}
         rows={detail.items.map((item) => [
-          item.name === '—' ? item.productId : item.name,
+          item.name === '—' ? 'Producto sin nombre disponible' : item.name,
           item.presentation,
           item.sku,
-          item.stockControlled ? 'Controlado' : 'Sin control numérico',
           item.quantity.toLocaleString('es-AR'),
           formatMoney(item.unitPriceMinor, order.currency),
           formatMoney(item.subtotalMinor, order.currency),
         ])}
       />
-      <AdminTable
-        caption="Pagos reportados por el proveedor"
-        columns={[
-          'Proveedor', 'ID proveedor', 'Estado mapeado', 'Estado proveedor',
-          'Detalle', 'Importe', 'Aprobación', 'Última actualización',
-        ]}
-        rows={detail.payments.map((payment) => [
-          providerLabel(payment.provider),
-          payment.providerPaymentId,
-          humanStatus(payment.mappedStatus),
-          payment.providerStatus,
-          payment.statusDetail,
-          formatMoney(payment.amountMinor, payment.currency),
-          formatDate(payment.approvedAt),
-          formatDate(payment.providerUpdatedAt === '—' ? payment.updatedAt : payment.providerUpdatedAt),
-        ])}
-      />
+      <details className="admin-order-technical">
+        <summary>Información para soporte</summary>
+        <DetailGroup title="Registro del pedido" entries={[
+          ['ID interno', order.id],
+          ['Creación', formatDate(order.createdAt)],
+          ['Actualización', formatDate(order.updatedAt)],
+          ['Aprobación', formatDate(order.approvedAt)],
+          ['Resolución', formatDate(order.resolvedAt)],
+          ['Resuelto por', order.resolvedBy],
+          ['Moneda', order.currency],
+          ['Preferencia Mercado Pago', order.preferenceId],
+          ['Código de incidencia', order.lastErrorCode],
+          ['Estado del pedido', order.status],
+          ['Estado de la reserva', order.stockReservationState],
+          ['Modalidad', order.deliveryMethod],
+          ['Canal', order.channel],
+        ]} />
+        <AdminTable caption="Referencias de productos" columns={['Producto', 'ID', 'Control de stock']}
+          rows={detail.items.map(item => [item.name, item.productId, item.stockControlled ? 'Sí' : 'No'])} />
+        <AdminTable caption="Referencias de pagos" emptyMessage="No hay referencias de pagos para este pedido."
+          columns={['Proveedor', 'ID proveedor', 'Estado proveedor', 'Detalle']}
+          rows={detail.payments.map(payment => [providerLabel(payment.provider), payment.providerPaymentId,
+            payment.providerStatus, payment.statusDetail])} />
+      </details>
       <p className="admin-context-note">
-        Los importes y snapshots son históricos y no se editan desde esta vista. Sólo los pedidos
-        de WhatsApp pendientes admiten aprobación o rechazo; Checkout Pro sólo admite una
-        conciliación contra el estado autoritativo de Mercado Pago.
+        Los importes y datos registrados no se editan desde esta vista. Sólo los pedidos
+        de WhatsApp pendientes admiten aprobación o rechazo. Para los pagos en línea, usá
+        Verificar pago para consultar Mercado Pago.
       </p>
     </div>
   );
@@ -1075,24 +1144,28 @@ function ExportActions({
     <div className="admin-export-actions" aria-label="Exportaciones">
       {section === 'summary' || section === 'orders' ? (
         <a className="button button-secondary" href={`/api/admin/exports/orders.csv?${orderQuery}`}>
-          Exportar pedidos CSV
+          Descargar pedidos (CSV)
         </a>
       ) : null}
       {section === 'summary' || section === 'analytics' ? (
         <a className="button button-secondary" href={`/api/admin/exports/analytics.csv?${analyticsQuery}`}>
-          Exportar analítica CSV
+          Descargar visitas (CSV)
         </a>
       ) : null}
     </div>
   );
 }
 
-function PartialDataNotice({ issues }: Readonly<{ issues: readonly string[] }>) {
+function PartialDataNotice({ issues, onRetry }: Readonly<{ issues: readonly string[]; onRetry: () => void }>) {
   if (issues.length === 0) return null;
   return (
     <div className="admin-partial-warning" role="alert">
-      <p>Algunos datos no pudieron cargarse. Las secciones disponibles siguen siendo válidas.</p>
-      <ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+      <p>No pudimos cargar todos los datos. Podés seguir consultando las secciones disponibles.</p>
+      <p>Falta cargar: {issues.map(issue => issue.split(':')[0]).join(', ')}.</p>
+      <button className="button button-secondary" type="button" onClick={onRetry}>Volver a cargar</button>
+      <details><summary>Información para soporte</summary>
+        <ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+      </details>
     </div>
   );
 }
@@ -1101,28 +1174,42 @@ function UnavailableState({ label }: Readonly<{ label: string }>) {
   return <p className="admin-unavailable-state">No se pudo mostrar {label}.</p>;
 }
 
+function AdminErrorMessage({ error, fallback }: Readonly<{ error: string; fallback: string }>) {
+  const message = adminErrorLabel(error, fallback);
+  return <div>
+    <p className="form-error" role="alert">{message}</p>
+    {message === error ? null : <details><summary>Información para soporte</summary><p>{error}</p></details>}
+  </div>;
+}
+
 function AdminTable({
   caption,
   columns,
+  emptyMessage = 'No hay datos para el período seleccionado.',
   rows,
+  stackOnMobile = false,
 }: Readonly<{
   caption: string;
   columns: readonly string[];
+  emptyMessage?: string;
   rows: readonly (readonly ReactNode[])[];
+  stackOnMobile?: boolean;
 }>) {
   return (
     <div className="admin-table-wrap">
-      <table className="admin-table">
+      <table className={`admin-table${stackOnMobile ? ' admin-table-mobile-stack' : ''}`} role={stackOnMobile ? 'table' : undefined}>
         <caption>{caption}</caption>
-        <thead>
-          <tr>{columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr>
+        <thead role={stackOnMobile ? 'rowgroup' : undefined}>
+          <tr role={stackOnMobile ? 'row' : undefined}>{columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr>
         </thead>
-        <tbody>
+        <tbody role={stackOnMobile ? 'rowgroup' : undefined}>
           {rows.length === 0 ? (
-            <tr><td colSpan={columns.length}>No hay datos para el período seleccionado.</td></tr>
+            <tr><td colSpan={columns.length}>{emptyMessage}</td></tr>
           ) : rows.map((row, rowIndex) => (
-            <tr key={`${caption}-${rowIndex}`}>
-              {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}
+            <tr key={`${caption}-${rowIndex}`} role={stackOnMobile ? 'row' : undefined}>
+              {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} role={stackOnMobile ? 'cell' : undefined}>
+                {stackOnMobile ? <span className="admin-mobile-cell-label" aria-hidden="true">{columns[cellIndex]}</span> : null}{cell}
+              </td>)}
             </tr>
           ))}
         </tbody>
@@ -1220,7 +1307,7 @@ async function getJson(
     // La validación siguiente produce un mensaje estable.
   }
   if (!response.ok) {
-    throw new Error(readApiMessage(payload) ?? 'No se pudo consultar la información administrativa.');
+    throw new Error(readApiMessage(payload, response.status));
   }
   return payload;
 }
@@ -1247,7 +1334,7 @@ async function postAdminAction(
     // La validación siguiente produce un mensaje estable.
   }
   if (!response.ok) {
-    throw new Error(readApiMessage(payload) ?? 'No se pudo actualizar el pedido.');
+    throw new Error(readApiMessage(payload, response.status));
   }
   return payload;
 }
@@ -1407,9 +1494,11 @@ function parseTrend(value: unknown): readonly AnalyticsTrendRow[] {
   }));
 }
 
-function readApiMessage(value: unknown): string | null {
-  if (!isRecord(value) || !isRecord(value.error) || typeof value.error.message !== 'string') return null;
-  return value.error.message.trim() || null;
+function readApiMessage(value: unknown, status: number): string {
+  if (!isRecord(value) || !isRecord(value.error)) return `HTTP ${status}`;
+  const code = typeof value.error.code === 'string' ? value.error.code : `HTTP ${status}`;
+  const message = typeof value.error.message === 'string' ? value.error.message.trim() : '';
+  return message === '' ? code : `${code}: ${message}`;
 }
 
 function readText(row: UnknownRow, key: string): string {
@@ -1501,44 +1590,44 @@ function formatWeight(value: number | null): string {
 }
 
 function deliveryLabel(value: string): string {
-  if (value === 'coordinated_pickup') return 'Coordinada';
+  if (value === 'coordinated_pickup') return 'Retiro coordinado';
   if (value === 'correo_argentino') return 'Correo Argentino';
   if (value === '—') return 'Pedido previo';
-  return value;
+  return 'Consultar detalle de entrega';
 }
 
 function providerLabel(value: string): string {
-  return value === 'mercadopago' ? 'Mercado Pago' : value;
+  return value === 'mercadopago' ? 'Mercado Pago' : 'Otro medio de pago';
 }
 
 function reservationStateLabel(value: string): string {
   const labels: Record<string, string> = {
-    consumed: 'Consumido',
-    not_controlled: 'Sin control numérico',
-    released: 'Liberado',
-    reserved: 'Reservado',
+    consumed: 'Stock descontado',
+    not_controlled: 'Sin control de cantidades',
+    released: 'Unidades liberadas',
+    reserved: 'Unidades reservadas',
   };
-  return labels[value] ?? value;
+  return Object.hasOwn(labels, value) ? labels[value]! : 'Requiere revisión';
 }
 
 function channelLabel(value: string): string {
   if (value === 'whatsapp') return 'WhatsApp';
-  if (value === 'checkout_pro') return 'Checkout Pro';
+  if (value === 'checkout_pro') return 'Pago en línea';
   if (value === '—') return 'Pedido previo';
-  return value;
+  return 'Otro canal';
 }
 
 function humanStatus(value: string): string {
   const labels: Record<string, string> = {
-    preference_pending: 'Preparando preferencia',
+    preference_pending: 'Preparando pago',
     pending: 'Pendiente',
     approved: 'Aprobado',
     rejected: 'Rechazado',
     cancelled: 'Cancelado',
     refunded: 'Reintegrado',
-    failed: 'Fallido',
+    failed: 'Con error',
   };
-  return labels[value] ?? value;
+  return Object.hasOwn(labels, value) ? labels[value]! : 'Requiere revisión';
 }
 
 function orderStatusLabel(status: string, errorCode: string): string {
@@ -1546,9 +1635,68 @@ function orderStatusLabel(status: string, errorCode: string): string {
 }
 
 function orderIssueLabel(errorCode: string): string {
-  return errorCode === 'WHATSAPP_RESERVATION_EXPIRED'
-    ? 'La reserva venció y las unidades fueron liberadas.'
-    : errorCode;
+  const messages: Record<string, string> = {
+    WHATSAPP_RESERVATION_EXPIRED: 'La reserva venció y las unidades fueron liberadas.',
+    DUX_ORDER_RECONCILIATION_REQUIRED: 'Revisá la reserva de este pedido en Dux antes de continuar.',
+    DUX_ORDER_LIFECYCLE_UNAVAILABLE: 'La reserva en Dux necesita revisión antes de continuar.',
+    STOCK_RECONCILIATION_REQUIRED: 'Las cantidades reservadas necesitan revisión antes de continuar.',
+  };
+  return Object.hasOwn(messages, errorCode) ? messages[errorCode]!
+    : 'Este pedido tiene una incidencia. Abrí el detalle para revisar el pago y la reserva.';
+}
+
+function adminErrorLabel(error: string, fallback: string): string {
+  const code = error.split(':')[0] ?? '';
+  const messages: Record<string, string> = {
+    ORDER_NOT_FOUND: 'No encontramos el pedido. Volvé al listado y actualizalo.',
+    'HTTP 404': 'No encontramos el pedido. Volvé al listado y actualizalo.',
+    'HTTP 429': 'Se hicieron muchas consultas seguidas. Esperá un momento y volvé a intentarlo.',
+    ORDER_CHANNEL_CONFLICT: 'Este pedido no admite esta acción. Revisá su canal y estado actualizado.',
+    PAYMENT_ORDER_MISMATCH: 'El pago informado no coincide con este pedido. Revisá los datos con soporte antes de continuar.',
+    PAYMENT_IDENTITY_CONFLICT: 'El pago está asociado a otro pedido. Pedí ayuda a soporte antes de continuar.',
+    DUX_ORDER_LIFECYCLE_UNAVAILABLE: 'No pudimos actualizar la reserva en Dux. Revisá el estado del pago y pedí ayuda antes de continuar.',
+    DUX_ORDER_RECONCILIATION_REQUIRED: 'Revisá los productos y la reserva de este pedido en Dux antes de cambiar su estado.',
+    STOCK_RECONCILIATION_REQUIRED: 'Las cantidades reservadas necesitan revisión antes de continuar.',
+    WHATSAPP_RESERVATION_EXPIRED: 'La reserva venció. Revisá el estado actualizado del pedido.',
+    ORDER_STATE_CONFLICT: 'El pedido cambió. Revisá su estado actualizado antes de continuar.',
+    ADMIN_AUDIT_UNAVAILABLE: 'No pudimos registrar la operación. Revisá el pedido y pedí ayuda antes de volver a intentarlo.',
+  };
+  if (error === 'La sesión administrativa venció.') return 'Tu sesión venció. Ingresá nuevamente.';
+  return Object.hasOwn(messages, code) ? messages[code]! : fallback;
+}
+
+function auditActionLabel(value: string): string {
+  const labels: Record<string, string> = {
+    'admin.summary.read': 'Consulta del resumen',
+    'admin.orders.list': 'Consulta de pedidos',
+    'admin.order.read': 'Consulta de un pedido',
+    'admin.order.approve': 'Aprobación de pedido',
+    'admin.order.reject': 'Rechazo de pedido',
+    'admin.order.reconcile': 'Verificación de pago',
+    'admin.order.assisted_dux_lifecycle': 'Gestión de reserva en Dux',
+    'admin.web_requests.list': 'Consulta de compras web',
+    'admin.web_requests.detail': 'Consulta de una compra web',
+    'admin.web_requests.resolve': 'Respuesta a una solicitud de compra',
+    'admin.web_requests.direct_checkout_resume': 'Reintento de preparación de compra',
+    'admin.web_requests.assisted_checkout_state': 'Consulta de preparación de compra',
+    'admin.web_requests.assisted_checkout_prepare': 'Preparación de compra con asistencia',
+    'admin.commerce.attention': 'Consulta de pedidos que necesitan revisión',
+    'admin.commerce.readiness': 'Consulta del estado de la tienda',
+    'admin.dux.status': 'Consulta de la conexión con Dux',
+    'admin.dux.sync': 'Actualización de datos desde Dux',
+    'admin.audit.list': 'Consulta del historial de actividad',
+    'admin.orders.export': 'Descarga de pedidos',
+    'admin.analytics.export': 'Descarga de visitas',
+    'admin.mercadolibre.authorize': 'Conexión con Mercado Libre',
+    'admin.mercadolibre.status': 'Consulta de la conexión con Mercado Libre',
+    'admin.mercadolibre.sync': 'Actualización de datos desde Mercado Libre',
+    'admin.mercadolibre.editorial.status': 'Consulta de publicaciones de Mercado Libre',
+    'admin.mercadolibre.editorial.sync': 'Consulta de publicaciones para actualizar textos y fotos',
+    'admin.mercadolibre.editorial.review.read': 'Consulta de textos y fotos pendientes de revisión',
+    'admin.mercadolibre.editorial.review.decide': 'Revisión de textos y fotos de Mercado Libre',
+  };
+  if (value.startsWith('admin.analytics.')) return 'Consulta de visitas de la tienda';
+  return Object.hasOwn(labels, value) ? labels[value]! : 'Otra actividad registrada';
 }
 
 function percentage(numerator: number, denominator: number): string {
@@ -1558,7 +1706,7 @@ function percentage(numerator: number, denominator: number): string {
 
 function reachLabel(value: number, total: number): string {
   const formatted = percentage(value, total);
-  return formatted === '—' ? 'Sin base consentida' : `${formatted} de sesiones consentidas`;
+  return formatted === '—' ? 'Sin visitas registradas' : `${formatted} de las visitas registradas`;
 }
 
 function relevantEventTotal(row: AnalyticsTrendRow): number {
@@ -1571,55 +1719,55 @@ function eventLabel(value: string): string {
     page_view: 'Vista de página',
     product_view: 'Vista de producto',
     cart_add: 'Agregado al carrito',
-    manual_payment_click: 'Histórico: clic en Link de Pago manual',
+    manual_payment_click: 'Historial: clic en el anterior enlace de pago',
     whatsapp_open: 'Apertura de WhatsApp',
-    checkout_start: 'Inicio de Checkout Pro integrado',
-    checkout_redirect: 'Redirección de Checkout Pro integrado',
+    checkout_start: 'Inicio de compra en línea',
+    checkout_redirect: 'Ir a Mercado Pago',
   };
-  return labels[value] ?? value;
+  return Object.hasOwn(labels, value) ? labels[value]! : 'Otra acción';
 }
 
 function eventMeaning(value: string): string {
-  if (value === 'manual_payment_click') return 'Interacción histórica del flujo retirado; no confirma pago.';
-  if (value === 'whatsapp_open') return 'Canal asistido; no confirma pago.';
+  if (value === 'manual_payment_click') return 'Enlace anterior, ya retirado; no confirma pago.';
+  if (value === 'whatsapp_open') return 'Abrió WhatsApp; no confirma pago.';
   if (value === 'checkout_start' || value === 'checkout_redirect') {
-    return 'Interacción del flujo integrado; no confirma pago.';
+    return 'Avanzó hacia el pago; no confirma que haya pagado.';
   }
-  return 'Interacción consentida.';
+  return 'Acción registrada con consentimiento.';
 }
 
 function dimensionLabel(dimension: 'source' | 'device_class', value: string): string {
   const labels: Record<string, string> = dimension === 'source'
     ? { direct: 'Directa', referral: 'Referencia', campaign: 'Campaña', unknown: 'Desconocida' }
     : { mobile: 'Móvil', tablet: 'Tablet', desktop: 'Escritorio', unknown: 'Desconocido' };
-  return labels[value] ?? value;
+  return Object.hasOwn(labels, value) ? labels[value]! : 'Otro';
 }
 
 function sectionHeading(section: AdminReportSection) {
   switch (section) {
     case 'summary':
       return {
-        title: 'Resumen operativo',
-        description: 'Interacciones consentidas y comercio confirmado, separados por su evidencia real.',
+        title: 'Resumen del negocio',
+        description: 'Revisá los pedidos pendientes, los cobros y las visitas de tu tienda.',
         loadingLabel: 'el resumen',
       } as const;
     case 'orders':
       return {
         title: 'Pedidos',
-        description: 'Revisá pedidos, reservas y transiciones administrativas de WhatsApp.',
+        description: 'Consultá qué se pidió, quién compra, cómo se entrega y el estado de cada pago.',
         loadingLabel: 'los pedidos',
       } as const;
     case 'analytics':
       return {
-        title: 'Analítica first-party',
-        description: 'Flujo manual, productos, fuentes, dispositivos y tendencia diaria con consentimiento.',
-        loadingLabel: 'la analítica',
+        title: 'Visitas a la tienda',
+        description: 'Conocé qué productos se consultan y cómo llegan las visitas a tu tienda.',
+        loadingLabel: 'las visitas',
       } as const;
     case 'audit':
       return {
-        title: 'Auditoría administrativa',
-        description: 'Trazabilidad de accesos y acciones administrativas de sólo lectura.',
-        loadingLabel: 'la auditoría',
+        title: 'Actividad de la administración',
+        description: 'Consultá quién realizó cada acción y si se completó.',
+        loadingLabel: 'la actividad',
       } as const;
   }
 }

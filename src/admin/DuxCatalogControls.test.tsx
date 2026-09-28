@@ -22,10 +22,11 @@ describe('controles del catálogo público', () => {
       return Promise.resolve(json(state));
     }));
     render(<DuxCatalogControls />);
-    const enable = await screen.findByRole('button', { name: 'Habilitar catálogo público Dux' });
+    const enable = await screen.findByRole('button', { name: 'Mostrar catálogo en la tienda' });
     expect(enable).toBeEnabled();
     fireEvent.click(enable);
-    expect(screen.getByRole('dialog')).toHaveTextContent('2 mostrarán “Consultar precio”');
+    expect(screen.getByRole('dialog')).toHaveTextContent('2 no tienen precio disponible');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Esta acción no habilita ni deshabilita el pago');
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(enable).toHaveFocus();
@@ -33,22 +34,24 @@ describe('controles del catálogo público', () => {
     fireEvent.click(enable);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar publicación' }));
     await waitFor(() => expect(writes).toEqual([{ publicCatalogEnabled: true, confirmation: 'ENABLE_DUX_PUBLIC_CATALOG' }]));
-    const rollback = await screen.findByRole('button', { name: 'Restaurar catálogo local' });
+    const rollback = await screen.findByRole('button', { name: 'Volver al catálogo anterior' });
     expect(screen.getByText('Corte comercial').parentElement).toHaveTextContent('Deshabilitado');
+    expect(screen.getByText('Corte comercial')).not.toBeVisible();
     fireEvent.click(rollback);
     await waitFor(() => expect(writes[1]).toEqual({ publicCatalogEnabled: false }));
-    expect(await screen.findByText('Catálogo local restaurado. El snapshot y los vínculos se conservaron.')).toBeVisible();
+    expect(await screen.findByText('Se volvió al catálogo anterior. La información de Dux se conservó.')).toBeVisible();
   });
   it('sin snapshot la activación está bloqueada; migración pendiente no expone acciones', async () => {
     const state: { control: ReturnType<typeof payload>['control']; snapshot: null } = { control: payload().control, snapshot: null };
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(() => Promise.resolve(json(state))));
     const { unmount } = render(<DuxCatalogControls />);
-    expect(await screen.findByRole('button', { name: 'Habilitar catálogo público Dux' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Mostrar catálogo en la tienda' })).toBeDisabled();
     unmount();
     state.control.migrationApplied = false;
     render(<DuxCatalogControls />);
-    expect(await screen.findByText(/La migración 0017 está pendiente/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Habilitar catálogo público Dux' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/La publicación todavía no está disponible/)).toBeVisible();
+    expect(screen.getByText(/Migración 0017: pendiente/)).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Mostrar catálogo en la tienda' })).not.toBeInTheDocument();
   });
 
   it('ignora un GET anterior que termina después de publicar y conserva el rollback visible', async () => {
@@ -68,17 +71,17 @@ describe('controles del catálogo público', () => {
       return Promise.resolve(json(state));
     }));
     render(<DuxCatalogControls />);
-    const enable = await screen.findByRole('button', { name: 'Habilitar catálogo público Dux' });
+    const enable = await screen.findByRole('button', { name: 'Mostrar catálogo en la tienda' });
     act(() => { window.dispatchEvent(new Event('shekinah:admin-products-refresh')); });
     await waitFor(() => expect(readCount).toBe(2));
     fireEvent.click(enable);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar publicación' }));
-    expect(await screen.findByRole('button', { name: 'Restaurar catálogo local' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Volver al catálogo anterior' })).toBeEnabled();
     await waitFor(() => expect(readCount).toBe(3));
     await act(async () => { resolveEarlier?.(); await Promise.resolve(); });
-    expect(screen.getByRole('button', { name: 'Restaurar catálogo local' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Habilitar catálogo público Dux' })).not.toBeInTheDocument();
-    expect(screen.getByText('Catálogo Dux visible').parentElement).toHaveTextContent('Habilitado');
+    expect(screen.getByRole('button', { name: 'Volver al catálogo anterior' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Mostrar catálogo en la tienda' })).not.toBeInTheDocument();
+    expect(screen.getByText('Visibilidad').parentElement).toHaveTextContent('Visible para los visitantes');
   });
 
   it('ignora respuesta de sesión vencida de una lectura desmontada', async () => {
@@ -89,5 +92,19 @@ describe('controles del catálogo público', () => {
     rendered.unmount();
     await act(async () => { resolveRead?.(new Response('{}', { status: 401 })); await Promise.resolve(); });
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('oculta el diagnóstico técnico y permite consultar otra vez sin cambiar la publicación', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValueOnce(new Error('D1_READ_FAILURE'))
+      .mockResolvedValueOnce(json(payload()));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxCatalogControls />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Volvé a consultar su estado');
+    expect(screen.getByText('D1_READ_FAILURE')).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a consultar el catálogo' }));
+    expect(await screen.findByRole('button', { name: 'Mostrar catálogo en la tienda' })).toBeEnabled();
+    expect(screen.getByRole('heading', { name: 'Catálogo de la tienda' })).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method === undefined)).toBe(true);
   });
 });

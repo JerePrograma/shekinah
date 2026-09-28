@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { parseProduct, parseProductDetail } from '../catalog/model';
 import { ProductPage } from './ProductPage';
@@ -23,7 +23,7 @@ it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real D
   expect(stock.querySelector('time')).toHaveAttribute('datetime', '2026-09-07T18:59:00.000Z');
   expect(stock.querySelector('time')).toHaveTextContent('15:59:00');
   expect(stock).not.toHaveTextContent(/kilogramos|unidades/iu);
-  expect(stock).toHaveTextContent('Las compras todavía no están habilitadas.');
+  expect(stock).toHaveTextContent('El precio y la disponibilidad deben confirmarse antes del pago.');
   if (availabilityState === 'updating') expect(stock).toHaveTextContent('necesita actualizarse');
   if (availabilityState === 'out_of_stock') {
     expect(screen.getByRole('button', { name: 'Producto no disponible' })).toBeDisabled();
@@ -35,6 +35,17 @@ it.each(['verified', 'updating', 'out_of_stock'] as const)('muestra stock real D
 const { loadDetail, add } = vi.hoisted(() => ({ loadDetail: vi.fn(), add: vi.fn() }));
 vi.mock('../data/runtime-catalog', () => ({ loadRuntimeProductDetail: loadDetail, getRuntimeCatalogProduct: () => undefined }));
 vi.mock('../cart/CartContext', () => ({ useCart: () => ({ add, storedItems: [] }) }));
+
+it('explica una falla de carga y permite recuperar la misma ficha sin confundirla con un 404', async () => {
+  loadDetail.mockRejectedValueOnce(new Error('No pudimos cargar el producto. Revisá tu conexión y reintentá.'))
+    .mockResolvedValueOnce(null);
+  render(<ProductPage navigate={vi.fn()} productSlug="producto" />);
+  expect(await screen.findByRole('heading', { name: 'No pudimos cargar el producto' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: 'Producto no encontrado' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar carga' }));
+  expect(await screen.findByRole('heading', { name: 'Producto no encontrado' })).toBeVisible();
+  expect(loadDetail).toHaveBeenLastCalledWith('producto');
+});
 
 it.each(['placeholder', 'missing_or_zero', 'invalid'])('la ficha Dux %s explica el precio ausente y bloquea el carrito', async (priceStatus) => {
   const summary = parseProduct({

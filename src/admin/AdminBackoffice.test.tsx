@@ -33,9 +33,9 @@ describe('autenticación del backoffice', () => {
     render(<AdminBackoffice navigate={vi.fn()} />);
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Administración / Backoffice' }),
+      screen.getByRole('heading', { level: 1, name: 'Administración de Shekinah' }),
     ).toBeVisible();
-    expect(screen.getByRole('status')).toHaveTextContent('Comprobando sesión administrativa…');
+    expect(screen.getByRole('status')).toHaveTextContent('Comprobando tu sesión…');
     expect(screen.queryByText('Catálogo de productos')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -90,7 +90,7 @@ describe('autenticación del backoffice', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo iniciar sesión. Revisá las credenciales e intentá nuevamente.',
+      'No pudimos iniciar sesión. Revisá el usuario y la contraseña e intentá nuevamente.',
     );
     expect(screen.queryByText('El usuario no existe.')).not.toBeInTheDocument();
     expect(password).toHaveValue('');
@@ -136,19 +136,31 @@ describe('autenticación del backoffice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ingresar' }));
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Administración / Backoffice' }),
+      await screen.findByRole('heading', { level: 1, name: 'Administración de Shekinah' }),
     ).toBeVisible();
-    expect(await screen.findByRole('heading', { level: 2, name: 'Resumen operativo' })).toBeVisible();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Resumen del negocio' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Resumen del negocio' })
+      .compareDocumentPosition(screen.getByRole('heading', { name: 'Estado de la tienda' }))
+      & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getByRole('button', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(screen.getByRole('button', { name: 'Dux' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver pedidos' }));
+    expect(screen.getByRole('heading', { name: 'Pedidos' }))
+      .toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Pedidos' })
+      .compareDocumentPosition(screen.getByRole('button', { name: 'Consultar solicitudes web' }))
+      & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Dux y Mercado Libre' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Dux Software' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Dux' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 2, name: 'Dux Software' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Dux y Mercado Libre' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByText('Autorizar cuenta vendedora')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 2, name: 'Catálogo de productos' })).toHaveFocus();
     expect(screen.queryByRole('button', {name:'Nuevo producto'})).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Analítica' }));
-    expect(await screen.findByRole('heading', { level: 2, name: 'Analítica first-party' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Visitas' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 2, name: 'Visitas a la tienda' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
     expect(screen.queryByRole('textbox', {name:'Nombre'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
@@ -179,7 +191,7 @@ describe('autenticación del backoffice', () => {
     const username = await screen.findByRole('textbox', { name: 'Usuario' });
     await waitFor(() => expect(username).toHaveFocus());
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'La sesión administrativa venció. Ingresá nuevamente.',
+      'Tu sesión venció. Ingresá nuevamente.',
     );
     expect(screen.queryByText('Catálogo de productos')).not.toBeInTheDocument();
     await waitFor(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import {
   CATALOG_API_SCHEMA_VERSION,
@@ -19,6 +19,23 @@ let cachedCategories: readonly CatalogCategory[] = Object.freeze([]);
 let pendingLoad: Promise<RuntimeCatalogState> | null = null;
 const productListeners = new Set<(products: readonly Product[]) => void>();
 const categoryListeners = new Set<(categories: readonly CatalogCategory[]) => void>();
+export type RuntimeCatalogStatus = 'loading' | 'ready' | 'error';
+let catalogStatus: RuntimeCatalogStatus = 'loading';
+const statusListeners = new Set<() => void>();
+
+function subscribeStatus(listener: () => void) {
+  statusListeners.add(listener);
+  return () => { statusListeners.delete(listener); };
+}
+
+export function useRuntimeCatalogStatus(): RuntimeCatalogStatus {
+  return useSyncExternalStore(subscribeStatus, () => catalogStatus);
+}
+
+function publishStatus(status: RuntimeCatalogStatus) {
+  catalogStatus = status;
+  statusListeners.forEach((listener) => listener());
+}
 
 type RuntimeCatalogState = Readonly<{
   products: readonly Product[];
@@ -62,9 +79,12 @@ export function isRuntimeCatalogResolved(): boolean {
 }
 
 export async function refreshRuntimeCatalog(): Promise<readonly Product[]> {
-  pendingLoad ??= loadCatalog().finally(() => {
-    pendingLoad = null;
-  });
+  if (pendingLoad === null) {
+    publishStatus('loading');
+    pendingLoad = loadCatalog().finally(() => {
+      pendingLoad = null;
+    });
+  }
   const state = await pendingLoad;
   if (state.products !== cachedProducts) {
     cachedProducts = state.products;
@@ -74,6 +94,7 @@ export async function refreshRuntimeCatalog(): Promise<readonly Product[]> {
     cachedCategories = state.categories;
     categoryListeners.forEach((listener) => listener(cachedCategories));
   }
+  publishStatus(catalogResolved ? 'ready' : 'error');
   return cachedProducts;
 }
 
@@ -82,6 +103,7 @@ export async function loadRuntimeProductDetail(
 ): Promise<CatalogProductDetail | null> {
   try {
     const response = await fetch(`/api/catalog/${encodeURIComponent(slug)}`, {
+      signal: AbortSignal.timeout(15_000),
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
@@ -99,20 +121,23 @@ export async function loadRuntimeProductDetail(
     if (!isRecord(payload) || !isRecord(payload.product)) {
       throw new Error('El catálogo dinámico devolvió un producto inválido.');
     }
-    if (!compatibleCatalogSchema(payload) || !duxIdentity(payload.product)) return null;
+    if (!compatibleCatalogSchema(payload) || !duxIdentity(payload.product)) {
+      throw new Error('Respuesta de producto no compatible.');
+    }
     // La ficha puede responder antes que el listado, o después de un nuevo
     // snapshot. Sus categorías Dux no dependen del catálogo guardado en memoria.
     const summary = parseProduct(payload.product);
-    if (summary.slug !== slug) return null;
+    if (summary.slug !== slug) throw new Error('La respuesta no corresponde al producto.');
     return parseProductDetail(summary, payload.product);
   } catch {
-    return null;
+    throw new Error('No pudimos cargar el producto. Revisá tu conexión y reintentá.');
   }
 }
 
 async function loadCatalog(): Promise<RuntimeCatalogState> {
   try {
     const response = await fetch('/api/catalog', {
+      signal: AbortSignal.timeout(15_000),
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
