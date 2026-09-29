@@ -195,7 +195,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   const automaticCheckout = continueAutomatically.current && receipt !== null &&
     receipt.checkoutAvailable && receipt.totalMinor !== null && error === '';
   const simpleProgress = preparing || automaticCheckout;
-  const showRecovery = (identity !== null || linkedToken !== null) && !simpleProgress && checkoutUrl === null;
+  const canPay = receipt?.checkoutAvailable === true && receipt.totalMinor !== null;
+  const paymentConfirmed = receipt?.paymentStatus === 'approved' && !receipt.paymentRequiresReview;
+  const showRecovery = (identity !== null || linkedToken !== null) && !simpleProgress && checkoutUrl === null &&
+    (!canPay || error !== '');
   if (!registrationEnabled && identity === null && linkedToken === null) return null;
   return <section className="fulfillment-form web-request-panel" aria-labelledby="web-request-title" aria-busy={busy || recovering}>
     <h2 id="web-request-title">Tu pedido</h2>
@@ -213,10 +216,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
       {receipt.totalMinor === null ? null : <p><strong>Total confirmado:</strong> {formatMinor(receipt.totalMinor)}.</p>}
       {receipt.checkoutAvailable && receipt.totalMinor !== null && checkoutUrl === null ? <button className="button button-primary" type="button" disabled={disabled || busy}
         onClick={() => void startCheckout()}>{busy ? 'Abriendo Mercado Pago…' : 'Ir a Mercado Pago'}</button> : null}
-      {whatsappNumber === null ? null : <a className="button button-secondary"
-        href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`}
+      {!paymentConfirmed || whatsappNumber === null ? null : <a className="button button-secondary"
+        href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola, ya realicé mi compra en Shekinah. Quisiera coordinar la entrega.')}`}
         target="_blank" rel="noopener noreferrer" onClick={() => { void trackAnalyticsEvent('whatsapp_open', { path: '/carrito' }); }}>
-        Consultar por WhatsApp (opcional)
+        Enviar mensaje por WhatsApp
       </a>}
     </> : null}
     {checkoutUrl === null ? null : <a className="button button-primary" href={checkoutUrl}>Ir a Mercado Pago</a>}
@@ -258,10 +261,10 @@ function receiptStatusMessage(receipt: WebRequestReceipt): string {
         ? 'El pago anterior no se completó. Podés volver a Mercado Pago con esta misma compra.'
         : 'Tu compra está lista para pagar. Podés continuar a Mercado Pago.';
     }
-    return 'El total está confirmado. Te avisaremos cuando puedas continuar al pago.';
+    return 'No pudimos habilitar el pago de esta compra. Tu pedido sigue guardado; podés volver a consultar su estado.';
   }
   if (receipt.status === 'rejected') return 'No pudimos completar esta compra. No se confirmó ningún cobro. Podés revisar el carrito e iniciar otra.';
-  return 'Estamos revisando disponibilidad y entrega. Te avisaremos cuando puedas continuar al pago.';
+  return 'Estamos revisando disponibilidad y entrega. Todavía no se confirmó el total para pagar.';
 }
 
 function shouldWatchRequest(receipt: WebRequestReceipt): boolean {

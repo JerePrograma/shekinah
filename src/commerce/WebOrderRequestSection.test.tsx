@@ -248,7 +248,7 @@ it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita dobl
   expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('status')).toHaveTextContent('Estamos revisando disponibilidad y entrega');
-  expect(screen.getByRole('link', { name: 'Consultar por WhatsApp (opcional)' })).toBeVisible();
+  expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Enlace protegido de esta solicitud' })).not.toBeInTheDocument();
   expect(document.body).not.toHaveTextContent('WEB-');
   expect(document.body).not.toHaveTextContent('Solicitud registrada');
@@ -500,4 +500,73 @@ it.each([
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).not.toHaveBeenCalled();
   expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+
+it('prioriza el pago de una compra recuperada sin exigir consultar ni contactar por WhatsApp', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue(ready);
+  doubles.checkout.mockImplementation(() => new Promise(() => undefined));
+  render(component());
+  const pay = await screen.findByRole('button', { name: 'Ir a Mercado Pago' });
+  expect(pay).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Consultar mi compra' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  fireEvent.click(pay); fireEvent.click(pay);
+  await waitFor(() => expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(ready.publicToken, ready.totalMinor));
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('un checkout bloqueado conserva la recuperación sin prometer un aviso ni sustituir el pago por WhatsApp', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...ready, checkoutAvailable: false });
+  render(component());
+  await screen.findByRole('heading', { name: 'Tu compra' });
+  expect(screen.getByRole('status')).toHaveTextContent('No pudimos habilitar el pago de esta compra');
+  expect(document.body).not.toHaveTextContent('Te avisaremos');
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Consultar mi compra' })).toBeEnabled();
+  expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
+});
+
+it('ofrece coordinación por WhatsApp después de un pago acreditado, sin filtrar la identidad protegida', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...ready, checkoutAvailable: false, paymentStatus: 'approved' });
+  render(component());
+  const link = await screen.findByRole('link', { name: 'Enviar mensaje por WhatsApp' });
+  expect(screen.getByRole('status')).toHaveTextContent('Pago recibido y acreditado');
+  const url = new URL(link.getAttribute('href') ?? '');
+  expect(url.origin).toBe('https://wa.me');
+  expect(url.pathname).toBe('/5492236216559');
+  expect(url.searchParams.get('text')).toContain('coordinar la entrega');
+  expect(url.toString()).not.toContain(receipt.publicToken);
+  expect(url.toString()).not.toContain(identity.ownerSecret);
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it.each(['pending', 'rejected', 'cancelled', 'refunded'] as const)(
+  'no presenta coordinación de compra acreditada para un pago %s', async paymentStatus => {
+    doubles.read.mockResolvedValue(identity);
+    doubles.recover.mockResolvedValue({ ...ready, checkoutAvailable: false, paymentStatus });
+    render(component());
+    await screen.findByRole('heading', { name: 'Tu compra' });
+    expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
+    expect(doubles.checkout).not.toHaveBeenCalled();
+  },
+);
+
+it('un pago aprobado con incidencia conserva su advertencia sin ofrecer otro cobro', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...ready, checkoutAvailable: false,
+    paymentStatus: 'approved', paymentRequiresReview: true });
+  render(component());
+  await screen.findByRole('heading', { name: 'Tu compra' });
+  expect(screen.getByRole('status')).toHaveTextContent('No vuelvas a pagar');
+  expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
 });
