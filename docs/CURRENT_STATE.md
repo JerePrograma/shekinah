@@ -23,6 +23,14 @@ para distinguir la evidencia remota inicial, las pruebas locales y el rollout.
 La reserva física pendiente no queda certificada por esta corrección; su resolución
 en Dux y el cierre local de una reserva nunca confirmada siguen siendo pendientes.
 
+La corrección funcional `ebd1d4f8def5f4e4b998e075f8a2b2199f607eda` quedó
+acreditada por [CI #558](https://github.com/JerePrograma/shekinah/actions/runs/36726378978)
+y Pages Production `9bb1bc24-3b11-4d9e-9e59-b5c8acfa9ad7`, ambos `success`.
+El reintento diagnóstico de #235 terminó `failure` con HTTP 524; a las 14:11 UTC
+el segundo run todavía figuraba `running` en D1. No se forzó su cierre ni se
+republicó inventario. El coordinador de sincronización que sobreviva a la pérdida
+de respuesta sigue pendiente; un scheduler iniciado no equivale a snapshot publicado.
+
 ## Aplicación administrativa — 2026-09-28
 
 La segunda iteración visual incorpora navegación lateral/móvil, Inicio orientado

@@ -123,3 +123,72 @@ lifecycle existente sólo libera reservas confirmadas: el cierre local de una
 pendiente nunca confirmada necesita un coordinador validado. No hay cancelación
 automática ni compensación inventada. Los rechazos observados del proveedor y
 la irregularidad temporal del scheduler siguen siendo incidencias observadas.
+
+## Cierre del commit funcional: verificado
+
+Commit `ebd1d4f8def5f4e4b998e075f8a2b2199f607eda`,
+`fix: llevar reservas Dux incompatibles a revisión`, publicado con
+`git push origin main`; `git ls-remote` acreditó ese mismo SHA. Árbol limpio,
+sin force-push. Archivos modificados (14):
+
+- `server/direct-checkout.ts`
+- `server/direct-checkout-progress.ts`
+- `server/assisted-checkout-admin-state.ts`
+- `server/direct-checkout.test.ts`
+- `src/admin/AssistedCheckoutAdminPanel.tsx`
+- `src/admin/AssistedCheckoutAdminPanel.test.tsx`
+- `src/commerce/WebOrderRequestSection.tsx`
+- `src/commerce/WebOrderRequestSection.test.tsx`
+- `src/commerce/web-order-contracts.ts`
+- `src/commerce/web-order-contracts.test.ts`
+- `docs/DIRECT_CHECKOUT.md`
+- `docs/CURRENT_STATE.md`
+- `docs/CONTINUATION.md`
+- `docs/validation/DUX_DIRECT_RESERVATION_2026-09-30.md`
+
+[CI #558](https://github.com/JerePrograma/shekinah/actions/runs/36726378978)
+terminó `success` a las 14:07:53 UTC para el SHA funcional. Job Verify
+109924200157 y todos sus pasos `success`, incluidos npm verify, parser/migrador
+PowerShell, procedimiento Dux con mocks y upload. Artefacto
+`shekinah-dist-ebd1d4f8def5f4e4b998e075f8a2b2199f607eda`, ID 11103865805,
+52.288.140 bytes, digest
+`sha256:0a53648cfdcb845605e8b20c3c1fd4cafc7a91923f48bbf5179ede7144727274`.
+No se incorporó el artefacto al repositorio.
+
+La API Cloudflare acreditó canonical/latest Production
+`9bb1bc24-3b11-4d9e-9e59-b5c8acfa9ad7`, `success` a las 14:07:50.819913 UTC,
+con el mismo SHA y `shekinah.ar`. Sin cambios de D1, bindings, secretos, flags
+ni una nueva activación de Checkout Pro. En Chrome cargaron carrito y catálogo;
+el catálogo mostró 660 productos públicos y 28 páginas, preservando el carrito
+existente. La lectura de errores de esa pestaña devolvió cero entradas; no prueba
+ausencia global de errores. No se agregó producto, envió compra, creó preferencia
+ni pagó. El fallback comercial autorizado se conserva; Link de Pago retirado.
+
+Intentos de smoke HTTP desde terminal: fallidos/no disponibles por cadena TLS
+local (`PartialChain` en PowerShell; `UNABLE_TO_VERIFY_LEAF_SIGNATURE` en Node,
+también con `--use-system-ca`). No se desactivó validación de certificados.
+La navegación directa a la API en Chrome fue bloqueada por el cliente; no se
+declara ese control aprobado ni se intentó evadir el bloqueo. El smoke público
+anterior es visual en Chrome, separado de la acreditación autenticada API de Pages.
+
+El reintento de #235 (attempt 2, job 109922654538) terminó `failure` a las
+14:05:21 UTC: el primer ciclo falló `DUX_PROVIDER_REJECTED` y el segundo devolvió
+HTTP 524. D1 todavía registra `dux_sync_e18d64ca-2117-4380-afc4-2f8bf1f2f1bd`
+como `running`, iniciado 14:03:12.753 UTC, en la lectura de las 14:11 UTC, sin
+publicación acreditada. No se forzó una transición SQL ni se dispararon nuevos
+reintentos. [Cloudflare documenta 524 como falta de respuesta de origen dentro del plazo](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/).
+La llamada agregada que espera el ciclo completo puede exceder ese plazo: es
+una inferencia compatible con el log, no una prueba de la causa interna del 400.
+La recuperación duradera de sincronizaciones cortadas y el diagnóstico oficial
+del rechazo Dux siguen pendientes, junto con el cierre físico del pedido 2.
+
+La lectura posterior al deploy conserva el pedido incidente sin preferencia ni
+intento Mercado Pago y con cero pagos. La solicitud seguía con el error anterior
+en `preparing`: esta corrección no hace backfill ni modifica compras por SQL;
+su siguiente avance sobre el código nuevo registrará revisión si la evidencia
+sigue incompatible. No se acredita aquí un smoke real de reserva/pago ni una
+resolución física de ese pedido.
+
+Este cierre se agrega en un commit documental separado, conservando los intentos
+fallidos y la secuencia. El SHA, CI y Pages de ese commit documental se acreditan
+por separado en el informe final; no sustituyen el SHA funcional verificado arriba.
