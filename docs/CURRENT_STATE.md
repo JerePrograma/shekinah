@@ -1,5 +1,29 @@
 # Estado actual
 
+## Limpieza puntual de pruebas autorizada — 2026-09-30
+
+Se eliminaron de la base activa siete solicitudes web y ocho órdenes del titular,
+de prueba/controladas o pendientes, con sus contactos y relaciones operativas.
+La primera operación cerró tres órdenes con pagos verificados y pedidos Dux 1,
+2 y 3 anulados; el SKU 799000516 acreditó 7 real / 0 reservado / 7 disponible.
+La liberación de 3 se registró por el flujo soportado y la purga excepcional
+eliminó la reserva nunca confirmada de 2 sin inventar una transición SQL.
+
+El titular amplió luego el alcance a cinco órdenes legacy de agosto, incluido
+su WhatsApp aprobado, declaró que ninguna tuvo pago y pidió no volver a
+consultar Mercado Pago. Esa declaración sustituye la comprobación del proveedor
+para esta segunda operación; no se presenta como una consulta ejecutada. D1
+conserva cero pagos y los scripts rechazan cualquier evidencia financiera.
+
+El [registro de limpieza](validation/PRODUCTION_TEST_CLEANUP_2026-09-30.md)
+acota los IDs, las autorizaciones y los dos imports aislados. Ambos terminaron
+con comprobaciones posteriores aprobadas. Los diez pedidos restantes y sus
+líneas/contactos conservan sus hashes; la selección completa ya no encuentra
+pedidos del titular, pruebas/controladas ni pendientes. Se preserva el esquema
+íntegro, las protecciones ordinarias y el historial
+Git/documental y de proveedores. El cierre general de reservas no confirmadas
+y la incidencia de sincronización Dux siguen siendo trabajos separados.
+
 ## Incidencia de reserva directa Dux — 2026-09-30
 
 La revisión autenticada encontró CI #557 y Pages productivo aprobados sobre

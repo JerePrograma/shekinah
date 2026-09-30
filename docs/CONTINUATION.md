@@ -1,5 +1,21 @@
 # Continuación
 
+## Limpieza excepcional de las pruebas del titular — 2026-09-30
+
+Revisar [la autorización, alcance y recibos](validation/PRODUCTION_TEST_CLEANUP_2026-09-30.md).
+Ambas operaciones terminaron verificadas: siete solicitudes y tres órdenes Dux,
+y la ampliación explícita posterior a cinco órdenes legacy del titular o de
+prueba/controladas/pendientes. El titular declaró que no hubo pagos para esas
+cinco y pidió no volver a consultar Mercado Pago. Los dos archivos SQL tienen
+IDs exactos y se ejecutaron completos por imports aislados, con guards previos
+y esquema preservado. No repetirlos, usar sentencias separadas ni extenderlos
+a futuros compradores. Si una ejecución histórica parece incierta, leer primero
+los IDs y el esquema. No convertir esta
+excepción en un permiso genérico de borrado o de transición Dux. Conservar
+historial Git/documental y distinguir la purga local de las políticas de los
+proveedores. Diez pedidos ajenos quedaron intactos y la selección completa no
+encuentra otros candidatos. El recibo distingue el cierre de datos del rollout.
+
 ## Continuar desde la incidencia de reserva Dux — 2026-09-30
 
 Revisar [el registro](validation/DUX_DIRECT_RESERVATION_2026-09-30.md) y
