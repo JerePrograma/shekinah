@@ -1,4 +1,4 @@
-import { readWebRequest, startWebRequestCheckout } from './web-request-api';
+import { readWebRequest, recoverWebRequest, startWebRequestCheckout, WebRequestApiError } from './web-request-api';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -52,4 +52,15 @@ it('permite cancelar la consulta de estado sin crear una solicitud ni una prefer
   expect(fetchMock).toHaveBeenCalledExactlyOnceWith(`/api/orders/${'d'.repeat(64)}/request-status`, {
     credentials: 'same-origin', redirect: 'error', signal: controller.signal,
   });
+});
+
+it('conserva status y código propios sin confundir un 404 genérico con un pedido inexistente', async () => {
+  const identity = { idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64) };
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json({ error: { code: 'WEB_REQUEST_NOT_FOUND', message: 'No se encontró la solicitud.' } }, { status: 404 }))
+    .mockResolvedValueOnce(new Response('<html>Not found</html>', { status: 404 }))
+    .mockResolvedValueOnce(Response.json({}, { status: 404 })));
+  await expect(recoverWebRequest(identity)).rejects.toMatchObject({ status: 404, code: 'WEB_REQUEST_NOT_FOUND' });
+  await expect(recoverWebRequest(identity)).rejects.not.toBeInstanceOf(WebRequestApiError);
+  await expect(recoverWebRequest(identity)).rejects.not.toBeInstanceOf(WebRequestApiError);
 });

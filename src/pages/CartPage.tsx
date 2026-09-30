@@ -491,13 +491,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                 })}
               </div>
 
-              <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
+              {webRequestActive ? null : <div className="fulfillment-form" ref={formRef} aria-labelledby="fulfillment-title">
                 <div>
-                  <h2 id="fulfillment-title">Datos de entrega</h2>
-                  <p>Nombre y celular son obligatorios. El domicilio se solicita sólo para Correo Argentino. Estos datos no se guardan en el carrito del navegador.</p>
+                  <h2 id="fulfillment-title">Tus datos</h2>
+                  <p>Los usamos para coordinar tu pedido.</p>
                 </div>
                 <label htmlFor="fulfillment-method">
-                  Modalidad
+                  ¿Cómo querés recibir tu compra?
                   <select
                     id="fulfillment-method"
                     disabled={cartOperationPending}
@@ -508,8 +508,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                       updateField('method', event.currentTarget.value);
                     }}
                   >
-                    <option value="coordinated_pickup">Retiro o entrega personal coordinada</option>
-                    <option value="correo_argentino">Correo Argentino a todo el país</option>
+                    <option value="coordinated_pickup">Retiro o entrega a coordinar</option>
+                    <option value="correo_argentino">Envío por Correo Argentino</option>
                   </select>
                   <FieldError id="error-method" message={showErrors ? validation.errors.method : undefined} />
                 </label>
@@ -541,31 +541,29 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
                   })}
                 </div>
                 <FieldError id="error-form" message={showErrors ? validation.errors.form : undefined} />
-              </div>
+              </div>}
             </div>
 
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
               <h2 id="cart-summary-title">Resumen</h2>
               {confirmedRequestTotal === null ? <dl className="cart-totals">
-                <div><dt>{usesWebRequestFlow ? 'Productos (estimación)' : 'Productos'}</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
-                <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A cotizar' : formatMinor(quote.shippingMinor)}</dd></div>
-                <div className="cart-total"><dt>Total</dt><dd>{usesWebRequestFlow || quote.kind === 'manual' ? 'Pendiente' : formatMinor(checkoutTotalMinor)}</dd></div>
-              </dl> : <dl className="cart-totals"><div className="cart-total"><dt>Total confirmado</dt><dd>{formatMinor(confirmedRequestTotal)}</dd></div></dl>}
+                <div><dt>Productos</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
+                <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A confirmar' : quote.shippingMinor === 0 ? 'Sin cargo' : formatMinor(quote.shippingMinor)}</dd></div>
+                <div className="cart-total"><dt>{usesWebRequestFlow && quote.kind !== 'manual' ? 'Total estimado' : 'Total'}</dt><dd>{quote.kind === 'manual' ? 'A confirmar' : formatMinor(checkoutTotalMinor)}</dd></div>
+              </dl> : null}
               {confirmedRequestTotal === null && fulfillmentDraft.method === 'correo_argentino' && quote.totalWeightGrams !== null ? (
                 <p className="cart-disclaimer">Peso calculado: {formatWeight(quote.totalWeightGrams)}.</p>
               ) : null}
               {confirmedRequestTotal === null && quote.kind === 'manual' ? (
-                <p className="form-error" role="status">{usesWebRequestFlow ? 'El envío requiere cotización. No se cobrará un total sin confirmación previa.' : manualQuoteMessage(quote.tier)}</p>
+                <p className="cart-disclaimer" role="status">{usesWebRequestFlow ? 'Te confirmamos el costo de envío antes de pagar.' : manualQuoteMessage(quote.tier)}</p>
               ) : null}
-              <p className="cart-disclaimer">
-                Confirmamos el precio, el stock y el total antes de cobrar.
-              </p>
+              {confirmedRequestTotal === null && quote.kind !== 'manual' ? <p className="cart-disclaimer">
+                El precio final se confirma antes de pagar.
+              </p> : null}
               {webOrderSection}
               {webRequestActive ? null : usesWebRequestFlow ? (
-                <p className="cart-configuration-note">
-                  {webRequestsEnabled
-                    ? 'Continuá con tus datos para verificar stock y confirmar el total antes de pagar con Mercado Pago.'
-                    : 'No podemos iniciar tu compra en este momento. Tu carrito se conserva.'}
+                webRequestsEnabled ? null : <p className="cart-configuration-note">
+                  No podemos iniciar tu compra en este momento. Tu carrito se conserva.
                 </p>
               ) : commerceEnabled ? (
                 <button
@@ -590,13 +588,13 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               )}
               {usesWebRequestFlow && !webRequestActive && whatsappNumber !== null ? (
                 <a
-                  className="button button-secondary"
+                  className="text-button cart-help-link"
                   href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => void trackAnalyticsEvent('whatsapp_open', { path: appPaths.cart })}
                 >
-                  Consultar por WhatsApp
+                  ¿Necesitás ayuda? Escribinos por WhatsApp
                 </a>
               ) : null}
               {!usesWebRequestFlow && whatsappOrderResult === null ? (
@@ -726,7 +724,9 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     const first = ['method', 'fullName', 'phone', 'address', 'locality', 'province', 'postalCode']
       .find((field) => errors[field as FulfillmentField] !== undefined);
     if (first === undefined) return;
-    formRef.current?.querySelector<HTMLElement>(`#fulfillment-${first}`)?.focus();
+    const control = formRef.current?.querySelector<HTMLElement>(`#fulfillment-${first}`);
+    control?.focus({ preventScroll: true });
+    control?.closest('label')?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
   }
 }
 

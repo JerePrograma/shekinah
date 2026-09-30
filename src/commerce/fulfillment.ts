@@ -128,7 +128,15 @@ function readText(value: unknown, field: FulfillmentField, label: string, min: n
     return null;
   }
   const normalized = normalizeSpace(value);
-  if (normalized.length < min || normalized.length > max) {
+  if (normalized.length === 0) {
+    errors[field] = `Completá tu ${label}.`;
+    return null;
+  }
+  if (normalized.length < min) {
+    errors[field] = `Revisá tu ${label}: parece incompleto.`;
+    return null;
+  }
+  if (normalized.length > max) {
     errors[field] = `El campo ${label} debe tener entre ${min} y ${max} caracteres.`;
     return null;
   }
@@ -144,12 +152,12 @@ function discardOptionalText(value: unknown, field: FulfillmentField, label: str
 }
 function readPhone(value: unknown, errors: Partial<Record<FulfillmentField, string>>): string | null {
   if (typeof value !== 'string' || containsControl(value) || !/^\+?[\d\s().-]+$/u.test(value.normalize('NFKC').trim())) {
-    errors.phone = 'El celular no es válido.';
+    errors.phone = 'Ingresá tu número de celular con código de área.';
     return null;
   }
   const digits = value.replace(/\D/gu, '');
   if (!/^\d{8,15}$/u.test(digits)) {
-    errors.phone = 'El celular debe contener entre 8 y 15 dígitos.';
+    errors.phone = 'Revisá el celular: incluí el código de área y el número completo.';
     return null;
   }
   return digits;

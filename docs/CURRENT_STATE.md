@@ -1,5 +1,19 @@
 # Estado actual
 
+## Compra pública simplificada — 2026-09-30
+
+El carrito distingue datos incompletos, compra recuperada, referencia eliminada
+y fallo de conexión. Presenta una acción principal por estado y errores con una
+instrucción concreta. Un 404 propio vuelve al formulario conservando la misma
+clave; una recuperación incierta nunca habilita otra alta. No pide nuevamente
+los datos de un pedido recuperado. El total estimado y el confirmado se distinguen,
+y los controles del carrito tienen texto y superficie de interacción mayores.
+
+La [validación de claridad de compra](validation/BUYER_CHECKOUT_CLARITY_2026-09-30.md)
+documenta comportamiento, pruebas y límites. Conserva Dux, Mercado Pago,
+idempotencia, datos, flags y esquema. CI y Pages del SHA publicado se acreditan
+por separado; esta mejora no resuelve las incidencias externas de sincronización.
+
 ## Limpieza puntual de pruebas autorizada — 2026-09-30
 
 Se eliminaron de la base activa siete solicitudes web y ocho órdenes del titular,

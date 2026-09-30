@@ -143,7 +143,7 @@ describe('autenticación del backoffice', () => {
       .compareDocumentPosition(screen.getByRole('heading', { name: 'Estado de la tienda' }))
       & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getByRole('button', { name: 'Inicio' })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(screen.getByRole('button', { name: 'Ver pedidos' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver pedidos' }));
     expect(screen.getByRole('heading', { name: 'Pedidos' }))
       .toHaveFocus();
     expect(screen.getByRole('heading', { name: 'Pedidos' })

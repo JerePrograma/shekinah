@@ -62,7 +62,7 @@ test.beforeEach(async ({ context, page }) => {
 });
 
 async function fillWhatsappFulfillment(page: Page) {
-  await page.getByLabel('Modalidad').selectOption('correo_argentino');
+  await page.getByLabel('¿Cómo querés recibir tu compra?').selectOption('correo_argentino');
   await page.getByLabel('Nombre completo').fill('Ana Pérez');
   await page.getByLabel('Celular').fill('+54 9 11 5555-4444');
   await page.getByLabel('Dirección').fill('Calle 123');
@@ -177,11 +177,11 @@ test('Dux asistido no vuelve al checkout anterior cuando las solicitudes no est�
     name: /Agregar .* al carrito/u,
   }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
-  await page.getByLabel('Modalidad').selectOption('correo_argentino');
+  await page.getByLabel('¿Cómo querés recibir tu compra?').selectOption('correo_argentino');
 
   await expect(page.getByText(/No podemos iniciar tu compra en este momento/iu)).toBeVisible();
-  await expect(page.getByText(/El envío requiere cotización/iu)).toBeVisible();
-  const contact = page.getByRole('link', { name: 'Consultar por WhatsApp' });
+  await expect(page.getByText(/Te confirmamos el costo de envío/iu)).toBeVisible();
+  const contact = page.getByRole('link', { name: '¿Necesitás ayuda? Escribinos por WhatsApp' });
   await expect(contact).toBeVisible();
   await expect(contact).toHaveAttribute('href',
     `https://wa.me/5492236216559?text=${encodeURIComponent('Hola, quiero consultar mi compra en Shekinah.')}`);
@@ -209,7 +209,7 @@ test('compra web móvil identifica errores y nunca envía una cantidad distinta 
   await page.goto('/catalogo');
   await page.locator('[data-product]').first().getByRole('button', { name: /Agregar .* al carrito/u }).click();
   await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
-  const continueButton = page.getByRole('button', { name: 'Continuar al pago' });
+  const continueButton = page.getByRole('button', { name: /Completar mis datos|Continuar al pago/u });
   await expect(continueButton).toBeEnabled();
   await continueButton.focus();
   await page.keyboard.press('Enter');
@@ -221,7 +221,7 @@ test('compra web móvil identifica errores y nunca envía una cantidad distinta 
   await page.getByLabel('Celular').fill('12');
   await continueButton.click();
   await expect(page.getByLabel('Celular')).toBeFocused();
-  await expect(page.getByText('El celular debe contener entre 8 y 15 dígitos.')).toBeVisible();
+  await expect(page.getByText('Revisá el celular: incluí el código de área y el número completo.')).toBeVisible();
   expect(requests).toHaveLength(0);
 
   await page.getByLabel('Celular').fill('2235550100');
@@ -243,6 +243,115 @@ test('compra web móvil identifica errores y nunca envía una cantidad distinta 
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ mode: 'create', items: [{ quantity: 2 }],
     fulfillment: { fullName: 'Cliente de prueba', phone: '2235550100' } });
+});
+
+test('una referencia eliminada permite comprar con una sola acción, datos accesibles y la misma identidad', async ({ page }, testInfo) => {
+  const identity = { idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64) };
+  const requests: unknown[] = [];
+  await page.route('**/api/orders/request-capability', route => route.fulfill({ json: { enabled: true } }));
+  await page.route('**/api/orders/request', async route => {
+    const body: unknown = route.request().postDataJSON();
+    requests.push(body);
+    if (requests.length === 1) {
+      expect(body).toEqual({ mode: 'recover', ...identity });
+      await route.fulfill({ status: 404, json: { error: { code: 'WEB_REQUEST_NOT_FOUND', message: 'No se encontró la solicitud.' } } });
+    } else {
+      expect(body).toMatchObject({ mode: 'create', ...identity });
+      await route.fulfill({ status: 201, json: {
+        reference: 'WEB-abcdefghijklmnopqrstuvwx', publicToken: 'e'.repeat(64), status: 'accepted',
+        createdAt: '2026-09-30T12:00:00Z', updatedAt: '2026-09-30T12:00:00Z',
+        paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved',
+        preparationStatus: 'requires_review', checkoutAvailable: false, totalMinor: null,
+      } });
+    }
+  });
+  await page.goto('/catalogo');
+  await page.locator('[data-product]').first().getByRole('button', { name: /Agregar .* al carrito/u }).click();
+  await page.evaluate(async saved => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('shekinah.web-requests.v1', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('attempts');
+      open.onerror = () => reject(new Error('No se pudo preparar la identidad sintética.'));
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction('attempts', 'readwrite');
+        tx.objectStore('attempts').put(saved, 'active');
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(new Error('No se guardó la identidad sintética.')); };
+      };
+    });
+  }, identity);
+  await page.getByRole('link', { name: 'Carrito, 1 producto' }).click();
+  const complete = page.getByRole('button', { name: 'Completar mis datos' });
+  await expect(complete).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Actualizar estado' })).toHaveCount(0);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('.cart-summary .button-primary')).toHaveCount(1);
+    const dimensions = await page.evaluate(() => ({
+      content: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+      viewport: document.documentElement.clientWidth,
+      fields: [...document.querySelectorAll<HTMLInputElement>('.fulfillment-grid input')]
+        .map(input => ({ height: input.getBoundingClientRect().height, font: Number.parseFloat(getComputedStyle(input).fontSize) })),
+    }));
+    expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport + 1);
+    expect(dimensions.fields).toHaveLength(2);
+    expect(dimensions.fields.every(field => field.height >= 48 && field.font >= 16)).toBe(true);
+    expect((await complete.boundingBox())?.height).toBeGreaterThanOrEqual(48);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await complete.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Nombre completo')).toBeFocused();
+  await expect(page.getByText('Completá tu nombre completo.')).toBeVisible();
+  const header = await page.locator('.site-header').boundingBox();
+  const nameField = await page.getByLabel('Nombre completo').boundingBox();
+  expect(nameField?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
+  expect(requests).toHaveLength(1);
+  await page.getByLabel('Nombre completo').fill('Cliente de prueba');
+  await page.getByLabel('Celular').fill('2235550100');
+  await expect(page.getByRole('button', { name: 'Continuar al pago' })).toBeEnabled();
+  await page.locator('.cart-summary').screenshot({ path: testInfo.outputPath('buyer-cart-mobile.png') });
+  await page.screenshot({ path: testInfo.outputPath('buyer-cart-mobile-full.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Continuar al pago' }).click();
+  await expect(page.getByRole('link', { name: 'Pedir ayuda por WhatsApp' })).toBeVisible();
+  await expect(page.getByLabel('Nombre completo')).toHaveCount(0);
+  await expect(page.locator('.cart-summary .button-primary')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Actualizar estado' })).toHaveClass('text-button');
+  await expect(page.locator('body')).not.toContainText(/DIRECT_RESERVATION|Dux|idempotencia/u);
+  await page.locator('.cart-summary').screenshot({ path: testInfo.outputPath('buyer-review-mobile.png') });
+  expect(requests).toHaveLength(2);
+});
+
+test('una conexión interrumpida muestra una sola recuperación y nunca crea otro pedido', async ({ page }, testInfo) => {
+  const token = 'f'.repeat(64);
+  let reads = 0;
+  let creates = 0;
+  await page.route('**/api/orders/request-capability', route => route.fulfill({ json: { enabled: true } }));
+  await page.route('**/api/orders/request', route => { creates += 1; return route.fulfill({ status: 500, json: {} }); });
+  await page.route(`**/api/orders/${token}/request-status`, async route => {
+    reads += 1;
+    if (reads === 1) await route.abort('failed');
+    else await route.fulfill({ json: {
+      reference: 'WEB-abcdefghijklmnopqrstuvwx', status: 'accepted',
+      createdAt: '2026-09-30T12:00:00Z', updatedAt: '2026-09-30T12:00:00Z',
+      paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'confirmed',
+      preparationStatus: 'prepared', checkoutAvailable: true, totalMinor: 350000,
+    } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/carrito#solicitud=${token}`);
+  await expect(page.getByRole('alert')).toHaveText('No pudimos consultar tu pedido. Tocá «Volver a intentar».');
+  await expect(page.locator('.web-request-panel .button-primary')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Continuar al pago' })).toHaveCount(0);
+  await page.locator('.web-request-panel').screenshot({ path: testInfo.outputPath('buyer-retry-mobile.png') });
+  await page.getByRole('button', { name: 'Volver a intentar' }).click();
+  await expect(page.getByRole('button', { name: 'Ir a Mercado Pago' })).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByText('Total confirmado:')).toBeVisible();
+  expect(reads).toBe(2);
+  expect(creates).toBe(0);
 });
 
 test('actualiza la solicitud y permite continuar a Mercado Pago sin recargar datos', async ({ page }) => {
@@ -336,9 +445,9 @@ test('compra directa: un solo CTA prepara y redirige sin pausas adicionales tras
   await page.getByLabel('Celular').fill('2235550100');
   await page.getByRole('button', { name: 'Continuar al pago' }).click();
   await expect(page.getByRole('heading', { name: 'Estamos preparando tu compra…' })).toBeVisible();
-  await expect(page.getByText('Estamos confirmando disponibilidad y total.')).toBeVisible();
+  await expect(page.getByText('Esperá un momento. Esta pantalla se actualiza sola.')).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/Solicitud registrada|WEB-|Enlace protegido|Consultar estado de la solicitud|Dux|verificaciones/u);
-  await expect(page.getByRole('button', { name: 'Consultar mi compra' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Actualizar estado' })).toHaveCount(0);
   expect(checkouts).toBe(0);
   await expect.poll(() => creates).toBe(1);
   await page.clock.fastForward(8000);
@@ -598,7 +707,7 @@ test('mide sólo aperturas reales y conserva Checkout cerrado, pedido y WhatsApp
   await expect(page.getByRole('link', { name: /Mercado Pago/u })).toHaveCount(0);
   expect(events.filter(isManualPaymentClick)).toHaveLength(0);
 
-  await page.getByLabel('Modalidad').selectOption('correo_argentino');
+  await page.getByLabel('¿Cómo querés recibir tu compra?').selectOption('correo_argentino');
   await page.getByRole('textbox', { name: 'Nombre completo' }).fill('Cliente de prueba');
   await page.getByRole('textbox', { name: 'Celular' }).fill('5491100000000');
   await page.getByRole('textbox', { name: 'Dirección' }).fill('Calle de prueba 123');

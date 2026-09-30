@@ -1,5 +1,16 @@
 # Continuación
 
+## Recorrido público claro — 2026-09-30
+
+Aplicar el [contrato de recuperación y claridad](validation/BUYER_CHECKOUT_CLARITY_2026-09-30.md).
+La referencia de una prueba eliminada puede seguir en IndexedDB: sólo un
+`404 WEB_REQUEST_NOT_FOUND` propio habilita volver al formulario, conservando la
+misma clave para el próximo gesto deliberado. No borrar identidades ni ofrecer
+una nueva creación ante red, respuesta inválida o estado incierto. Mantener una
+acción principal, correcciones junto al campo y confirmación server-side antes
+del cobro. La revisión de reserva tiene ayuda opcional por WhatsApp; abrir ese
+enlace no crea, reserva, paga ni envía un mensaje automáticamente.
+
 ## Limpieza excepcional de las pruebas del titular — 2026-09-30
 
 Revisar [la autorización, alcance y recibos](validation/PRODUCTION_TEST_CLEANUP_2026-09-30.md).

@@ -151,7 +151,7 @@ describe('CartPage', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     renderCart();
-    const continueButton = screen.getByRole('button', { name: 'Continuar al pago' });
+    const continueButton = screen.getByRole('button', { name: 'Completar mis datos' });
     await waitFor(() => expect(continueButton).toBeEnabled());
     fireEvent.click(continueButton);
     const name = screen.getByRole('textbox', { name: 'Nombre completo' });
@@ -166,7 +166,7 @@ describe('CartPage', () => {
     fireEvent.click(continueButton);
     await waitFor(() => expect(phone).toHaveFocus());
     expect(phone).toHaveAttribute('type', 'tel');
-    expect(phone).toHaveAccessibleDescription('El celular debe contener entre 8 y 15 dígitos.');
+    expect(phone).toHaveAccessibleDescription('Revisá el celular: incluí el código de área y el número completo.');
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.change(phone, { target: { value: '2235550100' } });
@@ -256,7 +256,7 @@ describe('CartPage', () => {
 
   it('conserva una modalidad de entrega cambiada hasta completar sus datos', () => {
     renderCart();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Modalidad' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: '¿Cómo querés recibir tu compra?' }), {
       target: { value: 'correo_argentino' },
     });
 
@@ -323,8 +323,7 @@ describe('CartPage', () => {
     renderCart();
 
     expect(screen.queryByRole('button', { name: 'Pagar con Mercado Pago' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Continuá con tus datos para verificar stock/u)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Continuar al pago' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Completar mis datos' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Pedir por WhatsApp' })).not.toBeInTheDocument();
     expect(createCheckoutPreference).not.toHaveBeenCalled();
   });
@@ -339,8 +338,9 @@ describe('CartPage', () => {
     renderCart();
     await screen.findByRole('button',{name:'Ir a Mercado Pago'});
     const summary=screen.getByRole('complementary',{name:'Resumen'});
-    expect(await within(summary).findByText('Total confirmado')).toBeVisible();
-    expect(summary).toHaveTextContent('1.234,50');
+    expect(await within(summary).findByText('Total confirmado:')).toBeVisible();
+    expect(summary).toHaveTextContent('1.234,5');
+    expect(screen.queryByRole('textbox', { name: 'Nombre completo' })).not.toBeInTheDocument();
     expect(summary).not.toHaveTextContent('Pendiente');
     expect(summary).not.toHaveTextContent('requiere cotización');
     expect(screen.getByRole('button',{name:'Ir a Mercado Pago'})).toBeEnabled();
@@ -350,7 +350,7 @@ describe('CartPage', () => {
     commerceState.enabled = commerceEnabled;
     commerceState.assistedOnly = true;
     renderCart();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Modalidad' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: '¿Cómo querés recibir tu compra?' }), {
       target: { value: 'correo_argentino' },
     });
 
@@ -359,7 +359,7 @@ describe('CartPage', () => {
     expect(screen.queryByRole('checkbox', { name: /Acepto compartir/iu })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Continuar al pago' })).not.toBeInTheDocument();
     expect(screen.getByText(/No podemos iniciar tu compra en este momento/iu)).toBeVisible();
-    expect(screen.getByText(/El envío requiere cotización/iu)).toBeVisible();
+    expect(screen.getByText(/Te confirmamos el costo de envío/iu)).toBeVisible();
     expect(screen.queryByText(/peso determinístico|cotización por WhatsApp/iu)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.name })).toBeVisible();
     expect(createCheckoutPreference).not.toHaveBeenCalled();
@@ -371,7 +371,7 @@ describe('CartPage', () => {
     webOrderState.enabled = registrationEnabled;
     renderCart();
 
-    const contact = screen.getByRole('link', { name: 'Consultar por WhatsApp' });
+    const contact = screen.getByRole('link', { name: '¿Necesitás ayuda? Escribinos por WhatsApp' });
     expect(contact).toBeVisible();
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {
       target: { value: 'Persona de prueba' },
@@ -400,7 +400,7 @@ describe('CartPage', () => {
     commerceState.assistedOnly = true;
     webOrderState.enabled = true;
     renderCart();
-    expect(screen.getByRole('button', { name: 'Continuar al pago' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Completar mis datos' })).toBeDisabled();
 
     webOrderState.enabled = false;
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre completo' }), {

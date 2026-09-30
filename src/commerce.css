@@ -198,6 +198,44 @@
   box-shadow: var(--shadow-soft);
 }
 
+.cart-page :is(input, select, .button, .text-button, .field-error) {
+  font-size: 1rem;
+}
+
+.cart-page :is(input:not([type='checkbox']), select, .button, .text-button) {
+  min-height: 3rem;
+}
+
+.cart-page :is(.fulfillment-form, .cart-summary) {
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.cart-summary .web-request-panel {
+  padding: 1rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.cart-summary > .text-button,
+.web-request-panel .text-button {
+  border: 0;
+  border-radius: 0;
+  padding-inline: 0;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-align: center;
+}
+
+.cart-help-link {
+  display: grid;
+  place-items: center;
+  overflow-wrap: anywhere;
+}
+
 .cart-confirmation {
   display: grid;
   gap: 0.75rem;

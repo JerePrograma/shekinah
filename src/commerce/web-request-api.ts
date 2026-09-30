@@ -5,6 +5,13 @@ import { parseWebRequestReceipt } from './web-order-contracts';
 
 export type WebRequestCheckout = Readonly<{ checkoutUrl: string; totalMinor: number }>;
 
+export class WebRequestApiError extends Error {
+  constructor(readonly status: number, readonly code: string, message: string) {
+    super(message);
+    this.name = 'WebRequestApiError';
+  }
+}
+
 export async function submitWebRequest(identity: WebRequestIdentity, items: readonly CartItem[], fulfillment: CheckoutFulfillment): Promise<WebRequestReceipt> {
   return post({ mode: 'create', ...identity, fulfillment,
     items: items.map(({ product, quantity }) => ({ productId: product.id, quantity, catalogVersion: product.commerce?.catalogVersion })),
@@ -65,7 +72,8 @@ async function readResponse(response: Response): Promise<unknown> {
   catch { throw new Error('No se pudo confirmar la respuesta. Conservamos el mismo intento para recuperar su estado.'); }
   if (!response.ok) {
     if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string' && value.error.message.trim() !== '') {
-      throw new Error(value.error.message);
+      throw new WebRequestApiError(response.status,
+        typeof value.error.code === 'string' ? value.error.code : 'WEB_REQUEST_FAILED', value.error.message);
     }
     if (response.status === 404) throw new Error('La solicitud todavía no pudo localizarse. Consultá otra vez o reenviá el mismo intento; no se creará una clave nueva.');
     throw new Error('No se pudo completar la operación. Conservamos el intento; revisá los datos y consultá su estado antes de volver a enviarlo.');

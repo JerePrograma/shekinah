@@ -3,12 +3,14 @@ import { StrictMode } from 'react';
 import { WebOrderRequestSection } from './WebOrderRequestSection';
 import type { CartItem } from '../cart/model';
 import type { WebRequestReceipt } from './web-order-contracts';
+import { WebRequestApiError } from './web-request-api';
 
 const doubles = vi.hoisted(() => ({
   read: vi.fn(), create: vi.fn(), finish: vi.fn(), submit: vi.fn(), recover: vi.fn(), token: vi.fn(), checkout: vi.fn(), prepare: vi.fn(),
 }));
 vi.mock('./web-request-session', () => ({ readWebRequestIdentity: doubles.read, getOrCreateWebRequestIdentity: doubles.create, finishWebRequestIdentity: doubles.finish }));
-vi.mock('./web-request-api', () => ({
+vi.mock(import('./web-request-api'), async (importOriginal) => ({
+  ...await importOriginal(),
   submitWebRequest: doubles.submit,
   recoverWebRequest: doubles.recover,
   readWebRequest: doubles.token,
@@ -100,7 +102,7 @@ it('mantiene cinco segundos entre inicios rápidos y el máximo de 120 avances d
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(starts).toHaveLength(120);
   expect(starts.slice(1).every((start, index) => start - (starts[index] ?? start) >= 5000)).toBe(true);
-  expect(screen.getByText(/La confirmación está tardando más de lo esperado/u)).toBeVisible();
+  expect(screen.getByText(/Está tardando más de lo esperado/u)).toBeVisible();
   expect(doubles.checkout).not.toHaveBeenCalled();
 });
 
@@ -117,8 +119,8 @@ it('prepara una compra nueva y continúa automáticamente una sola vez, incluso 
     await Promise.resolve();
   });
   expect(screen.getByRole('heading', { name: 'Estamos preparando tu compra…' })).toBeVisible();
-  expect(screen.getByRole('status')).toHaveTextContent('Estamos confirmando disponibilidad y total.');
-  expect(screen.queryByRole('button', { name: 'Consultar mi compra' })).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Esperá un momento. Esta pantalla se actualiza sola.');
+  expect(screen.queryByRole('button', { name: 'Actualizar estado' })).not.toBeInTheDocument();
   for (const text of ['Solicitud registrada', 'WEB-', 'Enlace protegido', 'Dux', 'verificaciones']) {
     expect(document.body).not.toHaveTextContent(text);
   }
@@ -175,7 +177,7 @@ it('recupera una respuesta de alta perdida y continúa sin crear otro intento', 
   render(component());
   await continueToPayment();
   await screen.findByRole('alert');
-  fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Volver a intentar' }));
   await waitFor(() => expect(doubles.checkout).toHaveBeenCalledExactlyOnceWith(ready.publicToken, ready.totalMinor));
   expect(doubles.recover).toHaveBeenCalledWith(identity);
   expect(doubles.submit).toHaveBeenCalledTimes(1);
@@ -197,7 +199,7 @@ it('espera la recuperación inicial antes de permitir un alta que podría ser ot
   render(component());
   const button = screen.getByRole('button', { name: 'Continuar al pago' });
   expect(button).toBeDisabled();
-  expect(screen.getByRole('status')).toHaveTextContent('Buscando una compra guardada…');
+  expect(screen.getByRole('status')).toHaveTextContent('Un momento, por favor…');
   expect(screen.getByRole('region', { name: 'Tu pedido' })).toHaveAttribute('aria-busy', 'true');
   fireEvent.click(button);
   expect(doubles.create).not.toHaveBeenCalled();
@@ -221,7 +223,7 @@ it('avanza la compra directa sin aprobación humana y ofrece pago sólo tras con
   render(component());
   await act(async()=> { await Promise.resolve(); });
   expect(screen.queryByRole('button',{name:'Ir a Mercado Pago'})).not.toBeInTheDocument();
-  expect(screen.getByRole('status')).toHaveTextContent('Estamos confirmando disponibilidad y total');
+  expect(screen.getByRole('status')).toHaveTextContent('Esperá un momento. Esta pantalla se actualiza sola.');
   await act(async()=> { await vi.advanceTimersByTimeAsync(5000); });
   expect(screen.getByRole('button',{name:'Ir a Mercado Pago'})).toBeEnabled();
   expect(doubles.prepare).toHaveBeenCalledTimes(1);
@@ -247,7 +249,7 @@ it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita dobl
   fireEvent.click(button);
   expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('status')).toHaveTextContent('Estamos revisando disponibilidad y entrega');
+  expect(screen.getByRole('status')).toHaveTextContent('Recibimos tu pedido');
   expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Enlace protegido de esta solicitud' })).not.toBeInTheDocument();
   expect(document.body).not.toHaveTextContent('WEB-');
@@ -258,8 +260,8 @@ it('confirma el registro sin consentimiento ni apertura de WhatsApp y evita dobl
 it('una respuesta perdida conserva la identidad y se recupera sin reenviar la creación', async () => {
   doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida.')); doubles.recover.mockResolvedValue(receipt);
   render(component()); await continueToPayment();
-  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos continuar con tu compra');
-  fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar tu pedido');
+  fireEvent.click(screen.getByRole('button', { name: 'Volver a intentar' }));
   expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
   expect(doubles.submit).toHaveBeenCalledTimes(1); expect(doubles.recover).toHaveBeenCalledWith(identity);
   expect(doubles.finish).not.toHaveBeenCalled();
@@ -291,7 +293,7 @@ it('un enlace protegido no requiere el almacenamiento privado de otro navegador'
 it('no envía si el navegador no logra persistir la identidad', async () => {
   doubles.create.mockRejectedValue(new Error('Almacenamiento no disponible.'));
   render(component()); await continueToPayment();
-  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos continuar con tu compra');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos iniciar la compra en este navegador');
   expect(doubles.submit).not.toHaveBeenCalled();
 });
 
@@ -375,7 +377,7 @@ it('espacia y limita las lecturas automáticas sin cambiar cuotas ni reenviar el
   expect(doubles.token).toHaveBeenCalledTimes(2);
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).toHaveBeenCalledTimes(8);
-  expect(screen.getByText(/La confirmación está tardando más de lo esperado/u)).toBeVisible();
+  expect(screen.getByText(/Está tardando más de lo esperado/u)).toBeVisible();
   expect(doubles.submit).not.toHaveBeenCalled();
   expect(doubles.checkout).not.toHaveBeenCalled();
 });
@@ -448,7 +450,7 @@ it('recupera la revisión guardada tras un 409 y detiene avances sin reemplazar 
   render(component());
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-  expect(screen.getByRole('status')).toHaveTextContent('Necesitamos revisar tu pedido antes de continuar al pago');
+  expect(screen.getByRole('status')).toHaveTextContent('Necesitamos revisar tu pedido antes de que puedas pagar');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(document.body).not.toHaveTextContent('DIRECT_RESERVATION_UNVERIFIED');
   await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(900_000); });
@@ -468,8 +470,8 @@ it('un fallo detiene la consulta automática y permite recuperar el mismo intent
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
   expect(doubles.token).toHaveBeenCalledTimes(1);
-  expect(screen.getByText(/No pudimos actualizar tu compra/u)).toBeVisible();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' })); await Promise.resolve(); });
+  expect(screen.getByRole('alert')).toHaveTextContent('No pudimos consultar tu pedido');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Volver a intentar' })); await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   expect(doubles.recover).toHaveBeenCalledTimes(2);
   expect(doubles.token).toHaveBeenCalledTimes(2);
@@ -486,7 +488,7 @@ it('una respuesta automática antigua no pisa la recuperación manual más recie
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   const signal = doubles.token.mock.calls[0]?.[1] as AbortSignal;
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Consultar mi compra' })); await Promise.resolve(); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Actualizar estado' })); await Promise.resolve(); });
   expect(signal.aborted).toBe(true);
   await act(async () => { resolveRead(receipt); await Promise.resolve(); });
   expect(screen.getByRole('status')).toHaveTextContent('No pudimos completar esta compra');
@@ -534,7 +536,7 @@ it('prioriza el pago de una compra recuperada sin exigir consultar ni contactar 
   render(component());
   const pay = await screen.findByRole('button', { name: 'Ir a Mercado Pago' });
   expect(pay).toBeEnabled();
-  expect(screen.queryByRole('button', { name: 'Consultar mi compra' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Actualizar estado' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
   expect(doubles.checkout).not.toHaveBeenCalled();
   fireEvent.click(pay); fireEvent.click(pay);
@@ -548,10 +550,10 @@ it('un checkout bloqueado conserva la recuperación sin prometer un aviso ni sus
   doubles.recover.mockResolvedValue({ ...ready, checkoutAvailable: false });
   render(component());
   await screen.findByRole('heading', { name: 'Tu compra' });
-  expect(screen.getByRole('status')).toHaveTextContent('No pudimos habilitar el pago de esta compra');
+  expect(screen.getByRole('status')).toHaveTextContent('Tu pedido está guardado');
   expect(document.body).not.toHaveTextContent('Te avisaremos');
   expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Consultar mi compra' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Actualizar estado' })).toBeEnabled();
   expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
   expect(doubles.checkout).not.toHaveBeenCalled();
   expect(doubles.submit).not.toHaveBeenCalled();
@@ -593,4 +595,114 @@ it('un pago aprobado con incidencia conserva su advertencia sin ofrecer otro cob
   expect(screen.getByRole('status')).toHaveTextContent('No vuelvas a pagar');
   expect(screen.queryByRole('link', { name: /WhatsApp/u })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
+});
+
+it('un pedido eliminado vuelve al formulario con una sola acción y conserva la misma identidad', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockRejectedValue(new WebRequestApiError(404, 'WEB_REQUEST_NOT_FOUND', 'No se encontró la solicitud.'));
+  const onActiveChange = vi.fn();
+  render(<WebOrderRequestSection registrationEnabled items={items} fulfillment={fulfillment} disabled={false}
+    onBusyChange={vi.fn()} onActiveChange={onActiveChange} />);
+  const button = screen.getByRole('button', { name: 'Continuar al pago' });
+  await waitFor(() => expect(button).toBeEnabled());
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button')).toEqual([button]);
+  expect(onActiveChange).toHaveBeenLastCalledWith(false);
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+  fireEvent.click(button);
+  await waitFor(() => expect(doubles.submit).toHaveBeenCalledExactlyOnceWith(identity, items, fulfillment));
+});
+
+it.each([
+  new Error('Failed to fetch'),
+  new WebRequestApiError(503, 'WEB_REQUEST_NOT_FOUND', 'Fallo transitorio'),
+  new WebRequestApiError(404, 'OTHER_NOT_FOUND', 'Ruta no disponible'),
+])('una recuperación incierta sólo ofrece reintentar la lectura, sin iniciar otra compra (%s)', async failure => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockRejectedValueOnce(failure).mockResolvedValue(ready);
+  render(component());
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos consultar tu pedido');
+  const retry = screen.getByRole('button', { name: 'Volver a intentar' });
+  expect(screen.getAllByRole('button')).toEqual([retry]);
+  expect(document.body).not.toHaveTextContent('Failed to fetch');
+  expect(doubles.create).not.toHaveBeenCalled();
+  fireEvent.click(retry);
+  await screen.findByRole('button', { name: 'Ir a Mercado Pago' });
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Volver a intentar' })).not.toBeInTheDocument();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('tras perder el alta, exige recuperar antes de reenviar con la misma clave si el servidor no la encuentra', async () => {
+  doubles.submit.mockRejectedValueOnce(new Error('Respuesta perdida')).mockResolvedValue(receipt);
+  doubles.recover.mockRejectedValue(new WebRequestApiError(404, 'WEB_REQUEST_NOT_FOUND', 'No se encontró la solicitud.'));
+  render(component());
+  await continueToPayment();
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Continuar al pago' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Volver a intentar' }));
+  await screen.findByRole('button', { name: 'Continuar al pago' });
+  expect(doubles.submit).toHaveBeenCalledTimes(1);
+  expect(doubles.finish).not.toHaveBeenCalled();
+  await continueToPayment();
+  await waitFor(() => expect(doubles.submit).toHaveBeenCalledTimes(2));
+  expect(doubles.submit.mock.calls.every(call => call[0] === identity)).toBe(true);
+});
+
+it('un enlace inexistente explica cómo volver al carrito sin crear pedidos ni borrar identidades', async () => {
+  window.history.replaceState(null, '', `/carrito#solicitud=${receipt.publicToken}`);
+  doubles.token.mockRejectedValue(new WebRequestApiError(404, 'WEB_REQUEST_NOT_FOUND', 'No se encontró la solicitud.'));
+  render(component());
+  expect(await screen.findByRole('link', { name: 'Volver al carrito' })).toHaveAttribute('href', '/carrito');
+  expect(screen.getByRole('status')).toHaveTextContent('Este pedido ya no está disponible');
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(doubles.create).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('una reserva en revisión ofrece ayuda concreta sin exponer datos ni prometer un contacto automático', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...receipt, preparationStatus: 'requires_review' });
+  render(component());
+  const help = await screen.findByRole('link', { name: 'Pedir ayuda por WhatsApp' });
+  expect(help).toHaveClass('button-primary');
+  expect(screen.getByRole('button', { name: 'Actualizar estado' })).not.toHaveClass('button-primary');
+  expect(document.querySelectorAll('.button-primary')).toHaveLength(1);
+  expect(decodeURIComponent(help.getAttribute('href') ?? '')).toBe('https://wa.me/5492236216559?text=Hola, necesito ayuda para continuar con mi pedido en Shekinah.');
+  expect(document.body).not.toHaveTextContent('Nos pondremos en contacto');
+  expect(screen.queryByRole('button', { name: 'Continuar al pago' })).not.toBeInTheDocument();
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('un error al abrir Mercado Pago mantiene un solo botón de pago con la misma compra', async () => {
+  doubles.submit.mockResolvedValue(ready);
+  doubles.checkout.mockRejectedValue(new Error('Error interno'));
+  render(component());
+  await continueToPayment();
+  await screen.findByRole('alert');
+  expect(screen.getAllByRole('button')).toEqual([screen.getByRole('button', { name: 'Ir a Mercado Pago' })]);
+  expect(document.querySelectorAll('.button-primary')).toHaveLength(1);
+  expect(doubles.finish).not.toHaveBeenCalled();
+});
+
+it('la pausa de consultas mantiene la advertencia de no pagar de nuevo si el pago está pendiente', async () => {
+  vi.useFakeTimers();
+  const pending: WebRequestReceipt = { ...ready, paymentStatus: 'pending', checkoutAvailable: false };
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue(pending);
+  doubles.token.mockResolvedValue(pending);
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+  expect(screen.getByRole('status')).toHaveTextContent('No vuelvas a pagarlo');
+  expect(screen.getByRole('button', { name: 'Actualizar estado' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Ir a Mercado Pago' })).not.toBeInTheDocument();
+  expect(doubles.token).toHaveBeenCalledTimes(8);
+  expect(doubles.checkout).not.toHaveBeenCalled();
 });
