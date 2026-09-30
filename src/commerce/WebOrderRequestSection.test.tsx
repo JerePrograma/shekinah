@@ -423,7 +423,10 @@ it.each(['error', 'ready'] as const)('la visibilidad no reinicia avances tras %s
   vi.useFakeTimers();
   doubles.read.mockResolvedValue(identity);
   doubles.recover.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
-  if (resolution === 'error') doubles.prepare.mockRejectedValue(new Error('Proveedor no disponible'));
+  if (resolution === 'error') {
+    doubles.prepare.mockRejectedValue(new Error('Proveedor no disponible'));
+    doubles.token.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
+  }
   else doubles.prepare.mockResolvedValue(ready);
   render(component());
   await act(async () => { await Promise.resolve(); });
@@ -434,6 +437,27 @@ it.each(['error', 'ready'] as const)('la visibilidad no reinicia avances tras %s
   });
   expect(doubles.prepare).toHaveBeenCalledTimes(1);
   expect(doubles.checkout).not.toHaveBeenCalled();
+});
+
+it('recupera la revisión guardada tras un 409 y detiene avances sin reemplazar la compra', async () => {
+  vi.useFakeTimers();
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...receipt, preparationStatus: 'preparing' });
+  doubles.prepare.mockRejectedValue(new Error('DIRECT_RESERVATION_UNVERIFIED'));
+  doubles.token.mockResolvedValue({ ...receipt, status: 'accepted', preparationStatus: 'requires_review' });
+  render(component());
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(screen.getByRole('status')).toHaveTextContent('Necesitamos revisar tu pedido antes de continuar al pago');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent('DIRECT_RESERVATION_UNVERIFIED');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(900_000); });
+  expect(doubles.prepare).toHaveBeenCalledTimes(1);
+  expect(doubles.token).toHaveBeenCalledExactlyOnceWith(receipt.publicToken, expect.any(AbortSignal));
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
+  expect(doubles.finish).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Preparar otra compra' })).not.toBeInTheDocument();
 });
 
 it('un fallo detiene la consulta automática y permite recuperar el mismo intento', async () => {

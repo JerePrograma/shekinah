@@ -1,4 +1,4 @@
-import { parseAdminWebRequestDetail, parseWebRequestReceipt } from './web-order-contracts';
+import { parseAdminWebRequestDetail, parseDirectReservationReview, parseWebRequestReceipt } from './web-order-contracts';
 
 const receipt = {
   reference: 'WEB-abcdefghijklmnopqrstuvwx',
@@ -46,4 +46,18 @@ it('admite checkout sólo con reserva y total definitivos y nunca durante un pag
 
 it('rechaza detalles administrativos sin snapshot y semántica de solicitud explícitos', () => {
   expect(() => parseAdminWebRequestDetail({ id: 'req_abcdefghijklmnopqrstuvwx', status: 'accepted', snapshot: { totalMinor: 10 } })).toThrow();
+});
+
+it('reconstruye sólo el diagnóstico administrativo con stock decimal y rechaza cantidades inválidas', () => {
+  const review = { code: 'DUX-1', quantity: 2, duxOrderId: 100, duxOrderNumber: 200,
+    before: { realStock: 12.68, reservedStock: 0, availableStock: 12.68 },
+    after: { realStock: 10.68, reservedStock: 2, availableStock: 8.68 },
+    beforeObservedAt: '2026-09-21T18:58:50.364Z', afterObservedAt: '2026-09-30T13:13:21.000Z' };
+  expect(parseDirectReservationReview({ ...review, customer: 'no exponer', after: { ...review.after, token: 'no exponer' } })).toEqual(review);
+  for (const invalid of [ { ...review, code: 'DUX\n1' }, { ...review, quantity: 0 }, { ...review, quantity: 1.5 },
+    { ...review, duxOrderId: -1 }, { ...review, afterObservedAt: 'invalid' },
+    { ...review, after: { ...review.after, realStock: NaN } }, { ...review, before: { ...review.before, reservedStock: -1 } } ]) {
+    expect(() => parseDirectReservationReview(invalid)).toThrow();
+  }
+  expect(parseWebRequestReceipt({ ...receipt, reservationReview: review })).toEqual(receipt);
 });

@@ -411,6 +411,70 @@ it('un ID Dux sin efecto físico de reserva no habilita el cobro', async () => {
   } finally {test.db.close();}
 });
 
+it('un movimiento de stock lleva la misma compra a revisión sin cobrar ni repetir la reserva', async () => {
+  const test = setup(); const provider = paymentGateway();
+  try {
+    await test.steps(4);
+    const originalRequest = await test.db.prepare('SELECT request_json FROM dux_order_operations').first();
+    test.readItem.mockResolvedValue({ ...item, realStock: 10.68, reservedStock: 2, availableStock: 8.68 });
+    await expect(test.advance()).rejects.toMatchObject({ code: 'DIRECT_RESERVATION_UNVERIFIED' });
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ preparationStatus: 'requires_review', checkoutAvailable: false });
+    expect(await readAssistedCheckoutAdminState(test.db, env, id)).toMatchObject({
+      state: 'direct_preparing', preparationStatus: 'requires_review',
+      reservationReview: { code: 'A-001', quantity: 2, duxOrderId: 100, duxOrderNumber: 200,
+        before: { realStock: 12.68, reservedStock: 0, availableStock: 12.68 },
+        after: { realStock: 10.68, reservedStock: 2, availableStock: 8.68 } },
+    });
+    await test.steps(3);
+    expect(test.readItem).toHaveBeenCalledTimes(2);
+    await expect(createOrRecoverAssistedPreference(test.db, token, paymentDependencies, provider)).rejects.toMatchObject({ status: 409 });
+    expect(provider.create).not.toHaveBeenCalled();
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(await test.db.prepare('SELECT request_json FROM dux_order_operations').first()).toEqual(originalRequest);
+    expect(await test.db.prepare('SELECT reservation_state FROM dux_order_links').first()).toEqual({ reservation_state: 'pending' });
+  } finally { test.db.close(); }
+});
+
+it('la revisión administrativa relee el mismo pedido y sólo confirma con el efecto físico original', async () => {
+  const test = setup();
+  try {
+    await test.steps(4);
+    const originalRequest = await test.db.prepare('SELECT request_json,attempted_at FROM dux_order_operations').first();
+    test.readItem.mockResolvedValueOnce(item);
+    await expect(test.advance()).rejects.toMatchObject({ code: 'DIRECT_RESERVATION_UNVERIFIED' });
+    const findCount = test.findOrder.mock.calls.length;
+    const resume = () => advanceDirectCheckout(test.db, env, token, { gateway: test.gateway, now: () => Date.parse(date), resumeReview: true });
+    await resume();
+    expect(test.findOrder).toHaveBeenCalledTimes(findCount + 1);
+    expect(test.readItem).toHaveBeenCalledTimes(2);
+    await resume(); await resume();
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ preparationStatus: 'prepared', checkoutAvailable: true, reservationStatus: 'confirmed' });
+    expect(await test.db.prepare('SELECT request_json,attempted_at FROM dux_order_operations').first()).toEqual(originalRequest);
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+  } finally { test.db.close(); }
+});
+
+it.each(['cancelled', 'replacement'] as const)('una revisión no confía en el pedido cacheado ante %s', async change => {
+  const test = setup();
+  try {
+    await test.steps(4);
+    const created = await test.findOrder();
+    if (created === null) throw new Error('Falta el pedido de la prueba');
+    test.readItem.mockResolvedValue(item);
+    await expect(test.advance()).rejects.toMatchObject({ code: 'DIRECT_RESERVATION_UNVERIFIED' });
+    test.findOrder.mockResolvedValue(change === 'cancelled' ? { ...created, cancelled: true } : { ...created, id: 101, number: 201 });
+    await expect(advanceDirectCheckout(test.db, env, token, { gateway: test.gateway, now: () => Date.parse(date), resumeReview: true }))
+      .rejects.toMatchObject({ code: 'DIRECT_CHECKOUT_EVIDENCE_INVALID' });
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ preparationStatus: 'requires_review', checkoutAvailable: false });
+    expect(test.readItem).toHaveBeenCalledTimes(2);
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(await test.db.prepare('SELECT reservation_state FROM dux_order_links').first()).toEqual({ reservation_state: 'pending' });
+  } finally { test.db.close(); }
+});
+
 it('conserva el intento y su historial e impide fabricar confirmación o reiniciar el POST', async () => {
   const test=setup();
   try {

@@ -2,6 +2,8 @@ import { parseDuxOrderEvidence } from './dux-order-api';
 import type { DuxCommerceItem, DuxOrderEvidence, DuxOrderRequest } from './dux-order-api';
 import { HttpError } from './http';
 import { isRecord } from './validation';
+import { parseDirectReservationReview } from '../src/commerce/web-order-contracts';
+import type { DirectReservationReview } from '../src/commerce/web-order-contracts';
 
 export type DirectLine = Readonly<{
   productId: string; code: string; name: string; quantity: number; unitPriceMinor: number;
@@ -10,6 +12,7 @@ export type DirectLine = Readonly<{
 export type DirectProgress = Readonly<{
   version: 1; catalogVersion: string; lines: readonly DirectLine[];
   order: DuxOrderEvidence | null; stockAfter: readonly DuxCommerceItem[]; stockObservedAt: string | null;
+  reservationReview?: DirectReservationReview | null;
 }>;
 
 export function parseDirectProgress(json: string): DirectProgress {
@@ -36,7 +39,13 @@ export function parseDirectProgress(json: string): DirectProgress {
     const stockObservedAt = value.stockObservedAt ?? null;
     if (stockObservedAt !== null && (typeof stockObservedAt !== 'string' || !Number.isFinite(Date.parse(stockObservedAt)))) throw invalid();
     if (stockAfter.length > 0 && stockObservedAt === null) throw invalid();
-    return Object.freeze({ version: 1, catalogVersion: value.catalogVersion, lines, order, stockAfter, stockObservedAt });
+    const reservationReview = value.reservationReview == null ? null : parseDirectReservationReview(value.reservationReview);
+    if (reservationReview !== null && !lines.some(line => line.code === reservationReview.code &&
+        line.quantity === reservationReview.quantity && line.observedAt === reservationReview.beforeObservedAt &&
+        line.stockBefore.realStock === reservationReview.before.realStock &&
+        line.stockBefore.reservedStock === reservationReview.before.reservedStock &&
+        line.stockBefore.availableStock === reservationReview.before.availableStock)) throw invalid();
+    return Object.freeze({ version: 1, catalogVersion: value.catalogVersion, lines, order, stockAfter, stockObservedAt, reservationReview });
   } catch { throw invalid(); }
 }
 

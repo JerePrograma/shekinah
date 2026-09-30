@@ -31,6 +31,34 @@ export type WebRequestPublic = Readonly<{
 }>;
 export type WebRequestReceipt = WebRequestPublic & Readonly<{ publicToken: string }>;
 
+export type DirectReservationReview = Readonly<{
+  code: string; quantity: number; duxOrderId: number; duxOrderNumber: number;
+  before: Readonly<{ realStock: number; reservedStock: number; availableStock: number }>;
+  after: Readonly<{ realStock: number; reservedStock: number; availableStock: number }>;
+  beforeObservedAt: string; afterObservedAt: string;
+}>;
+
+/** Evidencia de diagnóstico administrativo; nunca acredita una reserva. */
+export function parseDirectReservationReview(value: unknown): DirectReservationReview {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid();
+  const row = value as Record<string, unknown>;
+  const positiveInteger = (entry: unknown): entry is number => typeof entry === 'number' && Number.isSafeInteger(entry) && entry > 0;
+  if (typeof row.code !== 'string' || !row.code.trim() || row.code.length > 300 ||
+      [...row.code].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
+      !positiveInteger(row.quantity) || row.quantity > 99 || !positiveInteger(row.duxOrderId) || !positiveInteger(row.duxOrderNumber) ||
+      typeof row.beforeObservedAt !== 'string' || !Number.isFinite(Date.parse(row.beforeObservedAt)) ||
+      typeof row.afterObservedAt !== 'string' || !Number.isFinite(Date.parse(row.afterObservedAt))) throw invalid();
+  const stock = (entry: unknown): DirectReservationReview['before'] => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) throw invalid();
+    const fields = entry as Record<string, unknown>;
+    const finite = (field: unknown): field is number => typeof field === 'number' && Number.isFinite(field);
+    if (!finite(fields.realStock) || !finite(fields.reservedStock) || fields.reservedStock < 0 || !finite(fields.availableStock)) throw invalid();
+    return Object.freeze({ realStock: fields.realStock, reservedStock: fields.reservedStock, availableStock: fields.availableStock });
+  };
+  return Object.freeze({ code: row.code, quantity: row.quantity, duxOrderId: row.duxOrderId, duxOrderNumber: row.duxOrderNumber,
+    before: stock(row.before), after: stock(row.after), beforeObservedAt: row.beforeObservedAt, afterObservedAt: row.afterObservedAt });
+}
+
 export function webRequestReference(id: string): string {
   return `WEB-${id.slice(4)}`;
 }

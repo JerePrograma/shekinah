@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { formatOrderNumber } from '../commerce/contracts';
+import { parseDirectReservationReview } from '../commerce/web-order-contracts';
+import type { DirectReservationReview } from '../commerce/web-order-contracts';
 
 type PreviewLine = Readonly<{
   productId: string; duxCode: string; name: string; quantity: number; unitPriceMinor: number; subtotalMinor: number;
@@ -18,7 +20,8 @@ type Prepared = Readonly<{
   paymentRequiresReview: boolean;
 }>;
 type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>
-  | Readonly<{state:'direct_preparing';requestId:string;preparationStatus:string;duxReference:string;errorCode:string|null}>;
+  | Readonly<{state:'direct_preparing';requestId:string;preparationStatus:string;duxReference:string;errorCode:string|null;
+      reservationReview?: DirectReservationReview | null}>;
 type LifecycleAction = 'release' | 'finalize';
 const PREPARATION_ERROR = 'No pudimos confirmar la preparación del cobro. Actualizá el estado antes de repetirla.';
 const VERIFICATION_ERROR = 'No pudimos comprobar el pedido en Dux. Actualizá el estado antes de continuar; no crees otra reserva.';
@@ -117,7 +120,10 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       if(response.status===401){onUnauthorized();return;}
       if(!response.ok) throw new AdminActionError(await errorMessage(response,VERIFICATION_ERROR));
       setState(parseState(await response.json(),requestId));
-    } catch(failure:unknown){setError(message(failure,VERIFICATION_ERROR));}
+    } catch(failure:unknown){
+      setError(message(failure,VERIFICATION_ERROR));
+      try { setState(await reloadPreparedState()); } catch { /* Conservar el último estado si la lectura también falla. */ }
+    }
     finally{busyRef.current=false;setBusy(false);onBusyChange(false);}
   }
 
@@ -179,8 +185,27 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
       <details><summary>Datos para revisar el pedido en Dux</summary>
         <p>Referencia: <code>{state.duxReference}</code>.</p>
         {state.errorCode !== null && /^[A-Z][A-Z0-9_]{0,99}$/u.test(state.errorCode) ? <p>Código para soporte: <code>{state.errorCode}</code>.</p> : null}
+        {state.reservationReview == null ? null : <>
+          <p>Pedido Dux {state.reservationReview.duxOrderNumber} (ID {state.reservationReview.duxOrderId}).
+            Producto {state.reservationReview.code}, cantidad solicitada {state.reservationReview.quantity}.</p>
+          <div className="admin-table-wrap"><table className="admin-table">
+            <caption>Lecturas de stock que requieren revisión</caption>
+            <thead><tr><th scope="col">Lectura</th><th scope="col">Real</th><th scope="col">Reservado</th><th scope="col">Disponible</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Antes del pedido</th><td>{state.reservationReview.before.realStock}</td><td>{state.reservationReview.before.reservedStock}</td><td>{state.reservationReview.before.availableStock}</td></tr>
+              <tr><th scope="row">Al verificar la reserva</th><td>{state.reservationReview.after.realStock}</td><td>{state.reservationReview.after.reservedStock}</td><td>{state.reservationReview.after.availableStock}</td></tr>
+            </tbody>
+          </table></div>
+          <p>Lectura inicial: {formatDate(state.reservationReview.beforeObservedAt)}.
+            Verificación: {formatDate(state.reservationReview.afterObservedAt)}.</p>
+          {state.reservationReview.before.realStock !== state.reservationReview.after.realStock
+            ? <p>El stock real cambió entre ambas lecturas. La cantidad reservada global no acredita por sí sola este pedido.</p>
+            : <p>Dux todavía no muestra el aumento reservado y la reducción disponible exigidos para este pedido.</p>}
+        </>}
       </details>
-      {state.preparationStatus === 'preparing' || state.preparationStatus === 'uncertain' ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void resumeDirect()}>Continuar verificación Dux</button> : null}
+      {state.preparationStatus === 'preparing' || state.preparationStatus === 'uncertain' ||
+        (state.preparationStatus === 'requires_review' && state.reservationReview != null)
+        ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void resumeDirect()}>Continuar verificación Dux</button> : null}
     </> : null}
     {state?.state === 'preview' ? <>
       <p>Precios de Dux consultados el {formatDate(state.preview.catalogObservedAt)}.</p>
@@ -256,7 +281,9 @@ function parseState(value: unknown, requestId: string): State {
   if (isRecord(value) && value.state === 'direct_preparing' && value.requestId === requestId &&
       ['preparing','uncertain','failed','requires_review'].includes(String(value.preparationStatus)) &&
       value.duxReference === `shekinah:web:${requestId}` && (value.errorCode === null || typeof value.errorCode === 'string')) {
-    return value as unknown as Extract<State,{state:'direct_preparing'}>;
+    return { state: 'direct_preparing', requestId, preparationStatus: String(value.preparationStatus),
+      duxReference: value.duxReference, errorCode: value.errorCode,
+      reservationReview: value.reservationReview == null ? null : parseDirectReservationReview(value.reservationReview) };
   }
   if (!isRecord(value) || (value.state !== 'preview' && value.state !== 'prepared')) throw invalid();
   if (value.state === 'preview') return Object.freeze({ state: 'preview', preview: parsePreview(value.preview, requestId) });

@@ -70,6 +70,23 @@ El intento se persiste inmediatamente antes del POST Dux. Una respuesta incierta
 
 La administración distingue las compras en preparación de las confirmadas. «Continuar verificación Dux» usa `POST /api/admin/web-order-requests/[id]/resume`, autenticación, origen, auditoría y la misma identidad persistida. No recibe datos de carrito ni habilita otro POST ante incertidumbre. La recuperación requiere que la configuración de compra directa siga habilitada; durante un rollback debe diagnosticarse la incidencia antes de reabrirla.
 
+Desde la corrección del 2026-09-30, `DIRECT_RESERVATION_UNVERIFIED` y la evidencia
+incompatible llevan la preparación a `requires_review`. El comprador recupera
+ese estado mediante GET después del 409 y detiene los avances automáticos sin
+crear otra compra. Administración muestra por separado las lecturas inicial y
+posterior, código, cantidad, ID y número Dux; ese diagnóstico no confirma stock.
+Una continuación administrativa sólo retoma una reserva ya intentada y vuelve
+a consultar el mismo pedido antes de releer stock. Mantiene la cotización y el
+primer intento inmutables, exige el mismo ID/número y conserva todos los guards
+físicos originales. No reajustar la lectura inicial para hacer pasar una reserva
+antigua ni atribuir la cantidad reservada global a una compra concreta.
+
+Una reserva pendiente cuyo stock real cambió puede seguir sin acreditarse aun
+cuando Dux vuelva a responder. Su resolución física corresponde al circuito
+oficial Dux; la continuación no cancela, libera ni reemplaza el pedido. El cierre
+local de reservas pendientes sin confirmación requiere un coordinador validado:
+el lifecycle actual sólo permite liberar reservas previamente confirmadas.
+
 Una solicitud directa que todavía no tiene orden puede cerrarse como incidencia
 mediante el rechazo administrativo existente. El servidor exige una preparación
 sin lease activo, cambia conjuntamente la solicitud a `rejected` y la preparación

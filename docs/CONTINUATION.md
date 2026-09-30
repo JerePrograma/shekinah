@@ -1,5 +1,17 @@
 # Continuación
 
+## Continuar desde la incidencia de reserva Dux — 2026-09-30
+
+Revisar [el registro](validation/DUX_DIRECT_RESERVATION_2026-09-30.md) y
+[el contrato de compra directa](DIRECT_CHECKOUT.md). Un 409 por reserva incompatible
+debe conservar la compra y el intento Dux, presentar `requires_review` y bloquear
+el cobro. Las lecturas de diagnóstico no sustituyen evidencia de reserva. No
+reiniciar la cotización de operaciones intentadas, repetir su POST ni aceptar el
+reservado global como atribución exacta. La continuación administrativa relee el
+pedido y sólo confirma bajo los guards originales; cambios de ID/número o anulación
+mantienen el bloqueo. El circuito de cierre local para reservas nunca confirmadas
+sigue pendiente y no debe resolverse mediante actualizaciones SQL improvisadas.
+
 ## Continuar desde el rediseño administrativo — 2026-09-28
 
 Conservar el [marco administrativo y su jerarquía](design/ADMIN_APPLICATION.md)

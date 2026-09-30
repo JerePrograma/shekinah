@@ -33,6 +33,10 @@ const prepared = {
     paymentRequiresReview: false,
   },
 };
+const reservationReview = { code: 'DUX-1', quantity: 2, duxOrderId: 100, duxOrderNumber: 200,
+  before: { realStock: 9, reservedStock: 0, availableStock: 9 },
+  after: { realStock: 7, reservedStock: 2, availableStock: 5 },
+  beforeObservedAt: '2026-09-21T18:58:50.364Z', afterObservedAt: '2026-09-30T13:13:21.000Z' };
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -224,6 +228,42 @@ it('distingue una revisión necesaria de una preparación en curso', async () =>
   expect(screen.getByText('DIRECT_RESERVATION_UNVERIFIED')).not.toBeVisible();
   fireEvent.click(screen.getByText('Datos para revisar el pedido en Dux'));
   expect(screen.getByText('DIRECT_RESERVATION_UNVERIFIED')).toBeVisible();
+});
+
+it('muestra las lecturas incompatibles y recarga la revisión persistida tras un avance fallido', async () => {
+  const review = { state: 'direct_preparing', requestId, preparationStatus: 'requires_review',
+    duxReference: `shekinah:web:${requestId}`, errorCode: 'DIRECT_RESERVATION_UNVERIFIED', reservationReview };
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(review))
+    .mockResolvedValueOnce(Response.json({ error: { code: 'DIRECT_RESERVATION_UNVERIFIED' } }, { status: 409 }))
+    .mockResolvedValueOnce(Response.json(review));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  await screen.findByRole('status');
+  expect(screen.getByText('Lecturas de stock que requieren revisión')).not.toBeVisible();
+  fireEvent.click(screen.getByText('Datos para revisar el pedido en Dux'));
+  expect(screen.getByRole('table', { name: 'Lecturas de stock que requieren revisión' })).toBeVisible();
+  expect(screen.getByText(/Pedido Dux 200 \(ID 100\)/u)).toBeVisible();
+  expect(screen.getByText(/El stock real cambió entre ambas lecturas/u)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar verificación Dux' }));
+  await screen.findByRole('alert');
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole('status')).toHaveTextContent('La compra necesita revisión');
+  expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  expect(fetchMock.mock.calls[2]?.[1]?.method).toBeUndefined();
+  expect(screen.queryByRole('button', { name: 'Preparar cobro' })).not.toBeInTheDocument();
+});
+
+it('rechaza el diagnóstico inválido antes de permitir continuar la verificación', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+    state: 'direct_preparing', requestId, preparationStatus: 'requires_review',
+    duxReference: `shekinah:web:${requestId}`, errorCode: 'DIRECT_RESERVATION_UNVERIFIED',
+    reservationReview: { ...reservationReview, quantity: -1 },
+  })));
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Continuar verificación Dux' })).not.toBeInTheDocument();
 });
 
 it('recupera un pedido preparado tras un fallo sin exponer errores ni repetir la preparación', async () => {

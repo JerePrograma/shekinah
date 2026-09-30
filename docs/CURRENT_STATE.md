@@ -1,5 +1,28 @@
 # Estado actual
 
+## Incidencia de reserva directa Dux — 2026-09-30
+
+La revisión autenticada encontró CI #557 y Pages productivo aprobados sobre
+`d4ade25b2f8a3afb4f8bd43781fd4767dcf8fc4a`. La reconciliación Dux #233 falló con
+HTTP 502; #234 completó después de un intento fallido y publicó 878 productos.
+Durante el trabajo #235 volvió a fallar con HTTP 502 y dos rechazos del proveedor.
+La observación filtrada del reintento acreditó HTTP 400 de Dux en `/v2/items`;
+el 502 es la respuesta de Shekinah ante ese rechazo, no el status del proveedor.
+Son controles distintos: publicar código no acredita una reserva física.
+
+Una compra del 2026-09-21 seguía en preparación con una lectura inicial de stock
+real 9, reservado 0 y disponible 9. El snapshot posterior registra 7/2/5. El flujo
+conservaba el pedido cacheado y repetía la comparación incompatible. La corrección
+lleva ese fallo a revisión, detiene avances públicos y presenta las dos lecturas
+en administración. La recuperación consulta nuevamente el mismo pedido, sin otro
+POST Dux ni rebajar los guards que habilitan Mercado Pago. No modifica inventario,
+migraciones, flags, preferencias ni pagos existentes.
+
+Consultar [el registro de diagnóstico y validación](validation/DUX_DIRECT_RESERVATION_2026-09-30.md)
+para distinguir la evidencia remota inicial, las pruebas locales y el rollout.
+La reserva física pendiente no queda certificada por esta corrección; su resolución
+en Dux y el cierre local de una reserva nunca confirmada siguen siendo pendientes.
+
 ## Aplicación administrativa — 2026-09-28
 
 La segunda iteración visual incorpora navegación lateral/móvil, Inicio orientado

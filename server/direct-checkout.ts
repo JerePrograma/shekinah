@@ -41,13 +41,13 @@ export async function resumeDirectCheckout(database:D1Database,env:Env,requestId
   const secret=requireSecret(env.ORDER_TOKEN_SECRET,'ORDER_TOKEN_SECRET_MISSING','Falta la protección de pedidos.',32);
   const publicToken=await hmacSha256Hex(secret,`web-request:${row.checkout_idempotency_key}:${row.web_request_owner_hash}`);
   if(await sha256Hex(publicToken)!==row.web_request_token_hash) throw evidenceInvalid();
-  await advanceDirectCheckout(database,env,publicToken);
+  await advanceDirectCheckout(database,env,publicToken,{ resumeReview: true });
 }
 
 /** Una petición avanza como máximo una llamada Dux; el POST de pedido se reclama
  * persistentemente justo antes de enviarlo. GET de estado no llama a este flujo. */
 export async function advanceDirectCheckout(database: D1Database, env: Env, publicToken: string,
-  options: Readonly<{ gateway?: DirectGateway; now?: () => number }> = {}): Promise<void> {
+  options: Readonly<{ gateway?: DirectGateway; now?: () => number; resumeReview?: boolean }> = {}): Promise<void> {
   if (env.DIRECT_CHECKOUT_ENABLED !== 'true' || env.WEB_ORDERS_ENABLED !== 'true') {
     throw new HttpError(503, 'DIRECT_CHECKOUT_DISABLED', 'La compra directa no está disponible temporalmente.');
   }
@@ -61,20 +61,26 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
     FROM checkout_intents WHERE intent_kind = 'web_request' AND web_request_token_hash = ?`)
     .bind(await sha256Hex(publicToken)).first<Identity>();
   if (identity === null) throw notFound();
-  if (identity.web_request_status === 'rejected' || ['prepared', 'failed', 'requires_review'].includes(identity.direct_checkout_state ?? '')) return;
+  if (identity.web_request_status === 'rejected' || ['prepared', 'failed'].includes(identity.direct_checkout_state ?? '') ||
+      (identity.direct_checkout_state === 'requires_review' && options.resumeReview !== true)) return;
   const detail = parseAdminWebRequestDetail(await getAdminWebOrderRequest(database, identity.web_request_id));
   // Sin peso logístico estructurado no se inventa un flete. Esa excepción
   // conserva el circuito asistido; el retiro tiene un importe final de cero.
   if (detail.snapshot.fulfillment.method !== 'coordinated_pickup') return;
   const token = await sha256Hex(randomToken(32));
   const timestamp = validNow(now);
-  const lease = await database.prepare(`UPDATE checkout_intents SET direct_checkout_state = COALESCE(direct_checkout_state, 'preparing'),
+  const lease = await database.prepare(`UPDATE checkout_intents SET direct_checkout_state = CASE
+      WHEN direct_checkout_state = 'requires_review' THEN 'preparing' ELSE COALESCE(direct_checkout_state, 'preparing') END,
     direct_checkout_claim_token = ?, direct_checkout_lease_until_ms = ?, direct_checkout_updated_at = ?
     WHERE web_request_id = ? AND web_request_status <> 'rejected'
-      AND (direct_checkout_state IN ('preparing', 'uncertain') OR (direct_checkout_state IS NULL AND web_request_status = 'submitted'))
+      AND (direct_checkout_state IN ('preparing', 'uncertain') OR (direct_checkout_state IS NULL AND web_request_status = 'submitted')
+        OR (? = 1 AND direct_checkout_state = 'requires_review' AND EXISTS (
+          SELECT 1 FROM orders o JOIN dux_order_operations op ON op.order_id = o.id
+          WHERE o.web_request_id = checkout_intents.web_request_id AND op.idempotency_key = 'automatic-reserve:' || o.id
+            AND op.attempted_at IS NOT NULL AND op.status IN ('pending','uncertain'))))
       AND direct_checkout_lease_until_ms <= ? RETURNING checkout_idempotency_key, web_request_id,
         web_request_token_hash, web_request_status, direct_checkout_state, direct_checkout_progress_json`)
-    .bind(token, timestamp + LEASE_MS, new Date(timestamp).toISOString(), identity.web_request_id, timestamp).first<Identity>();
+    .bind(token, timestamp + LEASE_MS, new Date(timestamp).toISOString(), identity.web_request_id, options.resumeReview === true ? 1 : 0, timestamp).first<Identity>();
   if (lease === null) return;
   identity = lease;
   const gateway = options.gateway ?? new DuxOrderApiClient({ accessToken: config.accessToken, beforeRequest: createDuxRequestGate(database) });
@@ -119,10 +125,11 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
       await closeUnpublishedDraft(database, identity.web_request_id, token, now);
     } else {
       const terminal = code === 'DIRECT_STOCK_INSUFFICIENT' || code === 'DIRECT_PRODUCT_CHANGED';
+      const review = code === 'DIRECT_RESERVATION_UNVERIFIED' || code === 'DIRECT_CHECKOUT_EVIDENCE_INVALID';
       await database.prepare(`UPDATE checkout_intents SET direct_checkout_error_code = ?,
-        direct_checkout_state = CASE WHEN ? = 1 THEN 'failed' ELSE direct_checkout_state END,
+        direct_checkout_state = CASE WHEN ? = 1 THEN 'failed' WHEN ? = 1 THEN 'requires_review' ELSE direct_checkout_state END,
         direct_checkout_updated_at = ? WHERE web_request_id = ? AND direct_checkout_claim_token = ?`)
-        .bind(code, terminal ? 1 : 0, new Date(validNow(now)).toISOString(), identity.web_request_id, token).run();
+        .bind(code, terminal ? 1 : 0, review ? 1 : 0, new Date(validNow(now)).toISOString(), identity.web_request_id, token).run();
     }
     throw failure;
   } finally {
@@ -222,6 +229,8 @@ async function advanceReservation(database: D1Database, identity: Identity, toke
       reference: request.referencia, dateFrom: request.fecha, dateTo: new Date(validNow(now)).toISOString().slice(0, 10) });
     if (order === null) { await markUncertain(database, identity.web_request_id, operation.order_id, token, now); return; }
     const productsTotal = progress.lines.reduce((sum, line) => sum + line.quantity * line.unitPriceMinor, 0);
+    if (progress.reservationReview != null && (order.id !== progress.reservationReview.duxOrderId ||
+        order.number !== progress.reservationReview.duxOrderNumber)) throw evidenceInvalid();
     if (!duxOrderMatchesRequest(order, request) || order.totalMinor !== productsTotal) throw evidenceInvalid();
     await saveProgress(database, identity.web_request_id, token, { ...progress, order }, now);
     return;
@@ -233,9 +242,20 @@ async function advanceReservation(database: D1Database, identity: Identity, toke
   const line = progress.lines[progress.stockAfter.length];
   if (line !== undefined) {
     const item = await gateway.readItem(line.code, tenant.depositId);
-    if (!hasPhysicalReservation(line, item)) throw new HttpError(409, 'DIRECT_RESERVATION_UNVERIFIED', 'Dux todavía no acredita la reserva exacta. No se iniciará el cobro.');
+    if (!hasPhysicalReservation(line, item)) {
+      if (item.code !== line.code) throw evidenceInvalid();
+      // Conservar la cotización inmutable y la lectura incompatible por separado.
+      // Una revisión vuelve a consultar el pedido: nunca reutiliza esta evidencia
+      // como stock confirmado ni repite el POST que ya fue reclamado.
+      const quantities = (stock: typeof item) => ({ realStock: stock.realStock, reservedStock: stock.reservedStock, availableStock: stock.availableStock });
+      await saveProgress(database, identity.web_request_id, token, { ...progress, order: null, stockAfter: [], stockObservedAt: null,
+        reservationReview: { code: line.code, quantity: line.quantity, duxOrderId: progress.order.id, duxOrderNumber: progress.order.number,
+          before: quantities(line.stockBefore), after: quantities(item), beforeObservedAt: line.observedAt,
+          afterObservedAt: new Date(validNow(now)).toISOString() } }, now);
+      throw new HttpError(409, 'DIRECT_RESERVATION_UNVERIFIED', 'La reserva necesita revisión en Dux. Tu compra se conserva y el cobro no está habilitado.');
+    }
     await saveProgress(database, identity.web_request_id, token, { ...progress, stockAfter: [...progress.stockAfter, item],
-      stockObservedAt: progress.stockObservedAt ?? new Date(validNow(now)).toISOString() }, now);
+      stockObservedAt: progress.stockObservedAt ?? new Date(validNow(now)).toISOString(), reservationReview: null }, now);
     return;
   }
   // La lectura inicial puede preceder a una pausa del comprador. Antes de

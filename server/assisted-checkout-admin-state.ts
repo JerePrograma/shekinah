@@ -4,6 +4,8 @@ import { HttpError } from './http';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database, Env } from './platform';
 import { requireDirectCheckoutSchema } from './direct-checkout-schema';
+import { parseDirectProgress } from './direct-checkout-progress';
+import type { DirectReservationReview } from '../src/commerce/web-order-contracts';
 
 export type AssistedCheckoutAdminPrepared = Readonly<{
   orderId: string;
@@ -21,7 +23,8 @@ export type AssistedCheckoutAdminPrepared = Readonly<{
 }>;
 
 export type AssistedCheckoutAdminState =
-  | Readonly<{ state:'direct_preparing'; requestId:string; preparationStatus:string; duxReference:string; errorCode:string|null }>
+  | Readonly<{ state:'direct_preparing'; requestId:string; preparationStatus:string; duxReference:string; errorCode:string|null;
+      reservationReview?: DirectReservationReview | null }>
   | Readonly<{ state: 'preview'; preview: AssistedCheckoutPreview }>
   | Readonly<{ state: 'prepared'; prepared: AssistedCheckoutAdminPrepared }>;
 
@@ -52,9 +55,9 @@ export async function readAssistedCheckoutAdminState(
   requestId: string,
 ): Promise<AssistedCheckoutAdminState> {
   if (!/^req_[A-Za-z0-9_-]{20,128}$/u.test(requestId)) throw notFound();
-  let direct: Readonly<{direct_checkout_state:string|null;direct_checkout_error_code:string|null}>|null = null;
+  let direct: Readonly<{direct_checkout_state:string|null;direct_checkout_error_code:string|null;direct_checkout_progress_json:string|null}>|null = null;
   try {
-    direct = await database.prepare('SELECT direct_checkout_state,direct_checkout_error_code FROM checkout_intents WHERE web_request_id = ?')
+    direct = await database.prepare('SELECT direct_checkout_state,direct_checkout_error_code,direct_checkout_progress_json FROM checkout_intents WHERE web_request_id = ?')
       .bind(requestId).first();
   } catch (error:unknown) {
     if (!(error instanceof Error) || !/no such column:\s*direct_checkout_/iu.test(error.message)) throw error;
@@ -62,7 +65,8 @@ export async function readAssistedCheckoutAdminState(
   if (direct?.direct_checkout_state !== null && direct?.direct_checkout_state !== undefined && direct.direct_checkout_state !== 'prepared') {
     await requireDirectCheckoutSchema(database);
     return {state:'direct_preparing',requestId,preparationStatus:direct.direct_checkout_state,
-      duxReference:`shekinah:web:${requestId}`,errorCode:direct.direct_checkout_error_code};
+      duxReference:`shekinah:web:${requestId}`,errorCode:direct.direct_checkout_error_code,
+      reservationReview: direct.direct_checkout_progress_json === null ? null : parseDirectProgress(direct.direct_checkout_progress_json).reservationReview ?? null };
   }
   const prepared = await readPrepared(database, requestId);
   if (prepared === null) {

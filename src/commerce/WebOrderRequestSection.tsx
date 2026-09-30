@@ -116,6 +116,18 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         } else stopped = true;
       } catch {
         stopped = true;
+        // El avance puede haber guardado una revisión antes de devolver 409.
+        // Recuperar ese estado con un GET no reintenta la reserva ni abre el pago.
+        if (directPreparing && !controller.signal.aborted) {
+          try {
+            const current = await readWebRequest(publicToken, controller.signal);
+            if (controller.signal.aborted) return;
+            setReceipt(current);
+            if (current.preparationStatus === 'requires_review') {
+              setRefreshState('paused'); setError(''); return;
+            }
+          } catch { /* El error visible se conserva si tampoco se puede leer el estado. */ }
+        }
         if (!controller.signal.aborted) { setRefreshState('error'); setError(PUBLIC_ERROR); }
       } finally {
         inFlight = false;
