@@ -17,8 +17,9 @@ const env: Env = { DUX_COMPANY_ID: '12862', PUBLIC_SITE_URL: 'https://example.te
 const identity: AdminContextData = { adminIdentity: { actor: 'test', sub: 'test', authMethod: 'password' } };
 const migrations = readdirSync(resolve('migrations')).filter(file => /^\d{4}_.*\.sql$/u.test(file)).sort();
 
-async function fixture(includeSettings = true) {
-  const db = createTestD1(...migrations.filter(file => includeSettings || !file.startsWith('0025')).map(file => readFileSync(resolve('migrations', file), 'utf8')));
+async function fixture(includeSettings = true, includeName = true) {
+  const db = createTestD1(...migrations.filter(file => (includeSettings || !/^002[57]/u.test(file)) && (includeName || !file.startsWith('0027')))
+    .map(file => readFileSync(resolve('migrations', file), 'utf8')));
   db.sqlite.prepare(`INSERT INTO dux_tenant_context VALUES (1,'v2','12862','Prueba','1','Sucursal','25566','Depósito',?,?)`).run(timestamp,timestamp);
   db.sqlite.prepare(`INSERT INTO dux_sync_runs (id,kind,status,trigger_actor,processed_count,mapped_count,unmapped_count,
     ambiguous_count,absent_count,failed_count,started_at,completed_at,created_at,updated_at)
@@ -82,7 +83,84 @@ it('edita descripción y permite vaciarla; actualizaciones de campos distintos n
   } finally {f.db.close();}
 });
 
-it.each([{name:'Nombre'}, {price:12}, {stockQuantity:3}, {images:[]}, {availability:'available'}, {}, {description:null}, {description:'a'.repeat(12001)}, {publicationStatus:'deleted'}])('rechaza campos ajenos o inválidos %j', value => {
+it('el nombre web manual prevalece por SKU, omitirlo lo conserva y null vuelve al nombre Dux vigente', async () => {
+  const f = await fixture();
+  try {
+    expect(parseDuxProductWebPatch({ name: '  Aceite de coco 180 cc  ' })).toEqual({ name: 'Aceite de coco 180 cc' });
+    const before = await readDuxCatalogSnapshot(f.db.database);
+    const response = await resource(f.context('PATCH', { name: '  Nombre del comercio  ' }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ product: { ...f.product, name: 'Nombre del comercio',
+      duxName: f.product.name, nameOverride: 'Nombre del comercio' } });
+    await resource(f.context('PATCH', { description: 'Descripción manual.', publicationStatus: 'unpublished' }));
+    const manual = await getAdminDuxProductDetail(f.db.database, env, f.product.id);
+    expect(manual).toMatchObject({ name: 'Nombre del comercio', nameOverride: 'Nombre del comercio',
+      description: 'Descripción manual.', publicationStatus: 'unpublished', commerce: f.product.commerce,
+      sku: f.product.sku, id: f.product.id, slug: f.product.slug, path: f.product.path });
+    const inherited = { ...f.product, name: 'Nombre Dux actualizado', duxName: 'Nombre Dux actualizado',
+      description: 'Descripción editorial ML.', images: [], variants: [] };
+    expect((await applyDuxProductWebSettings(f.db.database, [inherited]))[0])
+      .toMatchObject({ name: 'Nombre del comercio', duxName: 'Nombre Dux actualizado', description: 'Descripción manual.' });
+    const reset = await resource(f.context('PATCH', { name: null }));
+    expect(reset.status).toBe(200);
+    const current = await getAdminDuxProductDetail(f.db.database, env, f.product.id);
+    expect(current).toMatchObject({ name: f.product.name, duxName: f.product.name,
+      description: 'Descripción manual.', publicationStatus: 'unpublished' });
+    expect(current?.nameOverride).toBeUndefined();
+    const reapplied = (await applyDuxProductWebSettings(f.db.database, [{ ...inherited, name: 'Nombre del comercio', nameOverride: 'Nombre del comercio' }]))[0]!;
+    expect(reapplied.name).toBe('Nombre Dux actualizado');
+    expect(reapplied.nameOverride).toBeUndefined();
+    expect(f.db.sqlite.prepare('SELECT name_override FROM dux_product_web_settings WHERE cod_item=?').get(f.product.sku!)?.name_override).toBeNull();
+    expect(await readDuxCatalogSnapshot(f.db.database)).toEqual(before);
+  } finally { f.db.close(); }
+});
+
+it('ediciones concurrentes de nombre, descripción e imagen conservan los campos independientes y no tocan stock', async () => {
+  const f = await fixture();
+  try {
+    const images = [{ src: `/api/catalog-images/${crypto.randomUUID()}.png`, alt: 'Imagen manual' }];
+    await Promise.all([
+      writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { name: 'Nombre manual' }),
+      writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { description: 'Descripción manual' }),
+      writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { images }),
+      writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { publicationStatus: 'unpublished' }),
+    ]);
+    const current = await getAdminDuxProductDetail(f.db.database, env, f.product.id);
+    expect(current).toMatchObject({ name: 'Nombre manual', nameOverride: 'Nombre manual', duxName: f.product.name,
+      description: 'Descripción manual', images, publicationStatus: 'unpublished', commerce: f.product.commerce, sku: f.product.sku });
+    expect((await getAdminDuxProductDetail(f.db.database, env, (await readDuxCatalogSnapshot(f.db.database)).items[1]!.slug))?.nameOverride).toBeUndefined();
+    const admin = await collection(f.context('GET'));
+    const adminBody: unknown = await admin.json();
+    expect(adminBody).toHaveProperty('products.0.name', 'Nombre manual');
+    await writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { publicationStatus: 'published' });
+    const summary = (await readPublicCatalog(f.db.database, env)).products.find(product => product.sku === f.product.sku);
+    expect(summary?.name).toBe('Nombre manual');
+    expect(summary).not.toHaveProperty('duxName');
+    expect(summary).not.toHaveProperty('nameOverride');
+  } finally { f.db.close(); }
+});
+
+it('antes de 0027 hereda el nombre, admite ediciones anteriores y rechaza nombre explícito sin escrituras parciales', async () => {
+  const f = await fixture(true, false);
+  try {
+    expect(f.product).toMatchObject({ name: 'Producto A', duxName: 'Producto A' });
+    expect((await resource(f.context('PATCH', { description: 'Anterior', publicationStatus: 'unpublished' }))).status).toBe(200);
+    const images = [{ src: `/api/catalog-images/${crypto.randomUUID()}.png`, alt: 'Imagen anterior' }];
+    await writeDuxProductWebSettings(f.db.database, f.product.sku!, 'test', { images });
+    for (const name of ['Nombre manual', null]) {
+      const response = await resource(f.context('PATCH', { name, description: 'No debe escribirse' }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ error: { code: 'PRODUCT_WEB_NAME_MIGRATION_REQUIRED' } });
+    }
+    const current = await getAdminDuxProductDetail(f.db.database, env, f.product.id);
+    expect(current).toMatchObject({ name: 'Producto A', duxName: 'Producto A', description: 'Anterior',
+      images, publicationStatus: 'unpublished' });
+    expect(current?.nameOverride).toBeUndefined();
+  } finally { f.db.close(); }
+});
+
+it.each([{sku:'OTRO'}, {name:''}, {name:'   '}, {name:'a'.repeat(501)}, {name:'Aceite\n500 cc'}, {name:'Aceite\u0000500 cc'}, {name:'Aceite\u007f500 cc'}, {name:'Aceite\u0085500 cc'}, {name:12},
+  {price:12}, {stockQuantity:3}, {images:[]}, {availability:'available'}, {}, {description:null}, {description:'a'.repeat(12001)}, {publicationStatus:'deleted'}])('rechaza campos ajenos o inválidos %j', value => {
   expect(() => parseDuxProductWebPatch(value)).toThrow(expect.objectContaining({code:'INVALID_PRODUCT_WEB_SETTINGS'}));
 });
 
@@ -94,7 +172,9 @@ it('conserva autenticación, mismo origen, alta manual retirada y aislamiento po
     expect((await collection(f.context('POST',{name:'nuevo'}))).status).toBe(409);
     expect((await resource(f.context('PUT',{name:'nuevo'}))).status).toBe(409);
     expect(f.db.sqlite.prepare('SELECT COUNT(*) AS n FROM dux_product_web_settings').get()?.n).toBe(0);
-    expect(() => f.db.sqlite.prepare(`INSERT INTO dux_product_web_settings VALUES ('999','A','unpublished',NULL,NULL,'test',?,?)`).run(timestamp,timestamp)).toThrow();
+    expect(() => f.db.sqlite.prepare(`INSERT INTO dux_product_web_settings
+      (company_id,cod_item,publication_status,description,images_json,updated_by,created_at,updated_at)
+      VALUES ('999','A','unpublished',NULL,NULL,'test',?,?)`).run(timestamp,timestamp)).toThrow();
   } finally {f.db.close();}
 });
 

@@ -39,6 +39,16 @@ Los callers sin cuerpo conservan el contrato histórico para herramientas operat
 existentes; siguen siendo una petición completa y no solucionan el límite 524.
 Los tres clientes activos usan el protocolo nuevo. El relay mantiene su cron vacío.
 
+La ampliación del encargo exige origen Dux por código/SKU exacto tanto en la tienda
+como en administración. El usuario aclaró luego que un nombre editado manualmente
+en Shekinah debe prevalecer por ese SKU, al igual que fotos y descripción. Una
+acción explícita vuelve al nombre Dux vigente; stock y reservas siguen Dux siempre.
+0027 agrega sólo ese override nullable. Sin edición se muestra el nombre Dux;
+abrir el editor o guardar otro campo no crea un override. La proyección
+Mercado Libre conserva fotos y descripción autorizadas y deja de sustituir el
+nombre. Sus títulos históricos permanecen como evidencia, sin reescritura ni
+matching por nombre. Cambiar de 200/400 a 180/360 cc no crea otro producto ni URL.
+
 ## Límites y preservación
 
 - Siete minutos por operación, 80 solicitudes por cliente, 45 intentos oficiales
@@ -60,7 +70,9 @@ Los tres clientes activos usan el protocolo nuevo. El relay mantiene su cron vac
   permanecen estables. No se infieren unidad comprable, stock ni peso desde los cc.
 
 No se modifican comercio, pedidos, reservas, pagos, secretos, flags, mantenimiento,
-editorial ni los contratos Dux/Mercado Pago. No se vuelve al catálogo manual.
+fotos/descripciones editoriales ni los contratos de inventario y pagos. El nombre
+visible se ajusta al nombre Dux por SKU con prioridad manual explícita autorizada.
+No se vuelve al catálogo manual.
 La frecuencia efectiva de GitHub y los rechazos intermitentes Dux se acreditan
 separadamente; segmentar no garantiza una cadencia automática de cinco minutos.
 

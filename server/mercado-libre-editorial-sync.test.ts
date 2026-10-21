@@ -14,6 +14,7 @@ import { cartLineFingerprint, summarizeCart } from '../src/cart/model';
 import { filterProducts } from '../src/catalog/catalog';
 import { MemoryR2Bucket } from './test/memory-r2';
 import { getPublicCatalogProductDetail, readPublicCatalog } from './dux-public-catalog';
+import { writeDuxProductWebSettings } from './dux-product-web-settings';
 
 vi.mock('./mercado-libre-editorial-access',async importOriginal=>({
   ...await importOriginal<typeof EditorialAccess>(),editorialApiGet:vi.fn(),
@@ -53,14 +54,17 @@ async function fixture(){
   });
   vi.stubGlobal('fetch',vi.fn().mockImplementation(()=>Promise.resolve(new Response(png,{headers:{'content-type':'image/png'}}))));
   async function run(){let id:string|null=null;for(let step=0;step<30;step++){const result=await advanceEditorialSync(db.database,env,'test',id);id=result.id;if(result.status!=='running')return result;}throw Error('Run did not finish');}
-  async function approve(code='DUX-1'){
+  async function approve(code='DUX-1',expectedRevision=0){
     const review=await getEditorialReview(db.database,env,code,source.id);
     return reviewEditorialAssociation(db.database,env,'reviewer',{code,itemId:source.id,variationId:null,evidenceHash:review.sources[0]!.hash,duxIdentityHash:review.duxIdentityHash,
       decision:'approve',reason:'Presentación, pack y variante contrastados explícitamente en el fixture.',presentationVerified:true,packVerified:true,variantVerified:true,
-      images:true,description:true,expectedRevision:0});
+      images:true,description:true,expectedRevision});
   }
   return{db,env,bucket,local,run,approve,setStatus:(value:string)=>{status=value;},setTitle:(value:string)=>{title=value;},setDescription:(value:string)=>{description=value;},setFail:(value:boolean)=>{fail=value;},setEmptyImages:()=>{emptyImages=true;},
-    changeDux:()=>persistDuxCatalogSnapshot(db.database,'dux_sync_editorial',duxItems.map(item=>({...item,name:`${item.name} cambiado`})),new Date().toISOString())};
+    changeDux:()=>persistDuxCatalogSnapshot(db.database,'dux_sync_editorial',duxItems.map(item=>({...item,name:`${item.name} cambiado`,
+      warehouseStocks:item.warehouseStocks.map(stock=>({...stock,real:20,reserved:3,available:17}))})),new Date().toISOString()),
+    changeDuxStock:()=>persistDuxCatalogSnapshot(db.database,'dux_sync_editorial',duxItems.map(item=>({...item,
+      warehouseStocks:item.warehouseStocks.map(stock=>({...stock,real:7,reserved:1,available:6}))})),new Date().toISOString())};
 }
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 
@@ -98,16 +102,17 @@ it('completa metadata sin descargar medios sin asociación y publica campos apro
     const review=await getEditorialReview(f.db.database,f.env,'DUX-1',null);expect(review.candidates).toMatchObject([{state:'pending_review',unique:true}]);
     await f.approve();const put=vi.spyOn(f.bucket,'put');await f.run();
     const published=(await applyMercadoLibreEditorial(f.db.database,f.env,[f.local]))[0]!;
-    expect(published.name).toBe(source.title);
+    expect(published.name).toBe(f.local.name);expect(published.sku).toBe('DUX-1');
     expect(published.description).toBe('Información del producto');expect(published.images).toHaveLength(1);
     expect(published.images[0]!.src).toMatch(/^\/api\/catalog-images\//u);expect(published.commerce).toEqual(f.local.commerce);
     expect(published.commerce).toMatchObject({source:'dux',observedStock:{real:14,reserved:2,available:12}});
-    expect({ ...published, name:f.local.name, description:f.local.description, images:f.local.images, primaryImage:f.local.primaryImage }).toEqual(f.local);
+    expect({ ...published, description:f.local.description, images:f.local.images, primaryImage:f.local.primaryImage }).toEqual(f.local);
     expect(await applyMercadoLibreEditorial(f.db.database,f.env,[])).toEqual([]);
-    expect(filterProducts([published], { query:'presentación exacta', categorySlug:'all' })).toEqual([published]);
+    expect(filterProducts([published], { query:f.local.name, categorySlug:'all' })).toEqual([published]);
+    expect(filterProducts([published], { query:'presentación exacta', categorySlug:'all' })).toEqual([]);
     const cart = { version:1 as const, items:[{ productId:f.local.id, quantity:2 }], updatedAt:new Date().toISOString() };
     const before = summarizeCart(cart,[f.local]), after = summarizeCart(cart,[published]);
-    expect(after.items[0]?.product.name).toBe(source.title);
+    expect(after.items[0]?.product.name).toBe(f.local.name);
     expect(after.total).toBe(before.total);
     const fingerprint = (products: typeof before.items) => cartLineFingerprint(products.map(({product,quantity}) => ({
       productId:product.id,quantity,catalogVersion:product.commerce!.catalogVersion,
@@ -122,18 +127,50 @@ it('completa metadata sin descargar medios sin asociación y publica campos apro
   }finally{f.db.close();}
 },20000);
 
-it('proyecta el mismo nombre en listado y ficha sin cambiar rutas ni crear productos ML',async()=>{
+it('conserva el nombre Dux en listado y ficha aunque exista un título ML aprobado',async()=>{
   const f=await fixture();try{
     await f.run();await f.approve();await f.run();
     await updateDuxCatalogControl(f.db.database,'test',{publicCatalogEnabled:true});
     const catalog=await readPublicCatalog(f.db.database,f.env);
     expect(catalog.products).toHaveLength(2);
-    expect(catalog.products.find(product=>product.id===f.local.id)?.name).toBe(source.title);
+    expect(catalog.products.find(product=>product.id===f.local.id)?.name).toBe(f.local.name);
     const detail=await getPublicCatalogProductDetail(f.db.database,f.env,f.local.id);
-    expect(detail?.name).toBe(source.title);expect(detail?.slug).toBe(f.local.slug);
+    expect(detail?.name).toBe(f.local.name);expect(detail?.slug).toBe(f.local.slug);
     expect(detail?.sku).toBe('DUX-1');expect(detail?.price).toEqual(f.local.price);
     expect(await getPublicCatalogProductDetail(f.db.database,f.env,'publicacion-ml-sin-dux')).toBeNull();
     expect((await applyMercadoLibreEditorial(f.db.database,{...f.env,MERCADO_LIBRE_EDITORIAL_ENABLED:'false'},[f.local]))[0]).toBe(f.local);
+  }finally{f.db.close();}
+},20000);
+
+it('prioriza el nombre manual por SKU sobre Dux y ML y vuelve al origen vigente al quitarlo',async()=>{
+  const f=await fixture();try{
+    await f.run();await f.approve();await f.run();
+    await updateDuxCatalogControl(f.db.database,'test',{publicCatalogEnabled:true});
+    const historical=f.db.sqlite.prepare('SELECT hash,payload_json FROM ml_editorial_objects ORDER BY hash').all();
+    await writeDuxProductWebSettings(f.db.database,'DUX-1','test',{name:'Nombre manual de Shekinah'});
+    let detail=await getPublicCatalogProductDetail(f.db.database,f.env,f.local.id);
+    expect(detail).toMatchObject({sku:'DUX-1',name:'Nombre manual de Shekinah',nameOverride:'Nombre manual de Shekinah',duxName:f.local.name,
+      commerce:{observedStock:{real:14,reserved:2,available:12}}});
+    expect(detail?.images[0]?.src).toMatch(/^\/api\/catalog-images\//u);
+    await f.changeDux();
+    detail=await getPublicCatalogProductDetail(f.db.database,f.env,f.local.id);
+    expect(detail).toMatchObject({sku:'DUX-1',name:'Nombre manual de Shekinah',duxName:`${f.local.name} cambiado`,
+      commerce:{observedStock:{real:20,reserved:3,available:17}}});
+    await f.run();await f.approve('DUX-1',1);await f.run();
+    detail=await getPublicCatalogProductDetail(f.db.database,f.env,f.local.id);
+    expect(detail?.name).toBe('Nombre manual de Shekinah');
+    expect(detail?.images[0]?.src).toMatch(/^\/api\/catalog-images\//u);
+    await writeDuxProductWebSettings(f.db.database,'DUX-1','test',{name:null});
+    detail=await getPublicCatalogProductDetail(f.db.database,f.env,f.local.id);
+    expect(detail).toMatchObject({id:f.local.id,sku:'DUX-1',name:`${f.local.name} cambiado`,duxName:`${f.local.name} cambiado`,
+      description:'Información del producto',commerce:{observedStock:{real:20,reserved:3,available:17}}});
+    expect(detail?.nameOverride).toBeUndefined();
+    expect(detail?.images[0]?.src).toMatch(/^\/api\/catalog-images\//u);
+    expect((await readPublicCatalog(f.db.database,f.env)).products.find(item=>item.sku==='DUX-1')?.name).toBe(detail?.name);
+    for(const object of historical) {
+      if(typeof object.hash!=='string')throw new Error('El objeto editorial histórico debe conservar un hash válido.');
+      expect(f.db.sqlite.prepare('SELECT hash,payload_json FROM ml_editorial_objects WHERE hash=?').get(object.hash)).toEqual(object);
+    }
   }finally{f.db.close();}
 },20000);
 
@@ -157,7 +194,7 @@ it.each(['paused','closed','under_review','inactive','deleted'])('retira todos l
     f.setStatus(status);
     const started=await advanceEditorialSync(f.db.database,f.env,'test',null);
     expect((await currentEditorialRun(f.db.database))?.id).toBe(before?.id);
-    expect((await applyMercadoLibreEditorial(f.db.database,f.env,[f.local]))[0]?.name).toBe(source.title);
+    expect((await applyMercadoLibreEditorial(f.db.database,f.env,[f.local]))[0]?.name).toBe(f.local.name);
     expect(started.status).toBe('running');
     const result=await f.run();expect(result.issues).toContainEqual({code:'DUX-1',reason:'confirmed_listing_withdrawal'});
     expect(await applyMercadoLibreEditorial(f.db.database,f.env,[f.local])).toEqual([f.local]);
@@ -212,8 +249,27 @@ it('retira el overlay si cambia la identidad Dux vigente sin cambiar la existenc
     await f.run();await f.approve();await f.run();await f.changeDux();
     const current=projectDuxRuntimeCatalog(await readDuxCatalogSnapshot(f.db.database),[],[]).products;
     expect(current).toHaveLength(2);
+    expect(current.find(product=>product.sku==='DUX-1')).toMatchObject({id:f.local.id,slug:f.local.slug,
+      name:`${f.local.name} cambiado`,commerce:{source:'dux',observedStock:{real:20,reserved:3,available:17}}});
     expect(await applyMercadoLibreEditorial(f.db.database,f.env,current)).toEqual(current);
     expect((await f.run()).issues).toContainEqual({code:'DUX-1',reason:'dux_identity_requires_review'});
+  }finally{f.db.close();}
+},20000);
+
+it('actualiza stock por el mismo SKU y conserva nombre Dux con fotos y descripción ML aprobadas',async()=>{
+  const f=await fixture();try{
+    await f.run();await f.approve();await f.run();
+    const editorialBefore=(await currentEditorialRun(f.db.database))!;
+    const objectsBefore=f.db.sqlite.prepare('SELECT hash,payload_json FROM ml_editorial_objects ORDER BY hash').all();
+    await f.changeDuxStock();
+    const current=projectDuxRuntimeCatalog(await readDuxCatalogSnapshot(f.db.database),[],[]).products;
+    const published=(await applyMercadoLibreEditorial(f.db.database,f.env,current)).find(product=>product.sku==='DUX-1')!;
+    expect(published).toMatchObject({id:f.local.id,slug:f.local.slug,sku:'DUX-1',name:f.local.name,
+      description:'Información del producto',commerce:{source:'dux',observedStock:{real:7,reserved:1,available:6}}});
+    expect(published.images[0]?.src).toMatch(/^\/api\/catalog-images\//u);
+    expect(published.name).not.toBe(source.title);
+    expect(await currentEditorialRun(f.db.database)).toEqual(editorialBefore);
+    expect(f.db.sqlite.prepare('SELECT hash,payload_json FROM ml_editorial_objects ORDER BY hash').all()).toEqual(objectsBefore);
   }finally{f.db.close();}
 },20000);
 
@@ -237,7 +293,7 @@ it('conserva local por campo cuando faltan descripción o imágenes válidas',as
     f.setEmptyImages();f.setDescription('Descripción del proveedor');await f.run();
     published=(await applyMercadoLibreEditorial(f.db.database,f.env,[f.local]))[0]!;
     expect(published.images).toEqual(f.local.images);expect(published.description).toBe('Descripción del proveedor');
-    expect(published.name).toBe(source.title);
+    expect(published.name).toBe(f.local.name);
   }finally{f.db.close();}
 },20000);
 
@@ -249,7 +305,7 @@ it('conserva la última publicación frente a autorización fallida o paginació
     await expect(f.run()).rejects.toMatchObject({code:'ML_EDITORIAL_SEARCH_INCOMPLETE'});
     expect((await currentEditorialRun(f.db.database))?.id).toBe(before?.id);
     const preserved=(await applyMercadoLibreEditorial(f.db.database,f.env,[f.local]))[0]!;
-    expect(preserved.name).toBe(source.title);expect(preserved.description).toBe('Información del producto');
+    expect(preserved.name).toBe(f.local.name);expect(preserved.description).toBe('Información del producto');
     expect(preserved.images[0]?.src).toMatch(/^\/api\/catalog-images\//u);
   }finally{f.db.close();}
 },20000);

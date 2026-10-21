@@ -7,6 +7,9 @@ petición abierta durante toda la lectura. Conserva la identidad al retomar y
 confirma inventario y catálogo del mismo ciclo antes de anunciar éxito. Requiere
 0026; [validación y rollout](docs/validation/DUX_RESUMABLE_SYNC_2026-10-21.md).
 CI de compilación y sincronizador programado tienen evidencias separadas.
+Por instrucción del usuario, Dux aporta nombre base y stock por SKU exacto. El
+nombre editado manualmente en Shekinah prevalece hasta restablecer el de Dux;
+stock y reservas siempre siguen Dux. Fotos y descripción manuales se conservan.
 
 ## Gestión simplificada de productos — 2026-09-25
 

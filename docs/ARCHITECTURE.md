@@ -1,5 +1,17 @@
 # Arquitectura
 
+## Autoridad por SKU vigente — 2026-10-21
+
+El catálogo público y administrativo identifica cada producto por el código/SKU
+Dux exacto. Dux determina el nombre base y las cantidades observadas; una edición
+manual web del nombre prevalece por ese SKU y admite reset explícito al Dux actual.
+La URL previamente publicada se conserva ante un cambio de nombre. Mercado Libre
+activo/aprobado sólo aporta fotos y descripción; la última capa web conserva las
+ediciones manuales. Se retira el
+override editorial de nombres autorizado en septiembre, conservando su historial.
+La sincronización por pasos y sus límites se describen en
+[DUX_RESUMABLE_SYNC.md](DUX_RESUMABLE_SYNC.md).
+
 ## Capa editorial vigente — 2026-09-22
 
 El flujo público es snapshot Dux → contenido local preservado → contenido

@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DUX_SYNC_DEADLINE_MS, type DuxFetch } from './dux-api';
 import { readDuxCatalogSnapshot } from './dux-catalog';
+import { writeDuxProductWebSettings } from './dux-product-web-settings';
+import { getAdminDuxProductDetail, readPublicCatalog } from './dux-public-catalog';
 import { advanceDuxSyncOperation, latestDuxSyncOperation, readDuxSyncRequestId } from './dux-sync-operation';
 import type { D1Database, D1PreparedStatement, Env } from './platform';
 import { SqliteD1 } from './test/sqlite-d1';
@@ -58,22 +60,53 @@ describe('sincronización Dux recuperable', () => {
     expect((await db.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
   });
 
-  it('propaga 200→180 cc y 400→360 cc conservando códigos, URLs y cantidades fraccionarias', async () => {
+  it('sincroniza nombres y stock Dux por SKU, conserva nombres manuales y permite volver al último nombre Dux', async () => {
     const db = database();
     const env = environment(db);
     await complete(db, env, requestId, providerFixture(2, { names: ['Aceite de coco 200 cc', 'Aceite de coco 400 cc'] }));
     const previous = await readDuxCatalogSnapshot(db);
+    const image = { src: `/api/catalog-images/${requestId}.webp`, alt: 'Foto web conservada' };
+    for (const code of ['TEST-0', 'TEST-1']) {
+      await writeDuxProductWebSettings(db, code, actor, { name: `Nombre comercial ${code}`, description: `Descripción web conservada ${code}`, images: [image] });
+    }
+    db.database.exec("UPDATE dux_catalog_control SET public_catalog_enabled = 1 WHERE company_id = '12862'");
     await vi.advanceTimersByTimeAsync(6000);
-    await complete(db, env, nextId, providerFixture(2, { names: ['Aceite de coco 180 cc', 'Aceite de coco 360 cc'] }));
+    const stock = { real: 9.25, reserved: 1, available: 8.25 };
+    const provider = vi.fn(providerFixture(2, { names: ['Aceite de coco 180 cc', 'Aceite de coco 360 cc'], stock }));
+    await complete(db, env, nextId, provider);
     const updated = await readDuxCatalogSnapshot(db);
+    const storefront = await readPublicCatalog(db, env);
     for (const [index, name] of ['Aceite de coco 180 cc', 'Aceite de coco 360 cc'].entries()) {
-      expect(updated.items[index]).toMatchObject({ code: `TEST-${index}`, name, slug: previous.items[index]?.slug,
-        warehouseStocks: [{ real: 12.68, reserved: 0, available: 12.68 }] });
+      const code = `TEST-${index}`;
+      const previousItem = previous.items.find(item => item.code === code);
+      if (previousItem === undefined) throw new Error('Producto inicial de prueba ausente');
+      expect(updated.items.find(item => item.code === code)).toMatchObject({ code, name, slug: previousItem.slug, warehouseStocks: [stock] });
+      const expected = { sku: code, slug: previousItem.slug, name: `Nombre comercial ${code}`, duxName: name, nameOverride: `Nombre comercial ${code}`, description: `Descripción web conservada ${code}`,
+        images: [image], commerce: { observedStock: stock, warehouseStocks: [stock] } };
+      expect(storefront.productDetails.find(product => product.sku === code)).toMatchObject(expected);
+      expect(await getAdminDuxProductDetail(db, env, previousItem.slug)).toMatchObject(expected);
     }
     expect(updated.catalogVersion).not.toBe(previous.catalogVersion);
-    expect(db.database.prepare('SELECT stock_real, stock_disponible FROM dux_inventory_items').all()).toEqual([
-      { stock_real: 12.68, stock_disponible: 12.68 }, { stock_real: 12.68, stock_disponible: 12.68 },
+    expect(db.database.prepare('SELECT stock_real, stock_reservado, stock_disponible FROM dux_inventory_items ORDER BY cod_item').all()).toEqual([
+      { stock_real: 9.25, stock_reservado: 1, stock_disponible: 8.25 }, { stock_real: 9.25, stock_reservado: 1, stock_disponible: 8.25 },
     ]);
+    for (const row of db.database.prepare('SELECT cod_item, raw_snapshot_json FROM dux_inventory_items').all()) {
+      if (typeof row.raw_snapshot_json !== 'string') throw new Error('Evidencia de prueba inválida');
+      const evidence: unknown = JSON.parse(row.raw_snapshot_json);
+      expect(evidence).toMatchObject({ item: { code: row.cod_item, name: row.cod_item === 'TEST-0' ? 'Aceite de coco 180 cc' : 'Aceite de coco 360 cc' }, stock });
+    }
+    const calls = provider.mock.calls.length;
+    await writeDuxProductWebSettings(db, 'TEST-0', actor, { name: null });
+    const latestDuxItem = updated.items.find(item => item.code === 'TEST-0');
+    if (latestDuxItem === undefined) throw new Error('Producto actualizado de prueba ausente');
+    const restored = await getAdminDuxProductDetail(db, env, latestDuxItem.slug);
+    expect(restored).toMatchObject({ sku: 'TEST-0', name: 'Aceite de coco 180 cc', duxName: 'Aceite de coco 180 cc',
+      slug: latestDuxItem.slug, images: [image], description: 'Descripción web conservada TEST-0', commerce: { observedStock: stock } });
+    expect(restored?.nameOverride).toBeUndefined();
+    const refreshed = await readPublicCatalog(db, env);
+    expect(refreshed.productDetails.find(product => product.sku === 'TEST-0')).toEqual(restored);
+    expect(refreshed.productDetails.find(product => product.sku === 'TEST-1')).toMatchObject({ name: 'Nombre comercial TEST-1', nameOverride: 'Nombre comercial TEST-1', commerce: { observedStock: stock } });
+    expect(provider).toHaveBeenCalledTimes(calls);
   });
 
   it('recupera una respuesta final perdida sin otra consulta al proveedor ni otra generación', async () => {
@@ -359,7 +392,8 @@ function delayedFirst(statement: D1PreparedStatement, beforeFirst: () => Promise
   };
 }
 function inputUrl(input: RequestInfo | URL): URL { return input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url); }
-function providerFixture(total: number, options: { name?: string; names?: readonly string[]; description?: string; failSecondPage?: boolean; changeTotal?: boolean } = {}): DuxFetch {
+function providerFixture(total: number, options: { name?: string; names?: readonly string[]; description?: string;
+  stock?: Readonly<{ real: number; reserved: number; available: number }>; failSecondPage?: boolean; changeTotal?: boolean } = {}): DuxFetch {
   return input => {
     const url = inputUrl(input);
     let value: unknown;
@@ -374,7 +408,7 @@ function providerFixture(total: number, options: { name?: string; names?: readon
         habilitado: true, codigo_externo: null, codigos_barra: null, ctd_unidades_por_bulto: 1,
         ...(options.description === undefined ? {} : { descripcion: options.description }),
         precios: [{ id: 1, nombre: 'PRECIOS DEL NEGOCIO', precio: 3500 }], rubro: null, sub_rubro: null,
-        stock: [{ id: 25566, nombre: 'Central', stock_real: 12.68, stock_reservado: 0, stock_disponible: 12.68,
+        stock: [{ id: 25566, nombre: 'Central', stock_real: options.stock?.real ?? 12.68, stock_reservado: options.stock?.reserved ?? 0, stock_disponible: options.stock?.available ?? 12.68,
           id_det_item: null, cod_barra_detalle: null, talle: null, color: null }],
       })), paginacion: { total: options.changeTotal && offset > 0 ? total + 1 : total, offset, limit: 50, hay_mas: offset + 50 < total } };
     }

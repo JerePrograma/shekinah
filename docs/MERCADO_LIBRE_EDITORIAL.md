@@ -1,5 +1,17 @@
 # Contenido editorial Mercado Libre para identidades Dux
 
+## Actualización de autoridad — 2026-10-21
+
+El nombre base y el stock de Shekinah quedan ligados al código/SKU Dux, por
+instrucción del usuario. El nombre manual de Shekinah tiene prioridad por ese
+SKU hasta que se restablezca expresamente el de Dux; stock y reservas no admiten
+override local. La proyección Mercado Libre deja de reemplazar `name`;
+mantiene fotos y descripción aprobadas de publicaciones activas. `title` y las
+identidades históricas siguen guardados y validados como evidencia de la fuente,
+sin migración ni reescritura de hashes. La administración aclara este alcance.
+Esta sección sustituye las reglas de título presentacional de la autorización del
+22 de septiembre que se conserva a continuación; no altera Mercado Pago ni stock.
+
 La [preparación OAuth del 22 de septiembre](validation/MERCADO_LIBRE_OAUTH_PREPARATION_2026-09-22.md)
 registra la configuración parcial real: claves de cifrado y seller preparados en
 ambos entornos; aplicación, credenciales y acceso del titular todavía pendientes.

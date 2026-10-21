@@ -6,6 +6,20 @@ Este archivo rige todo el repositorio `JerePrograma/shekinah`.
 
 El repositorio, su historial, sus pruebas y su configuración son la única fuente de verdad. No completar huecos con recuerdos, conversaciones anteriores ni supuestos.
 
+## Autoridad por SKU — 2026-10-21
+
+Por instrucción del usuario, cada producto de Shekinah queda vinculado por el
+código/SKU exacto Dux: Dux determina su nombre base y stock. El usuario aclaró que
+un nombre editado manualmente en Shekinah prevalece por ese SKU, igual que fotos
+y descripción; una acción explícita permite volver al nombre Dux actual. Stock,
+reservas y código permanecen exclusivamente en Dux. Una sincronización completa
+actualiza el origen conservando código, URL y overrides web. No usar el nombre
+como identidad ni editar existencias en Shekinah para compensar un sync fallido.
+Esta instrucción sustituye la autorización del 2026-09-22 para reemplazar el nombre
+visible con un título Mercado Libre. Se conservan títulos históricos para auditoría,
+fotos y descripciones autorizadas, revisión editorial y separación de Mercado Pago.
+Un snapshot obsoleto no representa stock vigente ni habilita la venta.
+
 ## Reactivación comercial autorizada — 2026-09-08
 
 Leer también [docs/COMMERCE_REACTIVATION.md](docs/COMMERCE_REACTIVATION.md), que actualiza el contrato comercial y la conservación de pagos frente a los cierres históricos. Se autorizó avanzar con pedidos web, Checkout Pro, idempotencia y pasos Dux asistidos y verificables. No equivale a una activación productiva ni permite cobrar sin compromiso real de stock, unidad, total y controles acreditados.

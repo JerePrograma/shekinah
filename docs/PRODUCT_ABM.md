@@ -1,5 +1,17 @@
 # Gestión simplificada de productos web — 2026-09-25
 
+## Nombre manual prioritario — 2026-10-21
+
+El usuario amplió el ABM para permitir nombre visible manual por SKU Dux. Dux
+conserva identidad, nombre base, precio, stock y reservas. El nombre web manual
+prevalece sobre la sincronización hasta elegir «Usar nombre de Dux», que toma
+el último nombre recibido. `name: null` retira sólo ese override; omitir `name`
+conserva su decisión anterior. Abrir el editor o guardar descripción/foto no
+congela el nombre. La nueva columna nullable de 0027 no reescribe datos previos.
+Las fotos, descripción y baja manuales mantienen su prioridad existente.
+Los títulos Mercado Libre permanecen como evidencia y no reemplazan el nombre.
+Los apartados fechados de septiembre que siguen conservan su alcance histórico.
+
 ## Alcance vigente
 
 El encargo autoriza un ABM sencillo sobre los productos vigentes de Dux. El alta

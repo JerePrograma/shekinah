@@ -19,7 +19,7 @@ it('explica la conexión pendiente y no habilita importación sin el titular',as
   vi.stubGlobal('fetch',fetchMock);render(<MercadoLibreEditorialPanel/>);
   expect(await screen.findByText(/La conexión con Mercado Libre necesita preparación/u)).toBeVisible();
   expect(screen.getByRole('heading',{level:2,name:'Mercado Libre'})).toBeVisible();
-  expect(screen.getByText(/publicaciones activas.*nombre, las fotos y la descripción/u)).not.toBeVisible();
+  expect(screen.getByText(/publicaciones activas.*fotos y la descripción/u)).not.toBeVisible();
   expect(screen.getByRole('button',{name:'Actualizar contenido de los productos'})).toBeDisabled();
   expect(screen.getByText('Revisar publicaciones por producto').closest('details')).not.toHaveAttribute('open');
   fireEvent.click(screen.getByText('Revisar publicaciones por producto'));
@@ -91,6 +91,8 @@ it('presenta la revisión en español y conserva las comprobaciones y el contrat
   fireEvent.click(screen.getByRole('button',{name:'Buscar publicaciones para este producto'}));
   fireEvent.change(await screen.findByLabelText('Publicación y variante'),{target:{value:'MLA12345:123'}});
   expect(screen.getByText('Color: Verde')).toBeVisible();
+  expect(screen.getByText(/La aprobación sólo aplica a fotos y descripción.*nombre manual guardado en Shekinah tiene prioridad.*stock siempre proviene de Dux/u)).toBeVisible();
+  expect(screen.queryByText(/El nombre de la publicación también se usará en la tienda/u)).not.toBeInTheDocument();
   expect(screen.getByText('Característica de la publicación: Dato informado')).toBeVisible();
   expect(screen.getByText('CUSTOM_ATTRIBUTE: Dato informado')).not.toBeVisible();
   const approve=screen.getByRole('button',{name:'Usar esta publicación para el producto'});

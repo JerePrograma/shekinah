@@ -62,6 +62,32 @@ describe('modelo de producto', () => {
     expect(Object.isFrozen(product.price)).toBe(true);
   });
 
+  it('preserva el origen y la excepción manual sólo en el detalle, sin cambiar identidad ni comercio', () => {
+    const raw = { ...baseProduct, name: 'Nombre manual', duxName: 'Nombre de Dux', nameOverride: 'Nombre manual', images: [], variants: [] };
+    const summary = parseProduct(raw);
+    expect(summary).not.toHaveProperty('duxName');
+    expect(summary).not.toHaveProperty('nameOverride');
+    expect(parseProductDetail(summary, raw)).toMatchObject({ id: baseProduct.id,
+      name: 'Nombre manual', duxName: 'Nombre de Dux', nameOverride: 'Nombre manual' });
+    const inherited = parseProductDetail(parseProduct(baseProduct), { images: [], variants: [], duxName: baseProduct.name });
+    expect(inherited.duxName).toBe(baseProduct.name);
+    expect(inherited.nameOverride).toBeUndefined();
+  });
+
+  it.each([
+    { duxName: 'Origen', nameOverride: 'Otro nombre' },
+    { duxName: 'Origen', nameOverride: '\nNombre manual' },
+    { duxName: 'Origen', nameOverride: 'Nombre\u007fmanual' },
+    { duxName: 'Origen', nameOverride: '' },
+    { duxName: 'Origen', nameOverride: 'a'.repeat(501) },
+    { duxName: 'Origen', nameOverride: null },
+    { nameOverride: 'Nombre manual' },
+    { duxName: 'Otro nombre sin excepción' },
+  ])('rechaza metadata de nombre incompatible %j', metadata => {
+    const summary = parseProduct({ ...baseProduct, name: 'Nombre manual' });
+    expect(() => parseProductDetail(summary, { images: [], variants: [], ...metadata })).toThrow(InvalidProductError);
+  });
+
   it('acepta precio promocional, imagen, detalle y variante sanitizados', () => {
     const product = parseProduct({
       ...baseProduct,

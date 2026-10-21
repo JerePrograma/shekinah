@@ -13,7 +13,7 @@ const product = {
     observedStock: { real: 2.375, reserved: 0.125, available: 2.25 }, depositName: 'Principal',
   },
 };
-type FixtureProduct = typeof product & { publicationStatus?: 'published' | 'unpublished' };
+type FixtureProduct = typeof product & { publicationStatus?: 'published' | 'unpublished'; duxName?: string; nameOverride?: string };
 const payload = duxApiFixture({ products: [product], imageStorageConfigured: true });
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -257,7 +257,7 @@ it('edita sólo descripción, evita guardados duplicados y comunica la operació
   fireEvent.click(screen.getByText('Editar descripción', { selector: 'summary' }));
   const description = screen.getByRole('textbox', { name: 'Descripción' });
   fireEvent.change(description, { target: { value: 'Descripción actualizada de prueba.' } });
-  expect(screen.queryByRole('textbox', { name: 'Nombre' })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Nombre visible en la tienda' })).toHaveValue(product.name);
   expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
   expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true, busy: false }));
   const form = description.closest('form');
@@ -271,6 +271,120 @@ it('edita sólo descripción, evita guardados duplicados y comunica la operació
   await waitFor(() => expect(interaction).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: false, busy: false })));
   expect(description).toHaveValue('Descripción actualizada de prueba.');
   expect(api.products()[0]).toMatchObject({ name: product.name, price: product.price, commerce: product.commerce });
+});
+
+it('edita el nombre visible sólo tras un cambio explícito y conserva SKU, precio y stock Dux', async () => {
+  const api = installCatalogApi([{ ...product, duxName: product.name }]);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${product.name}` }));
+  const name = screen.getByRole('textbox', { name: 'Nombre visible en la tienda' });
+  expect(name).toHaveValue(product.name);
+  expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Usar nombre de Dux' })).toBeDisabled();
+  expect(screen.queryByRole('textbox', { name: /SKU|stock/u })).not.toBeInTheDocument();
+  expect(api.mutations()).toHaveLength(0);
+  fireEvent.change(name, { target: { value: 'Aceite de coco, nombre web' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(api.mutations()).toEqual([{ method: 'PATCH', path: '/api/admin/products/dux-test', body: { name: 'Aceite de coco, nombre web' } }]);
+  expect(api.products()[0]).toMatchObject({ name: 'Aceite de coco, nombre web', nameOverride: 'Aceite de coco, nombre web',
+    duxName: product.name, sku: product.sku, price: product.price, commerce: product.commerce });
+  expect(screen.getByRole('heading', { name: 'Editar Aceite de coco, nombre web' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Cerrar editor' }));
+  fireEvent(window, new Event('shekinah:admin-products-refresh'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Editar Aceite de coco, nombre web' }));
+  expect(screen.getByRole('textbox', { name: 'Nombre visible en la tienda' })).toHaveValue('Aceite de coco, nombre web');
+  expect(screen.getByRole('button', { name: 'Usar nombre de Dux' })).toBeEnabled();
+});
+
+it.each([false, true])('actualiza el editor limpio con el nombre Dux nuevo al cambiar publicación (restaurar=%s)', async restore => {
+  const initial = { ...product, duxName: product.name, publicationStatus: restore ? 'unpublished' as const : 'published' as const };
+  const updated = { ...initial, name: 'Nombre Dux actualizado B', duxName: 'Nombre Dux actualizado B',
+    description: 'Descripción actualizada durante la consulta Dux.', publicationStatus: restore ? 'published' as const : 'unpublished' as const };
+  let changed = false;
+  const mutations: Array<{ method: string; body?: unknown }> = [];
+  const request = vi.fn<typeof fetch>((_input, init) => {
+    const method = init?.method ?? 'GET';
+    if (method === 'GET') return Promise.resolve(Response.json(duxApiFixture({ products: [changed ? updated : initial], imageStorageConfigured: true })));
+    mutations.push({ method, ...(typeof init?.body === 'string' ? { body: JSON.parse(init.body) as unknown } : {}) });
+    changed = true;
+    return Promise.resolve(Response.json({ product: updated }));
+  });
+  vi.stubGlobal('fetch', request);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${initial.name}` }));
+  const name = screen.getByRole('textbox', { name: 'Nombre visible en la tienda' });
+  expect(name).toHaveValue(initial.name);
+  fireEvent.click(screen.getByRole('button', { name: `${restore ? 'Volver a publicar' : 'Dar de baja'} ${initial.name}` }));
+  if (!restore) fireEvent.click(screen.getByRole('button', { name: 'Confirmar baja' }));
+  await screen.findByRole('heading', { name: `Editar ${updated.name}` });
+  expect(name).toHaveValue(updated.name);
+  expect(screen.getByRole('textbox', { name: 'Descripción', hidden: true })).toHaveValue(updated.description);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(screen.getByRole('button', { name: 'Usar nombre de Dux' })).toBeDisabled();
+  fireEvent.submit(name.closest('form')!);
+  expect(mutations).toEqual(restore ? [{ method: 'PATCH', body: { publicationStatus: 'published' } }] : [{ method: 'DELETE' }]);
+  expect(screen.getByText('Todos los cambios están guardados.')).toBeVisible();
+});
+
+it('no vuelve a enviar el nombre manual al guardar sólo la descripción', async () => {
+  const manual = { ...product, name: 'Nombre web manual', nameOverride: 'Nombre web manual', duxName: 'Nombre base en Dux' };
+  const api = installCatalogApi([manual]);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${manual.name}` }));
+  fireEvent.click(screen.getByText('Editar descripción', { selector: 'summary' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Descripción' }), { target: { value: 'Descripción nueva, nombre conservado.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(api.mutations()[0]?.body).toEqual({ description: 'Descripción nueva, nombre conservado.' });
+  expect(api.products()[0]).toMatchObject({ name: manual.name, nameOverride: manual.nameOverride, duxName: manual.duxName });
+});
+
+it.each(['Nombre base Dux actualizado', product.name])('vuelve a Dux mediante un reset explícito aunque el origen sea %s', async duxName => {
+  const manual = { ...product, nameOverride: product.name, duxName };
+  const api = installCatalogApi([manual]);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${manual.name}` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Usar nombre de Dux' }));
+  expect(screen.getByRole('textbox', { name: 'Nombre visible en la tienda' })).toHaveValue(duxName);
+  expect(api.products()[0]?.nameOverride).toBe(product.name);
+  expect(api.mutations()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(api.mutations()[0]?.body).toEqual({ name: null });
+  expect(api.products()[0]).toMatchObject({ name: duxName, duxName, sku: product.sku, commerce: product.commerce });
+  expect(api.products()[0]?.nameOverride).toBeUndefined();
+  expect(screen.getByRole('button', { name: 'Usar nombre de Dux' })).toBeDisabled();
+});
+
+it('conserva el reset y el borrador de nombre ante un fallo y permite reintentarlo', async () => {
+  const api = installCatalogApi([{ ...product, nameOverride: product.name, duxName: 'Origen Dux vigente' }], { failFirstMutation: true });
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${product.name}` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Usar nombre de Dux' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar el guardado');
+  expect(screen.getByRole('textbox', { name: 'Nombre visible en la tienda' })).toHaveValue('Origen Dux vigente');
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(api.mutations().map(mutation => mutation.body)).toEqual([{ name: null }, { name: null }]);
+});
+
+it('edita nombre sin metadata antigua y valida antes de guardar sin crear un override por abrir el editor', async () => {
+  const api = installCatalogApi([product]);
+  render(<ProductManager />);
+  fireEvent.click(await screen.findByRole('button', { name: `Editar ${product.name}` }));
+  expect(screen.queryByRole('button', { name: 'Usar nombre de Dux' })).not.toBeInTheDocument();
+  const name = screen.getByRole('textbox', { name: 'Nombre visible en la tienda' });
+  fireEvent.change(name, { target: { value: ' ' } });
+  fireEvent.submit(name.closest('form')!);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Escribí un nombre');
+  expect(name).toHaveFocus();
+  expect(api.mutations()).toHaveLength(0);
+  fireEvent.change(name, { target: { value: 'Nombre manual confirmado' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
+  expect(api.mutations()[0]?.body).toEqual({ name: 'Nombre manual confirmado' });
 });
 
 it('conserva el borrador y el error si falla el guardado y permite reintentarlo', async () => {
@@ -373,9 +487,16 @@ function installCatalogApi(initialProducts: readonly FixtureProduct[], options: 
     const id = decodeURIComponent(path.split('/').at(-1) ?? '');
     const current = products.find(value => value.id === id);
     if (current === undefined) return Response.json({ error: { message: 'Producto inexistente.' } }, { status: 404 });
-    const updated: FixtureProduct = method === 'DELETE'
+    let updated: FixtureProduct = method === 'DELETE'
       ? { ...current, publicationStatus: 'unpublished' }
       : { ...current, ...body as Partial<FixtureProduct> };
+    if (method === 'PATCH' && typeof body === 'object' && body !== null && 'name' in body) {
+      const { nameOverride: previousOverride, ...withoutOverride } = updated;
+      void previousOverride;
+      updated = { ...withoutOverride, duxName: current.duxName ?? current.name,
+        name: typeof body.name === 'string' ? body.name : current.duxName ?? current.name,
+        ...(typeof body.name === 'string' ? { nameOverride: body.name } : {}) };
+    }
     products = products.map(value => value.id === id ? updated : value);
     return Response.json({ product: updated });
   });

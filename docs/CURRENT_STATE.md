@@ -10,6 +10,17 @@ sin editar los productos manualmente ni alterar comercio, reservas o pagos.
 Los resultados, SHA y operación remota se distinguen en
 [el registro](validation/DUX_RESUMABLE_SYNC_2026-10-21.md). La cadencia efectiva
 de GitHub y los rechazos intermitentes del proveedor siguen siendo controles separados.
+El encargo se amplió a vincular nombre base y stock por SKU Dux. El usuario aclaró
+después que el nombre manual de Shekinah debe prevalecer, con reset explícito al
+Dux actual. Ningún título Mercado Libre reemplaza el nombre; fotos, descripciones
+y títulos históricos para auditoría se conservan. Stock y reservas siguen Dux.
+El sincronizador `9f14d24` ya tiene CI y Pages aprobados; 0026 está aplicada y
+verificada en Preview y Production. El primer dispatch nuevo alcanzó Pages y
+falló `DUX_PROVIDER_REJECTED` en empresas, conservando la publicación anterior.
+El siguiente ciclo observado sí completó la publicación de 905 productos Dux a
+las 13:47:18.684 UTC: los cuatro aceites NEUTRO/VIRGEN muestran 180/360CC y conservan
+SKU/URL. Se preservan 231 bajas manuales; la tienda muestra 674 productos. La
+verificación canónica completa y el rollout del nombre manual se acreditan aparte.
 
 ## Compra pública simplificada — 2026-09-30
 

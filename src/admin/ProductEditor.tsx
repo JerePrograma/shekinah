@@ -4,12 +4,17 @@ import type { CatalogProductDetail } from '../catalog/model';
 import { ProductImageField } from './ProductImageField';
 import type { PendingNavigation, ProductOperation } from './product-management-types';
 
-export function ProductEditor({ product, description, onDescriptionChange, imageError, fileInputRef,
+export function ProductEditor({ product, visibleName, nameError, resetName, onNameChange, onResetName, description, onDescriptionChange, imageError, fileInputRef,
   imagePreviewUrl, imageStorageConfigured, isDirty, onCancelPendingNavigation, onConfirmPendingNavigation,
   onDiscardImage, onRequestClose, onSelectImage, onSubmit, onToggleRemoveImage, operation,
   pendingImage, pendingNavigation, pendingNavigationReturnFocus, removeImage, titleRef,
 }: Readonly<{
   product: CatalogProductDetail;
+  visibleName: string;
+  nameError: string | undefined;
+  resetName: boolean;
+  onNameChange: (value: string) => void;
+  onResetName: () => void;
   description: string;
   onDescriptionChange: (value: string) => void;
   imageError: string | undefined;
@@ -33,9 +38,11 @@ export function ProductEditor({ product, description, onDescriptionChange, image
 }>) {
   const busy = operation.kind !== 'idle';
   const continueRef = useRef<HTMLButtonElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (pendingNavigation !== null) continueRef.current?.focus();
   }, [pendingNavigation]);
+  useEffect(() => { if (nameError !== undefined) nameInputRef.current?.focus(); }, [nameError]);
   function cancelNavigation(): void {
     onCancelPendingNavigation();
     window.requestAnimationFrame(() => {
@@ -58,6 +65,23 @@ export function ProductEditor({ product, description, onDescriptionChange, image
       </div>
     </div>}
     <form className="admin-product-form" onSubmit={onSubmit} aria-busy={busy}>
+      <label className="admin-form-field">
+        <span id="product-name-label">Nombre visible en la tienda</span>
+        <input ref={nameInputRef} value={visibleName} required maxLength={500} disabled={busy}
+          onChange={event => onNameChange(event.currentTarget.value)} aria-labelledby="product-name-label"
+          aria-invalid={nameError === undefined ? undefined : true}
+          aria-describedby={nameError === undefined ? 'product-name-hint' : 'product-name-hint product-name-error'} />
+        <small id="product-name-hint">Dux aporta el nombre base por SKU. Un nombre guardado acá tiene prioridad y se conserva al sincronizar. El stock y las reservas siguen en Dux.</small>
+        {nameError === undefined ? null : <small id="product-name-error" className="form-error" role="alert">{nameError}</small>}
+      </label>
+      {typeof product.duxName !== 'string' ? null : <div>
+        <p className="admin-field-note">Nombre en Dux: {product.duxName}</p>
+        <button className="button button-secondary admin-compact-button" type="button" onClick={onResetName}
+          disabled={busy || resetName || (typeof product.nameOverride !== 'string' && visibleName === product.name)}>
+          Usar nombre de Dux
+        </button>
+        {resetName ? <p role="status">Se usará el nombre de Dux al guardar.</p> : null}
+      </div>}
       <ProductImageField disabled={busy} error={imageError} fileInputRef={fileInputRef} images={product.images}
         imageStorageConfigured={imageStorageConfigured} name={product.name} onDiscardSelection={onDiscardImage}
         onSelect={onSelectImage} onToggleRemove={onToggleRemoveImage} pendingImage={pendingImage}

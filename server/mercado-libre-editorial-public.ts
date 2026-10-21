@@ -26,7 +26,7 @@ export async function applyMercadoLibreEditorial(database: D1Database, env: Env,
       }>()).results ?? [];
     const snapshot = await readDuxCatalogSnapshot(database);
     const items = new Map(snapshot.items.map(item => [item.code, item]));
-    const byCode = new Map<string, { title: string | null; images: ReturnType<typeof parseImage>[]; description: string | null }>();
+    const byCode = new Map<string, { images: ReturnType<typeof parseImage>[]; description: string | null }>();
     for (const row of rows) {
       if (await sha256Hex(row.payload_json) !== row.hash || await sha256Hex(row.source_payload_json) !== row.source_hash) continue;
       const value: unknown = JSON.parse(row.payload_json), item = items.get(row.code);
@@ -44,13 +44,13 @@ export async function applyMercadoLibreEditorial(database: D1Database, env: Env,
       const images = row.images_approved === 1 ? value.images.map((image: unknown) => parseImage(image)) : [];
       if (images.some(image => !image.src.startsWith('/api/catalog-images/'))) continue;
       const description = row.description_approved === 1 && isRecord(value.description) && typeof value.description.text === 'string' && value.description.text.trim() !== '' ? value.description.text : null;
-      byCode.set(row.code, { title, images, description });
+      byCode.set(row.code, { images, description });
     }
     return products.map(product => {
       const editorial = byCode.get(product.sku ?? '');
       if (editorial === undefined || product.commerce?.source !== 'dux' || product.id !== items.get(product.sku ?? '')?.slug) return product;
+      // Dux owns the product name and stock by SKU; approved ML content only enriches photos and description.
       return Object.freeze({ ...product,
-        ...(editorial.title === null ? {} : { name: editorial.title }),
         ...(editorial.images.length === 0 ? {} : { images: Object.freeze(editorial.images), primaryImage: editorial.images[0]! }),
         ...(editorial.description === null ? {} : { description: editorial.description }) });
     });

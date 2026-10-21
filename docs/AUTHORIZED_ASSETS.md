@@ -1,5 +1,15 @@
 # Activos autorizados
 
+## Nombre y stock por SKU Dux — 2026-10-21
+
+El usuario exige origen Dux por código/SKU exacto y aclaró que una edición manual
+del nombre en Shekinah debe prevalecer. Sin override se muestra el nombre Dux
+actual; stock y reservas siempre siguen Dux. Ningún título Mercado Libre sustituye
+el nombre. Esto actualiza la autorización de nombres del 22 de
+septiembre que sigue abajo. Los títulos ya guardados se conservan como evidencia,
+sin reescribir sus objetos o hashes. Mercado Libre activo y aprobado puede seguir
+aportando sólo fotos y descripción conforme a los controles existentes.
+
 ## Imágenes de gestión web — 2026-09-25
 
 El [ABM solicitado](PRODUCT_ABM.md) autoriza subir, reemplazar y quitar imágenes

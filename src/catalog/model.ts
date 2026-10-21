@@ -151,6 +151,8 @@ export type Product = CatalogProductSummary;
 
 export type CatalogProductDetail = CatalogProductSummary &
   Readonly<{
+    duxName?: string;
+    nameOverride?: string;
     description?: string;
     images: readonly ProductImage[];
     variants: readonly CatalogVariant[];
@@ -590,9 +592,19 @@ export function parseProductDetail(
   }
   const variants = Object.freeze(value.variants.map(parseVariant));
   const description = readOptionalText(value, 'description');
+  const duxName = readOptionalText(value, 'duxName');
+  const nameOverride = readOptionalText(value, 'nameOverride');
+  if ((duxName !== undefined && duxName.length > 500) ||
+    (nameOverride !== undefined && (nameOverride.length > 500 || (typeof value.nameOverride === 'string' && /\p{Cc}/u.test(value.nameOverride)))) ||
+    (nameOverride !== undefined && (duxName === undefined || summary.name !== nameOverride)) ||
+    (nameOverride === undefined && duxName !== undefined && summary.name !== duxName)) {
+    throw new InvalidProductError('El nombre web del producto no coincide con su detalle.');
+  }
 
   return Object.freeze({
     ...summary,
+    ...(duxName === undefined ? {} : { duxName }),
+    ...(nameOverride === undefined ? {} : { nameOverride }),
     ...(description === undefined ? {} : { description }),
     images,
     variants,

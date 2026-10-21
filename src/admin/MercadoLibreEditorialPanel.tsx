@@ -88,7 +88,7 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
       {progress.issues.length===0?null:<p>{progress.issues.length} casos necesitan revisión. Consultá la información para soporte antes de aprobar nuevos contenidos.</p>}</>}
     <details className="admin-disclosure">
     <summary>Revisar publicaciones por producto</summary>
-    <p>Se admiten publicaciones activas de HERBOLARIOMDP para el nombre, las fotos y la descripción. Los precios y las existencias se administran en Dux.</p>
+    <p>Se admiten publicaciones activas de HERBOLARIOMDP para las fotos y la descripción. Dux aporta el nombre base por SKU; un nombre manual guardado en Shekinah tiene prioridad. Los precios y el stock siguen en Dux.</p>
     <form className="admin-editorial-search" onSubmit={event=>{event.preventDefault();void operation(loadReview);}}>
       <label>Código del producto en Dux<input value={code} onChange={event=>setCode(event.target.value)} required maxLength={180} disabled={!ready||busy}/></label>
       <label>Número de publicación de Mercado Libre (opcional)<input value={itemId} onChange={event=>setItemId(event.target.value)} maxLength={30} disabled={!ready||busy}/></label>
@@ -113,7 +113,7 @@ export function MercadoLibreEditorialPanel({onUnauthorized}:Readonly<{onUnauthor
         <label><input type="checkbox" checked={images} onChange={event=>setImages(event.target.checked)} disabled={busy}/>Usar las fotos de esta variante.</label>
         <label><input type="checkbox" checked={description} onChange={event=>setDescription(event.target.checked)} disabled={busy}/>Usar la descripción de esta publicación.</label>
         <label>Qué comprobaste y por qué tomás esta decisión<textarea value={reason} onChange={event=>setReason(event.target.value)} maxLength={2000} disabled={busy}/></label>
-        <p>Para aprobar, completá las tres comprobaciones, elegí fotos o descripción y escribí el motivo. El nombre de la publicación también se usará en la tienda.</p>
+        <p>Para aprobar, completá las tres comprobaciones, elegí fotos o descripción y escribí el motivo. La aprobación sólo aplica a fotos y descripción. Dux aporta el nombre base; un nombre manual guardado en Shekinah tiene prioridad. El stock siempre proviene de Dux.</p>
         <div className="admin-order-actions">
           <button className="button button-primary" type="button" disabled={busy||!presentation||!pack||!variant||(!images&&!description)||!reason.trim()} onClick={()=>void operation(()=>decide('approve'))}>Usar esta publicación para el producto</button>
           <button className="button button-secondary button-danger" type="button" disabled={busy||!reason.trim()} onClick={()=>void operation(()=>decide('reject'))}>Rechazar esta publicación</button>

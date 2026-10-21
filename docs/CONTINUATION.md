@@ -9,6 +9,15 @@ Un 202 no prueba publicación. No reiniciar ante transporte incierto, regresar a
 una petición larga ni corregir nombres/stock en SQL. Verificar 0026 primero en
 Preview y después Production, CI/Pages exactos y la lectura real de 180/360 cc.
 Preservar cadencia e incidencias históricas sin inferir que el build las resuelve.
+El nombre base y el stock son Dux por SKU. El nombre manual de Shekinah prevalece
+hasta un reset explícito al Dux actual; requiere 0027. Stock y reservas no admiten
+override. No restaurar el título Mercado Libre como nombre visible, retirado por
+instrucción del usuario el 21 de octubre.
+0026 ya está aplicada y verificada en ambas bases para `9f14d24`, con CI/Pages
+aprobados. No repetirla. El ciclo real de las 13:47 UTC publicó 905 productos Dux,
+incluidos los aceites de 180/360CC con SKU/URL intactos y bajas manuales conservadas.
+El rollout de 0027 y la verificación canónica completa se acreditan en el registro;
+no sustituir evidencia pendiente con nombres SQL.
 
 ## Recorrido público claro — 2026-09-30
 

@@ -21,6 +21,9 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
   const [categories, setCategories] = useState<readonly CatalogCategory[]>([]);
   const [imageStorageConfigured, setImageStorageConfigured] = useState(false);
   const [editingProduct, setEditingProduct] = useState<CatalogProductDetail | null>(null);
+  const [visibleName, setVisibleName] = useState('');
+  const [resetName, setResetName] = useState(false);
+  const [nameError, setNameError] = useState<string>();
   const [description, setDescription] = useState('');
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
@@ -47,7 +50,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
   const pendingNavigationReturnFocusRef = useRef<HTMLElement | null>(null);
   const editingId = editingProduct?.id;
   const isDirty = editingProduct !== null && (
-    description !== (editingProduct.description ?? '') || pendingImage !== null || removeImage
+    visibleName !== editingProduct.name || resetName || description !== (editingProduct.description ?? '') || pendingImage !== null || removeImage
   );
   const remoteBusy = operation.kind !== 'idle';
   const interactionState = useMemo<ProductInteractionState>(() => ({
@@ -136,19 +139,28 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (editingProduct === null || operationRef.current || !isDirty) return;
+    const nameChanged = resetName || visibleName !== editingProduct.name;
+    if (nameChanged && !resetName && (visibleName.trim() === '' || visibleName.trim().length > 500 || /\p{Cc}/u.test(visibleName))) {
+      setNameError('Escribí un nombre de entre 1 y 500 caracteres, sin saltos de línea ni caracteres de control.');
+      return;
+    }
     const validation = pendingImage === null ? null : validateImage(pendingImage);
     if (validation !== null) { setImageError(validation); fileInputRef.current?.focus(); return; }
     operationRef.current = true;
     setOperation({ kind: 'saving', stage: 'product' }); setError(''); setMessage('');
     let persisted = editingProduct;
-    let descriptionSaved = false;
+    let contentSaved = false;
     try {
-      if (description !== (editingProduct.description ?? '')) {
+      if (nameChanged || description !== (editingProduct.description ?? '')) {
         persisted = parseAdminProduct(await adminJson(`/api/admin/products/${encodeURIComponent(editingProduct.id)}`, {
-          method: 'PATCH', body: JSON.stringify({ description }),
+          method: 'PATCH', body: JSON.stringify({
+            ...(nameChanged ? { name: resetName ? null : visibleName.trim() } : {}),
+            ...(description !== (editingProduct.description ?? '') ? { description } : {}),
+          }),
         }, onUnauthorized), categories);
         replaceProduct(persisted); setEditingProduct(persisted); setDescription(persisted.description ?? '');
-        descriptionSaved = true;
+        setVisibleName(persisted.name); setResetName(false); setNameError(undefined);
+        contentSaved = true;
       }
       if (pendingImage !== null || removeImage) {
         setOperation({ kind: 'saving', stage: 'image' });
@@ -157,13 +169,14 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
             method: 'PUT', headers: { 'content-type': pendingImage.type }, body: pendingImage,
           }, onUnauthorized), categories);
         replaceProduct(persisted); setEditingProduct(persisted);
+        setVisibleName(persisted.name); setResetName(false);
         setPendingImage(null); setRemoveImage(false); clearFileInput();
       }
       setMessage(`Cambios de ${persisted.name} guardados.`);
       await refreshRuntimeCatalog();
     } catch (cause: unknown) {
-      setError(`${descriptionSaved ? 'La descripción se guardó, pero no pudimos actualizar la imagen. ' : 'No pudimos confirmar el guardado. '}${errorMessage(cause, 'Tus cambios siguen en el editor. Revisalos e intentá guardar nuevamente.')}`);
-      if (descriptionSaved) await refreshRuntimeCatalog();
+      setError(`${contentSaved ? 'El contenido se guardó, pero no pudimos actualizar la imagen. ' : 'No pudimos confirmar el guardado. '}${errorMessage(cause, 'Tus cambios siguen en el editor. Revisalos e intentá guardar nuevamente.')}`);
+      if (contentSaved) await refreshRuntimeCatalog();
     } finally { operationRef.current = false; setOperation({ kind: 'idle' }); }
   }
 
@@ -176,7 +189,10 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       const updated = parseAdminProduct(await adminJson(`/api/admin/products/${encodeURIComponent(product.id)}`,
         published ? { method: 'PATCH', body: JSON.stringify({ publicationStatus: 'published' }) } : { method: 'DELETE' }, onUnauthorized), categories);
       replaceProduct(updated);
-      if (editingId === product.id) setEditingProduct(updated);
+      if (editingId === product.id) {
+        setEditingProduct(updated); setVisibleName(updated.name); setResetName(false); setNameError(undefined);
+        setDescription(updated.description ?? '');
+      }
       setDeleteCandidate(null);
       setMessage(published ? `${product.name} volvió a publicarse.` : `${product.name} se dio de baja de la web. Podés volver a publicarlo al final de la lista.`);
       await refreshRuntimeCatalog();
@@ -186,11 +202,11 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
 
   function clearFileInput(): void { if (fileInputRef.current !== null) fileInputRef.current.value = ''; }
   function resetEditor(): void {
-    setPendingImage(null); setRemoveImage(false); setImageError(undefined); setPendingNavigation(null); clearFileInput();
+    setPendingImage(null); setRemoveImage(false); setImageError(undefined); setNameError(undefined); setResetName(false); setPendingNavigation(null); clearFileInput();
   }
   function openEdit(product: CatalogProductDetail): void {
     setError(''); setMessage('');
-    setEditingProduct(product); setDescription(product.description ?? ''); resetEditor(); setDeleteCandidate(null);
+    setEditingProduct(product); setVisibleName(product.name); setDescription(product.description ?? ''); resetEditor(); setDeleteCandidate(null);
   }
   function closeEditor(): void {
     setError('');
@@ -226,7 +242,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
       <header className="admin-page-header">
         <div>
           <h1 id="backoffice-title" tabIndex={-1}>Productos</h1>
-          <p>Fotos, descripciones y publicación en tu tienda.</p>
+          <p>Nombre visible, fotos, descripciones y publicación en tu tienda.</p>
         </div>
       </header>
       <p className="admin-catalog-totals" hidden={loading || loadError !== ''}>
@@ -251,6 +267,12 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
           onResetFilters={() => { setQuery(''); setCategoryFilter(ALL_FILTERS); setAvailabilityFilter(ALL_FILTERS); setStockFilter(ALL_FILTERS); }}
           onSortChange={setSort} onStockFilterChange={setStockFilter} onUpdateAvailability={product => void setPublication(product, true)} />
         {editingProduct === null ? null : <ProductEditor key={editingProduct.id} product={editingProduct}
+          visibleName={visibleName} nameError={nameError} resetName={resetName}
+          onNameChange={value => { setVisibleName(value); setResetName(false); setNameError(undefined); }}
+          onResetName={() => {
+            if (typeof editingProduct.duxName !== 'string') return;
+            setVisibleName(editingProduct.duxName); setResetName(true); setNameError(undefined);
+          }}
           description={description} onDescriptionChange={setDescription} imageError={imageError} fileInputRef={fileInputRef}
           imagePreviewUrl={imagePreviewUrl} imageStorageConfigured={imageStorageConfigured} isDirty={isDirty}
           operation={operation} pendingImage={pendingImage} pendingNavigation={pendingNavigation}
@@ -261,7 +283,7 @@ export function ProductManager({ onInteractionStateChange, onUnauthorized }: Rea
           }} onDiscardImage={() => { setPendingImage(null); clearFileInput(); }} onRequestClose={requestClose}
           onSelectImage={selectImage} onSubmit={event => void submit(event)} onToggleRemoveImage={() => setRemoveImage(current => !current)} />}
       </div>
-      <details className="admin-product-help"><summary>¿Qué puedo editar?</summary><p>Los productos nuevos, los precios y el stock se administran en Dux. Acá podés editar imágenes y descripción, dar de baja y volver a publicar.</p></details>
+      <details className="admin-product-help"><summary>¿Qué puedo editar?</summary><p>Los productos nuevos, los precios y el stock se administran en Dux. Acá podés editar el nombre visible, las imágenes y la descripción, dar de baja y volver a publicar. El nombre manual se conserva al sincronizar; podés volver a usar el nombre de Dux.</p></details>
     </div>
   </section>;
 }
@@ -322,9 +344,10 @@ async function adminRequest(path: string, init: RequestInit, onUnauthorized?: ()
     const code = isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === 'string' ? payload.error.code : '';
     const knownMessages: Readonly<Record<string, string>> = {
       PRODUCT_NOT_FOUND: 'El producto ya no está disponible en Dux. Consultá el listado actualizado.',
-      INVALID_PRODUCT_WEB_SETTINGS: 'Revisá la descripción: admite hasta 12.000 caracteres.',
+      INVALID_PRODUCT_WEB_SETTINGS: 'Revisá el nombre (hasta 500 caracteres) y la descripción (hasta 12.000 caracteres).',
       CATALOG_IMAGE_STORAGE_UNAVAILABLE: 'La carga de imágenes no está habilitada. Pedí ayuda a soporte.',
       PRODUCT_WEB_SETTINGS_MIGRATION_REQUIRED: 'La edición de productos necesita una actualización. Pedí ayuda a soporte.',
+      PRODUCT_WEB_NAME_MIGRATION_REQUIRED: 'La edición del nombre necesita una actualización. Pedí ayuda a soporte.',
       CATALOG_IMAGE_UPLOAD_FAILED: 'No pudimos guardar la imagen. Conservamos tu selección para que puedas reintentar.',
       UNSUPPORTED_IMAGE_TYPE: 'Seleccioná una imagen JPG, PNG o WebP.',
       IMAGE_SIGNATURE_MISMATCH: 'No reconocemos el formato de la imagen. Seleccioná otro archivo JPG, PNG o WebP.',
