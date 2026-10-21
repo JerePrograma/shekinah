@@ -2,30 +2,28 @@
 
 ## Corrección de sincronización Dux — 2026-10-21
 
-CI y Pages iniciales están aprobados en `1fdd855`; falla el scheduler con HTTP 524.
-El snapshot productivo observado conserva 889 productos del 9 de octubre y los
-aceites de coco de 200/400 cc. El usuario informa 180/360 cc en Dux. La corrección
-implementa [lectura recuperable por pasos](DUX_RESUMABLE_SYNC.md), con nueva 0026,
-sin editar los productos manualmente ni alterar comercio, reservas o pagos.
-Los resultados, SHA y operación remota se distinguen en
-[el registro](validation/DUX_RESUMABLE_SYNC_2026-10-21.md). La cadencia efectiva
-de GitHub y los rechazos intermitentes del proveedor siguen siendo controles separados.
-El encargo se amplió a vincular nombre base y stock por SKU Dux. El usuario aclaró
-después que el nombre manual de Shekinah debe prevalecer, con reset explícito al
-Dux actual. Ningún título Mercado Libre reemplaza el nombre; fotos, descripciones
-y títulos históricos para auditoría se conservan. Stock y reservas siguen Dux.
-El sincronizador `9f14d24` ya tiene CI y Pages aprobados; 0026 está aplicada y
-verificada en Preview y Production. El primer dispatch nuevo alcanzó Pages y
-falló `DUX_PROVIDER_REJECTED` en empresas, conservando la publicación anterior.
-El siguiente ciclo observado sí completó la publicación de 905 productos Dux a
-las 13:47:18.684 UTC: los cuatro aceites NEUTRO/VIRGEN muestran 180/360CC y conservan
-SKU/URL. Se preservan 231 bajas manuales; la tienda muestra 674 productos. La
-verificación canónica completa se acredita aparte. El nombre manual `0da0c99`
-tiene CI/Pages aprobados y 0027 aplicada y verificada en ambas bases, sin editar
-productos reales ni cambiar decisiones de publicación.
-El ciclo posterior en `172d525` volvió a publicar 905 productos a las 14:17:45.694
-UTC, cero fallidos y un delta, con presupuesto observado 136+14. Ese SHA tiene
-CI y Pages aprobados. Se mantiene separado el resultado del smoke canónico.
+La [lectura recuperable por pasos](DUX_RESUMABLE_SYNC.md) reemplaza la petición
+prolongada que terminaba en HTTP 524. Dos ciclos reales completaron la publicación
+de 905 productos Dux; el último terminó a las 14:17:45.694 UTC, sin fallidos.
+Los cuatro aceites NEUTRO/VIRGEN muestran 180/360CC y conservan SKU/URL.
+Se preservan 231 bajas manuales: la tienda muestra 674 productos y 13 categorías.
+GitHub verificó HTTPS canónico y las 674 fichas a las 14:23:14.494 UTC, con la
+misma versión de catálogo. CI, Pages y la reconciliación de `172d525` aprobaron.
+El cierre de código `8068fe2` también tiene CI y Pages aprobados; conserva el
+mismo catálogo y añade el cierre seguro de un inicio D1 con prepago incierto.
+Los SHA, artefactos e intentos anteriores se conservan en
+[el registro](validation/DUX_RESUMABLE_SYNC_2026-10-21.md).
+
+El nombre base, stock y reservas se vinculan por SKU Dux. El nombre editado
+manualmente en Shekinah prevalece hasta usar el reset explícito al Dux actual;
+también se conservan fotos y descripciones manuales. Ningún título Mercado Libre
+reemplaza el nombre; sus títulos históricos permanecen para auditoría. Las
+migraciones 0026 y 0027 están aplicadas y verificadas en Preview y Production,
+sin editar productos reales de prueba ni cambiar decisiones de publicación,
+comercio, reservas o pagos. El presupuesto observado del último ciclo fue 136+14
+por un delta; los guards y la cuota existente se conservan. La cadencia efectiva
+irregular de GitHub y los rechazos intermitentes del proveedor siguen registrados
+como incidencias externas; el ciclo exitoso no acredita una cadencia sostenida.
 
 ## Compra pública simplificada — 2026-09-30
 

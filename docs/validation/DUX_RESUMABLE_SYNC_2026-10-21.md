@@ -435,3 +435,42 @@ antes del ajuste. La repetición `npm run verify` aprobó 1111 pruebas en 126
 archivos, 14 omitidas históricas y 49/49 E2E, junto con todos sus controles.
 `npm run build:pages`: verificado también con 1111 aprobadas y 14 omitidas,
 todos sus controles aprobados. Enlaces locales 67/67 y diff revisado sin errores.
+
+## Verificación canónica completa: verificado
+
+La reconciliación real `39615256363`, job `119274456424`, terminó `success` a las
+14:23:16 UTC. El paso separado de catálogo y todas las fichas aprobó entre
+14:17:46 y 14:23:14 UTC. La salida acredita HTTPS verificado para
+`https://shekinah.ar`, 674/674 fichas, 13 categorías, la versión
+`ad435f6a0ae7a70dac2daec8c96e98c11c9412840ab7903fc744b13f791e5dea`
+y digest comercial
+`ba255708562c9c4781e32573ea4a6b2beae4dc0f29ec60c8d3acc8a8a02aad8f`.
+Fecha de comprobación: `2026-10-21T14:23:14.494Z`. Se acreditan 640 precios
+utilizables, 34 placeholders, cero precios ausentes/cero o inválidos y cero
+productos habilitados para checkout en esa proyección. No se transforma ese
+resultado en una activación comercial nueva.
+
+Un `ECONNRESET` de lectura de headers se recuperó con el reintento acotado;
+se conserva el diagnóstico saneado. No hizo falta aumentar concurrencia ni
+plazo, omitir fichas o repetir la sincronización Dux. El fallo de confianza TLS
+de la red local sigue separado de esta comprobación canónica ejecutada en GitHub.
+
+El guard de inicio incierto se publicó después en
+`8068fe23790b246ed6e607dfa16e071f9ad88fb3`,
+`fix: cerrar inicios Dux sin prepago confirmado`, mediante push ordinario a main.
+Su validación local completa es la de 1111 pruebas y 49/49 E2E indicada arriba.
+[CI](https://github.com/JerePrograma/shekinah/actions/runs/39616877304) terminó
+`success`, job Verify `119280181925`, con todos sus pasos aprobados. Artefacto
+`12353861065`, `shekinah-dist-8068fe23790b246ed6e607dfa16e071f9ad88fb3`,
+52290832 bytes, digest
+`sha256:c6a734d913669f97156e459e3665e9c5e2ca68eb5bb7bb24e816cee1faaef942`.
+Pages Production `ca238469-5ce5-4415-b57e-b764275a21b1`, `success`, acredita el
+mismo SHA. Smoke HTTPS de
+[ese deployment](https://ca238469.shekinah-7dl.pages.dev): 674 productos,
+13 categorías, cuatro aceites 180/360CC con el mismo hash y stock Dux 3/2/3/2,
+reservas cero y administración sin sesión 401.
+
+El cierre documental actualiza este registro y CURRENT_STATE; no cambia código,
+dependencias, esquema ni configuración. Enlaces locales 67/67 y diff comprobados.
+Se conserva la validación completa del mismo código y se comprueban por separado
+CI, Pages y SHA remoto del commit documental final en el informe de entrega.
