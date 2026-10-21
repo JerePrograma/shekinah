@@ -372,3 +372,66 @@ pruebas aprobadas, 14 omitidas históricas y 49/49 E2E; todos sus controles apro
 `npm run build:pages` con ese mismo alcance: verificado, 1108 aprobadas y 14
 omitidas, con todos sus controles aprobados. Diff completo, 67 enlaces locales,
 lockfile intacto y ausencia de binarios/secretos/dist en el índice: verificado.
+
+## Publicación del presupuesto y diagnóstico: verificado
+
+Commit `172d525c49b019e3487f24170f3aca8340ebd44d`,
+`fix: ajustar presupuesto y verificación Dux`, publicado con `git push origin main`;
+`git ls-remote` acreditó el mismo SHA y el árbol estaba limpio.
+[CI](https://github.com/JerePrograma/shekinah/actions/runs/39614769374) `success`,
+Verify `119272744543`, artefacto `12352601118`,
+`shekinah-dist-172d525c49b019e3487f24170f3aca8340ebd44d`, 52290832 bytes,
+digest `sha256:cd9ce820632522cfbd029a422cb7da418dbbc0d088e256744cd13553a078ee1e`.
+Pages Production `4e193293-9254-487f-83f8-eb354f305465`, `success`, mismo SHA,
+finalizó a las 14:14:51.304 UTC;
+[URL inmutable](https://4e193293.shekinah-7dl.pages.dev).
+
+Lectura independiente de configuración: D1 Preview
+`48d8ae41-8910-4f8e-b537-3706c07e2cbf` / Production
+`533c7c65-1dbb-4f15-be96-c6088700a8e1`, R2 `shekinah-preview` / `shekinah`,
+sin cambios. Flags productivos WEB/VITE_WEB/ASSISTED/DIRECT/COMMERCE/DUX true;
+VITE_COMMERCE, mantenimiento y editorial ML false; frescura 900 segundos.
+Preview conserva COMMERCE/VITE_COMMERCE/editorial false y DUX true. Se acreditó
+0001–0027, sin revelar valores de secretos ni modificar configuración externa.
+
+[Dispatch real del SHA](https://github.com/JerePrograma/shekinah/actions/runs/39615256363),
+job `119274456424`: paso Refresh `success`, 905 procesados y cero fallidos;
+run `dux_sync_d1cb068e-ec7d-4eab-a5da-7a4dee1ca705`,
+14:15:36.869–14:17:45.694 UTC. Versión nueva
+`ad435f6a0ae7a70dac2daec8c96e98c11c9412840ab7903fc744b13f791e5dea`.
+La generación publicada acredita un producto cambiado y presupuesto
+6414→6564: delta observado de 150, igual a 136 + 14. No se presenta el contador
+estimado como consumo facturado. Staging vacío, cero violaciones FK,
+12 pedidos / 29 líneas / dos pagos y 231 bajas manuales conservados.
+Smoke HTTPS técnico del mismo deployment: cuatro aceites 180/360CC, SKU/URL,
+stock 3/2/3/2 y reservas cero concordantes con la nueva versión; 674 productos,
+13 categorías y administración sin sesión 401. El smoke canónico completo se
+registra al finalizar su paso separado.
+
+Una lectura de inspección Cloudflare devolvió 403/code7403 sin escrituras.
+`wrangler whoami` acreditó la sesión local existente y la lectura posterior
+aprobó. No se inició un login nuevo ni se imprimieron credenciales.
+
+## Inicio D1 incierto
+
+La revisión del prepago detectó otro caso recuperable: un error D1 genérico tras
+insertar la operación pero antes de confirmar reserva/liberación podía dejar
+un lease inicial y permitir avanzar sin acreditar el prepago. Cero intentos y
+token inicial no nulo distinguen ese estado de una lectura real, que incrementa
+intentos atómicamente. Al vencer se cierra con `DUX_SYNC_START_UNCERTAIN`, mediante
+el mismo fencing; no se lee Dux ni se publica. Una liberación confirmada con
+respuesta perdida conserva token nulo y continúa sin volver a cobrar la base.
+
+Tres regresiones, 32/32 pruebas dirigidas, TypeScript y ESLint: verificado.
+Cubren reserva no ejecutada (también una operación initial heredada de 0026),
+liberación antes de commit sin reembolso y liberación después de commit con
+continuación válida. Las primeras aserciones usaron dos `expect.any` que ESLint
+marcó como asignaciones inseguras; se sustituyeron por guards `typeof` y se
+repitieron los controles. Se conserva ese intento, sin cambios funcionales por
+la reparación del fixture. Se repiten las validaciones generales del alcance final.
+
+La primera validación general de este guard encontró esas dos aserciones de tipo
+antes del ajuste. La repetición `npm run verify` aprobó 1111 pruebas en 126
+archivos, 14 omitidas históricas y 49/49 E2E, junto con todos sus controles.
+`npm run build:pages`: verificado también con 1111 aprobadas y 14 omitidas,
+todos sus controles aprobados. Enlaces locales 67/67 y diff revisado sin errores.

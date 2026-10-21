@@ -64,6 +64,14 @@ export async function advanceDuxSyncOperation(
   if (operation.status === 'completed') return completedResponse(operation);
   if (operation.status === 'failed') throw operationError(operation);
   if (operation.lease_until_ms > Date.now()) return progressResponse(operation);
+  // A first HTTP claim increments attempts atomically. An expired non-null
+  // lease with zero attempts can only be an unconfirmed initialization; its
+  // collection reservation must not be assumed to have committed.
+  if (operation.phase === 'companies' && operation.attempts === 0 && operation.lease_token !== null) {
+    const error = new HttpError(503, 'DUX_SYNC_START_UNCERTAIN', 'No se pudo confirmar el inicio seguro de la actualización. El catálogo anterior se conserva.');
+    await failOperation(database, operation, error);
+    return currentResponse(database, requestId);
+  }
   if (Date.now() - Date.parse(operation.started_at) >= DUX_SYNC_DEADLINE_MS) {
     const error = new HttpError(504, 'DUX_SYNC_DEADLINE_EXCEEDED', 'La actualización excedió su plazo seguro. El catálogo anterior se conserva.');
     await failOperation(database, operation, error);

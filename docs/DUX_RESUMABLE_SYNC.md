@@ -39,6 +39,12 @@ Los callers sin cuerpo conservan el contrato histórico para herramientas operat
 existentes; siguen siendo una petición completa y no solucionan el límite 524.
 Los tres clientes activos usan el protocolo nuevo. El relay mantiene su cron vacío.
 
+Un inicio cuyo prepago/liberación D1 no puede confirmarse conserva el lease
+inicial. Al vencer, `companies` con cero intentos y token no nulo termina
+`DUX_SYNC_START_UNCERTAIN`; no empieza a leer suponiendo una reserva. Un token
+nulo acredita la liberación posterior al prepago y permite continuar sin cobrar
+la base dos veces. No se reembolsa un prepago acreditado con respuesta incierta.
+
 La ampliación del encargo exige origen Dux por código/SKU exacto tanto en la tienda
 como en administración. El usuario aclaró luego que un nombre editado manualmente
 en Shekinah debe prevalecer por ese SKU, al igual que fotos y descripción. Una

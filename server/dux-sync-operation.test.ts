@@ -288,6 +288,60 @@ describe('sincronización Dux recuperable', () => {
     expect(db.database.prepare('SELECT status FROM dux_sync_operations WHERE request_id = ?').get(requestId)).toEqual({ status: 'failed' });
   });
 
+  it('cierra un inicio initial pendiente de 0026 si la reserva falló antes de confirmarse, sin consultar Dux', async () => {
+    const db = database();
+    const interrupted = interruptedStartupDatabase(db, 'budget');
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(interrupted, environment(interrupted), requestId, provider)).rejects.toThrow('Interrupción D1 simulada');
+    // The existing 0026 fields also identify an initial operation left pending
+    // by an older worker; no new migration or paid-plan assumption is needed.
+    const pending = db.database.prepare('SELECT kind, status, phase, attempts, lease_token FROM dux_sync_operations WHERE request_id = ?').get(requestId);
+    expect(pending).toMatchObject({ kind: 'initial', status: 'running', phase: 'companies', attempts: 0 });
+    expect(typeof pending?.lease_token).toBe('string');
+    expect((await step(db, environment(db), requestId, provider)).status).toBe(202);
+    await vi.advanceTimersByTimeAsync(61_000);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_START_UNCERTAIN' });
+    expect(db.database.prepare('SELECT status, attempts, error_code FROM dux_sync_operations WHERE request_id = ?').get(requestId))
+      .toEqual({ status: 'failed', attempts: 0, error_code: 'DUX_SYNC_START_UNCERTAIN' });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_d1_write_budget').get()).toEqual({ count: 0 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages').get()).toEqual({ count: 0 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()).toEqual({ count: 0 });
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('no reembolsa una reserva acreditada si la liberación inicial quedó ambigua y termina sin consultar Dux', async () => {
+    const db = database();
+    const interrupted = interruptedStartupDatabase(db, 'release_before_commit');
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(interrupted, environment(interrupted), requestId, provider)).rejects.toThrow('Interrupción D1 simulada');
+    expect(reservedWrites(db)).toBe(120 + 96);
+    const pending = db.database.prepare('SELECT attempts, lease_token FROM dux_sync_operations WHERE request_id = ?').get(requestId);
+    expect(pending?.attempts).toBe(0);
+    expect(typeof pending?.lease_token).toBe('string');
+    await vi.advanceTimersByTimeAsync(61_000);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_START_UNCERTAIN' });
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_START_UNCERTAIN' });
+    expect(reservedWrites(db)).toBe(120 + 96);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()).toEqual({ count: 0 });
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('continúa con token NULL si la liberación confirmó pero perdió su respuesta, sin volver a cobrar la base', async () => {
+    const db = database();
+    const interrupted = interruptedStartupDatabase(db, 'release_after_commit');
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(interrupted, environment(interrupted), requestId, provider)).rejects.toThrow('Interrupción D1 simulada');
+    expect(reservedWrites(db)).toBe(120 + 96);
+    expect(db.database.prepare('SELECT status, phase, attempts, lease_token, lease_until_ms FROM dux_sync_operations WHERE request_id = ?').get(requestId))
+      .toEqual({ status: 'running', phase: 'companies', attempts: 0, lease_token: null, lease_until_ms: 0 });
+    expect(await (await step(db, environment(db), requestId, provider)).json()).toMatchObject({ phase: 'branches' });
+    expect(reservedWrites(db)).toBe(120 + 96);
+    expect((await complete(db, environment(db), requestId, provider)).status).toBe(200);
+    expect(reservedWrites(db)).toBe(120 + 96 + 16 + 14);
+    expect(provider).toHaveBeenCalledTimes(4);
+    expect((await readDuxCatalogSnapshot(db)).itemCount).toBe(1);
+  });
+
   it('limita el tamaño total de staging aunque cada página individual sea válida', async () => {
     const db = database();
     const env = environment(db);
@@ -507,6 +561,29 @@ function logicalWrites(database: SqliteD1): number {
   const row = database.database.prepare('SELECT total_changes() AS written').get();
   if (typeof row?.written !== 'number') throw new Error('Contador de prueba ausente');
   return row.written;
+}
+function interruptedStartupDatabase(database: D1Database, failure: 'budget' | 'release_before_commit' | 'release_after_commit'): D1Database {
+  return {
+    prepare: query => {
+      const statement = database.prepare(query);
+      const interrupted = failure === 'budget' ? query.includes('INSERT INTO dux_d1_write_budget')
+        : query.includes('UPDATE dux_sync_operations SET lease_token = NULL, lease_until_ms = 0');
+      return interrupted ? interruptedStatement(statement, failure === 'budget' ? 'first' : 'run', failure === 'release_after_commit') : statement;
+    },
+    batch: statements => database.batch(statements), exec: query => database.exec(query),
+  };
+}
+function interruptedStatement(statement: D1PreparedStatement, method: 'first' | 'run', afterCommit: boolean): D1PreparedStatement {
+  async function interrupt<T>(execute: () => Promise<T>): Promise<T> {
+    if (afterCommit) await execute();
+    throw new Error('Interrupción D1 simulada');
+  }
+  return {
+    bind: (...values) => interruptedStatement(statement.bind(...values), method, afterCommit),
+    first: <T>(column?: string) => method === 'first' ? interrupt(() => statement.first<T>(column)) : statement.first<T>(column),
+    run: <T>() => method === 'run' ? interrupt(() => statement.run<T>()) : statement.run<T>(),
+    all: <T>() => statement.all<T>(), raw: <T>(options?: Readonly<{ columnNames?: boolean }>) => statement.raw<T>(options),
+  };
 }
 function delayedFirst(statement: D1PreparedStatement, beforeFirst: () => Promise<void>, captureBeforeWait = false): D1PreparedStatement {
   return {

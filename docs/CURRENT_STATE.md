@@ -23,6 +23,9 @@ SKU/URL. Se preservan 231 bajas manuales; la tienda muestra 674 productos. La
 verificación canónica completa se acredita aparte. El nombre manual `0da0c99`
 tiene CI/Pages aprobados y 0027 aplicada y verificada en ambas bases, sin editar
 productos reales ni cambiar decisiones de publicación.
+El ciclo posterior en `172d525` volvió a publicar 905 productos a las 14:17:45.694
+UTC, cero fallidos y un delta, con presupuesto observado 136+14. Ese SHA tiene
+CI y Pages aprobados. Se mantiene separado el resultado del smoke canónico.
 
 ## Compra pública simplificada — 2026-09-30
 
