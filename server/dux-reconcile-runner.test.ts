@@ -13,14 +13,51 @@ const fetchStub = pathToFileURL(resolve(
 )).href;
 
 describe('runner programado de reconciliación Dux', () => {
-  it.each([
-    ['server_error_then_cooldown', 'DUX_SYNC_COOLDOWN'],
-    ['timeout_then_in_progress', 'DUX_SYNC_IN_PROGRESS'],
-  ])('no convierte en éxito un ciclo incierto seguido de %s', (scenario, expectedCode) => {
-    const result = runScenario(scenario);
+  it('no convierte en éxito un transporte incierto seguido de un lock activo', () => {
+    const result = runScenario('timeout_then_in_progress');
 
     expect(result.status).not.toBe(0);
-    expect(`${result.stdout}\n${result.stderr}`).toContain(expectedCode);
+    expect(`${result.stdout}\n${result.stderr}`).toContain('DUX_SYNC_IN_PROGRESS');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+  });
+
+  it('no reintenta un error terminal del servidor aunque sea HTTP 500', () => {
+    const result = runScenario('server_error_then_cooldown');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('DUX_UNAVAILABLE');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
+  });
+
+  it.each(['progress_completed', 'progress_transport_resume', 'gateway_then_completed'])(
+    'continúa %s con una sola identidad hasta confirmar el catálogo', (scenario) => {
+      const result = runScenario(scenario);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Catálogo Dux confirmado: run=dux_sync_runner_fixture productos=3');
+      expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+    },
+  );
+
+  it.each([
+    'progress_identity', 'progress_run', 'progress_phase', 'progress_regression',
+    'progress_count', 'progress_total', 'progress_delay', 'progress_final_run',
+  ])('rechaza progreso incompatible %s sin iniciar otro ciclo', (scenario) => {
+    const result = runScenario(scenario);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('DUX_RECONCILE_PROGRESS_INVALID');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+    expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+  });
+
+  it.each([
+    ['progress_limit', 'DUX_RECONCILE_STEP_LIMIT'],
+    ['progress_deadline', 'DUX_RECONCILE_DEADLINE'],
+    ['progress_without_final', 'cuerpo inválido'],
+  ])('no declara éxito sin resultado final en %s', (scenario, expectedCode) => {
+    const result = runScenario(scenario);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(expectedCode);
+    expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+    if (scenario === 'progress_limit') expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=80');
   });
 
   it('no considera éxito un overlap protegido observado en el primer intento', () => {

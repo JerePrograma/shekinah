@@ -1,14 +1,52 @@
 const scenario = process.env.DUX_RUNNER_TEST_SCENARIO;
 let calls = 0;
-process.on('exit', () => { console.log(`DUX_RUNNER_TEST_REQUESTS=${calls}`); });
+const requestIds = new Set();
+process.on('exit', () => {
+  console.log(`DUX_RUNNER_TEST_REQUESTS=${calls}`);
+  console.log(`DUX_RUNNER_TEST_IDENTITIES=${requestIds.size}`);
+});
 
 const nativeSetTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (callback, milliseconds, ...arguments_) => (
   nativeSetTimeout(callback, Math.min(Number(milliseconds), 1), ...arguments_)
 );
 
-globalThis.fetch = async () => {
+globalThis.fetch = async (_input, init) => {
   calls += 1;
+  const body = JSON.parse(init.body);
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(body.requestId) ||
+    init.headers['content-type'] !== 'application/json') throw new Error('Solicitud de continuación inválida.');
+  requestIds.add(body.requestId);
+  if (scenario?.startsWith('progress_')) {
+    if (scenario === 'progress_transport_resume' && calls === 2) throw new DOMException('timeout', 'TimeoutError');
+    if (scenario === 'progress_deadline') {
+      const expired = performance.now() + 7 * 60 * 1_000;
+      Object.defineProperty(performance, 'now', { value: () => expired });
+    }
+    const progress = {
+      status: 'running', requestId: body.requestId, runId: 'dux_sync_runner_fixture',
+      phase: calls === 1 ? 'items' : 'publish', processed: 2, total: 3, retryAfterMs: 1_000,
+    };
+    if (scenario === 'progress_identity') progress.requestId = 'another-request';
+    if (scenario === 'progress_run') progress.runId = calls === 1 ? progress.runId : 'dux_sync_another';
+    if (scenario === 'progress_phase') progress.phase = 'unknown';
+    if (scenario === 'progress_regression' && calls > 1) progress.phase = 'companies';
+    if (scenario === 'progress_count') progress.processed = 4;
+    if (scenario === 'progress_total' && calls > 1) progress.total = 4;
+    if (scenario === 'progress_delay') progress.retryAfterMs = 0;
+    if (scenario === 'progress_without_final' && calls > 1) return new Response('not JSON', { status: 200 });
+    if (scenario === 'progress_final_run' && calls > 1) {
+      const result = catalogResult('catalog_published');
+      result.summary.runId = result.catalog.inventoryRunId = 'dux_sync_another';
+      return Response.json(result);
+    }
+    if ((scenario === 'progress_completed' && calls > 2) ||
+      (scenario === 'progress_transport_resume' && calls > 2)) return Response.json(catalogResult('catalog_published'));
+    return Response.json(progress, { status: 202 });
+  }
+  if (scenario === 'gateway_then_completed') {
+    return calls === 1 ? Response.json({}, { status: 524 }) : Response.json(catalogResult('catalog_published'));
+  }
   if (scenario === 'server_error_then_cooldown') {
     return calls === 1
       ? jsonResponse(500, 'DUX_UNAVAILABLE')

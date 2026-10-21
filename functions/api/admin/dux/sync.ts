@@ -6,6 +6,7 @@ import {
   syncDuxInventory,
 } from '../../../../server/dux-inventory';
 import { createDuxInventoryReader } from '../../../../server/dux-inventory-reader';
+import { advanceDuxSyncOperation, readDuxSyncRequestId } from '../../../../server/dux-sync-operation';
 import { jsonResponse, methodNotAllowedResponse } from '../../../../server/http';
 import type { AdminContextData, Env, PagesFunction } from '../../../../server/platform';
 import { assertSameOrigin } from '../../../../server/validation';
@@ -18,6 +19,8 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
   if (request.method !== 'POST') return methodNotAllowedResponse(['POST']);
   return handleAdminRequest(request, env, data, 'admin.dux.sync', async (database) => {
     assertSameOrigin(request, env);
+    const requestId = await readDuxSyncRequestId(request);
+    if (requestId !== null) return advanceDuxSyncOperation(database, env, data.adminIdentity?.actor ?? 'unknown', requestId, 'manual');
     const bootstrapPending = await isDuxInventoryBootstrapPending(database);
     const reader = createDuxInventoryReader(env);
     const summary = await syncDuxInventory(

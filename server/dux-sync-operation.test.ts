@@ -1,0 +1,383 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { DUX_SYNC_DEADLINE_MS, type DuxFetch } from './dux-api';
+import { readDuxCatalogSnapshot } from './dux-catalog';
+import { advanceDuxSyncOperation, latestDuxSyncOperation, readDuxSyncRequestId } from './dux-sync-operation';
+import type { D1Database, D1PreparedStatement, Env } from './platform';
+import { SqliteD1 } from './test/sqlite-d1';
+
+const schema = readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name)).sort()
+  .map(name => readFileSync(resolve('migrations', name), 'utf8')).join('\n');
+const actor = 'test:sync-operator';
+const requestId = '11111111-1111-4111-8111-111111111111';
+const nextId = '22222222-2222-4222-8222-222222222222';
+const databases: SqliteD1[] = [];
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-21T13:00:00.000Z'));
+});
+afterEach(() => {
+  vi.useRealTimers();
+  for (const db of databases.splice(0)) db.close();
+  vi.restoreAllMocks();
+});
+
+describe('sincronización Dux recuperable', () => {
+  it.each(['true', 'false'])('publica 1000 productos sólo al terminar dentro de los límites con DIRECT=%s', async (direct) => {
+    const db = database();
+    let queries = 0;
+    const metered = meteredDatabase(db, () => { queries += 1; });
+    const env: Env = { ...environment(metered), DIRECT_CHECKOUT_ENABLED: direct };
+    const provider = providerFixture(1000);
+    const starts: number[] = [];
+    const fetch: DuxFetch = (input, init) => { starts.push(Date.now()); return provider(input, init); };
+    let result: Response | undefined;
+    const startedAt = Date.now();
+    for (let index = 0; index < 24; index += 1) {
+      queries = 0;
+      const stepStartedAt = Date.now();
+      result = await step(metered, env, requestId, fetch);
+      // Reserve four queries for authentication/audit wrappers.
+      expect(queries + 4).toBeLessThanOrEqual(50);
+      expect(Date.now() - stepStartedAt).toBeLessThan(60_000);
+      if (result.status === 200) break;
+      expect(result.status).toBe(202);
+      expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_inventory_items').get()).toEqual({ count: 0 });
+      expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()).toEqual({ count: 0 });
+    }
+    expect(result?.status).toBe(200);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(120_000);
+    expect(starts).toHaveLength(23);
+    for (let index = 1; index < starts.length; index += 1) expect(starts[index]! - starts[index - 1]!).toBeGreaterThanOrEqual(5000);
+    const catalog = await readDuxCatalogSnapshot(db);
+    expect(catalog.itemCount).toBe(1000);
+    expect(catalog.stockReadAt).toBe('2026-10-21T13:00:00.000Z');
+    expect(catalog.syncedAt).not.toBe(catalog.stockReadAt);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages').get()).toEqual({ count: 0 });
+    expect((await db.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
+  });
+
+  it('propaga 200→180 cc y 400→360 cc conservando códigos, URLs y cantidades fraccionarias', async () => {
+    const db = database();
+    const env = environment(db);
+    await complete(db, env, requestId, providerFixture(2, { names: ['Aceite de coco 200 cc', 'Aceite de coco 400 cc'] }));
+    const previous = await readDuxCatalogSnapshot(db);
+    await vi.advanceTimersByTimeAsync(6000);
+    await complete(db, env, nextId, providerFixture(2, { names: ['Aceite de coco 180 cc', 'Aceite de coco 360 cc'] }));
+    const updated = await readDuxCatalogSnapshot(db);
+    for (const [index, name] of ['Aceite de coco 180 cc', 'Aceite de coco 360 cc'].entries()) {
+      expect(updated.items[index]).toMatchObject({ code: `TEST-${index}`, name, slug: previous.items[index]?.slug,
+        warehouseStocks: [{ real: 12.68, reserved: 0, available: 12.68 }] });
+    }
+    expect(updated.catalogVersion).not.toBe(previous.catalogVersion);
+    expect(db.database.prepare('SELECT stock_real, stock_disponible FROM dux_inventory_items').all()).toEqual([
+      { stock_real: 12.68, stock_disponible: 12.68 }, { stock_real: 12.68, stock_disponible: 12.68 },
+    ]);
+  });
+
+  it('recupera una respuesta final perdida sin otra consulta al proveedor ni otra generación', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(2));
+    const original = await complete(db, env, requestId, provider);
+    const calls = provider.mock.calls.length;
+    const recovered = await step(db, env, requestId, provider);
+    expect(await recovered.json()).toEqual(await original.json());
+    expect(provider).toHaveBeenCalledTimes(calls);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_runs').get()).toEqual({ count: 1 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_inventory_generations').get()).toEqual({ count: 1 });
+  });
+
+  it('conserva la página confirmada si se pierde la respuesta intermedia', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(51));
+    for (let index = 0; index < 4; index += 1) await step(db, env, requestId, provider);
+    const next = await step(db, env, requestId, provider);
+    expect(await next.json()).toMatchObject({ status: 'running', phase: 'publish', processed: 51, total: 51 });
+    const offsets = provider.mock.calls.map(([input]) => inputUrl(input)).filter(url => url.pathname.endsWith('/items'))
+      .map(url => url.searchParams.get('offset'));
+    expect(offsets).toEqual(['0', '50']);
+    expect((await step(db, env, requestId, provider)).status).toBe(200);
+  });
+
+  it('excluye otro gesto mientras una lectura está activa y no duplica solicitudes concurrentes del mismo gesto', async () => {
+    const db = database();
+    const env = environment(db);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const upstream = providerFixture(1);
+    const provider = vi.fn<DuxFetch>(async (input, init) => { entered(); await waiting; return upstream(input, init); });
+    const first = advanceDuxSyncOperation(db, env, actor, requestId, 'manual', provider);
+    await reached;
+    const duplicate = await advanceDuxSyncOperation(db, env, actor, requestId, 'manual', provider);
+    expect(duplicate.status).toBe(202);
+    await expect(advanceDuxSyncOperation(db, env, actor, nextId, 'manual', provider)).rejects.toMatchObject({ code: 'DUX_SYNC_IN_PROGRESS' });
+    release();
+    expect((await first).status).toBe(202);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(db.database.prepare("SELECT COUNT(*) AS count FROM dux_sync_operations WHERE status = 'running'").get()).toEqual({ count: 1 });
+  });
+
+  it('relee la fase después de reclamar el lease si otra petición avanzó entre la lectura y el claim', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(1));
+    await step(db, env, requestId, provider);
+    let entered!: () => void;
+    let release!: () => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const staleCaller: D1Database = {
+      prepare: query => query.includes('SET lease_token = ?2')
+        ? delayedFirst(db.prepare(query), async () => { entered(); await waiting; }) : db.prepare(query),
+      batch: statements => db.batch(statements), exec: query => db.exec(query),
+    };
+    const stalled = advanceDuxSyncOperation(staleCaller, { ...env, DB: staleCaller }, actor, requestId, 'manual', provider)
+      .then(response => ({ response }), (error: unknown) => ({ error }));
+    await reached;
+    await step(db, env, requestId, provider);
+    release();
+    await vi.runAllTimersAsync();
+    const result = await stalled;
+    if ('error' in result) throw result.error;
+    expect(await result.response.json()).toMatchObject({ phase: 'items' });
+    expect(provider.mock.calls.map(([input]) => inputUrl(input).pathname.split('/').at(-1)))
+      .toEqual(['empresas', 'sucursales', 'depositos']);
+  });
+
+  it('un fallo tardío de un lease vencido no borra el progreso de su sucesor', async () => {
+    const db = database();
+    const env = environment(db);
+    let entered!: () => void;
+    let rejectFetch!: (error: Error) => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const hanging = new Promise<Response>((_resolve, reject) => { rejectFetch = reject; });
+    const first = advanceDuxSyncOperation(db, env, actor, requestId, 'manual', () => { entered(); return hanging; })
+      .then(response => ({ response }), (error: unknown) => ({ error }));
+    await reached;
+    await vi.advanceTimersByTimeAsync(61_000);
+    const successor = await step(db, env, requestId, providerFixture(1));
+    expect(await successor.json()).toMatchObject({ phase: 'branches' });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rejectFetch(new Error('Late network failure'));
+    await first;
+    expect(db.database.prepare('SELECT status, phase FROM dux_sync_operations WHERE request_id = ?').get(requestId))
+      .toEqual({ status: 'running', phase: 'branches' });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages WHERE request_id = ?').get(requestId)).toEqual({ count: 1 });
+  });
+
+  it.each(['provider', 'total', 'expiry'] as const)('preserva la publicación anterior ante una falla de %s', async (failure) => {
+    const db = database();
+    const env = environment(db);
+    await complete(db, env, requestId, providerFixture(1, { name: 'Aceite de coco 250 cc' }));
+    const before = await readDuxCatalogSnapshot(db);
+    await vi.advanceTimersByTimeAsync(6000);
+    const provider = vi.fn(providerFixture(51, { name: 'Aceite de coco 500 cc', failSecondPage: failure === 'provider', changeTotal: failure === 'total' }));
+    for (let index = 0; index < 4; index += 1) await step(db, env, nextId, provider);
+    if (failure === 'expiry') await vi.advanceTimersByTimeAsync(DUX_SYNC_DEADLINE_MS);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const expectedCode = failure === 'expiry' ? 'DUX_SYNC_DEADLINE_EXCEEDED' : failure === 'total' ? 'DUX_RESPONSE_INVALID' : 'DUX_UNAVAILABLE';
+    await expect(step(db, env, nextId, provider)).rejects.toMatchObject({ code: expectedCode });
+    expect(await readDuxCatalogSnapshot(db)).toEqual(before);
+    expect(db.database.prepare("SELECT COUNT(*) AS count FROM dux_sync_operation_pages WHERE request_id = ?").get(nextId)).toEqual({ count: 0 });
+    const calls = provider.mock.calls.length;
+    await expect(step(db, env, nextId, provider)).rejects.toMatchObject({ code: expectedCode });
+    expect(provider).toHaveBeenCalledTimes(calls);
+  });
+
+  it('retoma publicación después de una interrupción con inventario ya confirmado sin releer Dux', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(1));
+    for (let index = 0; index < 4; index += 1) await step(db, env, requestId, provider);
+    const staged = db.database.prepare('SELECT page_key, payload_json FROM dux_sync_operation_pages WHERE request_id = ?').all(requestId);
+    const result = await step(db, env, requestId, provider);
+    const published: unknown = await result.json();
+    // Recreate the durable state left by termination between inventory/catalog
+    // publication and the last operation receipt, retaining the same run.
+    db.database.prepare("UPDATE dux_sync_operations SET status = 'running', result_json = NULL, lease_until_ms = 0 WHERE request_id = ?").run(requestId);
+    const insert = db.database.prepare('INSERT INTO dux_sync_operation_pages (request_id, page_key, payload_json) VALUES (?, ?, ?)');
+    for (const row of staged) {
+      if (typeof row.page_key !== 'string' || typeof row.payload_json !== 'string') throw new Error('Staging de prueba inválido');
+      insert.run(requestId, row.page_key, row.payload_json);
+    }
+    const beforeCalls = provider.mock.calls.length;
+    const recovered = await step(db, env, requestId, provider);
+    expect(await recovered.json()).toEqual(published);
+    expect(provider).toHaveBeenCalledTimes(beforeCalls);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_runs').get()).toEqual({ count: 1 });
+  });
+
+  it('rechaza el presupuesto diario agotado antes de consultar Dux', async () => {
+    const db = database();
+    const env = environment(db);
+    db.database.prepare('INSERT INTO dux_d1_write_budget (utc_date, estimated_rows, created_at, updated_at) VALUES (?, 40000, ?, ?)')
+      .run('2026-10-21', new Date().toISOString(), new Date().toISOString());
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(db, env, requestId, provider)).rejects.toMatchObject({ code: 'DUX_D1_WRITE_BUDGET_EXHAUSTED' });
+    expect(provider).not.toHaveBeenCalled();
+    expect(db.database.prepare('SELECT status FROM dux_sync_operations WHERE request_id = ?').get(requestId)).toEqual({ status: 'failed' });
+  });
+
+  it('limita el tamaño total de staging aunque cada página individual sea válida', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = providerFixture(1000, { description: 'a'.repeat(9000) });
+    let failure: unknown;
+    for (let index = 0; index < 24; index += 1) {
+      try { await step(db, env, requestId, provider); }
+      catch (error: unknown) { failure = error; break; }
+    }
+    expect(failure).toMatchObject({ code: 'DUX_STAGING_PAYLOAD_TOO_LARGE' });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()).toEqual({ count: 0 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages').get()).toEqual({ count: 0 });
+  });
+
+  it('rechaza la falta de 0026 sin consultar al proveedor', async () => {
+    const previousSchema = readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name) && !name.startsWith('0026_'))
+      .sort().map(name => readFileSync(resolve('migrations', name), 'utf8')).join('\n');
+    const db = new SqliteD1(previousSchema);
+    databases.push(db);
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ status: 503, code: 'DUX_SYNC_MIGRATION_REQUIRED' });
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('impide usar una identidad de otro actor, empresa, sucursal o depósito sin consultar Dux', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(1));
+    await step(db, env, requestId, provider);
+    for (const [otherActor, changedEnv] of [
+      ['other:operator', env], [actor, { ...env, DUX_COMPANY_ID: '2' }],
+      [actor, { ...env, DUX_BRANCH_ID: '2' }], [actor, { ...env, DUX_DEPOSIT_ID: '2' }],
+    ] as const) {
+      await expect(advanceDuxSyncOperation(db, changedEnv, otherActor, requestId, 'manual', provider))
+        .rejects.toMatchObject({ status: 409, code: 'DUX_SYNC_IDENTITY_MISMATCH' });
+    }
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('expone progreso y fallo conservando el inicio sin inventar una fecha de finalización para una corrida vencida', async () => {
+    const db = database();
+    const env = environment(db);
+    expect(await latestDuxSyncOperation(db)).toBeNull();
+    const provider = providerFixture(1);
+    await step(db, env, requestId, provider);
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'running', startedAt: '2026-10-21T13:00:00.000Z', completedAt: null,
+      processed: 0, failed: 0, errorCode: null });
+    await vi.advanceTimersByTimeAsync(DUX_SYNC_DEADLINE_MS);
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'failed', startedAt: '2026-10-21T13:00:00.000Z', completedAt: null,
+      failed: 1, errorCode: 'DUX_SYNC_DEADLINE_EXCEEDED' });
+    await expect(step(db, env, requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_DEADLINE_EXCEEDED' });
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'failed', startedAt: '2026-10-21T13:00:00.000Z',
+      completedAt: new Date().toISOString(), failed: 1, errorCode: 'DUX_SYNC_DEADLINE_EXCEEDED' });
+  });
+
+  it('el guard SQL impide iniciar una corrida legacy mientras se recolecta el catálogo', async () => {
+    const db = database();
+    await step(db, environment(db), requestId, providerFixture(1));
+    expect(() => db.database.prepare(`INSERT INTO dux_sync_runs
+      (id, kind, status, trigger_actor, started_at, created_at, updated_at)
+      VALUES ('dux_sync_legacy_overlap', 'manual', 'running', 'test', ?1, ?1, ?1)`)
+      .run(new Date().toISOString())).toThrow('DUX_SYNC_IN_PROGRESS');
+  });
+});
+
+describe('identidad de petición Dux', () => {
+  it('conserva compatibilidad sin cuerpo y acepta únicamente el UUID declarado', async () => {
+    expect(await readDuxSyncRequestId(syncRequest())).toBeNull();
+    expect(await readDuxSyncRequestId(syncRequest(JSON.stringify({ requestId })))).toBe(requestId);
+  });
+
+  it.each([
+    JSON.stringify({ requestId: 'not-a-uuid' }), JSON.stringify({ requestId, actor: 'other' }),
+    JSON.stringify({ requestId, padding: 'a'.repeat(128) }),
+  ])('rechaza una identidad o campos fuera del contrato', async (body) => {
+    await expect(readDuxSyncRequestId(syncRequest(body))).rejects.toMatchObject({ status: 400, code: 'DUX_SYNC_REQUEST_INVALID' });
+  });
+
+  it('corta y cancela un cuerpo transmitido por partes al superar 128 bytes', async () => {
+    const cancelled = vi.fn();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(encoder.encode('a'.repeat(64))); controller.enqueue(encoder.encode('a'.repeat(64))); controller.enqueue(encoder.encode('a')); },
+      cancel: cancelled,
+    });
+    const init = { method: 'POST', body: stream, duplex: 'half' };
+    const request = new Request('https://shekinah.ar/api/admin/dux/sync', init);
+    await expect(readDuxSyncRequestId(request)).rejects.toMatchObject({ status: 400, code: 'DUX_SYNC_REQUEST_INVALID' });
+    expect(cancelled).toHaveBeenCalledTimes(1);
+  });
+});
+
+function syncRequest(body?: string): Request {
+  return new Request('https://shekinah.ar/api/admin/dux/sync', { method: 'POST', ...(body === undefined ? {} : { body }) });
+}
+
+function database(): SqliteD1 {
+  const db = new SqliteD1(schema);
+  databases.push(db);
+  db.database.exec("UPDATE dux_catalog_control SET snapshot_collection_enabled = 1 WHERE company_id = '12862'");
+  return db;
+}
+function environment(database: D1Database): Env {
+  return { DB: database, DIRECT_CHECKOUT_ENABLED: 'true', DUX_API_ENABLED: 'true', DUX_API_TOKEN: 'test-only-token',
+    DUX_COMPANY_ID: '12862', DUX_BRANCH_ID: '1', DUX_DEPOSIT_ID: '25566', DUX_SNAPSHOT_MAX_AGE_SECONDS: '900' };
+}
+async function step(database: D1Database, env: Env, id: string, fetch: DuxFetch): Promise<Response> {
+  const settled = advanceDuxSyncOperation(database, env, actor, id, 'manual', fetch)
+    .then(response => ({ response }), (error: unknown) => ({ error }));
+  await vi.runAllTimersAsync();
+  const result = await settled;
+  if ('error' in result) throw result.error;
+  return result.response;
+}
+async function complete(database: D1Database, env: Env, id: string, fetch: DuxFetch): Promise<Response> {
+  for (let index = 0; index < 80; index += 1) {
+    const response = await step(database, env, id, fetch);
+    if (response.status === 200) return response;
+    expect(response.status).toBe(202);
+  }
+  throw new Error('La sincronización de prueba no terminó');
+}
+function meteredDatabase(database: D1Database, count: () => void): D1Database {
+  return { prepare(query: string): D1PreparedStatement { count(); return database.prepare(query); },
+    batch: statements => database.batch(statements), exec: query => database.exec(query) };
+}
+function delayedFirst(statement: D1PreparedStatement, beforeFirst: () => Promise<void>): D1PreparedStatement {
+  return {
+    bind: (...values) => delayedFirst(statement.bind(...values), beforeFirst),
+    first: async <T>(column?: string) => { await beforeFirst(); return statement.first<T>(column); },
+    all: <T>() => statement.all<T>(), run: <T>() => statement.run<T>(), raw: <T>(options?: Readonly<{ columnNames?: boolean }>) => statement.raw<T>(options),
+  };
+}
+function inputUrl(input: RequestInfo | URL): URL { return input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url); }
+function providerFixture(total: number, options: { name?: string; names?: readonly string[]; description?: string; failSecondPage?: boolean; changeTotal?: boolean } = {}): DuxFetch {
+  return input => {
+    const url = inputUrl(input);
+    let value: unknown;
+    if (url.pathname.endsWith('/empresas')) value = { datos: [{ id_empresa: 12862, razon_social: 'Empresa de prueba' }] };
+    else if (url.pathname.endsWith('/sucursales')) value = { datos: [{ id_empresa: 12862, id_sucursal: 1, sucursal: 'Principal' }] };
+    else if (url.pathname.endsWith('/depositos')) value = { datos: [{ id_empresa: 12862, id_deposito: 25566, deposito: 'Central', habilitado: true }] };
+    else {
+      const offset = Number(url.searchParams.get('offset'));
+      if (options.failSecondPage && offset > 0) return Promise.resolve(new Response('{}', { status: 503 }));
+      value = { datos: Array.from({ length: Math.min(50, total - offset) }, (_, index) => ({
+        cod_item: `TEST-${offset + index}`, item: options.names?.[offset + index] ?? (offset + index === 0 ? options.name ?? 'Producto prueba 0' : `Producto prueba ${offset + index}`),
+        habilitado: true, codigo_externo: null, codigos_barra: null, ctd_unidades_por_bulto: 1,
+        ...(options.description === undefined ? {} : { descripcion: options.description }),
+        precios: [{ id: 1, nombre: 'PRECIOS DEL NEGOCIO', precio: 3500 }], rubro: null, sub_rubro: null,
+        stock: [{ id: 25566, nombre: 'Central', stock_real: 12.68, stock_reservado: 0, stock_disponible: 12.68,
+          id_det_item: null, cod_barra_detalle: null, talle: null, color: null }],
+      })), paginacion: { total: options.changeTotal && offset > 0 ? total + 1 : total, offset, limit: 50, hay_mas: offset + 50 < total } };
+    }
+    return Promise.resolve(new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } }));
+  };
+}

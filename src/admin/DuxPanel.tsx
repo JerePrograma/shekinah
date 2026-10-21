@@ -45,6 +45,25 @@ type SyncSummary = Readonly<{
   absent: number;
 }>;
 
+type SyncSession = { requestId: string; runId: string | null; progress: SyncProgress | null };
+type SyncProgress = Readonly<{
+  runId: string;
+  phase: 'companies' | 'branches' | 'warehouses' | 'items' | 'publish';
+  processed: number;
+  total: number | null;
+  retryAfterMs: number;
+}>;
+
+const SYNC_MAX_DURATION_MS = 7 * 60 * 1_000;
+const SYNC_MAX_STEPS = 80;
+const SYNC_MAX_TRANSPORT_RETRIES = 2;
+const SYNC_RUN_ID = /^dux_sync_[A-Za-z0-9._:-]{1,180}$/u;
+const SYNC_PHASES = ['companies', 'branches', 'warehouses', 'items', 'publish'];
+
+class SyncTransportError extends Error {}
+class SyncProtocolError extends Error {}
+class SyncServerError extends Error {}
+
 export function DuxPanel({
   onOperationStateChange,
   onUnauthorized,
@@ -59,7 +78,11 @@ export function DuxPanel({
   const [editorialBusy, setEditorialBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [syncAction, setSyncAction] = useState<'new' | 'resume' | 'check'>('new');
   const requestRef = useRef(0);
+  const syncSessionRef = useRef<SyncSession | null>(null);
+  const syncControllerRef = useRef<AbortController | null>(null);
+  const syncInFlightRef = useRef(false);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const catalogOperation = useCallback((active: boolean) => setCatalogBusy(active), []);
   const editorialOperation = useCallback((active: boolean) => setEditorialBusy(active), []);
@@ -92,6 +115,8 @@ export function DuxPanel({
     };
   }, [refresh]);
 
+  useEffect(() => () => syncControllerRef.current?.abort(), []);
+
   useEffect(() => {
     const active = busy || catalogBusy || editorialBusy;
     onOperationStateChange?.(active, busy ? 'Actualizando productos desde Dux' : active ? 'Actualizando catálogo Dux' : undefined);
@@ -99,29 +124,90 @@ export function DuxPanel({
   }, [busy, catalogBusy, editorialBusy, onOperationStateChange]);
 
   async function synchronize(): Promise<void> {
-    if (busy || catalogBusy || editorialBusy || status?.enabled !== true) return;
+    if (syncInFlightRef.current || busy || catalogBusy || editorialBusy || status?.enabled !== true) return;
+    syncInFlightRef.current = true;
+    const controller = new AbortController();
+    syncControllerRef.current = controller;
     setBusy(true);
     setError('');
-    setMessage('');
+    setMessage('Consultando los productos de Dux. Mantené esta pantalla abierta hasta terminar.');
     try {
-      const response = await fetch('/api/admin/dux/sync', {
-        method: 'POST',
-        credentials: 'same-origin',
-        redirect: 'error',
-      });
-      if (response.status === 401) {
-        onUnauthorized?.();
+      const session = syncSessionRef.current ?? { requestId: crypto.randomUUID(), runId: null, progress: null };
+      syncSessionRef.current = session;
+      const deadline = Date.now() + SYNC_MAX_DURATION_MS;
+      let transportRetries = 0;
+      for (let step = 0; step < SYNC_MAX_STEPS && Date.now() < deadline; step += 1) {
+        if (controller.signal.aborted) return;
+        let response: Response;
+        try {
+          response = await fetch('/api/admin/dux/sync', {
+            method: 'POST',
+            credentials: 'same-origin',
+            redirect: 'error',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ requestId: session.requestId }),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(Math.min(60_000, deadline - Date.now()))]),
+          });
+        } catch {
+          if (controller.signal.aborted) return;
+          transportRetries += 1;
+          if (transportRetries > SYNC_MAX_TRANSPORT_RETRIES) throw new SyncTransportError();
+          setMessage('Se interrumpió la conexión. Retomando la misma actualización…');
+          await waitForSyncStep(1_000, controller.signal);
+          continue;
+        }
+        if (controller.signal.aborted) return;
+        if (response.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
+        const payload = await readJson(response);
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          if (isRecord(payload) && isRecord(payload.error) && isNonEmptyString(payload.error.code)) {
+            throw new SyncServerError(apiError(payload, 'No se pudo sincronizar el inventario Dux.').message);
+          }
+          transportRetries += 1;
+          if (transportRetries > SYNC_MAX_TRANSPORT_RETRIES) throw new SyncTransportError();
+          setMessage('Se interrumpió la conexión. Retomando la misma actualización…');
+          await waitForSyncStep(1_000, controller.signal);
+          continue;
+        }
+        transportRetries = 0;
+        if (response.status === 202) {
+          const progress = parseSyncProgress(payload, session);
+          session.runId = progress.runId;
+          session.progress = progress;
+          setMessage(syncProgressMessage(progress));
+          await waitForSyncStep(progress.retryAfterMs, controller.signal);
+          continue;
+        }
+        if (response.status !== 200) throw invalidSyncProtocol();
+        const summary = parseSyncSummary(payload, session);
+        syncSessionRef.current = null;
+        setSyncAction('new');
+        setMessage(syncMessage(summary));
+        await refresh();
+        if (!controller.signal.aborted) window.dispatchEvent(new Event('shekinah:admin-products-refresh'));
         return;
       }
-      const payload = await readJson(response);
-      if (!response.ok) throw apiError(payload, 'No se pudo sincronizar el inventario Dux.');
-      setMessage(syncMessage(parseSyncSummary(payload)));
-      await refresh();
-      window.dispatchEvent(new Event('shekinah:admin-products-refresh'));
+      throw new SyncTransportError();
     } catch (caught: unknown) {
-      setError(errorMessage(caught));
+      if (controller.signal.aborted) return;
+      setMessage('');
+      if (caught instanceof SyncServerError) {
+        syncSessionRef.current = null;
+        setSyncAction('new');
+      } else {
+        setSyncAction(caught instanceof SyncProtocolError ? 'check' : 'resume');
+      }
+      setError(caught instanceof SyncTransportError
+        ? 'No pudimos confirmar el resultado. Retomá la misma actualización para consultar y continuar su progreso.'
+        : errorMessage(caught));
     } finally {
-      setBusy(false);
+      syncInFlightRef.current = false;
+      if (syncControllerRef.current === controller) syncControllerRef.current = null;
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
 
@@ -142,7 +228,8 @@ export function DuxPanel({
             <button className="button button-primary" type="button"
               disabled={busy || catalogBusy || editorialBusy || loading}
               onClick={() => void synchronize()}>
-              {busy ? 'Actualizando productos…' : 'Actualizar productos desde Dux'}
+              {busy ? 'Actualizando productos…' : syncAction === 'resume' ? 'Retomar actualización desde Dux'
+                : syncAction === 'check' ? 'Consultar resultado de la actualización' : 'Actualizar productos desde Dux'}
             </button>
         ) : null}
         </div>
@@ -207,7 +294,10 @@ export function DuxPanel({
           </p>
         ) : null}
         {message === '' ? null : <p role="status" className="admin-context-note">{message}</p>}
-        {error === '' ? null : <><p role="alert" className="form-error">No pudimos consultar o actualizar los productos de Dux. Volvé a consultar su estado antes de intentar una actualización.</p>
+        {error === '' ? null : <><p role="alert" className="form-error">{syncAction === 'resume'
+          ? 'La conexión se interrumpió o la actualización sigue pendiente. Retomá la misma actualización para continuar.'
+          : syncAction === 'check' ? 'No pudimos confirmar la publicación del catálogo. Consultá el resultado de la misma actualización antes de iniciar otra.'
+            : 'No pudimos consultar o actualizar los productos de Dux. Volvé a consultar su estado antes de intentar una actualización.'}</p>
           <details><summary>Información para soporte: error de Dux</summary><p>{error}</p></details></>}
         {error === '' ? null : <div><button type="button" className="button button-secondary"
           disabled={loading || busy || catalogBusy || editorialBusy}
@@ -315,24 +405,86 @@ function parseCounts(value: Readonly<Record<string, unknown>>): DuxCounts {
   });
 }
 
-function parseSyncSummary(value: unknown): SyncSummary {
-  if (!isRecord(value) || !isRecord(value.summary)) {
-    throw new Error('El servidor devolvió un resultado de sincronización inválido.');
+function parseSyncSummary(value: unknown, session: SyncSession): SyncSummary {
+  if (!isRecord(value) || value.status !== 'completed' || !isRecord(value.summary)) {
+    throw invalidSyncProtocol();
   }
   const summary = value.summary;
   const status = summary.status;
   const countKeys = ['processed', 'failed', 'mapped', 'unmapped', 'ambiguous', 'absent'] as const;
-  if (!isNonEmptyString(status) || !countKeys.every((key) => isNonNegativeInteger(summary[key]))) {
-    throw new Error('El servidor devolvió un resultado de sincronización inválido.');
+  if ((status !== 'succeeded' && status !== 'partial' && status !== 'failed') ||
+    !isSyncRunId(summary.runId) || (session.runId !== null && summary.runId !== session.runId) ||
+    !countKeys.every((key) => isNonNegativeInteger(summary[key])) ||
+    !isTimestamp(summary.startedAt) || !isTimestamp(summary.completedAt) ||
+    Date.parse(summary.completedAt) < Date.parse(summary.startedAt) ||
+    (status === 'succeeded' && summary.failed !== 0)) {
+    throw invalidSyncProtocol();
   }
+  session.runId = summary.runId;
+  const catalog = value.catalog;
+  if (!isRecord(catalog) || catalog.status !== undefined || catalog.inventoryRunId !== summary.runId ||
+    typeof catalog.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/u.test(catalog.catalogVersion) ||
+    catalog.priceListName !== 'PRECIOS DEL NEGOCIO' || !isSyncItemCount(catalog.itemCount) ||
+    catalog.syncedAt !== summary.completedAt) throw invalidSyncProtocol();
   return Object.freeze({
-    status: status.trim(),
+    status,
     processed: summary.processed as number,
     failed: summary.failed as number,
     mapped: summary.mapped as number,
     unmapped: summary.unmapped as number,
     ambiguous: summary.ambiguous as number,
     absent: summary.absent as number,
+  });
+}
+
+function parseSyncProgress(value: unknown, session: SyncSession): SyncProgress {
+  if (!isRecord(value) || value.status !== 'running' || value.requestId !== session.requestId ||
+    !isSyncRunId(value.runId) || (session.runId !== null && value.runId !== session.runId) ||
+    !SYNC_PHASES.includes(typeof value.phase === 'string' ? value.phase : '') ||
+    !isSyncItemCount(value.processed) || (value.total !== null && !isSyncItemCount(value.total)) ||
+    (typeof value.total === 'number' && value.processed > value.total) || value.retryAfterMs !== 1_000 ||
+    (session.progress !== null && (value.processed < session.progress.processed ||
+      SYNC_PHASES.indexOf(value.phase as string) < SYNC_PHASES.indexOf(session.progress.phase) ||
+      (session.progress.total !== null && value.total !== session.progress.total)))) {
+    throw invalidSyncProtocol();
+  }
+  return Object.freeze({ runId: value.runId, phase: value.phase as SyncProgress['phase'],
+    processed: value.processed, total: value.total, retryAfterMs: value.retryAfterMs });
+}
+
+function syncProgressMessage(progress: SyncProgress): string {
+  if (progress.phase === 'publish') return 'Publicando los productos actualizados. Mantené esta pantalla abierta hasta terminar.';
+  if (progress.phase !== 'items') return 'Verificando los datos del negocio y los depósitos en Dux…';
+  const count = progress.processed.toLocaleString('es-AR');
+  return `Actualizando productos: ${count}${progress.total === null ? '' : ` de ${progress.total.toLocaleString('es-AR')}`} revisados. Mantené esta pantalla abierta hasta terminar.`;
+}
+
+function invalidSyncProtocol(): SyncProtocolError {
+  return new SyncProtocolError('No se confirmó una publicación válida del catálogo asociada a esta actualización. Consultá el resultado de la misma actualización antes de iniciar otra.');
+}
+
+function isSyncRunId(value: unknown): value is string {
+  return typeof value === 'string' && SYNC_RUN_ID.test(value);
+}
+
+function isSyncItemCount(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value <= 1_000;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+
+async function waitForSyncStep(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, milliseconds);
+    signal.addEventListener('abort', finish, { once: true });
   });
 }
 

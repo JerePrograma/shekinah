@@ -6,6 +6,9 @@ import {
   type DuxFetch,
   type DuxItem,
   type DuxWarehouse,
+  type DuxApiClientOptions,
+  type DuxListItemsPageOptions,
+  type DuxPage,
 } from './dux-api';
 import {
   parseDuxCatalogSourceItems,
@@ -38,6 +41,7 @@ type QuantifiedInventoryRead = Readonly<{
 
 export type DuxInventoryCatalogReader = DuxInventoryReader & Readonly<{
   takeCatalogItems: () => readonly DuxCatalogSourceItem[];
+  listItemsPage: (options: DuxListItemsPageOptions) => Promise<DuxPage<DuxItem>>;
 }>;
 
 /**
@@ -49,9 +53,14 @@ export type DuxInventoryCatalogReader = DuxInventoryReader & Readonly<{
 export function createDuxInventoryReader(
   env: Env,
   fetchImplementation: DuxFetch = defaultFetch,
+  options: Readonly<{
+    warehouses?: readonly DuxWarehouse[];
+    client?: Pick<DuxApiClientOptions, 'beforeRequest' | 'minRequestIntervalMs' | 'maxGetAttempts' | 'syncDeadlineMs'>;
+  }> = {},
 ): DuxInventoryCatalogReader {
   const config = readDuxInventoryConfig(env);
   const filter = new DuxInventoryResponseFilter(config.depositId, fetchImplementation);
+  if (options.warehouses !== undefined) filter.warehouses = options.warehouses;
   const client = new DuxApiClient({
     accessToken: config.accessToken,
     fetch: filter.fetch,
@@ -59,10 +68,12 @@ export function createDuxInventoryReader(
       beforeRequest: createDuxRequestGate(requireDatabase(env)), minRequestIntervalMs: 0,
       maxTotalRequestAttempts: DUX_COORDINATED_SYNC_MAX_ATTEMPTS,
     } : {}),
+    ...options.client,
   });
   let capturedCatalogItems: readonly DuxCatalogSourceItem[] | null = null;
 
   return Object.freeze({
+    listItemsPage: (pageOptions: DuxListItemsPageOptions) => client.listItemsPage(pageOptions),
     listEmpresas: () => client.listEmpresas(),
     listSucursales: (companyId: number) => client.listSucursales(companyId),
     listDepositos: async (warehouseId?: number) => {

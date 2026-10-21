@@ -5,6 +5,7 @@ import {
   readDuxInventoryConfig,
 } from '../../../../server/dux-inventory';
 import { jsonResponse, methodNotAllowedResponse } from '../../../../server/http';
+import { latestDuxSyncOperation } from '../../../../server/dux-sync-operation';
 import type { AdminContextData, Env, PagesFunction } from '../../../../server/platform';
 
 export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
@@ -32,6 +33,9 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       migrationReady = false;
     }
     const enabled = accessConfigured && migrationReady;
+    const operation = migrationReady ? await latestDuxSyncOperation(database) : null;
+    const latestRun = operation !== null && (status?.latestRun === null || status?.latestRun === undefined ||
+      Date.parse(operation.startedAt) >= Date.parse(status.latestRun.startedAt)) ? operation : status?.latestRun ?? null;
     const blockers = [
       ...(accessConfigured ? [] : ['Upgrade Dux a PRO/FULL + token API requerido']),
       ...(migrationReady ? [] : ['Aplicar la migración D1 0012_dux_authoritative_inventory.sql.']),
@@ -43,7 +47,7 @@ export const onRequest: PagesFunction<Env, string, AdminContextData> = async ({
       lifecycleReady: false,
       unitSemanticsReady: false,
       tenant: status?.tenant ?? null,
-      latestRun: status?.latestRun ?? null,
+      latestRun,
       counts: {
         inventoryCount: status?.counts.inventory ?? 0,
         mappedCount: status?.counts.mapped ?? 0,

@@ -1,5 +1,15 @@
 # Continuación
 
+## Sincronización Dux recuperable — 2026-10-21
+
+Consultar [contrato](DUX_RESUMABLE_SYNC.md) y
+[evidencia](validation/DUX_RESUMABLE_SYNC_2026-10-21.md). Los clientes activos
+conservan un UUID en todos los pasos y comprueban catálogo/inventario del mismo run.
+Un 202 no prueba publicación. No reiniciar ante transporte incierto, regresar a
+una petición larga ni corregir nombres/stock en SQL. Verificar 0026 primero en
+Preview y después Production, CI/Pages exactos y la lectura real de 180/360 cc.
+Preservar cadencia e incidencias históricas sin inferir que el build las resuelve.
+
 ## Recorrido público claro — 2026-09-30
 
 Aplicar el [contrato de recuperación y claridad](validation/BUYER_CHECKOUT_CLARITY_2026-09-30.md).

@@ -149,6 +149,7 @@ export type DuxInventoryStatus = Readonly<{
 }>;
 
 type SyncOptions = Readonly<{
+  collectedAt?: string;
   kind?: DuxSyncKind;
   localProducts: readonly CatalogProductDetail[];
   client?: DuxInventoryReader;
@@ -271,7 +272,8 @@ export async function syncDuxInventory(
   const safeActor = requiredDatabaseText(actor, 500, 'DUX_SYNC_ACTOR_INVALID');
   const kind = parseSyncKind(options.kind ?? 'full');
   const now = options.now ?? (() => new Date());
-  const startedAt = validNow(now);
+  const startedAt = options.collectedAt === undefined ? validNow(now)
+    : validDate(new Date(options.collectedAt), 'DUX_CLOCK_INVALID').toISOString();
   const runId = options.createRunId?.() ?? `dux_sync_${crypto.randomUUID()}`;
   if (!/^dux_sync_[A-Za-z0-9._:-]{1,180}$/u.test(runId)) {
     throw new HttpError(500, 'DUX_SYNC_ID_INVALID', 'No se pudo identificar la sincronización Dux.');
@@ -288,7 +290,7 @@ export async function syncDuxInventory(
     }),
   });
 
-  await recoverAbandonedSync(database, startedAt);
+  await recoverAbandonedSync(database, validNow(now));
   const claimed = await database
     .prepare(
       `INSERT OR IGNORE INTO dux_sync_runs (
@@ -343,7 +345,7 @@ export async function syncDuxInventory(
       changedRows.length + newlyAbsent,
     );
     await writeInventoryGenerationRows(database, runId, changedRows, startedAt,
-      requestGate === null ? STAGING_ROWS_PER_STATEMENT : COORDINATED_STAGING_ROWS_PER_STATEMENT);
+      requestGate === null && options.collectedAt === undefined ? STAGING_ROWS_PER_STATEMENT : COORDINATED_STAGING_ROWS_PER_STATEMENT);
     if (newlyAbsent > 0) {
       await stageAbsentInventoryRows(database, runId, currentKeys, startedAt);
     }

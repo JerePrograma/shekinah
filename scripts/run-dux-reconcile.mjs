@@ -1,11 +1,15 @@
 const expectedPath = '/api/internal/dux/reconcile';
-const requestTimeoutMs = 8 * 60 * 1_000;
+const requestTimeoutMs = 90_000;
 const maximumRetryDelayMs = 30_000;
+const reconciliationDeadlineMs = 7 * 60 * 1_000;
+const maximumRequests = 80;
+const phases = ['companies', 'branches', 'warehouses', 'items', 'publish'];
 
 class NonRetryableReconciliationError extends Error {}
 
 const target = parseTarget(process.env.SHEKINAH_RECONCILE_URL);
 const secret = requireSecret(process.env.SHEKINAH_RECONCILE_SECRET);
+const requestId = crypto.randomUUID();
 
 const result = await reconcileWithRetry(target, secret);
 if (result.status === 'disabled') {
@@ -40,17 +44,35 @@ if (result.status === 'disabled') {
 }
 
 async function reconcileWithRetry(url, schedulerSecret) {
+  const startedAt = performance.now();
+  const state = { requests: 0, progress: null };
+  while (true) {
+    const result = await requestStep(url, schedulerSecret, startedAt, state);
+    if (result.status !== 'running') return result;
+    state.progress = result;
+    await boundedDelay(result.retryAfterMs, startedAt);
+  }
+}
+
+async function requestStep(url, schedulerSecret, startedAt, state) {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
+      const remaining = remainingTime(startedAt);
+      if (state.requests >= maximumRequests) {
+        throw new NonRetryableReconciliationError('La reconciliación Dux agotó sus pasos (DUX_RECONCILE_STEP_LIMIT).');
+      }
+      state.requests += 1;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           accept: 'application/json',
           authorization: `Bearer ${schedulerSecret}`,
+          'content-type': 'application/json',
         },
+        body: JSON.stringify({ requestId }),
         redirect: 'error',
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal: AbortSignal.timeout(Math.min(requestTimeoutMs, Math.ceil(remaining))),
       });
       const payload = await readResponse(response);
       const protectedOverlap = response.status === 409 &&
@@ -67,24 +89,61 @@ async function reconcileWithRetry(url, schedulerSecret) {
       if (!response.ok) {
         const code = errorCode(payload) ?? `HTTP_${response.status}`;
         const message = `La reconciliación Dux respondió ${response.status} (${code}).`;
-        if (response.status < 500 && response.status !== 429) {
+        if (errorCode(payload) !== null || response.status < 500) {
           throw new NonRetryableReconciliationError(message);
         }
         const error = new Error(message);
         if (attempt === 2) throw error;
         lastError = error;
-        await delay(retryDelayMs(response));
+        await boundedDelay(retryDelayMs(response), startedAt);
         continue;
       }
-      return parseResult(payload);
+      if (response.status === 202) return parseProgress(payload, state.progress);
+      if (response.status !== 200) throw invalidProgress();
+      const result = parseResult(payload);
+      if (result.status === 'completed' && state.progress !== null &&
+        result.catalog.inventoryRunId !== state.progress.runId) throw invalidProgress();
+      return result;
     } catch (error) {
       if (error instanceof NonRetryableReconciliationError) throw error;
-      lastError = error;
+      lastError = new Error('No se pudo confirmar el paso Dux (DUX_RECONCILE_TRANSPORT).');
       if (attempt === 2) break;
-      await delay(2_000);
+      await boundedDelay(2_000, startedAt);
     }
   }
   throw lastError instanceof Error ? lastError : new Error('La reconciliación Dux no pudo completarse.');
+}
+
+function parseProgress(value, previous) {
+  if (!isRecord(value) || value.status !== 'running' || value.requestId !== requestId ||
+    typeof value.runId !== 'string' || !/^dux_sync_[A-Za-z0-9._:-]{1,180}$/u.test(value.runId) ||
+    !phases.includes(value.phase) || !isMetric(value.processed) || value.processed > 1_000 ||
+    !(value.total === null || (isMetric(value.total) && value.total <= 1_000 && value.processed <= value.total)) ||
+    value.retryAfterMs !== 1_000 ||
+    (previous !== null && (value.runId !== previous.runId || value.processed < previous.processed ||
+      phases.indexOf(value.phase) < phases.indexOf(previous.phase) ||
+      (previous.total !== null && value.total !== previous.total)))) {
+    throw invalidProgress();
+  }
+  return value;
+}
+
+function invalidProgress() {
+  return new NonRetryableReconciliationError('El progreso de la reconciliación Dux no es válido (DUX_RECONCILE_PROGRESS_INVALID).');
+}
+
+function remainingTime(startedAt) {
+  const remaining = reconciliationDeadlineMs - (performance.now() - startedAt);
+  if (remaining <= 0) {
+    throw new NonRetryableReconciliationError('La reconciliación Dux excedió el plazo (DUX_RECONCILE_DEADLINE).');
+  }
+  return remaining;
+}
+
+async function boundedDelay(milliseconds, startedAt) {
+  const remaining = remainingTime(startedAt);
+  await delay(Math.min(milliseconds, remaining));
+  remainingTime(startedAt);
 }
 
 async function readResponse(response) {

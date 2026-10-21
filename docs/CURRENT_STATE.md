@@ -1,5 +1,16 @@
 # Estado actual
 
+## Corrección de sincronización Dux — 2026-10-21
+
+CI y Pages iniciales están aprobados en `1fdd855`; falla el scheduler con HTTP 524.
+El snapshot productivo observado conserva 889 productos del 9 de octubre y los
+aceites de coco de 200/400 cc. El usuario informa 180/360 cc en Dux. La corrección
+implementa [lectura recuperable por pasos](DUX_RESUMABLE_SYNC.md), con nueva 0026,
+sin editar los productos manualmente ni alterar comercio, reservas o pagos.
+Los resultados, SHA y operación remota se distinguen en
+[el registro](validation/DUX_RESUMABLE_SYNC_2026-10-21.md). La cadencia efectiva
+de GitHub y los rechazos intermitentes del proveedor siguen siendo controles separados.
+
 ## Compra pública simplificada — 2026-09-30
 
 El carrito distingue datos incompletos, compra recuperada, referencia eliminada

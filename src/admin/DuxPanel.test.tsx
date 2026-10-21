@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { DuxPanel } from './DuxPanel';
 
@@ -8,6 +8,7 @@ vi.mock('./MercadoLibreEditorialPanel', () => ({ MercadoLibreEditorialPanel: () 
 
 describe('panel administrativo Dux', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -84,24 +85,228 @@ describe('panel administrativo Dux', () => {
       );
     });
 
-    resolveSync?.(json({
-      summary: {
-        status: 'succeeded',
-        processed: 12,
-        failed: 0,
-        mapped: 7,
-        unmapped: 3,
-        ambiguous: 2,
-        absent: 1,
-      },
-    }));
+    resolveSync?.(json(completedSync()));
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Actualización completada. 12 productos y variantes revisados y 0 problemas de actualización.',
     );
     await waitFor(() => expect(statusRequests).toBe(2));
     expect(refreshListener).toHaveBeenCalledTimes(1);
+    expect(syncRequests(fetchMock)[0]?.[1]).toMatchObject({
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(syncRequests(fetchMock)[0]?.[1]?.body).toEqual(expect.stringMatching(/^\{"requestId":"[0-9a-f-]{36}"\}$/u));
     window.removeEventListener('shekinah:admin-products-refresh', refreshListener);
+  });
+
+  it('avanza por pasos con la misma identidad y anuncia productos sólo al confirmar la publicación', async () => {
+    const refreshListener = vi.fn();
+    window.addEventListener('shekinah:admin-products-refresh', refreshListener);
+    let steps = 0;
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      steps += 1;
+      return Promise.resolve(steps < 3 ? json(runningSync(init, { processed: steps * 50, total: 150 }), 202)
+        : json(completedSync()));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    expect(screen.getByRole('status')).toHaveTextContent('50 de 150 revisados');
+    expect(refreshListener).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByRole('status')).toHaveTextContent('100 de 150 revisados');
+    expect(refreshListener).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByRole('status')).toHaveTextContent('Actualización completada.');
+    expect(new Set(syncRequests(fetchMock).map(([, init]) => init?.body)).size).toBe(1);
+    expect(syncRequests(fetchMock)).toHaveLength(3);
+    expect(refreshListener).toHaveBeenCalledOnce();
+    window.removeEventListener('shekinah:admin-products-refresh', refreshListener);
+  });
+
+  it('recupera la misma actualización después de pérdidas de transporte sin crear otra identidad', async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      attempts += 1;
+      return attempts <= 3 ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(json(completedSync()));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(syncRequests(fetchMock)).toHaveLength(3);
+    expect(screen.getByRole('alert')).toHaveTextContent('Retomá la misma actualización');
+    await act(() => Promise.resolve(fireEvent.click(screen.getByRole('button', { name: 'Retomar actualización desde Dux' }))));
+    expect(screen.getByRole('status')).toHaveTextContent('Actualización completada.');
+    expect(new Set(syncRequests(fetchMock).map(([, init]) => init?.body)).size).toBe(1);
+  });
+
+  it.each([
+    ['catálogo ausente', { ...completedSync(), catalog: undefined }],
+    ['colección cerrada', { ...completedSync(), catalog: { status: 'disabled' } }],
+    ['migración pendiente', { ...completedSync(), catalog: { status: 'pending_migration' } }],
+    ['run diferente', { ...completedSync(), catalog: { ...completedSync().catalog, inventoryRunId: 'dux_sync_other' } }],
+    ['hash inválido', { ...completedSync(), catalog: { ...completedSync().catalog, catalogVersion: 'incorrecto' } }],
+    ['fecha diferente', { ...completedSync(), catalog: { ...completedSync().catalog, syncedAt: '2026-09-30T12:01:00.000Z' } }],
+    ['lista incorrecta', { ...completedSync(), catalog: { ...completedSync().catalog, priceListName: 'OTRA' } }],
+    ['conteo inválido', { ...completedSync(), catalog: { ...completedSync().catalog, itemCount: 0.5 } }],
+    ['estado incorrecto', { ...completedSync(), status: 'running' }],
+  ])('no declara éxito ni reintenta ante %s y permite consultar el mismo resultado', async (_name, invalid) => {
+    let attempts = 0;
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      attempts += 1;
+      return Promise.resolve(json(attempts === 1 ? invalid : completedSync()));
+    });
+    const listener = vi.fn();
+    window.addEventListener('shekinah:admin-products-refresh', listener);
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actualizar productos desde Dux' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar la publicación');
+    expect(syncRequests(fetchMock)).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Consultar resultado de la actualización' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Actualización completada.');
+    expect(new Set(syncRequests(fetchMock).map(([, init]) => init?.body)).size).toBe(1);
+    window.removeEventListener('shekinah:admin-products-refresh', listener);
+  });
+
+  it.each(['requestId', 'runId', 'phase', 'processed', 'total', 'retryAfterMs'] as const)(
+    'detiene una respuesta de progreso con %s incompatible', async (field) => {
+      let steps = 0;
+      const invalid: Record<string, unknown> = { requestId: 'otra-id', runId: 'dux_sync_other', phase: 'unknown',
+        processed: 1001, total: -1, retryAfterMs: 0 };
+      const fetchMock = vi.fn<typeof fetch>((input, init) => {
+        if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+        steps += 1;
+        return Promise.resolve(json(runningSync(init, steps === 1 ? {} : { [field]: invalid[field] }), 202));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      render(<DuxPanel />);
+      const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+      vi.useFakeTimers();
+      await act(() => Promise.resolve(fireEvent.click(button)));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+      expect(screen.getByRole('alert')).toHaveTextContent('No pudimos confirmar la publicación');
+      expect(syncRequests(fetchMock)).toHaveLength(2);
+      expect(screen.queryByText(/Actualización completada/)).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ['retroceso de fase', { phase: 'branches' }],
+    ['retroceso de productos', { processed: 49 }],
+    ['cambio de total', { total: 101 }],
+    ['pérdida del total conocido', { total: null }],
+  ])('detiene %s entre pasos válidos individualmente', async (_name, changed) => {
+    let steps = 0;
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      steps += 1;
+      return Promise.resolve(json(runningSync(init, steps === 1 ? {} : changed), 202));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByRole('alert')).toHaveTextContent('No pudimos confirmar la publicación');
+    expect(screen.getByRole('button', { name: 'Consultar resultado de la actualización' })).toBeEnabled();
+    expect(syncRequests(fetchMock)).toHaveLength(2);
+    expect(screen.queryByText(/Actualización completada/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Se conserva la información anterior/)).not.toBeInTheDocument();
+  });
+
+  it('no repite un error terminal del servidor y sólo inicia otra identidad tras un nuevo clic', async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      attempts += 1;
+      return Promise.resolve(attempts === 1 ? json({ error: { code: 'DUX_PROVIDER_REJECTED', message: 'Dux rechazó la consulta.' } }, 502)
+        : json(completedSync()));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actualizar productos desde Dux' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos consultar o actualizar');
+    expect(syncRequests(fetchMock)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Actualizar productos desde Dux' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Actualización completada.');
+    expect(new Set(syncRequests(fetchMock).map(([, init]) => init?.body)).size).toBe(2);
+  });
+
+  it('acota los pasos y conserva la identidad para consultar el resultado', async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) => Promise.resolve(json(
+      requestPath(input) === '/api/admin/dux/status' ? enabledStatus() : runningSync(init),
+      requestPath(input) === '/api/admin/dux/status' ? 200 : 202,
+    )));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80_000); });
+    expect(syncRequests(fetchMock)).toHaveLength(80);
+    expect(screen.getByRole('button', { name: 'Retomar actualización desde Dux' })).toBeEnabled();
+    expect(screen.queryByText(/Actualización completada/)).not.toBeInTheDocument();
+  });
+
+  it('detiene el avance al agotar siete minutos aunque queden pasos disponibles', async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      vi.setSystemTime(Date.now() + 70_000);
+      return Promise.resolve(json(runningSync(init), 202));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    await act(async () => { await vi.runAllTimersAsync(); });
+    expect(syncRequests(fetchMock)).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'Retomar actualización desde Dux' })).toBeEnabled();
+    expect(screen.queryByText(/Actualización completada/)).not.toBeInTheDocument();
+  });
+
+  it('conserva la identidad al recuperar una respuesta de gateway sin JSON', async () => {
+    let steps = 0;
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (requestPath(input) === '/api/admin/dux/status') return Promise.resolve(json(enabledStatus()));
+      steps += 1;
+      return Promise.resolve(steps === 1 ? new Response('Gateway timeout', { status: 524 }) : json(completedSync()));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByRole('status')).toHaveTextContent('Actualización completada.');
+    expect(syncRequests(fetchMock)).toHaveLength(2);
+    expect(new Set(syncRequests(fetchMock).map(([, init]) => init?.body)).size).toBe(1);
+  });
+
+  it('detiene los siguientes pasos al salir de la pantalla', async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) => Promise.resolve(json(
+      requestPath(input) === '/api/admin/dux/status' ? enabledStatus() : runningSync(init),
+      requestPath(input) === '/api/admin/dux/status' ? 200 : 202,
+    )));
+    vi.stubGlobal('fetch', fetchMock);
+    const view = render(<DuxPanel />);
+    const button = await screen.findByRole('button', { name: 'Actualizar productos desde Dux' });
+    vi.useFakeTimers();
+    await act(() => Promise.resolve(fireEvent.click(button)));
+    view.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(syncRequests(fetchMock)).toHaveLength(1);
   });
 
   it('queda sin acción de sincronización cuando Dux está deshabilitado', async () => {
@@ -193,6 +398,21 @@ function enabledStatus() {
     maxAgeSeconds: 900,
     blockers: ['Upgrade Dux a PRO/FULL + token API requerido'],
   };
+}
+
+function completedSync() {
+  return { status: 'completed', summary: { runId: 'dux_sync_panel_test', status: 'succeeded',
+    processed: 12, failed: 0, mapped: 7, unmapped: 3, ambiguous: 2, absent: 1,
+    startedAt: '2026-09-30T12:00:00.000Z', completedAt: '2026-09-30T12:00:30.000Z' },
+  catalog: { inventoryRunId: 'dux_sync_panel_test', catalogVersion: 'a'.repeat(64),
+    priceListName: 'PRECIOS DEL NEGOCIO', itemCount: 12, syncedAt: '2026-09-30T12:00:30.000Z' } };
+}
+
+function runningSync(init: RequestInit | undefined, overrides: Record<string, unknown> = {}) {
+  if (typeof init?.body !== 'string') throw new Error('El paso debe enviar una identidad JSON.');
+  const body = JSON.parse(init.body) as { requestId: string };
+  return { status: 'running', requestId: body.requestId, runId: 'dux_sync_panel_test', phase: 'items',
+    processed: 50, total: 100, retryAfterMs: 1_000, ...overrides };
 }
 
 function metric(label: string): HTMLElement {

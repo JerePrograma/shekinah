@@ -1,5 +1,13 @@
 # Shekinah
 
+## Sincronización Dux recuperable — 2026-10-21
+
+La [actualización por pasos](docs/DUX_RESUMABLE_SYNC.md) evita mantener una sola
+petición abierta durante toda la lectura. Conserva la identidad al retomar y
+confirma inventario y catálogo del mismo ciclo antes de anunciar éxito. Requiere
+0026; [validación y rollout](docs/validation/DUX_RESUMABLE_SYNC_2026-10-21.md).
+CI de compilación y sincronizador programado tienen evidencias separadas.
+
 ## Gestión simplificada de productos — 2026-09-25
 
 El [ABM web](docs/PRODUCT_ABM.md) permite editar fotos y descripción de productos

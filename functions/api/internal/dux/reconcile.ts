@@ -7,6 +7,7 @@ import {
   syncDuxInventory,
 } from '../../../../server/dux-inventory';
 import { createDuxInventoryReader } from '../../../../server/dux-inventory-reader';
+import { advanceDuxSyncOperation, readDuxSyncRequestId } from '../../../../server/dux-sync-operation';
 import { recordDuxFreshnessBreach } from '../../../../server/dux-freshness';
 import {
   HttpError,
@@ -43,6 +44,11 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
     }
 
     const database = requireDatabase(env);
+    const requestId = await readDuxSyncRequestId(request);
+    if (requestId !== null) {
+      return await advanceDuxSyncOperation(database, env,
+        fromCloudflare ? 'scheduler:cloudflare-cron' : 'scheduler:github-actions', requestId, 'scheduled');
+    }
     if (await isDuxInventoryBootstrapPending(database)) {
       throw new HttpError(
         409,
