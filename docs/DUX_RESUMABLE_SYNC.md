@@ -58,9 +58,17 @@ matching por nombre. Cambiar de 200/400 a 180/360 cc no crea otro producto ni UR
 - Gate Dux compartido, páginas de 50, total estable y máximo 1000 productos e
   identidades; no se amplían los límites del proveedor ni del plan.
 - Cada página conserva el máximo de 1,9 MB; la operación completa limita staging
-  a 8 MB antes de cargarlo en memoria. Se reservan 256 escrituras estimadas
-  adicionales contra el presupuesto existente de 40.000 por día UTC; no se
-  devuelven ante fallos. La publicación conserva su reserva de delta.
+  a 8 MB antes de cargarlo en memoria. Contra el límite existente de 40.000
+  escrituras estimadas por día UTC se prepagan 120 para recolección y limpieza,
+  más 16 por intento de publicación; el core no vuelve a cobrar su base de 64.
+  Un ciclo programado sano de hasta 1000 ítems/páginas de 50 reserva 136, incluso
+  si no hay delta. Los cambios siguen reservando 14 por identidad. Se añaden 96
+  en operaciones manuales para las auditorías de hasta 80 POST del cliente.
+  Un ordinal de lectura repetido y los posteriores cobran cinco adicionales,
+  antes de leer; cada lease de publicación recuperado vuelve a pagar 16.
+  No se reembolsan reservas por fallos. Son estimaciones lógicas: los índices
+  D1 conservan el margen externo del límite original y no se facturan con un
+  contador SQLite local. 288 ciclos sin cambios reservan 39.168, no 92.160.
 - El paso final revalida todas las páginas con los parsers existentes, sin red,
   publica mediante generaciones y conserva el catálogo anterior ante recolección
   incompleta. Las páginas se eliminan al terminar o fallar; se conserva la operación.
@@ -76,11 +84,20 @@ No se vuelve al catálogo manual.
 La frecuencia efectiva de GitHub y los rechazos intermitentes Dux se acreditan
 separadamente; segmentar no garantiza una cadencia automática de cinco minutos.
 
+El verificador público sólo hace GETs canónicos, sin credenciales, de forma serial.
+Reintenta como máximo tres veces la misma lectura ante transporte interrumpido,
+429 o 5xx; mantiene timeout de 30 segundos, espera acotada y plazo total de 12
+minutos. Un certificado inválido, JSON/tipo incorrecto o discrepancia de catálogo
+falla sin ocultarse ni repetir Dux. Los diagnósticos sólo incluyen campos cerrados.
+El dispatch manual `verify_only: true` omite la reconciliación y comprueba el
+catálogo ya publicado; por defecto es falso y el schedule conserva su flujo.
+
 ## Rollout
 
 Validar, revisar y publicar por `main`; acreditar CI y Pages del mismo SHA.
-Obtener resguardos D1, aplicar 0026 primero en Preview, verificar esquema/FK/datos,
-y luego Production. No reaplicar migraciones anteriores. Ejecutar una reconciliación
+Obtener resguardos D1, aplicar las nuevas 0026 y 0027 primero en Preview, verificar
+esquema/FK/datos y luego Production. No reaplicar migraciones ya acreditadas.
+Ejecutar una reconciliación
 controlada del nuevo SHA y contrastar nombres, códigos, URLs y snapshot público.
 Un error externo conserva su evidencia y no autoriza modificar Dux ni fabricar
 un resultado local. Ver [registro de validación](validation/DUX_RESUMABLE_SYNC_2026-10-21.md).

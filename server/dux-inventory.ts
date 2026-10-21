@@ -150,6 +150,8 @@ export type DuxInventoryStatus = Readonly<{
 
 type SyncOptions = Readonly<{
   collectedAt?: string;
+  /** Internal coordinator contract: its collection/publication reservations cover the base writes. */
+  writeBudgetBasePrepaid?: boolean;
   kind?: DuxSyncKind;
   localProducts: readonly CatalogProductDetail[];
   client?: DuxInventoryReader;
@@ -343,6 +345,7 @@ export async function syncDuxInventory(
       database,
       startedAt,
       changedRows.length + newlyAbsent,
+      options.writeBudgetBasePrepaid === true,
     );
     await writeInventoryGenerationRows(database, runId, changedRows, startedAt,
       requestGate === null && options.collectedAt === undefined ? STAGING_ROWS_PER_STATEMENT : COORDINATED_STAGING_ROWS_PER_STATEMENT);
@@ -1180,9 +1183,11 @@ async function reserveD1WriteBudget(
   database: D1Database,
   startedAt: string,
   changedCount: number,
+  basePrepaid: boolean,
 ): Promise<void> {
-  const estimatedRows = DUX_D1_CONSTANT_WRITE_RESERVATION +
+  const estimatedRows = (basePrepaid ? 0 : DUX_D1_CONSTANT_WRITE_RESERVATION) +
     (DUX_D1_CHANGED_ROW_WRITE_RESERVATION * changedCount);
+  if (estimatedRows === 0) return;
   const utcDate = startedAt.slice(0, 10);
   const reservation = await database
     .prepare(

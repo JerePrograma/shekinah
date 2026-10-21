@@ -4,8 +4,18 @@ const maximumRetryDelayMs = 30_000;
 const reconciliationDeadlineMs = 7 * 60 * 1_000;
 const maximumRequests = 80;
 const phases = ['companies', 'branches', 'warehouses', 'items', 'publish'];
+const transportCodes = new Set([
+  'ABORT_ERR', 'ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH',
+  'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+  'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'CERT_SIGNATURE_FAILURE',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
 
 class NonRetryableReconciliationError extends Error {}
+class ReconciliationResponseError extends Error {}
 
 const target = parseTarget(process.env.SHEKINAH_RECONCILE_URL);
 const secret = requireSecret(process.env.SHEKINAH_RECONCILE_SECRET);
@@ -57,6 +67,8 @@ async function reconcileWithRetry(url, schedulerSecret) {
 async function requestStep(url, schedulerSecret, startedAt, state) {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let phase = 'fetch_headers';
+    let httpStatus = null;
     try {
       const remaining = remainingTime(startedAt);
       if (state.requests >= maximumRequests) {
@@ -74,7 +86,10 @@ async function requestStep(url, schedulerSecret, startedAt, state) {
         redirect: 'error',
         signal: AbortSignal.timeout(Math.min(requestTimeoutMs, Math.ceil(remaining))),
       });
+      httpStatus = response.status;
+      phase = 'read_body';
       const payload = await readResponse(response);
+      phase = 'classify_response';
       const protectedOverlap = response.status === 409 &&
         errorCode(payload) === 'DUX_SYNC_IN_PROGRESS';
       if (protectedOverlap && attempt === 1 && lastError === undefined) {
@@ -92,7 +107,7 @@ async function requestStep(url, schedulerSecret, startedAt, state) {
         if (errorCode(payload) !== null || response.status < 500) {
           throw new NonRetryableReconciliationError(message);
         }
-        const error = new Error(message);
+        const error = new ReconciliationResponseError(message);
         if (attempt === 2) throw error;
         lastError = error;
         await boundedDelay(retryDelayMs(response), startedAt);
@@ -106,12 +121,38 @@ async function requestStep(url, schedulerSecret, startedAt, state) {
       return result;
     } catch (error) {
       if (error instanceof NonRetryableReconciliationError) throw error;
-      lastError = new Error('No se pudo confirmar el paso Dux (DUX_RECONCILE_TRANSPORT).');
+      const diagnostic = {
+        version: 1, attempt, request: state.requests, phase, httpStatus,
+        errorClass: safeErrorClass(error), errorCode: safeTransportCode(error),
+        causeCode: isRecord(error) ? safeTransportCode(error.cause) : null,
+      };
+      console.error('dux_reconcile_request_failure', JSON.stringify(diagnostic));
+      lastError = new Error(
+        `No se pudo confirmar el paso Dux (DUX_RECONCILE_TRANSPORT; fase=${phase}; ` +
+        `HTTP=${httpStatus ?? 'none'}; clase=${diagnostic.errorClass}; ` +
+        `código=${diagnostic.errorCode ?? 'none'}; causa=${diagnostic.causeCode ?? 'none'}).`,
+      );
       if (attempt === 2) break;
       await boundedDelay(2_000, startedAt);
     }
   }
   throw lastError instanceof Error ? lastError : new Error('La reconciliación Dux no pudo completarse.');
+}
+
+function safeErrorClass(error) {
+  if (error instanceof ReconciliationResponseError) return 'response_error';
+  if (error instanceof TypeError) return 'type_error';
+  if (error instanceof AggregateError) return 'aggregate_error';
+  if (error instanceof DOMException) {
+    if (error.name === 'TimeoutError') return 'timeout_error';
+    if (error.name === 'AbortError') return 'abort_error';
+    return 'dom_exception';
+  }
+  return error instanceof Error ? 'error' : 'unknown';
+}
+
+function safeTransportCode(error) {
+  return isRecord(error) && typeof error.code === 'string' && transportCodes.has(error.code) ? error.code : null;
 }
 
 function parseProgress(value, previous) {
@@ -147,7 +188,7 @@ async function boundedDelay(milliseconds, startedAt) {
 }
 
 async function readResponse(response) {
-  const ValidationError = response.ok ? NonRetryableReconciliationError : Error;
+  const ValidationError = response.ok ? NonRetryableReconciliationError : ReconciliationResponseError;
   const text = await response.text();
   if (text.length > 32_768) {
     throw new ValidationError('La respuesta de reconciliación Dux excede el límite permitido.');

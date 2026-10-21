@@ -11,12 +11,18 @@ import type { D1Database, Env } from './platform';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
 const LEASE_MS = 60_000;
 const PAGE_BYTES = 1_900_000;
+// Estimated logical rows, not Cloudflare's index-inclusive D1 billing. The daily
+// guard retains its existing margin for indexes and other application writes.
+const COLLECTION_WRITE_RESERVATION = 120;
+const PUBLICATION_WRITE_RESERVATION = 16;
+const MANUAL_AUDIT_WRITE_RESERVATION = 96;
+const EXTRA_ATTEMPT_WRITE_RESERVATION = 5;
 type Phase = 'companies' | 'branches' | 'warehouses' | 'items' | 'publish';
 type Operation = Readonly<{
   request_id: string; run_id: string; company_id: string; branch_id: string; deposit_id: string;
   kind: 'initial' | 'manual' | 'scheduled'; actor: string;
   status: 'running' | 'completed' | 'failed'; phase: Phase; item_offset: number; total: number | null;
-  collected_bytes: number;
+  collected_bytes: number; attempts: number;
   lease_token: string | null; lease_until_ms: number; result_json: string | null;
   error_code: string | null; error_status: number | null; started_at: string;
 }>;
@@ -64,13 +70,26 @@ export async function advanceDuxSyncOperation(
     throw error;
   }
   const lease = crypto.randomUUID();
-  const claimed = await database.prepare(`UPDATE dux_sync_operations SET lease_token = ?2, lease_until_ms = ?3
-    WHERE request_id = ?1 AND status = 'running' AND lease_until_ms <= ?4 RETURNING *`)
+  const claimed = await database.prepare(`UPDATE dux_sync_operations SET lease_token = ?2, lease_until_ms = ?3,
+    attempts = attempts + CASE WHEN phase = 'publish' THEN 0 ELSE 1 END
+    WHERE request_id = ?1 AND status = 'running' AND lease_until_ms <= ?4
+    AND (phase = 'publish' OR attempts < 45) RETURNING *`)
     .bind(requestId, lease, Date.now() + LEASE_MS, Date.now()).first<Operation>();
   if (claimed === null) return currentResponse(database, requestId);
   operation = claimed;
   try {
-    if (operation.phase === 'publish') return await publishOperation(database, env, operation);
+    if (operation.phase === 'publish') {
+      // Charge each publication lease, including recovery after a lost receipt.
+      await reserveOperationWriteBudget(database, operation.started_at, PUBLICATION_WRITE_RESERVATION);
+      return await publishOperation(database, env, operation);
+    }
+    const expectedAttempt = operation.phase === 'companies' ? 1 : operation.phase === 'branches' ? 2
+      : operation.phase === 'warehouses' ? 3 : 4 + Math.floor(operation.item_offset / 50);
+    if (operation.attempts > expectedAttempt) {
+      // After any interrupted read, later ordinals also pay this conservative
+      // allowance. It covers the claim, gate, page, checkpoint and ledger writes.
+      await reserveOperationWriteBudget(database, operation.started_at, EXTRA_ATTEMPT_WRITE_RESERVATION);
+    }
     let captured: string | null = null;
     const capture: DuxFetch = async (input, init) => {
       const response = await fetchImplementation(input, init);
@@ -86,13 +105,7 @@ export async function advanceDuxSyncOperation(
     const gate = createDuxRequestGate(database);
     const reader = createDuxInventoryReader(env, capture, {
       ...(warehouses === undefined ? {} : { warehouses }),
-      client: { minRequestIntervalMs: 0, maxGetAttempts: 1, beforeRequest: async () => {
-        const attempt = await database.prepare(`UPDATE dux_sync_operations SET attempts = attempts + 1
-          WHERE request_id = ?1 AND lease_token = ?2 AND status = 'running' AND attempts < 45
-          RETURNING attempts`).bind(requestId, lease).first();
-        if (attempt === null) throw new HttpError(503, 'DUX_SUBREQUEST_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto seguro de solicitudes.');
-        await gate();
-      } },
+      client: { minRequestIntervalMs: 0, maxGetAttempts: 1, beforeRequest: gate },
     });
     let phase: Phase;
     let offset = operation.item_offset;
@@ -174,11 +187,10 @@ async function startOperation(database: D1Database, env: Env, actor: string, req
       if (existing !== null) return existing;
       throw new HttpError(409, 'DUX_SYNC_IN_PROGRESS', 'Ya existe una sincronización Dux en curso.');
     }
-    // Include collection/chunk/gate/audit writes in the existing daily budget.
-    const budget = await database.prepare(`INSERT INTO dux_d1_write_budget (utc_date, estimated_rows, created_at, updated_at)
-      VALUES (?1, 256, ?2, ?2) ON CONFLICT(utc_date) DO UPDATE SET estimated_rows = estimated_rows + 256, updated_at = excluded.updated_at
-      WHERE estimated_rows + 256 <= 40000 RETURNING estimated_rows`).bind(now.slice(0, 10), now).first();
-    if (budget === null) throw new HttpError(503, 'DUX_D1_WRITE_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto diario seguro de escrituras de inventario.');
+    // Prepay all collection and cleanup writes even if publication never starts.
+    // Manual/initial requests also carry the administrative per-POST audit cost.
+    await reserveOperationWriteBudget(database, now, COLLECTION_WRITE_RESERVATION +
+      (kind === 'scheduled' ? 0 : MANUAL_AUDIT_WRITE_RESERVATION));
     if (kind === 'scheduled') await recordDuxFreshnessBreach(database, actor);
     await database.prepare(`UPDATE dux_sync_operations SET lease_token = NULL, lease_until_ms = 0
       WHERE request_id = ?1 AND lease_token = ?2 AND status = 'running'`).bind(requestId, initialLease).run();
@@ -212,6 +224,7 @@ async function publishOperation(database: D1Database, env: Env, operation: Opera
   if (existing === null) {
     summary = await syncDuxInventory(database, env, operation.actor, {
       kind: operation.kind, localProducts: [], client: reader, createRunId: () => operation.run_id, collectedAt: operation.started_at,
+      writeBudgetBasePrepaid: true,
     });
   } else {
     if (existing.status !== 'succeeded' && existing.status !== 'partial') {
@@ -248,15 +261,25 @@ function restoreSummary(row: Record<string, unknown>, operation: Operation): Dux
     localProductsPreserved: 0, startedAt: operation.started_at, completedAt: row.completed_at };
 }
 
-async function failOperation(database: D1Database, operation: Operation, error: HttpError): Promise<void> {
-  await database.batch([
+async function failOperation(database: D1Database, operation: Operation, error: HttpError): Promise<boolean> {
+  const result = await database.batch([
     database.prepare(`UPDATE dux_sync_operations SET status = 'failed', error_code = ?2, error_status = ?3,
       lease_token = NULL, lease_until_ms = 0, updated_at = ?4 WHERE request_id = ?1 AND status = 'running'
-      AND lease_token IS ?5`)
-      .bind(operation.request_id, error.code, error.status, new Date().toISOString(), operation.lease_token),
+      AND lease_token IS ?5 AND phase = ?6 AND item_offset = ?7 AND attempts = ?8`)
+      .bind(operation.request_id, error.code, error.status, new Date().toISOString(), operation.lease_token,
+        operation.phase, operation.item_offset, operation.attempts),
     database.prepare(`DELETE FROM dux_sync_operation_pages WHERE request_id = ?1 AND EXISTS
       (SELECT 1 FROM dux_sync_operations WHERE request_id = ?1 AND status = 'failed')`).bind(operation.request_id),
   ]);
+  return result[0]?.meta.changes === 1;
+}
+async function reserveOperationWriteBudget(database: D1Database, startedAt: string, estimatedRows: number): Promise<void> {
+  const now = new Date().toISOString();
+  const budget = await database.prepare(`INSERT INTO dux_d1_write_budget (utc_date, estimated_rows, created_at, updated_at)
+    VALUES (?1, ?2, ?3, ?3) ON CONFLICT(utc_date) DO UPDATE SET estimated_rows = estimated_rows + excluded.estimated_rows,
+    updated_at = excluded.updated_at WHERE estimated_rows + excluded.estimated_rows <= 40000 RETURNING estimated_rows`)
+    .bind(startedAt.slice(0, 10), estimatedRows, now).first();
+  if (budget === null) throw new HttpError(503, 'DUX_D1_WRITE_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto diario seguro de escrituras de inventario.');
 }
 function readOperation(database: D1Database, requestId: string): Promise<Operation | null> {
   return database.prepare('SELECT * FROM dux_sync_operations WHERE request_id = ?1').bind(requestId).first<Operation>();
@@ -280,6 +303,11 @@ async function currentResponse(database: D1Database, requestId: string): Promise
   const operation = await readOperation(database, requestId);
   if (operation === null) throw new HttpError(503, 'DUX_SYNC_RESULT_INVALID', 'No se pudo comprobar la actualización.');
   if (operation.status === 'failed') throw operationError(operation);
+  if (operation.status === 'running' && operation.phase !== 'publish' && operation.attempts >= 45 && operation.lease_until_ms <= Date.now()) {
+    const error = new HttpError(503, 'DUX_SUBREQUEST_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto seguro de solicitudes.');
+    if (await failOperation(database, operation, error)) throw error;
+    return currentResponse(database, requestId);
+  }
   return operation.status === 'completed' ? completedResponse(operation) : progressResponse(operation);
 }
 export async function latestDuxSyncOperation(database: D1Database): Promise<Readonly<{

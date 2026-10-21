@@ -16,8 +16,9 @@ instrucción del usuario el 21 de octubre.
 0026 ya está aplicada y verificada en ambas bases para `9f14d24`, con CI/Pages
 aprobados. No repetirla. El ciclo real de las 13:47 UTC publicó 905 productos Dux,
 incluidos los aceites de 180/360CC con SKU/URL intactos y bajas manuales conservadas.
-El rollout de 0027 y la verificación canónica completa se acreditan en el registro;
-no sustituir evidencia pendiente con nombres SQL.
+0027 también está aplicada y verificada en ambas bases sobre el nombre manual
+`0da0c99`, con CI/Pages aprobados. No repetirla. La verificación canónica completa
+se acredita en el registro; no sustituir evidencia pendiente con nombres SQL.
 
 ## Recorrido público claro — 2026-09-30
 

@@ -192,6 +192,7 @@ describe('sincronización Dux recuperable', () => {
     const first = advanceDuxSyncOperation(db, env, actor, requestId, 'manual', () => { entered(); return hanging; })
       .then(response => ({ response }), (error: unknown) => ({ error }));
     await reached;
+    const beforeRetry = reservedWrites(db);
     await vi.advanceTimersByTimeAsync(61_000);
     const successor = await step(db, env, requestId, providerFixture(1));
     expect(await successor.json()).toMatchObject({ phase: 'branches' });
@@ -202,6 +203,33 @@ describe('sincronización Dux recuperable', () => {
     expect(db.database.prepare('SELECT status, phase FROM dux_sync_operations WHERE request_id = ?').get(requestId))
       .toEqual({ status: 'running', phase: 'branches' });
     expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages WHERE request_id = ?').get(requestId)).toEqual({ count: 1 });
+    expect(reservedWrites(db) - beforeRetry).toBe(5);
+  });
+
+  it('una lectura antigua sin token no invalida una fase posterior cuando vence su plazo', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = providerFixture(1);
+    await step(db, env, requestId, provider);
+    let entered!: () => void;
+    let release!: () => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const staleCaller: D1Database = {
+      prepare: query => query === 'SELECT * FROM dux_sync_operations WHERE request_id = ?1'
+        ? delayedFirst(db.prepare(query), async () => { entered(); await waiting; }, true) : db.prepare(query),
+      batch: statements => db.batch(statements), exec: query => db.exec(query),
+    };
+    const old = advanceDuxSyncOperation(staleCaller, { ...env, DB: staleCaller }, actor, requestId, 'manual', provider)
+      .then(response => ({ response }), (error: unknown) => ({ error }));
+    await reached;
+    await step(db, env, requestId, provider);
+    await vi.advanceTimersByTimeAsync(DUX_SYNC_DEADLINE_MS);
+    release();
+    expect(await old).toMatchObject({ error: { code: 'DUX_SYNC_DEADLINE_EXCEEDED' } });
+    expect(db.database.prepare('SELECT status, phase FROM dux_sync_operations WHERE request_id = ?1').get(requestId))
+      .toEqual({ status: 'running', phase: 'warehouses' });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages WHERE request_id = ?1').get(requestId)).toEqual({ count: 2 });
   });
 
   it.each(['provider', 'total', 'expiry'] as const)('preserva la publicación anterior ante una falla de %s', async (failure) => {
@@ -241,10 +269,12 @@ describe('sincronización Dux recuperable', () => {
       insert.run(requestId, row.page_key, row.payload_json);
     }
     const beforeCalls = provider.mock.calls.length;
+    const beforeRecovery = reservedWrites(db);
     const recovered = await step(db, env, requestId, provider);
     expect(await recovered.json()).toEqual(published);
     expect(provider).toHaveBeenCalledTimes(beforeCalls);
     expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_runs').get()).toEqual({ count: 1 });
+    expect(reservedWrites(db) - beforeRecovery).toBe(16);
   });
 
   it('rechaza el presupuesto diario agotado antes de consultar Dux', async () => {
@@ -321,6 +351,90 @@ describe('sincronización Dux recuperable', () => {
       VALUES ('dux_sync_legacy_overlap', 'manual', 'running', 'test', ?1, ?1, ?1)`)
       .run(new Date().toISOString())).toThrow('DUX_SYNC_IN_PROGRESS');
   });
+
+  it('simula el contador de 288 no-ops diarios y confirma el último ciclo real de 1000 productos dentro de 40000', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = providerFixture(1000);
+    vi.setSystemTime(new Date('2026-10-20T23:50:00.000Z'));
+    await complete(db, env, requestId, provider);
+    vi.setSystemTime(new Date('2026-10-21T00:00:00.000Z'));
+    const stepWrites: number[] = [];
+    for (let index = 0; index < 24; index += 1) {
+      const before = logicalWrites(db);
+      const response = await step(db, env, nextId, provider, 'scheduled');
+      stepWrites.push(logicalWrites(db) - before);
+      if (response.status === 200) break;
+      expect(response.status).toBe(202);
+    }
+    // SQLite total_changes measures logical table writes, not Cloudflare's
+    // billable rows_written (which also includes index maintenance).
+    expect(stepWrites).toHaveLength(24);
+    expect(stepWrites).toEqual([7, ...Array.from({ length: 22 }, () => 4), 33]);
+    expect(stepWrites.reduce((sum, count) => sum + count, 0)).toBeLessThanOrEqual(136);
+    expect(reservedWrites(db)).toBe(136);
+    db.database.prepare('UPDATE dux_d1_write_budget SET estimated_rows = ?1 WHERE utc_date = ?2').run(136 * 287, '2026-10-21');
+    vi.setSystemTime(new Date('2026-10-21T23:55:00.000Z'));
+    await complete(db, env, '33333333-3333-4333-8333-333333333333', provider, 'scheduled');
+    expect(reservedWrites(db)).toBe(39_168);
+    expect(db.database.prepare("SELECT changed_count FROM dux_inventory_generations WHERE status = 'published'").get()).toEqual({ changed_count: 0 });
+    expect((await readDuxCatalogSnapshot(db)).itemCount).toBe(1000);
+  });
+
+  it('cobra el margen administrativo de 96 y mantiene el coste de delta en 14 por item cambiado', async () => {
+    const db = database();
+    const env = environment(db);
+    await complete(db, env, requestId, providerFixture(2, { names: ['Aceite de coco 200 cc', 'Aceite de coco 400 cc'] }));
+    expect(reservedWrites(db)).toBe(120 + 96 + 16 + 14 * 2);
+    await vi.advanceTimersByTimeAsync(6000);
+    const before = reservedWrites(db);
+    await complete(db, env, nextId, providerFixture(2, { names: ['Aceite de coco 180 cc', 'Aceite de coco 400 cc'] }), 'scheduled');
+    expect(reservedWrites(db) - before).toBe(136 + 14);
+    expect(db.database.prepare("SELECT changed_count FROM dux_inventory_generations WHERE status = 'published'").get()).toEqual({ changed_count: 1 });
+  });
+
+  it('no consulta Dux si el margen de recolección no cabe en el presupuesto restante', async () => {
+    const db = database();
+    const env = environment(db);
+    await complete(db, env, requestId, providerFixture(1));
+    const previous = await readDuxCatalogSnapshot(db);
+    db.database.prepare('UPDATE dux_d1_write_budget SET estimated_rows = 39900 WHERE utc_date = ?1').run('2026-10-21');
+    await vi.advanceTimersByTimeAsync(6000);
+    const provider = vi.fn(providerFixture(1, { name: 'No debe publicarse', stock: { real: 1, reserved: 0, available: 1 } }));
+    await expect(step(db, env, nextId, provider, 'scheduled')).rejects.toMatchObject({ code: 'DUX_D1_WRITE_BUDGET_EXHAUSTED' });
+    expect(provider).not.toHaveBeenCalled();
+    expect(await readDuxCatalogSnapshot(db)).toEqual(previous);
+  });
+
+  it('no publica ni vuelve a consultar Dux si no alcanza el margen de 16 para publicar', async () => {
+    const db = database();
+    const env = environment(db);
+    await complete(db, env, requestId, providerFixture(1));
+    const previous = await readDuxCatalogSnapshot(db);
+    await vi.advanceTimersByTimeAsync(6000);
+    const provider = vi.fn(providerFixture(1, { name: 'No debe publicarse', stock: { real: 1, reserved: 0, available: 1 } }));
+    for (let index = 0; index < 4; index += 1) await step(db, env, nextId, provider, 'scheduled');
+    const calls = provider.mock.calls.length;
+    db.database.prepare('UPDATE dux_d1_write_budget SET estimated_rows = 39990 WHERE utc_date = ?1').run('2026-10-21');
+    await expect(step(db, env, nextId, provider, 'scheduled')).rejects.toMatchObject({ code: 'DUX_D1_WRITE_BUDGET_EXHAUSTED' });
+    expect(provider).toHaveBeenCalledTimes(calls);
+    expect(await readDuxCatalogSnapshot(db)).toEqual(previous);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_runs').get()).toEqual({ count: 1 });
+  });
+
+  it('permite el intento 45 y termina al agotarlo sin consultar otra vez al proveedor', async () => {
+    const db = database();
+    const env = environment(db);
+    const provider = vi.fn(providerFixture(1));
+    await step(db, env, requestId, provider);
+    db.database.prepare('UPDATE dux_sync_operations SET attempts = 44 WHERE request_id = ?1').run(requestId);
+    expect((await step(db, env, requestId, provider)).status).toBe(202);
+    expect(db.database.prepare('SELECT attempts FROM dux_sync_operations WHERE request_id = ?1').get(requestId)).toEqual({ attempts: 45 });
+    const calls = provider.mock.calls.length;
+    await expect(step(db, env, requestId, provider)).rejects.toMatchObject({ code: 'DUX_SUBREQUEST_BUDGET_EXHAUSTED' });
+    expect(provider).toHaveBeenCalledTimes(calls);
+    expect(db.database.prepare('SELECT status FROM dux_sync_operations WHERE request_id = ?1').get(requestId)).toEqual({ status: 'failed' });
+  });
 });
 
 describe('identidad de petición Dux', () => {
@@ -364,17 +478,17 @@ function environment(database: D1Database): Env {
   return { DB: database, DIRECT_CHECKOUT_ENABLED: 'true', DUX_API_ENABLED: 'true', DUX_API_TOKEN: 'test-only-token',
     DUX_COMPANY_ID: '12862', DUX_BRANCH_ID: '1', DUX_DEPOSIT_ID: '25566', DUX_SNAPSHOT_MAX_AGE_SECONDS: '900' };
 }
-async function step(database: D1Database, env: Env, id: string, fetch: DuxFetch): Promise<Response> {
-  const settled = advanceDuxSyncOperation(database, env, actor, id, 'manual', fetch)
+async function step(database: D1Database, env: Env, id: string, fetch: DuxFetch, kind: 'manual' | 'scheduled' = 'manual'): Promise<Response> {
+  const settled = advanceDuxSyncOperation(database, env, actor, id, kind, fetch)
     .then(response => ({ response }), (error: unknown) => ({ error }));
   await vi.runAllTimersAsync();
   const result = await settled;
   if ('error' in result) throw result.error;
   return result.response;
 }
-async function complete(database: D1Database, env: Env, id: string, fetch: DuxFetch): Promise<Response> {
+async function complete(database: D1Database, env: Env, id: string, fetch: DuxFetch, kind: 'manual' | 'scheduled' = 'manual'): Promise<Response> {
   for (let index = 0; index < 80; index += 1) {
-    const response = await step(database, env, id, fetch);
+    const response = await step(database, env, id, fetch, kind);
     if (response.status === 200) return response;
     expect(response.status).toBe(202);
   }
@@ -384,10 +498,23 @@ function meteredDatabase(database: D1Database, count: () => void): D1Database {
   return { prepare(query: string): D1PreparedStatement { count(); return database.prepare(query); },
     batch: statements => database.batch(statements), exec: query => database.exec(query) };
 }
-function delayedFirst(statement: D1PreparedStatement, beforeFirst: () => Promise<void>): D1PreparedStatement {
+function reservedWrites(database: SqliteD1, utcDate = new Date().toISOString().slice(0, 10)): number {
+  const row = database.database.prepare('SELECT estimated_rows FROM dux_d1_write_budget WHERE utc_date = ?1').get(utcDate);
+  if (typeof row?.estimated_rows !== 'number') throw new Error('Presupuesto de prueba ausente');
+  return row.estimated_rows;
+}
+function logicalWrites(database: SqliteD1): number {
+  const row = database.database.prepare('SELECT total_changes() AS written').get();
+  if (typeof row?.written !== 'number') throw new Error('Contador de prueba ausente');
+  return row.written;
+}
+function delayedFirst(statement: D1PreparedStatement, beforeFirst: () => Promise<void>, captureBeforeWait = false): D1PreparedStatement {
   return {
-    bind: (...values) => delayedFirst(statement.bind(...values), beforeFirst),
-    first: async <T>(column?: string) => { await beforeFirst(); return statement.first<T>(column); },
+    bind: (...values) => delayedFirst(statement.bind(...values), beforeFirst, captureBeforeWait),
+    first: async <T>(column?: string) => {
+      if (captureBeforeWait) { const captured = await statement.first<T>(column); await beforeFirst(); return captured; }
+      await beforeFirst(); return statement.first<T>(column);
+    },
     all: <T>() => statement.all<T>(), run: <T>() => statement.run<T>(), raw: <T>(options?: Readonly<{ columnNames?: boolean }>) => statement.raw<T>(options),
   };
 }

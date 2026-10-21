@@ -159,6 +159,10 @@ for (const fragment of [
   'SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile',
   'SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}',
   'run: node scripts/run-dux-reconcile.mjs',
+  'verify_only:', 'type: boolean', 'default: false',
+  "if: ${{ github.event_name != 'workflow_dispatch' || !inputs.verify_only }}",
+  "if: ${{ github.event_name == 'workflow_dispatch' }}",
+  'run: node scripts/verify-dux-public-catalog.mjs --all-details',
 ]) {
   if (!reconciliationWorkflow.includes(fragment)) {
     fail(`Falta el fragmento requerido en la reconciliación: ${fragment}`);

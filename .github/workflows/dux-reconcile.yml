@@ -5,6 +5,12 @@ on:
   schedule:
     - cron: '2-57/5 * * * *'
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: 'Comprobar el catálogo público ya publicado sin volver a consultar Dux'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -35,6 +41,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Refresh Dux inventory snapshot
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.verify_only }}
         env:
           SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile
           SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}

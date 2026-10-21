@@ -20,7 +20,9 @@ falló `DUX_PROVIDER_REJECTED` en empresas, conservando la publicación anterior
 El siguiente ciclo observado sí completó la publicación de 905 productos Dux a
 las 13:47:18.684 UTC: los cuatro aceites NEUTRO/VIRGEN muestran 180/360CC y conservan
 SKU/URL. Se preservan 231 bajas manuales; la tienda muestra 674 productos. La
-verificación canónica completa y el rollout del nombre manual se acreditan aparte.
+verificación canónica completa se acredita aparte. El nombre manual `0da0c99`
+tiene CI/Pages aprobados y 0027 aplicada y verificada en ambas bases, sin editar
+productos reales ni cambiar decisiones de publicación.
 
 ## Compra pública simplificada — 2026-09-30
 
