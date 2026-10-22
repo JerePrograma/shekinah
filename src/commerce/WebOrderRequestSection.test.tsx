@@ -46,6 +46,25 @@ beforeEach(() => {
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it('conserva el cupón en el alta protegida y muestra el ahorro confirmado al recuperar', async () => {
+  render(<WebOrderRequestSection registrationEnabled items={items} fulfillment={fulfillment} disabled={false}
+    couponCode="PRUEBA10" onBusyChange={vi.fn()} onActiveChange={vi.fn()} />);
+  await continueToPayment();
+  await waitFor(() => expect(doubles.submit).toHaveBeenCalledExactlyOnceWith(identity, items, fulfillment, 'PRUEBA10'));
+});
+
+it('muestra el descuento persistido de un pedido recuperado sin abrir nuevamente el pago', async () => {
+  doubles.read.mockResolvedValue(identity);
+  doubles.recover.mockResolvedValue({ ...receipt, status: 'accepted', preparationStatus: 'prepared',
+    reservationStatus: 'confirmed', totalMinor: 90_000, checkoutAvailable: true,
+    pricing: { title: 'Beneficio de prueba', couponCode: 'PRUEBA10', subtotalMinor: 100_000, discountMinor: 10_000, totalMinor: 90_000 } });
+  render(component());
+  expect(await screen.findByText('Beneficio de prueba · PRUEBA10')).toBeVisible();
+  expect(screen.getByText(/Total confirmado/)).toBeVisible();
+  expect(doubles.checkout).not.toHaveBeenCalled();
+  expect(doubles.submit).not.toHaveBeenCalled();
+});
+
 const ready: WebRequestReceipt = { ...receipt, status: 'accepted', preparationStatus: 'prepared',
   reservationStatus: 'confirmed', checkoutAvailable: true, totalMinor: 350000 };
 

@@ -1,5 +1,20 @@
 # Estado actual
 
+## Marketing del e-commerce — 2026-10-22
+
+El [módulo de campañas](ECOMMERCE_MARKETING.md) agrega administración de cupones
+por porcentaje, promociones automáticas y anuncios con vigencia. La compra directa
+con retiro calcula el descuento con precios Dux vivos y conserva una cotización
+inmutable y un cupo por orden. La recuperación no recotiza pedidos preparados.
+Las migraciones aditivas 0028 y 0029 se aplicaron y verificaron primero en Preview
+y después en Production, con campañas/cupos vacíos y conteos anteriores conservados.
+La [validación](validation/ECOMMERCE_MARKETING_2026-10-22.md) acredita 1.208 pruebas
+unitarias, 55 E2E y build final; CI y deployment se comprueban sobre el commit publicado.
+No crea promociones reales ni
+modifica flags, mantenimiento, inventario o pagos existentes. El código y las
+pruebas locales no acreditan por sí solos migración o aceptación remota del precio
+promocional; consultar el registro de esta iteración antes de activarlo.
+
 ## Corrección de sincronización Dux — 2026-10-21
 
 La [lectura recuperable por pasos](DUX_RESUMABLE_SYNC.md) reemplaza la petición

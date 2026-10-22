@@ -17,6 +17,7 @@ import { ProductManager } from './ProductManager';
 import type { ProductInteractionState } from './ProductManager';
 import { WebOrderRequestsPanel } from './WebOrderRequestsPanel';
 import { AdminShell } from './AdminShell';
+import { MarketingPanel } from './MarketingPanel';
 import { AppLink } from '../routing/AppLink';
 import './admin.css';
 
@@ -60,12 +61,16 @@ export function AdminBackoffice({
   const [orderInteraction, setOrderInteraction] = useState<ProductInteractionState>(
     IDLE_PRODUCT_INTERACTION,
   );
+  const [marketingInteraction, setMarketingInteraction] = useState<ProductInteractionState>(IDLE_PRODUCT_INTERACTION);
   const submittingRef = useRef(false);
   const loggingOutRef = useRef(false);
   const usernameRef = useRef<HTMLInputElement | null>(null);
 
   const handleProductInteractionChange = useCallback((state: ProductInteractionState) => {
     setProductInteraction(state);
+  }, []);
+  const handleMarketingInteractionChange = useCallback((state: ProductInteractionState) => {
+    setMarketingInteraction(state);
   }, []);
 
   const handleOrderInteractionChange = useCallback((busy: boolean, operationLabel?: string) => {
@@ -76,13 +81,10 @@ export function AdminBackoffice({
     }));
   }, []);
 
-  const activeInteraction = useMemo<ProductInteractionState>(() => (
-    productInteraction.busy
-      ? productInteraction
-      : orderInteraction.busy
-        ? Object.freeze({ ...orderInteraction, dirty: productInteraction.dirty })
-        : Object.freeze({ ...productInteraction, busy: false })
-  ), [orderInteraction, productInteraction]);
+  const activeInteraction = useMemo<ProductInteractionState>(() => {
+    const current = [productInteraction, marketingInteraction, orderInteraction].find(state => state.busy);
+    return Object.freeze({ ...current, busy: current !== undefined, dirty: productInteraction.dirty || marketingInteraction.dirty });
+  }, [orderInteraction, productInteraction, marketingInteraction]);
 
   useEffect(() => {
     onInteractionStateChange?.(activeInteraction);
@@ -171,7 +173,7 @@ export function AdminBackoffice({
     if (
       activeInteraction.dirty &&
       !window.confirm(
-        'Cerrar sesión\n\nHay cambios de producto sin guardar. Si cerrás sesión ahora, se perderán.',
+        'Cerrar sesión\n\nHay cambios sin guardar en Administración. Si cerrás sesión ahora, se perderán.',
       )
     ) {
       setError('La sesión sigue abierta y los cambios continúan sin guardar.');
@@ -270,7 +272,7 @@ export function AdminBackoffice({
 
   return (
     <AdminShell section={section} identity={viewState.identity.label} busy={activeInteraction.busy}
-      dirty={productInteraction.dirty} loggingOut={loggingOut} navigate={navigate}
+      dirty={productInteraction.dirty} marketingDirty={marketingInteraction.dirty} loggingOut={loggingOut} navigate={navigate}
       onLogout={() => void logout()} onSectionChange={next => {
         if (activeInteraction.busy && section !== next) { setError(activeOperationMessage(activeInteraction)); return; }
         setError(''); setSection(next);
@@ -289,6 +291,10 @@ export function AdminBackoffice({
           onOperationStateChange={handleOrderInteractionChange}
           onUnauthorized={handleUnauthorized}
         />
+      </div>
+      <div hidden={section !== 'marketing'}>
+        <MarketingPanel active={section === 'marketing'} onUnauthorized={handleUnauthorized}
+          onInteractionStateChange={handleMarketingInteractionChange} />
       </div>
       <AdminPage
         navigate={navigate}

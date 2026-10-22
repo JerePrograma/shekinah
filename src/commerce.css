@@ -430,3 +430,13 @@
 @media (max-width: 420px) {
   .consent-banner { width: calc(100% - 1.25rem); }
 }
+.cart-benefits { margin-block: 1.25rem; padding-block: 1.1rem; border-block: 1px solid var(--color-border, #dce4d8); }
+.cart-benefits label { display: block; margin-bottom: .5rem; font-weight: 650; }
+.cart-coupon-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+.cart-coupon-controls input { min-width: 0; width: 100%; min-height: 44px; padding: .65rem; border: 1px solid #aab9a5; border-radius: .45rem; font: inherit; text-transform: uppercase; background: #fff; color: #203523; }
+.cart-coupon-controls .button { min-height: 44px; padding-inline: .8rem; width: auto; }
+.cart-benefits p { margin-block: .6rem 0; font-size: .875rem; }
+.cart-benefits .text-button { margin-top: .5rem; min-height: 44px; }
+.cart-coupon-error { color: #a02622; }
+.cart-coupon-success, .cart-discount { color: #2b6039; }
+.cart-discount dt { overflow-wrap: anywhere; }

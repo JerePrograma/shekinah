@@ -112,6 +112,9 @@ export async function previewAssistedCheckout(
 ): Promise<AssistedCheckoutPreview> {
   await requireAssistedSchema(database);
   const detail = await readAcceptedRequest(database, requestId);
+  if (detail.snapshot.couponCode !== undefined) {
+    throw new HttpError(409, 'COUPON_DIRECT_CHECKOUT_REQUIRED', 'Esta solicitud tiene un cupón y requiere continuar su compra directa. No puede prepararse al precio completo por gestión asistida.');
+  }
   await requireAssistedAuthority(database, env);
   await assertDuxProductsPublished(database, detail.snapshot.lines.map(line => line.duxCode));
   const snapshot = await readDuxCatalogSnapshot(database);

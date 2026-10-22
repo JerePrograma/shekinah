@@ -11,11 +11,13 @@ import type {
   WebRequestStatus,
 } from '../src/commerce/web-order-contracts';
 import { webRequestReference } from '../src/commerce/web-order-contracts';
+import { parseWebRequestPricing } from '../src/commerce/web-order-contracts';
 import { hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import type { DuxCatalogSnapshot } from './dux-catalog';
 import { HttpError } from './http';
 import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import { assertDuxProductsPublished } from './dux-product-web-settings';
+import { hasMarketingCheckoutSchema } from './marketing-checkout-schema';
 import { getOrderPaymentState } from './order-payment-state';
 import type { D1Database } from './platform';
 import { assertExactKeys, assertUuid, isRecord, readInteger, readSafeText } from './validation';
@@ -58,11 +60,15 @@ export function parseWebRequestIdentity(value: Record<string, unknown>): WebRequ
 
 export function parseWebRequestInput(value: unknown): WebRequestInput {
   if (!isRecord(value)) throw new HttpError(400, 'INVALID_WEB_REQUEST', 'La solicitud no es válida.');
-  assertExactKeys(value, ['mode', 'idempotencyKey', 'ownerSecret', 'items', 'fulfillment']);
+  assertExactKeys(value, ['mode', 'idempotencyKey', 'ownerSecret', 'items', 'fulfillment', 'couponCode']);
   if (value.mode !== 'create') throw new HttpError(400, 'INVALID_WEB_REQUEST', 'La operación no es válida.');
   const identity = parseWebRequestIdentity(value);
   const fulfillment = validateFulfillment(value.fulfillment);
   if (fulfillment.value === null) throw new HttpError(400, 'INVALID_FULFILLMENT', 'Completá correctamente los datos de entrega.');
+  const couponCode = readCouponCode(value.couponCode);
+  if (couponCode !== undefined && fulfillment.value.method !== 'coordinated_pickup') {
+    throw new HttpError(409, 'COUPON_PICKUP_REQUIRED', 'Los cupones están disponibles para retiro coordinado. Para envío, quitá el cupón y solicitá una cotización.');
+  }
   if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > MAX_CART_LINES) {
     throw new HttpError(400, 'INVALID_CART', 'La cantidad de productos no es válida.');
   }
@@ -81,7 +87,17 @@ export function parseWebRequestInput(value: unknown): WebRequestInput {
     }
     return Object.freeze({ productId, quantity, catalogVersion: item.catalogVersion });
   }).sort((a, b) => a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0);
-  return Object.freeze({ ...identity, items: Object.freeze(items), fulfillment: fulfillment.value });
+  return Object.freeze({ ...identity, items: Object.freeze(items), fulfillment: fulfillment.value,
+    ...(couponCode === undefined ? {} : { couponCode }) });
+}
+
+function readCouponCode(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') throw new HttpError(400, 'INVALID_COUPON_CODE', 'El código de cupón no es válido.');
+  const code = value.trim();
+  if (code === '') return undefined;
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/u.test(code)) throw new HttpError(400, 'INVALID_COUPON_CODE', 'El cupón debe tener entre 3 y 32 letras, números, guiones o guiones bajos.');
+  return code.toUpperCase();
 }
 
 export async function createWebOrderRequest(database: D1Database, input: WebRequestInput, tokenSecret: string,
@@ -89,7 +105,9 @@ export async function createWebOrderRequest(database: D1Database, input: WebRequ
   const ownerHash = await sha256Hex(input.ownerSecret);
   const fulfillmentValue = fulfillmentCanonicalValue(input.fulfillment);
   const cartValue = JSON.stringify(input.items.map((line) => [line.productId, line.quantity, line.catalogVersion]));
-  const fingerprint = await sha256Hex(JSON.stringify([1, 'web_request', cartValue, fulfillmentValue]));
+  const canonical = [1, 'web_request', cartValue, fulfillmentValue];
+  if (input.couponCode !== undefined) canonical.push(input.couponCode);
+  const fingerprint = await sha256Hex(JSON.stringify(canonical));
   const replay = async () => {
     const row = await findRequest(database, input.idempotencyKey);
     if (row === null) return null;
@@ -144,7 +162,7 @@ export function buildWebRequestSnapshot(input: WebRequestInput, snapshot: WebReq
   return Object.freeze({ schemaVersion: 1, catalogVersion: snapshot.catalogVersion,
     observedAt: snapshot.stockReadAt ?? snapshot.syncedAt, lines: Object.freeze(lines), fulfillment: input.fulfillment,
     totalMinor: null, shippingMinor: input.fulfillment.method === 'coordinated_pickup' ? 0 : null,
-    quantityStatus: 'requires_confirmation' });
+    quantityStatus: 'requires_confirmation', ...(input.couponCode === undefined ? {} : { couponCode: input.couponCode }) });
 }
 
 export async function recoverWebOrderRequest(
@@ -198,6 +216,9 @@ export async function getWebRequestByToken(
   const lifecycleNeedsReview =
     (payment.status === 'approved' && reservationStatus !== 'confirmed' && reservationStatus !== 'finalized') ||
     (payment.status === 'refunded' && reservationStatus !== 'released');
+  const totalMinor = assisted.verification_method === 'automatic_api' && reservationStatus === 'not_reserved' ? null : assisted.total_minor;
+  const pricing = totalMinor === null ? undefined : await readMarketingPricing(database, assisted.id, totalMinor);
+  const marketingReady = pricing === undefined || await hasMarketingCheckoutSchema(database);
   return Object.freeze({
     ...base,
     updatedAt: latestTimestamp(base.updatedAt, assisted.updated_at, payment.updatedAt),
@@ -205,13 +226,36 @@ export async function getWebRequestByToken(
     paymentRequiresReview: payment.requiresReview || lifecycleNeedsReview,
     reservationStatus,
     checkoutAvailable:
-      directSchemaReady && (assisted.verification_method === 'automatic_api' ? automaticCheckoutConfigured : checkoutConfigured) &&
+      directSchemaReady && marketingReady && (assisted.verification_method === 'automatic_api' ? automaticCheckoutConfigured : checkoutConfigured) &&
       reservationStatus === 'confirmed' &&
       payment.status !== 'pending' && payment.status !== 'approved' && payment.status !== 'refunded' &&
       assisted.status !== 'approved' && assisted.status !== 'refunded' &&
       preferenceAttemptCanContinue(assisted, nowMilliseconds),
-    totalMinor: assisted.verification_method === 'automatic_api' && reservationStatus === 'not_reserved' ? null : assisted.total_minor,
+    totalMinor,
+    ...(pricing === undefined ? {} : { pricing }),
   });
+}
+
+export async function readMarketingPricing(database: D1Database, orderId: string, totalMinor: number) {
+  const operation = await database.prepare(`SELECT json_extract(request_json, '$.quote.marketingQuote') AS quote_json
+    FROM dux_order_operations WHERE order_id = ? AND idempotency_key = 'automatic-reserve:' || ?`)
+    .bind(orderId, orderId).first<{ quote_json: string | null }>();
+  let row: { quote_json: string } | null;
+  try {
+    row = await database.prepare('SELECT quote_json FROM marketing_redemptions WHERE order_id = ?').bind(orderId).first<{ quote_json: string }>();
+  } catch (error: unknown) {
+    // Una instalación anterior conserva íntegro su contrato; no tiene descuentos.
+    if (error instanceof Error && /no such table: marketing_redemptions/iu.test(error.message) &&
+        (operation?.quote_json === undefined || operation.quote_json === null)) return undefined;
+    throw error;
+  }
+  if (row === null && (operation?.quote_json === undefined || operation.quote_json === null)) return undefined;
+  try {
+    if (row === null || operation?.quote_json === undefined || operation.quote_json === null ||
+        JSON.stringify(JSON.parse(row.quote_json)) !== JSON.stringify(JSON.parse(operation.quote_json))) throw new Error('Descuento inconsistente.');
+    return parseWebRequestPricing(JSON.parse(row.quote_json), totalMinor);
+  }
+  catch { throw new HttpError(503, 'WEB_REQUEST_PRICING_INVALID', 'El descuento confirmado necesita revisión.'); }
 }
 
 export async function listWebOrderRequests(database: D1Database, offset = 0) {

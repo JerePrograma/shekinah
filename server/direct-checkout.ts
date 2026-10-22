@@ -14,6 +14,8 @@ import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import { HttpError, requireSecret } from './http';
 import type { D1Database, Env } from './platform';
 import { getAdminWebOrderRequest } from './web-order-requests';
+import { readMarketingQuote, reserveMarketingRedemptionStatements } from './marketing';
+import { requireMarketingCheckoutSchema } from './marketing-checkout-schema';
 
 const LEASE_MS = 60_000;
 const MAX_QUOTE_AGE_MS = 900_000;
@@ -95,7 +97,10 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
     }
     await assertDuxProductsPublished(database, detail.snapshot.lines.map(line => line.duxCode));
     if (progress.lines.some(line => timestamp - Date.parse(line.observedAt) > MAX_QUOTE_AGE_MS || Date.parse(line.observedAt) > timestamp)) {
-      progress = { ...progress, lines: [], order: null, stockAfter: [], stockObservedAt: null };
+      // Sólo sin operación persistida puede descartarse una cotización. Una
+      // escritura de borrador fallida pudo guardar el beneficio en el progreso;
+      // al releer Dux también debe descartarse ese precio promocional anterior.
+      progress = { version: 1, catalogVersion: progress.catalogVersion, lines: [], order: null, stockAfter: [], stockObservedAt: null };
     }
     const requested = detail.snapshot.lines[progress.lines.length];
     if (requested !== undefined) {
@@ -115,16 +120,33 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
       await saveProgress(database, identity.web_request_id, token, progress, now);
       return;
     }
+    const quote = await readMarketingQuote(database, progress.lines.map(line => ({ productId: line.productId,
+      code: line.code, quantity: line.quantity, unitPriceMinor: line.stockBefore.priceMinor })),
+      detail.snapshot.couponCode, new Date(timestamp));
+    if (quote.discountMinor > 0 || progress.marketingQuote !== undefined) {
+      if (quote.discountMinor > 0) await requireMarketingCheckoutSchema(database);
+      progress = parseDirectProgress(JSON.stringify({ ...progress, marketingQuote: quote.discountMinor > 0 ? quote : undefined,
+        lines: progress.lines.map(line => {
+          const priced = quote.lines.find(candidate => candidate.productId === line.productId && candidate.code === line.code);
+          if (priced === undefined) throw evidenceInvalid();
+          return { productId: line.productId, code: line.code, name: line.name, quantity: line.quantity,
+            stockBefore: line.stockBefore, observedAt: line.observedAt, unitPriceMinor: priced.unitPriceMinor,
+            ...(quote.discountMinor > 0 ? { baseUnitPriceMinor: line.stockBefore.priceMinor } : {}) };
+        }) }));
+      await saveProgress(database, identity.web_request_id, token, progress, now);
+    }
     await createDraft(database, identity, detail, token, progress, config, now);
     // La siguiente petición reclama el POST: si esta respuesta se pierde el
     // ledger permanece recuperable y no se genera una segunda orden local.
   } catch (error: unknown) {
-    const failure = isUnpublishedProductError(error) ? unpublishedProduct() : error;
+    const failure = isUnpublishedProductError(error) ? unpublishedProduct() : directMarketingFailure(error);
     const code = failure instanceof HttpError ? failure.code : 'DIRECT_CHECKOUT_STORAGE_UNAVAILABLE';
     if (code === 'PRODUCT_UNPUBLISHED') {
       await closeUnpublishedDraft(database, identity.web_request_id, token, now);
     } else {
-      const terminal = code === 'DIRECT_STOCK_INSUFFICIENT' || code === 'DIRECT_PRODUCT_CHANGED';
+      const terminal = code === 'DIRECT_STOCK_INSUFFICIENT' || code === 'DIRECT_PRODUCT_CHANGED' ||
+        code === 'INVALID_COUPON_CODE' || code === 'INVALID_COUPON' || code === 'COUPON_UNAVAILABLE' || code === 'COUPON_MINIMUM_NOT_MET' ||
+        code === 'COUPON_NOT_APPLICABLE' || code === 'MARKETING_CAMPAIGN_UNAVAILABLE';
       const review = code === 'DIRECT_RESERVATION_UNVERIFIED' || code === 'DIRECT_CHECKOUT_EVIDENCE_INVALID';
       await database.prepare(`UPDATE checkout_intents SET direct_checkout_error_code = ?,
         direct_checkout_state = CASE WHEN ? = 1 THEN 'failed' WHEN ? = 1 THEN 'requires_review' ELSE direct_checkout_state END,
@@ -136,6 +158,14 @@ export async function advanceDirectCheckout(database: D1Database, env: Env, publ
     await database.prepare(`UPDATE checkout_intents SET direct_checkout_lease_until_ms = 0
       WHERE web_request_id = ? AND direct_checkout_claim_token = ?`).bind(identity.web_request_id, token).run();
   }
+}
+
+function directMarketingFailure(error: unknown): unknown {
+  if (error instanceof Error && /MARKETING_CAMPAIGN_UNAVAILABLE/iu.test(error.message)) {
+    return new HttpError(409, 'MARKETING_CAMPAIGN_UNAVAILABLE', 'La promoción cambió o agotó su cupo. Revisá el carrito antes de iniciar otra compra.');
+  }
+  if (error instanceof Error && /(?:DUX_AUTOMATIC_MARKETING_EVIDENCE|MARKETING_REDEMPTION_CONFLICT)/iu.test(error.message)) return evidenceInvalid();
+  return error;
 }
 
 async function closeUnpublishedDraft(database: D1Database, requestId: string, token: string, now: () => number): Promise<void> {
@@ -175,12 +205,13 @@ export function readDirectCheckoutConfig(env: Env) {
 
 async function advanceReservation(database: D1Database, identity: Identity, token: string, progress: DirectProgress,
   operation: Operation, tenant: Tenant, gateway: DirectGateway, now: () => number): Promise<void> {
+  if (progress.marketingQuote !== undefined) await requireMarketingCheckoutSchema(database);
   const request = parseStoredProviderRequest(operation.request_json);
   if (request.id_empresa !== tenant.companyId || request.id_sucursal !== tenant.branchId || request.id_deposito !== tenant.depositId ||
       request.referencia !== `shekinah:web:${identity.web_request_id}`) throw evidenceInvalid();
   const quote: unknown = JSON.parse(operation.request_json);
   if (typeof quote !== 'object' || quote === null || !('quote' in quote) ||
-      JSON.stringify(quote.quote) !== JSON.stringify({ catalogVersion: progress.catalogVersion, lines: progress.lines })) throw evidenceInvalid();
+      JSON.stringify(quote.quote) !== JSON.stringify(directQuoteValue(progress))) throw evidenceInvalid();
   if (operation.status === 'confirmed') return;
   if (operation.attempted_at === null) {
     await assertDuxProductsPublished(database, progress.lines.map(line => line.code));
@@ -296,7 +327,9 @@ async function createDraft(database: D1Database, identity: Identity, detail: Adm
   if (!Number.isSafeInteger(total) || total <= 0) throw evidenceInvalid();
   const timestamp = new Date(validNow(now)).toISOString();
   const orderId = `ord_${randomToken(18)}`;
-  const fingerprint = await sha256Hex(JSON.stringify([2, identity.web_request_id, progress.lines, fulfillmentCanonicalValue(detail.snapshot.fulfillment)]));
+  const canonical: unknown[] = [2, identity.web_request_id, progress.lines, fulfillmentCanonicalValue(detail.snapshot.fulfillment)];
+  if (progress.marketingQuote !== undefined) canonical.push(progress.marketingQuote);
+  const fingerprint = await sha256Hex(JSON.stringify(canonical));
   const providerRequest = directProviderRequest(progress, tenant, `shekinah:web:${identity.web_request_id}`, timestamp.slice(0, 10));
   await database.batch([
     database.prepare(`UPDATE checkout_intents SET web_request_status = 'accepted', web_request_resolved_by = 'system:direct_checkout',
@@ -317,7 +350,8 @@ async function createDraft(database: D1Database, identity: Identity, detail: Adm
       VALUES (?, ?, ?, 'reserve', 'pending', ?, ?, ?)`)
       .bind(`duxop_${randomToken(18)}`, `automatic-reserve:${orderId}`, orderId,
         JSON.stringify({ method: 'automatic_api', orderId, requestId: identity.web_request_id, action: 'reserve', providerRequest,
-          quote: { catalogVersion: progress.catalogVersion, lines: progress.lines } }), timestamp, timestamp),
+          quote: directQuoteValue(progress) }), timestamp, timestamp),
+    ...(progress.marketingQuote === undefined ? [] : reserveMarketingRedemptionStatements(database, orderId, progress.marketingQuote, timestamp)),
     database.prepare(`INSERT INTO order_items (order_id, product_id, name, presentation, sku, quantity, unit_price_minor,
       subtotal_minor, stock_controlled, provider_inventory_key, provider_catalog_version)
       SELECT ?, json_extract(value,'$.productId'), json_extract(value,'$.name'), NULL, json_extract(value,'$.code'),
@@ -329,6 +363,11 @@ async function createDraft(database: D1Database, identity: Identity, detail: Adm
       VALUES (?, 'coordinated_pickup', ?, ?, '', '', '', '', NULL, 'coordinated_pickup', ?, 0, ?, ?)`)
       .bind(orderId, detail.snapshot.fulfillment.fullName, detail.snapshot.fulfillment.phone, total, timestamp, timestamp),
   ]);
+}
+
+function directQuoteValue(progress: DirectProgress) {
+  return { catalogVersion: progress.catalogVersion, lines: progress.lines,
+    ...(progress.marketingQuote === undefined ? {} : { marketingQuote: progress.marketingQuote }) };
 }
 
 async function saveProgress(database: D1Database, requestId: string, token: string, progress: DirectProgress, now: () => number): Promise<void> {

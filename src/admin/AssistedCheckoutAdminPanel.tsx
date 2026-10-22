@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { formatOrderNumber } from '../commerce/contracts';
-import { parseDirectReservationReview } from '../commerce/web-order-contracts';
-import type { DirectReservationReview } from '../commerce/web-order-contracts';
+import { parseDirectReservationReview, parseWebRequestPricing } from '../commerce/web-order-contracts';
+import type { DirectReservationReview, WebRequestPricing } from '../commerce/web-order-contracts';
 
 type PreviewLine = Readonly<{
   productId: string; duxCode: string; name: string; quantity: number; unitPriceMinor: number; subtotalMinor: number;
@@ -18,6 +18,7 @@ type Prepared = Readonly<{
   reservationStatus: 'confirmed' | 'released' | 'finalized' | 'requires_review';
   paymentStatus: 'none' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
   paymentRequiresReview: boolean;
+  pricing?: WebRequestPricing;
 }>;
 type State = Readonly<{ state: 'preview'; preview: Preview }> | Readonly<{ state: 'prepared'; prepared: Prepared }>
   | Readonly<{state:'direct_preparing';requestId:string;preparationStatus:string;duxReference:string;errorCode:string|null;
@@ -247,6 +248,10 @@ export function AssistedCheckoutAdminPanel({ requestId, onUnauthorized, onBusyCh
     </> : null}
     {state?.state === 'prepared' ? <>
       <p role="status"><strong>Pedido preparado:</strong> {formatOrderNumber(state.prepared.orderId)}. Pedido Dux: {state.prepared.duxOrderNumber}.</p>
+      {state.prepared.pricing === undefined ? null : <dl className="cart-totals">
+        <div><dt>Productos antes del descuento</dt><dd>{formatMinor(state.prepared.pricing.subtotalMinor)}</dd></div>
+        <div className="cart-discount"><dt>{state.prepared.pricing.title}{state.prepared.pricing.couponCode ? ` · ${state.prepared.pricing.couponCode}` : ''}</dt><dd>−{formatMinor(state.prepared.pricing.discountMinor)}</dd></div>
+      </dl>}
       <p>Total confirmado: {formatMinor(state.prepared.totalMinor)}. Reserva: {reservationLabel(state.prepared.reservationStatus)}. Pago: {paymentLabel(state.prepared.paymentStatus)}.</p>
       {state.prepared.paymentRequiresReview || state.prepared.reservationStatus === 'requires_review'
         ? <p className="form-error">Revisá el pago en Mercado Pago y la reserva en Dux antes de continuar. No solicites otro pago mientras se revisa el pedido.</p> : null}
@@ -320,7 +325,8 @@ function parsePrepared(value: unknown, requestId: string): Prepared {
       !['confirmed', 'released', 'finalized', 'requires_review'].includes(String(value.reservationStatus)) ||
       !['none', 'pending', 'approved', 'rejected', 'cancelled', 'refunded'].includes(String(value.paymentStatus)) ||
       typeof value.paymentRequiresReview !== 'boolean') throw invalid();
-  return value as unknown as Prepared;
+  const pricing = value.pricing === undefined ? undefined : parseWebRequestPricing(value.pricing, value.totalMinor);
+  return Object.freeze({ ...value, ...(pricing === undefined ? {} : { pricing }) }) as unknown as Prepared;
 }
 function moneyToMinor(value: string): number | null {
   const amount = Number(value);

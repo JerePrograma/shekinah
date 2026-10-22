@@ -18,8 +18,8 @@ import {
 } from '../data/runtime-catalog';
 import type { Navigate } from '../routing/routes';
 
-export type AdminSection = 'summary' | 'products' | 'inventory' | 'orders' | 'analytics' | 'audit';
-type AdminReportSection = Exclude<AdminSection, 'products' | 'inventory'>;
+export type AdminSection = 'summary' | 'products' | 'inventory' | 'marketing' | 'orders' | 'analytics' | 'audit';
+type AdminReportSection = Exclude<AdminSection, 'products' | 'inventory' | 'marketing'>;
 
 type UnknownRow = Readonly<Record<string, unknown>>;
 type OrderStatusFilter =
@@ -212,7 +212,7 @@ export function AdminPage({
   }, [onOperationStateChange, orderAction]);
 
   useEffect(() => {
-    if (section === 'products' || section === 'inventory') return undefined;
+    if (section === 'products' || section === 'inventory' || section === 'marketing') return undefined;
     const controller = new AbortController();
     setLoading(true);
     setReport(null);
@@ -260,7 +260,7 @@ export function AdminPage({
     return () => controller.abort();
   }, [detailRefresh, onUnauthorized, section, selectedOrderId]);
 
-  if (section === 'products' || section === 'inventory') return null;
+  if (section === 'products' || section === 'inventory' || section === 'marketing') return null;
 
   const visibleReport = report?.section === section ? report : null;
   const orderQuery = exportQuery(submittedRange, true);

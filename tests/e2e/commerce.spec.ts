@@ -30,6 +30,26 @@ test.beforeEach(async ({ context, page }) => {
     window.sessionStorage.clear();
     window.localStorage.setItem('shekinah.analytics-consent.v1', 'rejected');
   });
+  await context.route('**/api/marketing', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { announcements: [], promotions: [] } });
+      return;
+    }
+    // Vite Preview does not execute Functions. Commerce scenarios use an empty
+    // campaign set; dedicated marketing scenarios exercise coupons separately.
+    const input = route.request().postDataJSON() as { items: Array<{ productId: string; quantity: number }> };
+    const lines = input.items.map(line => {
+      const product = duxCatalogProducts.find(candidate => candidate.id === line.productId);
+      if (product === undefined) throw new Error('Producto E2E desconocido.');
+      const price = product.price as { amount: number };
+      const unitPriceMinor = Math.round(price.amount * 100);
+      return { productId: line.productId, code: typeof product.sku === 'string' ? product.sku : `DUX-TEST-${line.productId}`,
+        quantity: line.quantity, baseUnitPriceMinor: unitPriceMinor, unitPriceMinor, discountMinor: 0 };
+    });
+    const subtotalMinor = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceMinor, 0);
+    await route.fulfill({ json: { quote: { campaignId: null, title: null, couponCode: null,
+      subtotalMinor, discountMinor: 0, totalMinor: subtotalMinor, lines } } });
+  });
   await context.route('**/api/catalog**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/catalog') {

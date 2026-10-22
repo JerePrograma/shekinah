@@ -1,5 +1,20 @@
 # Continuación
 
+## Marketing del e-commerce — 2026-10-22
+
+Consultar [ECOMMERCE_MARKETING.md](ECOMMERCE_MARKETING.md) antes de crear campañas.
+Las migraciones 0028/0029 son aditivas; comprobar su estado remoto y los guards
+antes de habilitar descuentos. No usar el precio promocional para modificar
+stock Dux, recotizar una reserva intentada ni alterar un pago existente.
+El límite global cuenta pedidos iniciados y conserva cupo ante incertidumbre;
+no es un límite por cliente ni un contador de ventas. No precargar promociones
+reales o cambiar el mantenimiento sin decisión comercial. La aceptación del
+pedido Dux con precio final promocional requiere evidencia externa separada.
+0028 y 0029 ya quedaron aplicadas y verificadas en Preview y Production, con
+cero campañas y redemptions; no repetirlas. Consultar el
+[registro de validación](validation/ECOMMERCE_MARKETING_2026-10-22.md) y el SHA
+desplegado antes de activar una campaña comercial real.
+
 ## Sincronización Dux recuperable — 2026-10-21
 
 Consultar [contrato](DUX_RESUMABLE_SYNC.md) y

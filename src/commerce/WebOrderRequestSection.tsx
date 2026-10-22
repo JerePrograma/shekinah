@@ -14,9 +14,11 @@ const RECOVERY_ERROR = 'No pudimos consultar tu pedido. Tocá «Volver a intenta
 const SUBMIT_ERROR = 'No pudimos confirmar tu pedido. Tocá «Volver a intentar» para comprobar si se guardó.';
 const STORAGE_ERROR = 'No pudimos iniciar la compra en este navegador. Tocá «Volver a intentar».';
 
-export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, onBusyChange, onActiveChange, onConfirmedTotalChange, onValidateBeforeCreate }: Readonly<{
+export function WebOrderRequestSection({ registrationEnabled, items, fulfillment, disabled, couponCode, onBusyChange, onActiveChange, onRecoveryChange, onConfirmedTotalChange, onValidateBeforeCreate }: Readonly<{
   registrationEnabled: boolean; items: readonly CartItem[]; fulfillment: CheckoutFulfillment | null; disabled: boolean;
+  couponCode?: string | null;
   onBusyChange: (busy: boolean) => void; onActiveChange: (active: boolean) => void;
+  onRecoveryChange?: (recovering: boolean) => void;
   onConfirmedTotalChange?: (total: number | null) => void;
   onValidateBeforeCreate?: () => boolean;
 }>) {
@@ -25,6 +27,7 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
   const [receipt, setReceipt] = useState<WebRequestReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [recovering, setRecovering] = useState(true);
+  useEffect(() => { onRecoveryChange?.(recovering); }, [recovering, onRecoveryChange]);
   const [needsRecovery, setNeedsRecovery] = useState(false);
   const [missingLink, setMissingLink] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
@@ -210,7 +213,8 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
         if (mounted.current) { setIdentity(saved); setNeedsRecovery(true); onActiveChange(true); }
         lastDirectRequestStartedAt.current = performance.now();
         submitted = true;
-        const result = await submitWebRequest(saved, items, fulfillment);
+        const result = couponCode ? await submitWebRequest(saved, items, fulfillment, couponCode)
+          : await submitWebRequest(saved, items, fulfillment);
         if (mounted.current) { focusReceipt.current = true; setReceipt(result); }
       }
     } catch (failure: unknown) {
@@ -254,6 +258,10 @@ export function WebOrderRequestSection({ registrationEnabled, items, fulfillment
       {error === '' || hasFinancialStatus
         ? <p role="status">{awaitingUpdate && refreshState === 'paused' && !hasFinancialStatus
           ? 'Está tardando más de lo esperado. Tocá «Actualizar estado» para continuar.' : receiptStatusMessage(receipt)}</p> : null}
+      {receipt.pricing === undefined ? null : <dl className="cart-totals">
+        <div><dt>Productos</dt><dd>{formatMinor(receipt.pricing.subtotalMinor)}</dd></div>
+        <div className="cart-discount"><dt>{receipt.pricing.title}{receipt.pricing.couponCode ? ` · ${receipt.pricing.couponCode}` : ''}</dt><dd>−{formatMinor(receipt.pricing.discountMinor)}</dd></div>
+      </dl>}
       {receipt.totalMinor === null ? null : <p className="web-request-total"><strong>Total confirmado:</strong> {formatMinor(receipt.totalMinor)}.</p>}
       {receipt.checkoutAvailable && receipt.totalMinor !== null && checkoutUrl === null ? <button className="button button-primary" type="button" disabled={disabled || busy}
         onClick={() => void startCheckout()}>{busy ? 'Abriendo Mercado Pago…' : 'Ir a Mercado Pago'}</button> : null}

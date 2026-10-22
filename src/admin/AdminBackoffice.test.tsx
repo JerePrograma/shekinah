@@ -198,6 +198,35 @@ describe('autenticación del backoffice', () => {
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     });
   });
+
+  it('navega a Marketing, conserva borradores entre secciones y protege el cierre de sesión', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const interaction = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const path = requestPath(input);
+      if (path === '/api/admin/auth/session') return Promise.resolve(authenticatedSession());
+      if (path === '/api/admin/marketing') return Promise.resolve(json({ campaigns: [] }));
+      return Promise.resolve(protectedAdminResponse(path));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminBackoffice navigate={vi.fn()} onInteractionStateChange={interaction} />);
+    await screen.findByRole('heading', { name: 'Inicio', level: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Marketing' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Marketing' })).toHaveFocus());
+    expect(await screen.findByText('Todavía no hay campañas')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Marketing' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('button', { name: 'Nueva campaña' }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Borrador administrativo' } });
+    await waitFor(() => expect(interaction).toHaveBeenLastCalledWith({ dirty: true, busy: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Productos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Marketing, cambios sin guardar' }));
+    expect(screen.getByLabelText('Título')).toHaveValue('Borrador administrativo');
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Hay cambios sin guardar en Administración.'));
+    expect(fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/auth/logout')).toHaveLength(0);
+    expect(screen.getByLabelText('Título')).toHaveValue('Borrador administrativo');
+    expect(fetchMock.mock.calls.filter(([input]) => requestPath(input) === '/api/admin/marketing')).toHaveLength(1);
+  });
 });
 
 function authenticatedSession(): Response {

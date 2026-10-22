@@ -4,6 +4,7 @@ import { onRequest } from './request';
 import { onRequest as readStatus } from './[publicToken]/request-status';
 import type { Env, PagesFunctionContext } from '../../../server/platform';
 import { SqliteD1 } from '../../../server/test/sqlite-d1';
+import { createWebOrderRequest, parseWebRequestInput } from '../../../server/web-order-requests';
 
 const doubles = vi.hoisted(() => ({ snapshot: vi.fn(), capability: vi.fn() }));
 vi.mock('../../../server/dux-catalog', () => ({ readDuxCatalogSnapshot: doubles.snapshot }));
@@ -57,6 +58,35 @@ it('cerrar altas no rompe la recuperación ni la consulta de una solicitud exist
     expect(await result.json()).not.toHaveProperty('publicToken');
     expect(doubles.capability).toHaveBeenCalledTimes(1);
     expect(doubles.snapshot).toHaveBeenCalledTimes(1);
+  } finally { db.close(); }
+});
+
+it.each([undefined, 'false'])('no registra un cupón si la compra directa está cerrada (%s)', async directFlag => {
+  const db = new SqliteD1(migration);
+  try {
+    const response = await onRequest(context(db, { ...body(), couponCode: 'PRUEBA10' },
+      directFlag === undefined ? {} : { DIRECT_CHECKOUT_ENABLED: directFlag }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: 'COUPON_DIRECT_CHECKOUT_REQUIRED' } });
+    expect(doubles.capability).not.toHaveBeenCalled();
+    expect(doubles.snapshot).not.toHaveBeenCalled();
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM checkout_intents').get()?.count).toBe(0);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM commerce_request_rate_limits').get()?.count).toBe(0);
+  } finally { db.close(); }
+});
+
+it('conserva la recuperación de una solicitud con cupón al cerrar compra directa', async () => {
+  const db = new SqliteD1(migration);
+  try {
+    const value = parseWebRequestInput({ ...body(), couponCode: 'PRUEBA10' });
+    const result = await createWebOrderRequest(db, value, 's'.repeat(40), () => Promise.resolve(doubles.snapshot()), [], new Date(now));
+    const response = await onRequest(context(db, { mode: 'recover', idempotencyKey: value.idempotencyKey, ownerSecret: value.ownerSecret },
+      { DIRECT_CHECKOUT_ENABLED: 'false' }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(result.receipt);
+    expect(doubles.capability).not.toHaveBeenCalled();
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM checkout_intents').get()?.count).toBe(1);
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM orders').get()?.count).toBe(0);
   } finally { db.close(); }
 });
 

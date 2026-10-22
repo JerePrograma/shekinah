@@ -143,12 +143,16 @@ describe('CartPage', () => {
 
   it('identifica datos incompletos y cantidades inválidas antes de registrar una compra web', async () => {
     webOrderState.enabled = true;
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => Promise.resolve(input === '/api/marketing'
+      ? Response.json({ quote: { campaignId: null, title: null, couponCode: null, subtotalMinor: 100_000,
+        discountMinor: 0, totalMinor: 100_000, lines: [{ productId: product.id, code: 'SKU-PRUEBA', quantity: 1,
+          baseUnitPriceMinor: 100_000, unitPriceMinor: 100_000, discountMinor: 0 }] } })
+      : Response.json({
       reference: `WEB-${'b'.repeat(24)}`, publicToken: 'a'.repeat(64),
       status: 'submitted', createdAt: '2026-09-27T12:00:00Z', updatedAt: '2026-09-27T12:00:00Z',
       paymentStatus: 'not_requested', paymentRequiresReview: false, reservationStatus: 'not_reserved',
       checkoutAvailable: false, totalMinor: null,
-    }));
+    })));
     vi.stubGlobal('fetch', fetchMock);
     renderCart();
     const continueButton = screen.getByRole('button', { name: 'Completar mis datos' });
@@ -159,7 +163,7 @@ describe('CartPage', () => {
     await waitFor(() => expect(name).toHaveFocus());
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(/nombre completo/u);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([input]) => input === '/api/orders/request')).toHaveLength(0);
 
     fireEvent.change(name, { target: { value: 'Cliente de prueba' } });
     fireEvent.change(phone, { target: { value: '12' } });
@@ -167,20 +171,22 @@ describe('CartPage', () => {
     await waitFor(() => expect(phone).toHaveFocus());
     expect(phone).toHaveAttribute('type', 'tel');
     expect(phone).toHaveAccessibleDescription('Revisá el celular: incluí el código de área y el número completo.');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([input]) => input === '/api/orders/request')).toHaveLength(0);
 
     fireEvent.change(phone, { target: { value: '2235550100' } });
     const quantity = screen.getByRole('spinbutton', { name: `Cantidad de ${product.name}` });
     fireEvent.change(quantity, { target: { value: '0' } });
     fireEvent.click(continueButton);
     await waitFor(() => expect(quantity).toHaveFocus());
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([input]) => input === '/api/orders/request')).toHaveLength(0);
 
     fireEvent.change(quantity, { target: { value: '2' } });
+    await waitFor(() => expect(continueButton).toBeEnabled());
     fireEvent.click(continueButton);
     expect(await screen.findByRole('heading', { name: 'Tu compra' })).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0]?.[1];
+    const orderCalls = fetchMock.mock.calls.filter(([input]) => input === '/api/orders/request');
+    expect(orderCalls).toHaveLength(1);
+    const request = orderCalls[0]?.[1];
     if (typeof request?.body !== 'string') throw new Error('Falta el cuerpo de la compra.');
     const body: unknown = JSON.parse(request.body);
     expect(body).toMatchObject({

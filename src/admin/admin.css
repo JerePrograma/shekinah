@@ -380,3 +380,41 @@ html:has(.admin-app, .admin-auth) { scroll-padding-top: 0; }
   .admin-update-provider { padding: 1rem; }
   .admin-store-status-heading { align-items: start; }
 }
+
+.admin-marketing { display: grid; gap: 1.25rem; }
+.admin-marketing-header-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.admin-marketing-workspace { display: grid; gap: 1.5rem; align-items: start; }
+.admin-marketing-list, .admin-marketing-editor, .admin-marketing-field { min-width: 0; }
+.admin-marketing-filter { display: grid; gap: 0.375rem; max-width: 20rem; margin-bottom: 1rem; }
+.admin-campaigns { display: grid; gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
+.admin-campaign { min-width: 0; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 0.625rem; background: #fff; }
+.admin-campaign.is-selected { border-color: var(--color-action); box-shadow: inset 3px 0 var(--color-action); }
+.admin-campaign h2 { margin: 0.75rem 0 0.375rem; font-size: 1.125rem; overflow-wrap: anywhere; }
+.admin-campaign p { margin: 0.375rem 0; overflow-wrap: anywhere; }
+.admin-campaign-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; justify-content: space-between; }
+.admin-campaign-type { font-size: 0.75rem; color: #52634d; font-weight: 700; }
+.admin-campaign-status { border-radius: 1rem; padding: 0.25rem 0.625rem; background: #edf3e9; color: #354d31; font-size: 0.75rem; }
+.admin-campaign-meta, .admin-campaign-code { font-size: 0.8125rem; color: #52634d; }
+.admin-campaign-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 1rem; }
+.admin-marketing-empty { padding: 1.5rem; border: 1px dashed var(--color-border); border-radius: 0.625rem; background: #fff; }
+.admin-marketing-empty h2 { font-size: 1.125rem; margin-top: 0; }
+.admin-marketing-editor { display: grid; gap: 1rem; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 0.625rem; background: #fff; }
+.admin-marketing-editor-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.admin-marketing-editor-heading h2 { margin: 0; font-size: 1.25rem; }
+.admin-marketing-editor p { margin: 0; }
+.admin-marketing-editor label { display: grid; gap: 0.375rem; font-size: 0.875rem; font-weight: 600; }
+.admin-marketing-editor :is(input, select, textarea), .admin-marketing-filter select { width: 100%; min-width: 0; min-height: 2.75rem; border: 1px solid #8c9b88; border-radius: 0.375rem; padding: 0.625rem 0.75rem; background: #fff; color: #253b20; }
+.admin-marketing-editor textarea { resize: vertical; }
+.admin-marketing-field small { display: block; margin-top: 0.375rem; font-size: 0.75rem; color: #52634d; line-height: 1.5; }
+.admin-marketing-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.admin-marketing-editor .admin-marketing-enabled { display: flex; align-items: start; gap: 0.625rem; min-height: 2.75rem; }
+.admin-marketing-enabled input { width: 1.125rem; height: 1.125rem; min-height: 0; flex-shrink: 0; margin: 0.125rem 0; }
+.admin-marketing-save { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; border-top: 1px solid var(--color-border); padding-top: 1rem; }
+.admin-marketing-save span { font-size: 0.8125rem; color: #52634d; }
+@media (min-width: 1200px) { .admin-marketing-workspace.has-editor { grid-template-columns: minmax(20rem, 1fr) minmax(25rem, 1.1fr); } }
+@media (max-width: 1199px) { .admin-marketing-editor { order: -1; } }
+@media (max-width: 599px) {
+  .admin-marketing-fields { grid-template-columns: 1fr; }
+  .admin-marketing-editor, .admin-campaign { padding: 1rem; }
+  .admin-marketing-save .button { width: 100%; }
+}

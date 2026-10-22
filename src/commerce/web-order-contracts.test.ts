@@ -44,6 +44,16 @@ it('admite checkout sólo con reserva y total definitivos y nunca durante un pag
   })).toMatchObject({ paymentStatus: 'approved', paymentRequiresReview: true, checkoutAvailable: false });
 });
 
+it('reconstruye únicamente el descuento confirmado y rechaza discrepancias de centavos o total ausente', () => {
+  const pricing = { title: 'Cupón de prueba', couponCode: 'PRUEBA10', subtotalMinor: 10000, discountMinor: 1000, totalMinor: 9000 };
+  const confirmed = { ...receipt, status: 'accepted', reservationStatus: 'confirmed', totalMinor: 9000, pricing };
+  expect(parseWebRequestReceipt({ ...confirmed, pricing: { ...pricing, campaignSnapshot: { secret: 'no exponer' } } })).toEqual(confirmed);
+  for (const invalid of [ { ...confirmed, totalMinor: null }, { ...confirmed, totalMinor: 9001 },
+    { ...confirmed, pricing: { ...pricing, discountMinor: 1001 } }, { ...confirmed, pricing: { ...pricing, couponCode: '_ABC' } } ]) {
+    expect(() => parseWebRequestReceipt(invalid)).toThrow();
+  }
+});
+
 it('rechaza detalles administrativos sin snapshot y semántica de solicitud explícitos', () => {
   expect(() => parseAdminWebRequestDetail({ id: 'req_abcdefghijklmnopqrstuvwx', status: 'accepted', snapshot: { totalMinor: 10 } })).toThrow();
 });

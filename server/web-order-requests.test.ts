@@ -90,6 +90,33 @@ it('rechaza el mismo UUID con distinto contenido y exige además la capacidad de
   } finally { db.close(); }
 });
 
+it('normaliza y conserva el cupón en la intención, y no permite cambiarlo en un reintento', async () => {
+  const db = new SqliteD1(migration);
+  try {
+    const value = parseWebRequestInput({ ...input(), mode: 'create', couponCode: ' prueba10 ' });
+    expect(value.couponCode).toBe('PRUEBA10');
+    const first = await create(db, value);
+    const requestId = await idFor(db, value.idempotencyKey);
+    expect(await getAdminWebOrderRequest(db, requestId)).toMatchObject({ snapshot: { couponCode: 'PRUEBA10' } });
+    expect(await create(db, value)).toMatchObject({ created: false, receipt: first.receipt });
+    await expect(create(db, { ...value, couponCode: 'OTRO10' })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    const withoutCoupon = { ...value }; delete withoutCoupon.couponCode;
+    await expect(create(db, withoutCoupon)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    for (const couponCode of [undefined, null, '', '   ']) {
+      expect(parseWebRequestInput({ ...input(), mode: 'create', couponCode }).couponCode).toBeUndefined();
+    }
+  } finally { db.close(); }
+});
+
+it('rechaza cupones mal formados y cupón con envío antes de registrar la solicitud', () => {
+  for (const couponCode of ['AB', '_ABC', 'A'.repeat(33), 'ABC 123', '<script>', 10]) {
+    expect(() => parseWebRequestInput({ ...input(), mode: 'create', couponCode })).toThrow();
+  }
+  expect(() => parseWebRequestInput({ ...input(), mode: 'create', couponCode: 'PRUEBA10',
+    fulfillment: { ...fulfillment, method: 'correo_argentino', address: 'Calle prueba 100', locality: 'Ciudad', province: 'Provincia', postalCode: '1234' } }))
+    .toThrow(expect.objectContaining({ code: 'COUPON_PICKUP_REQUIRED' }));
+});
+
 it('normaliza el orden de líneas y no fusiona compradores con carritos iguales', async () => {
   const db = new SqliteD1(migration);
   try {

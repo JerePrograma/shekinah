@@ -4,15 +4,19 @@ import { HttpError } from './http';
 import { isRecord } from './validation';
 import { parseDirectReservationReview } from '../src/commerce/web-order-contracts';
 import type { DirectReservationReview } from '../src/commerce/web-order-contracts';
+import { parseMarketingQuote } from '../src/commerce/marketing-contracts';
+import type { MarketingQuote } from '../src/commerce/marketing-contracts';
 
 export type DirectLine = Readonly<{
   productId: string; code: string; name: string; quantity: number; unitPriceMinor: number;
   stockBefore: DuxCommerceItem; observedAt: string;
+  baseUnitPriceMinor?: number;
 }>;
 export type DirectProgress = Readonly<{
   version: 1; catalogVersion: string; lines: readonly DirectLine[];
   order: DuxOrderEvidence | null; stockAfter: readonly DuxCommerceItem[]; stockObservedAt: string | null;
   reservationReview?: DirectReservationReview | null;
+  marketingQuote?: MarketingQuote;
 }>;
 
 export function parseDirectProgress(json: string): DirectProgress {
@@ -21,17 +25,27 @@ export function parseDirectProgress(json: string): DirectProgress {
     if (!isRecord(value) || value.version !== 1 || typeof value.catalogVersion !== 'string' ||
         !/^[a-f0-9]{64}$/u.test(value.catalogVersion) || !Array.isArray(value.lines) || value.lines.length > 50 ||
         !Array.isArray(value.stockAfter) || value.stockAfter.length > value.lines.length) throw invalid();
+    const marketingQuote = value.marketingQuote === undefined ? undefined : parseMarketingQuote(value.marketingQuote);
+    if (marketingQuote !== undefined && (marketingQuote.discountMinor <= 0 || marketingQuote.campaignSnapshot === undefined)) throw invalid();
     const lines = value.lines.map((raw: unknown) => {
       if (!isRecord(raw) || typeof raw.productId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,179}$/u.test(raw.productId) ||
           typeof raw.observedAt !== 'string' || !Number.isFinite(Date.parse(raw.observedAt))) throw invalid();
       const item = parseItem(raw.stockBefore);
-      if (raw.code !== item.code || raw.name !== item.name || raw.unitPriceMinor !== item.priceMinor) throw invalid();
+      if (raw.code !== item.code || raw.name !== item.name) throw invalid();
       const quantity = integer(raw.quantity, 1, 99);
+      const unitPriceMinor = integer(raw.unitPriceMinor);
+      const quoted = marketingQuote?.lines.find(line => line.productId === raw.productId && line.code === item.code);
+      if (marketingQuote === undefined) {
+        if (unitPriceMinor !== item.priceMinor || raw.baseUnitPriceMinor !== undefined) throw invalid();
+      } else if (raw.baseUnitPriceMinor !== item.priceMinor || quoted === undefined ||
+          quoted.baseUnitPriceMinor !== item.priceMinor || quoted.unitPriceMinor !== unitPriceMinor || quoted.quantity !== quantity) throw invalid();
       if (Math.floor(item.availableStock) < quantity) throw invalid();
       return Object.freeze({ productId: raw.productId, code: item.code, name: item.name,
-        unitPriceMinor: item.priceMinor, quantity, stockBefore: item, observedAt: raw.observedAt });
+        unitPriceMinor, quantity, stockBefore: item, observedAt: raw.observedAt,
+        ...(marketingQuote === undefined ? {} : { baseUnitPriceMinor: item.priceMinor }) });
     });
     if (new Set(lines.map(line => line.code)).size !== lines.length || new Set(lines.map(line => line.productId)).size !== lines.length) throw invalid();
+    if (marketingQuote !== undefined && marketingQuote.lines.length !== lines.length) throw invalid();
     const stockAfter = value.stockAfter.map(parseItem);
     if (new Set(stockAfter.map(item => item.code)).size !== stockAfter.length ||
         stockAfter.some(item => !lines.some(line => line.code === item.code))) throw invalid();
@@ -45,7 +59,8 @@ export function parseDirectProgress(json: string): DirectProgress {
         line.stockBefore.realStock === reservationReview.before.realStock &&
         line.stockBefore.reservedStock === reservationReview.before.reservedStock &&
         line.stockBefore.availableStock === reservationReview.before.availableStock)) throw invalid();
-    return Object.freeze({ version: 1, catalogVersion: value.catalogVersion, lines, order, stockAfter, stockObservedAt, reservationReview });
+    return Object.freeze({ version: 1, catalogVersion: value.catalogVersion, lines, order, stockAfter, stockObservedAt, reservationReview,
+      ...(marketingQuote === undefined ? {} : { marketingQuote }) });
   } catch { throw invalid(); }
 }
 

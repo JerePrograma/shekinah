@@ -54,7 +54,7 @@ function seedAuthority(database: SqliteD1): void {
     updated_by = 'test', updated_at = ? WHERE company_id = '12862'`).run(now);
 }
 
-function seedRequest(database: SqliteD1, suffix: string, method: 'coordinated_pickup' | 'correo_argentino', accepted = true): string {
+function seedRequest(database: SqliteD1, suffix: string, method: 'coordinated_pickup' | 'correo_argentino', accepted = true, couponCode?: string): string {
   const id = `req_${suffix.repeat(24)}`;
   const snapshot = JSON.stringify({
     schemaVersion: 1,
@@ -70,6 +70,7 @@ function seedRequest(database: SqliteD1, suffix: string, method: 'coordinated_pi
     totalMinor: null,
     shippingMinor: method === 'coordinated_pickup' ? 0 : null,
     quantityStatus: 'requires_confirmation',
+    ...(couponCode === undefined ? {} : { couponCode }),
   });
   database.database.prepare(`INSERT INTO checkout_intents (
     checkout_idempotency_key, fulfillment_fingerprint, cart_fingerprint, created_at,
@@ -95,6 +96,21 @@ function input(orderNumber: string, shippingMinor: number) {
 }
 
 describe('checkout Dux asistido', () => {
+  it.each(['true', 'false'])('no omite un cupón solicitado al cotizar o preparar cobro asistido (directo %s)', async directFlag => {
+    const database = new SqliteD1(migrations);
+    try {
+      seedAuthority(database);
+      const requestId = seedRequest(database, 'c', 'coordinated_pickup', true, 'PRUEBA10');
+      const configured = { ...env, DIRECT_CHECKOUT_ENABLED: directFlag };
+      await expect(previewAssistedCheckout(database, configured, requestId, Date.parse(now)))
+        .rejects.toMatchObject({ status: 409, code: 'COUPON_DIRECT_CHECKOUT_REQUIRED' });
+      await expect(prepareAssistedCheckout(database, configured, requestId, input('PED-CUPON', 0), 'admin:test', new Date(now)))
+        .rejects.toMatchObject({ status: 409, code: 'COUPON_DIRECT_CHECKOUT_REQUIRED' });
+      for (const table of ['orders', 'order_items', 'dux_order_links', 'dux_order_operations', 'payments']) {
+        expect(database.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count).toBe(0);
+      }
+    } finally { database.close(); }
+  });
   it('la baja impide nueva preparación pero conserva la recuperación de una reserva ya materializada', async () => {
     const database = new SqliteD1(migrations + '\n' + readFileSync(resolve('migrations','0025_dux_product_web_settings.sql'),'utf8'));
     try {

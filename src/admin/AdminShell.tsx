@@ -10,6 +10,7 @@ const GROUPS = [
     { id: 'summary', label: 'Inicio' },
     { id: 'orders', label: 'Pedidos' },
     { id: 'products', label: 'Productos' },
+    { id: 'marketing', label: 'Marketing' },
   ] },
   { label: 'Herramientas', items: [
     { id: 'inventory', label: 'Actualizaciones' },
@@ -18,12 +19,13 @@ const GROUPS = [
   ] },
 ] as const;
 
-export function AdminShell({ children, section, identity, busy, dirty, loggingOut, navigate, onSectionChange, onLogout }: Readonly<{
+export function AdminShell({ children, section, identity, busy, dirty, marketingDirty = false, loggingOut, navigate, onSectionChange, onLogout }: Readonly<{
   children: ReactNode;
   section: AdminSection;
   identity: string;
   busy: boolean;
   dirty: boolean;
+  marketingDirty?: boolean;
   loggingOut: boolean;
   navigate: Navigate;
   onSectionChange: (section: AdminSection) => void;
@@ -67,9 +69,11 @@ export function AdminShell({ children, section, identity, busy, dirty, loggingOu
             <p className="admin-nav-label">{group.label}</p>
             <ul>{group.items.map(item => <li key={item.id}>
               <button type="button" className="admin-nav-link" aria-current={section === item.id ? 'page' : undefined}
+                aria-label={(item.id === 'products' && dirty) || (item.id === 'marketing' && marketingDirty) ? `${item.label}, cambios sin guardar` : undefined}
                 disabled={busy && section !== item.id} onClick={() => selectSection(item.id)}>
                 <AdminIcon name={item.id} /><span>{item.label}</span>
-                {item.id === 'products' && dirty ? <span className="admin-unsaved-dot" aria-label="cambios sin guardar" /> : null}
+                {item.id === 'products' && dirty ? <span className="admin-unsaved-dot" aria-hidden="true" /> : null}
+                {item.id === 'marketing' && marketingDirty ? <span className="admin-unsaved-dot" aria-hidden="true" /> : null}
               </button>
             </li>)}</ul>
           </div>)}
@@ -92,6 +96,7 @@ function AdminIcon({ name }: Readonly<{ name: AdminSection | 'site' | 'logout' |
     summary: 'm3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-8H9v8H4a1 1 0 0 1-1-1Z',
     orders: 'M8 4H5v17h14V4h-3M8 3h8v4H8ZM8 11h8M8 15h5',
     products: 'm3 7 9-4 9 4v10l-9 4-9-4Zm0 0 9 5 9-5M12 12v9M7 5l10 5',
+    marketing: 'm3 10 14-6v16L3 14Zm4 5 1 6h4l-2-5M20 9l2-1m-2 7 2 1',
     inventory: 'M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5',
     analytics: 'M4 20V4m0 16h17M8 16v-4m5 4V8m5 8V5',
     audit: 'M3 12a9 9 0 1 0 3-7L3 8m0-5v5h5m4-1v5l3 2',

@@ -40,6 +40,18 @@ const reservationReview = { code: 'DUX-1', quantity: 2, duxOrderId: 100, duxOrde
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+it('muestra y valida el beneficio guardado al consultar una compra preparada', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json({ ...prepared,
+    prepared: { ...prepared.prepared, pricing: { title: 'Campaña de prueba', couponCode: 'PRUEBA20',
+      subtotalMinor: 25_000, discountMinor: 5_000, totalMinor: 20_000 } },
+  })));
+  render(<AssistedCheckoutAdminPanel requestId={requestId} onUnauthorized={vi.fn()} onBusyChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar preparación de cobro' }));
+  expect(await screen.findByText('Campaña de prueba · PRUEBA20')).toBeVisible();
+  expect(screen.getByText('Productos antes del descuento')).toBeVisible();
+  expect(screen.getByText(/Total confirmado:/)).toBeVisible();
+});
+
 it('recupera una preparación directa por el servidor sin pedir otra reserva manual',async()=>{
   const fetchMock=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({state:'direct_preparing',requestId,
     preparationStatus:'uncertain',duxReference:`shekinah:web:${requestId}`,errorCode:'DUX_ORDER_RESULT_UNCERTAIN'}))

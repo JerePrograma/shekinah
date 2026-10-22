@@ -1,6 +1,22 @@
-import { readWebRequest, recoverWebRequest, startWebRequestCheckout, WebRequestApiError } from './web-request-api';
+import { readWebRequest, recoverWebRequest, startWebRequestCheckout, submitWebRequest, WebRequestApiError } from './web-request-api';
 
 afterEach(() => { vi.unstubAllGlobals(); });
+
+it('envía el código de cupón sin aceptar importes del navegador', async () => {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+    error: { code: 'COUPON_UNAVAILABLE', message: 'Cupón no disponible.' },
+  }, { status: 409 }));
+  vi.stubGlobal('fetch', fetchMock);
+  await expect(submitWebRequest({ idempotencyKey: '00000000-0000-4000-8000-000000000000', ownerSecret: 'b'.repeat(64) }, [],
+    { method: 'coordinated_pickup', fullName: 'Cliente prueba', phone: '1234567890', address: '', locality: '', province: '', postalCode: '' }, 'PRUEBA10'))
+    .rejects.toThrow('Cupón no disponible.');
+  const sentBody = fetchMock.mock.calls[0]?.[1]?.body;
+  if (typeof sentBody !== 'string') throw new Error('Falta la solicitud de compra.');
+  const body = JSON.parse(sentBody) as Record<string, unknown>;
+  expect(body.couponCode).toBe('PRUEBA10');
+  expect(body).not.toHaveProperty('totalMinor');
+  expect(body).not.toHaveProperty('discountMinor');
+});
 
 it('inicia el checkout asistido sin body y valida total y dominio Mercado Pago', async () => {
   const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({

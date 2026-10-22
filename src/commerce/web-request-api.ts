@@ -12,9 +12,10 @@ export class WebRequestApiError extends Error {
   }
 }
 
-export async function submitWebRequest(identity: WebRequestIdentity, items: readonly CartItem[], fulfillment: CheckoutFulfillment): Promise<WebRequestReceipt> {
+export async function submitWebRequest(identity: WebRequestIdentity, items: readonly CartItem[], fulfillment: CheckoutFulfillment, couponCode?: string | null): Promise<WebRequestReceipt> {
   return post({ mode: 'create', ...identity, fulfillment,
     items: items.map(({ product, quantity }) => ({ productId: product.id, quantity, catalogVersion: product.commerce?.catalogVersion })),
+    ...(couponCode ? { couponCode } : {}),
   });
 }
 

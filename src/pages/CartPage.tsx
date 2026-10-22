@@ -5,6 +5,8 @@ import { trackAnalyticsEvent } from '../analytics/client';
 import { formatProductPrice } from '../catalog/catalog';
 import { useCart } from '../cart/CartContext';
 import { WebOrderRequestSection } from '../commerce/WebOrderRequestSection';
+import { CartBenefits } from '../commerce/CartBenefits';
+import type { MarketingQuote } from '../commerce/marketing-contracts';
 import { useWebOrderRegistrationEnabled } from '../commerce/web-order-capability-client';
 import { getProductCartLimit } from '../cart/model';
 import { createCheckoutPreference, createWhatsappOrder } from '../commerce/api';
@@ -66,7 +68,12 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
   const { clear, items, itemCount, liveMessage, remove, setQuantity, total } = useCart();
   const [webRequestPending, setWebRequestPending] = useState(false);
   const [webRequestActive, setWebRequestActive] = useState(false);
+  const [webRequestRecovering, setWebRequestRecovering] = useState(true);
   const [confirmedRequestTotal, setConfirmedRequestTotal] = useState<number | null>(null);
+  const [marketingQuote, setMarketingQuote] = useState<MarketingQuote | null>(null);
+  const [couponCode, setCouponCode] = useState<string | null>(null);
+  const [marketingBusy, setMarketingBusy] = useState(false);
+  const [marketingBlocked, setMarketingBlocked] = useState(false);
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [whatsappOrderPending, setWhatsappOrderPending] = useState(false);
   const [whatsappOrderResult, setWhatsappOrderResult] =
@@ -107,7 +114,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
     [fulfillmentDraft.method, items, usesWebRequestFlow],
   );
   const productsTotalMinor = Math.round(total * 100);
-  const checkoutTotalMinor = productsTotalMinor + quote.shippingMinor;
+  const discountMinor = marketingQuote?.discountMinor ?? 0;
+  const checkoutTotalMinor = (marketingQuote?.totalMinor ?? productsTotalMinor) + quote.shippingMinor;
   const cartOperationPending = checkoutPending || whatsappOrderPending || webRequestPending;
   const cartHasAvailabilityConflict = items.some(({ product, quantity }) =>
     quantity > getProductCartLimit(product));
@@ -331,9 +339,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
           registrationEnabled={webRequestsEnabled}
           items={items}
           fulfillment={validation.value}
-          disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null}
+          disabled={checkoutPending || whatsappOrderPending || whatsappOrderResult !== null || marketingBusy || marketingBlocked}
+          couponCode={couponCode}
           onBusyChange={setWebRequestPending}
           onActiveChange={setWebRequestActive}
+          onRecoveryChange={setWebRequestRecovering}
           onConfirmedTotalChange={setConfirmedRequestTotal}
           onValidateBeforeCreate={validateBeforeCreate}
         />
@@ -547,7 +557,8 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
             <aside className="cart-summary" aria-labelledby="cart-summary-title" aria-busy={cartOperationPending}>
               <h2 id="cart-summary-title">Resumen</h2>
               {confirmedRequestTotal === null ? <dl className="cart-totals">
-                <div><dt>Productos</dt><dd>{formatMinor(productsTotalMinor)}</dd></div>
+                <div><dt>Productos</dt><dd>{formatMinor(marketingQuote?.subtotalMinor ?? productsTotalMinor)}</dd></div>
+                {discountMinor > 0 ? <div className="cart-discount"><dt>{marketingQuote?.title ?? 'Descuento'}</dt><dd>−{formatMinor(discountMinor)}</dd></div> : null}
                 <div><dt>Envío</dt><dd>{quote.kind === 'manual' ? 'A confirmar' : quote.shippingMinor === 0 ? 'Sin cargo' : formatMinor(quote.shippingMinor)}</dd></div>
                 <div className="cart-total"><dt>{usesWebRequestFlow && quote.kind !== 'manual' ? 'Total estimado' : 'Total'}</dt><dd>{quote.kind === 'manual' ? 'A confirmar' : formatMinor(checkoutTotalMinor)}</dd></div>
               </dl> : null}
@@ -560,6 +571,11 @@ export function CartPage({ navigate }: Readonly<{ navigate: Navigate }>) {
               {confirmedRequestTotal === null && quote.kind !== 'manual' ? <p className="cart-disclaimer">
                 El precio final se confirma antes de pagar.
               </p> : null}
+              {usesWebRequestFlow && !webRequestActive && !webRequestRecovering ? <CartBenefits items={items}
+                enabled={webRequestsEnabled && fulfillmentDraft.method === 'coordinated_pickup'}
+                disabled={cartOperationPending || webRequestActive}
+                onQuoteChange={setMarketingQuote} onCouponChange={setCouponCode}
+                onBusyChange={setMarketingBusy} onBlockedChange={setMarketingBlocked} /> : null}
               {webOrderSection}
               {webRequestActive ? null : usesWebRequestFlow ? (
                 webRequestsEnabled ? null : <p className="cart-configuration-note">

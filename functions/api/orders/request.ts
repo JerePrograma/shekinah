@@ -17,6 +17,9 @@ export const onRequest: PagesFunction = async ({ env, request }) => {
       throw new HttpError(400, 'INVALID_WEB_REQUEST', 'La operación no es válida.');
     }
     const input = value.mode === 'create' ? parseWebRequestInput(value) : null;
+    if (input?.couponCode !== undefined && env.DIRECT_CHECKOUT_ENABLED !== 'true') {
+      throw new HttpError(503, 'COUPON_DIRECT_CHECKOUT_REQUIRED', 'Los cupones no están disponibles temporalmente. Quitá el cupón para continuar sin descuento o volvé a intentarlo más tarde.');
+    }
     if (value.mode === 'recover') assertExactKeys(value, ['mode', 'idempotencyKey', 'ownerSecret']);
     const identity = input ?? parseWebRequestIdentity(value);
     const database = requireDatabase(env);

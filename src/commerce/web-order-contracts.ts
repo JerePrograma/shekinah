@@ -7,7 +7,7 @@ export type WebRequestReservationStatus = 'not_reserved' | 'confirmed' | 'releas
 export type WebRequestIdentity = Readonly<{ idempotencyKey: string; ownerSecret: string }>;
 export type WebRequestLine = Readonly<{ productId: string; quantity: number; catalogVersion: string }>;
 export type WebRequestInput = WebRequestIdentity & Readonly<{
-  items: readonly WebRequestLine[]; fulfillment: CheckoutFulfillment;
+  items: readonly WebRequestLine[]; fulfillment: CheckoutFulfillment; couponCode?: string;
 }>;
 export type WebRequestSnapshot = Readonly<{
   schemaVersion: 1;
@@ -21,6 +21,10 @@ export type WebRequestSnapshot = Readonly<{
   totalMinor: null;
   shippingMinor: number | null;
   quantityStatus: 'requires_confirmation';
+  couponCode?: string;
+}>;
+export type WebRequestPricing = Readonly<{
+  title: string; couponCode: string | null; subtotalMinor: number; discountMinor: number; totalMinor: number;
 }>;
 export type WebRequestPublic = Readonly<{
   reference: string; status: WebRequestStatus; createdAt: string; updatedAt: string;
@@ -28,6 +32,7 @@ export type WebRequestPublic = Readonly<{
   reservationStatus: WebRequestReservationStatus; checkoutAvailable: boolean;
   totalMinor: number | null;
   preparationStatus?: 'preparing' | 'uncertain' | 'prepared' | 'failed' | 'requires_review';
+  pricing?: WebRequestPricing;
 }>;
 export type WebRequestReceipt = WebRequestPublic & Readonly<{ publicToken: string }>;
 
@@ -94,6 +99,7 @@ export function parseWebRequestReceipt(value: unknown): WebRequestReceipt {
       paymentStatus === 'pending' || paymentStatus === 'approved' || paymentStatus === 'refunded'
     ))
   ) throw invalid();
+  const pricing = row.pricing === undefined ? undefined : parseWebRequestPricing(row.pricing, totalMinor);
   return Object.freeze({
     reference: row.reference,
     status: row.status,
@@ -106,7 +112,22 @@ export function parseWebRequestReceipt(value: unknown): WebRequestReceipt {
     totalMinor,
     publicToken: row.publicToken,
     ...(preparationStatus === undefined ? {} : { preparationStatus }),
+    ...(pricing === undefined ? {} : { pricing }),
   });
+}
+
+export function parseWebRequestPricing(value: unknown, totalMinor: number | null): WebRequestPricing {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid();
+  const row = value as Record<string, unknown>;
+  if (typeof row.title !== 'string' || row.title.trim() !== row.title || row.title === '' || row.title.length > 140 ||
+      [...row.title].some(char => { const code = char.codePointAt(0) ?? 0; return code < 32 || code === 127; }) ||
+      (row.couponCode !== null && (typeof row.couponCode !== 'string' || !/^[A-Z0-9][A-Z0-9_-]{2,31}$/u.test(row.couponCode))) ||
+      typeof row.subtotalMinor !== 'number' || !Number.isSafeInteger(row.subtotalMinor) || row.subtotalMinor <= 0 ||
+      typeof row.discountMinor !== 'number' || !Number.isSafeInteger(row.discountMinor) || row.discountMinor <= 0 ||
+      typeof row.totalMinor !== 'number' || !Number.isSafeInteger(row.totalMinor) || row.totalMinor <= 0 ||
+      row.subtotalMinor - row.discountMinor !== row.totalMinor || row.totalMinor !== totalMinor) throw invalid();
+  return Object.freeze({ title: row.title, couponCode: row.couponCode, subtotalMinor: row.subtotalMinor,
+    discountMinor: row.discountMinor, totalMinor: row.totalMinor });
 }
 
 function readPaymentStatus(value: unknown): WebRequestPaymentStatus {
@@ -138,6 +159,8 @@ export function parseAdminWebRequestDetail(value: unknown): AdminWebRequestDetai
       (snapshot.shippingMinor !== null && snapshot.shippingMinor !== 0)) throw invalid();
   const fulfillment = validateFulfillment(snapshot.fulfillment);
   if (fulfillment.value === null || snapshot.shippingMinor !== (fulfillment.value.method === 'coordinated_pickup' ? 0 : null)) throw invalid();
+  if (snapshot.couponCode !== undefined && (typeof snapshot.couponCode !== 'string' ||
+      !/^[A-Z0-9][A-Z0-9_-]{2,31}$/u.test(snapshot.couponCode) || fulfillment.value.method !== 'coordinated_pickup')) throw invalid();
   const lines = snapshot.lines.map((value: unknown) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid();
     const line = value as Record<string, unknown>;
@@ -153,5 +176,6 @@ export function parseAdminWebRequestDetail(value: unknown): AdminWebRequestDetai
     schemaVersion: 1, catalogVersion: snapshot.catalogVersion, observedAt: snapshot.observedAt,
     lines: Object.freeze(lines), fulfillment: fulfillment.value, totalMinor: null,
     shippingMinor: snapshot.shippingMinor, quantityStatus: 'requires_confirmation',
+    ...(snapshot.couponCode === undefined ? {} : { couponCode: snapshot.couponCode }),
   }) });
 }

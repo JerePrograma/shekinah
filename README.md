@@ -1,5 +1,16 @@
 # Shekinah
 
+## Marketing del e-commerce — 2026-10-22
+
+La administración incorpora cupones, promociones automáticas y anuncios
+programables. El carrito consulta beneficios en el servidor y la compra directa
+conserva precio base Dux, descuento y precio final con cupos atómicos y evidencia
+inmutable por orden. Requiere 0028 y 0029; no se precargan campañas activas.
+Consultar el [alcance, operación y próximos pasos](docs/ECOMMERCE_MARKETING.md).
+El estado de validación y activación se registra por separado del código.
+Las dos migraciones ya se verificaron en ambas bases con campañas vacías;
+consultar el [registro de validación](docs/validation/ECOMMERCE_MARKETING_2026-10-22.md).
+
 ## Sincronización Dux recuperable — 2026-10-21
 
 La [actualización por pasos](docs/DUX_RESUMABLE_SYNC.md) evita mantener una sola

@@ -13,6 +13,9 @@ import type { DuxOrderEvidence, DuxOrderRequest } from './dux-order-api';
 import type { Env } from './platform';
 import { SqliteD1 } from './test/sqlite-d1';
 import { writeDuxProductWebSettings } from './dux-product-web-settings';
+import { writeMarketingCampaign } from './marketing';
+import * as marketing from './marketing';
+import { parseDirectProgress } from './direct-checkout-progress';
 
 const date = '2026-09-15T14:00:00.000Z';
 const token = 'a'.repeat(64);
@@ -25,7 +28,7 @@ const item = { code: 'A-001', name: 'Producto Dux vigente', priceMinor: 350000, 
   realStock: 12.68, reservedStock: 0, availableStock: 12.68 };
 function hash(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
-function setup(quantity = 2, maxMigration = '0024') {
+function setup(quantity = 2, maxMigration = '0024', couponCode?: string) {
   const db = new SqliteD1(readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name) && name.slice(0, 4) <= maxMigration)
     .sort().map(name => readFileSync(resolve('migrations', name), 'utf8')).join('\n'));
   const raw = db.database;
@@ -44,7 +47,7 @@ function setup(quantity = 2, maxMigration = '0024') {
   const snapshot = { schemaVersion:1,catalogVersion:hash(payload),observedAt:date,
     lines:[{productId,duxCode:'A-001',name:'Precio viejo',requestedQuantity:quantity,observedUnitPriceMinor:10000}],
     fulfillment:{method:'coordinated_pickup',fullName:'PRUEBA DIRECTA',phone:'5491100000000',address:'',locality:'',province:'',postalCode:''},
-    totalMinor:null,shippingMinor:0,quantityStatus:'requires_confirmation' };
+    totalMinor:null,shippingMinor:0,quantityStatus:'requires_confirmation', ...(couponCode === undefined ? {} : { couponCode }) };
   raw.prepare(`INSERT INTO checkout_intents (checkout_idempotency_key,fulfillment_fingerprint,cart_fingerprint,created_at,
     intent_kind,web_request_id,web_request_token_hash,web_request_owner_hash,web_request_fingerprint,web_request_json,web_request_status,web_request_updated_at)
     VALUES (?,'fulfillment','cart',?,'web_request',?,?,?,?,?,'submitted',?)`)
@@ -54,7 +57,7 @@ function setup(quantity = 2, maxMigration = '0024') {
   const createOrder = vi.fn(async (request: DuxOrderRequest, beforeSend?: () => Promise<void>) => {
     await beforeSend?.();
     providerOrder = { id:100,number:200,companyId:12862,branchId:1,reference:request.referencia,cancelled:false,
-      totalMinor:item.priceMinor*quantity,invoiceState:'PENDIENTE',deliveryState:'PENDIENTE',
+      totalMinor:request.items.reduce((sum,line) => sum + Math.round(line.precio_uni * (1 + line.porc_iva / 100) * 100) * line.ctd, 0),invoiceState:'PENDIENTE',deliveryState:'PENDIENTE',
       lines:request.items.map(line=>({code:line.cod_item,quantity:line.ctd,unitPrice:line.precio_uni,vatPercent:line.porc_iva,discountPercent:0,variantId:null})) };
     return providerOrder;
   });
@@ -282,6 +285,210 @@ function paymentGateway() {
   return { create:vi.fn().mockResolvedValue({id:'pref-direct-test',checkoutUrl:'https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=pref-direct-test'}),
     recover:vi.fn().mockResolvedValue(null) };
 }
+
+function campaignInput(couponCode?: string) {
+  return { type: couponCode === undefined ? 'automatic' : 'coupon', title: 'Descuento autorizado de prueba',
+    body: '', ctaLabel: '', href: '', placement: 'home', priority: 0, enabled: true,
+    startsAt: null, endsAt: null, percentOff: 10, code: couponCode ?? null,
+    minSubtotalMinor: 0, maxDiscountMinor: null, productCodes: ['A-001'], maxRedemptions: 1 };
+}
+
+it.each([undefined, 'PRUEBA10'])('confirma descuento %s con base Dux conservada, reserva exacta y total neto en Mercado Pago', async couponCode => {
+  const test = setup(2, '0029', couponCode);
+  const provider = paymentGateway();
+  try {
+    const campaign = await writeMarketingCampaign(test.db, campaignInput(couponCode), undefined, new Date(date));
+    await test.steps(2);
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ totalMinor: null, checkoutAvailable: false });
+    expect((await getWebRequestByToken(test.db, token, true, Date.now(), true)).pricing).toBeUndefined();
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM marketing_redemptions').get()?.total).toBe(1);
+    // Cambiar la campaña no cambia el precio bloqueado ni habilita otro cupo.
+    await writeMarketingCampaign(test.db, { ...campaignInput(couponCode), enabled: false, percentOff: 20 }, campaign.id, new Date(Date.parse(date) + 1000));
+    await test.steps(4);
+    const pricing = { title: campaign.title, couponCode: couponCode ?? null, subtotalMinor: 700000, discountMinor: 70000, totalMinor: 630000 };
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ totalMinor: 630000, checkoutAvailable: true, pricing });
+    expect(await readAssistedCheckoutAdminState(test.db, env, id)).toMatchObject({ state: 'prepared', prepared: { totalMinor: 630000, pricing } });
+    const stored = await test.db.prepare('SELECT direct_checkout_progress_json AS progress FROM checkout_intents').first<{ progress: string }>();
+    expect(JSON.parse(stored?.progress ?? '{}')).toMatchObject({ lines: [{ baseUnitPriceMinor: 350000, unitPriceMinor: 315000,
+      stockBefore: { priceMinor: 350000 } }], marketingQuote: { discountMinor: 70000 } });
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(test.createOrder.mock.calls[0]?.[0].items).toHaveLength(1);
+    expect(test.createOrder.mock.calls[0]?.[0].items[0]?.porc_desc).toBe(0);
+    const first = await createOrRecoverAssistedPreference(test.db, token, paymentDependencies, provider);
+    const replay = await createOrRecoverAssistedPreference(test.db, token, paymentDependencies, provider);
+    expect(first.totalMinor).toBe(630000);
+    expect(replay.totalMinor).toBe(630000);
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(provider.create.mock.calls[0]?.[0]).toMatchObject({ cart: { totalMinor: 630000,
+      lines: [{ product: { unitPriceMinor: 315000 }, quantity: 2, subtotalMinor: 630000 }] } });
+    const savedQuote = parseDirectProgress(stored?.progress ?? '{}').marketingQuote;
+    if (savedQuote === undefined) throw new Error('Falta el descuento persistido de la prueba.');
+    await test.db.batch(marketing.reserveMarketingRedemptionStatements(test.db, first.orderId, savedQuote, new Date().toISOString()));
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM marketing_redemptions').get()?.total).toBe(1);
+    expect((await test.db.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
+  } finally { test.db.close(); }
+});
+
+it('redondea el tope hacia abajo sin dividir ni duplicar el SKU solicitado', async () => {
+  const test = setup(2, '0029', 'TOPE');
+  try {
+    await writeMarketingCampaign(test.db, { ...campaignInput('TOPE'), maxDiscountMinor: 7 }, undefined, new Date(date));
+    await test.steps(6);
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true))
+      .toMatchObject({ totalMinor: 699994, pricing: { discountMinor: 6 } });
+    expect(test.createOrder.mock.calls[0]?.[0].items).toHaveLength(1);
+    expect(test.db.database.prepare('SELECT quantity,unit_price_minor,subtotal_minor FROM order_items').get())
+      .toMatchObject({ quantity: 2, unit_price_minor: 349997, subtotal_minor: 699994 });
+  } finally { test.db.close(); }
+});
+
+it('aplica la automática mayor aunque se haya pedido un cupón válido, y recupera el mismo descuento tras respuesta Dux incierta', async () => {
+  const test = setup(2, '0029', 'PRUEBA10');
+  try {
+    await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    const automatic = await writeMarketingCampaign(test.db, { ...campaignInput(), percentOff: 25 }, undefined, new Date(date));
+    await test.steps(2);
+    const send = test.createOrder.getMockImplementation();
+    test.createOrder.mockImplementationOnce(async (request, beforeSend) => {
+      await send?.(request, beforeSend);
+      throw new HttpError(502, 'DUX_ORDER_QUERY_UNAVAILABLE', 'Se perdió la respuesta después de reservar.');
+    });
+    await test.advance();
+    expect(await test.db.prepare('SELECT direct_checkout_state FROM checkout_intents').first()).toEqual({ direct_checkout_state: 'uncertain' });
+    await writeMarketingCampaign(test.db, { ...campaignInput(), percentOff: 25, enabled: false }, automatic.id, new Date(Date.parse(date) + 1000));
+    await test.steps(3);
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true)).toMatchObject({ totalMinor: 525000,
+      checkoutAvailable: true, pricing: { title: automatic.title, couponCode: null, discountMinor: 175000 } });
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM marketing_redemptions').get()?.total).toBe(1);
+  } finally { test.db.close(); }
+});
+
+it.each(['percentage', 'excluded_sku'])('D1 rechaza una cotización adulterada por %s aunque conserve precio base y sumas coherentes', async attack => {
+  const test = setup(2, '0029', 'PRUEBA10');
+  const readQuote = marketing.readMarketingQuote;
+  const quoteSpy = vi.spyOn(marketing, 'readMarketingQuote').mockImplementation(async (...args) => {
+    const quote = await readQuote(...args);
+    if (attack === 'excluded_sku') {
+      if (quote.campaignSnapshot === undefined) throw new Error('Falta campaña de prueba.');
+      return { ...quote, campaignSnapshot: { ...quote.campaignSnapshot, productCodes: ['OTRO-SKU'] } };
+    }
+    const lines = quote.lines.map(line => ({ ...line, unitPriceMinor: 35000, discountMinor: 630000 }));
+    return { ...quote, lines, discountMinor: 630000, totalMinor: 70000 };
+  });
+  try {
+    await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    if (attack === 'excluded_sku') {
+      // La cotización inyectada usa la definición real pero intenta descontar
+      // un SKU fuera de alcance. El motor habitual no produciría esa línea.
+      test.db.database.prepare("UPDATE marketing_campaigns SET product_codes_json = '[\"OTRO-SKU\"]'").run();
+      quoteSpy.mockImplementationOnce(async (...args) => {
+        const quote = await readQuote(args[0], args[1], undefined, args[3]);
+        const campaign = (await marketing.listMarketingCampaigns(test.db))[0];
+        if (campaign === undefined) throw new Error('Falta campaña de prueba.');
+        return { ...quote, campaignId: campaign.id, title: campaign.title, couponCode: campaign.code, campaignSnapshot: campaign,
+          discountMinor: 70000, totalMinor: 630000,
+          lines: quote.lines.map(line => ({ ...line, unitPriceMinor: 315000, discountMinor: 70000 })) };
+      });
+    }
+    await test.advance();
+    await expect(test.advance()).rejects.toMatchObject({ code: 'DIRECT_CHECKOUT_EVIDENCE_INVALID' });
+    expect(test.createOrder).not.toHaveBeenCalled();
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM orders').get()?.total).toBe(0);
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM marketing_redemptions').get()?.total).toBe(0);
+  } finally { quoteSpy.mockRestore(); test.db.close(); }
+});
+
+it('un cupón inválido cierra la preparación antes de crear pedido, cupo o reserva', async () => {
+  const test = setup(2, '0029', 'INEXISTENTE');
+  try {
+    await test.advance();
+    await expect(test.advance()).rejects.toMatchObject({ code: 'INVALID_COUPON' });
+    await test.steps(2);
+    expect(test.createOrder).not.toHaveBeenCalled();
+    expect(await test.db.prepare('SELECT direct_checkout_state FROM checkout_intents').first()).toEqual({ direct_checkout_state: 'failed' });
+    for (const table of ['orders', 'marketing_redemptions', 'dux_order_operations', 'payments']) {
+      expect(test.db.database.prepare(`SELECT count(*) AS total FROM ${table}`).get()?.total).toBe(0);
+    }
+  } finally { test.db.close(); }
+});
+
+it('sin 0029 no inicia descuentos aunque la campaña exista y el catálogo pueda cotizarla', async () => {
+  const test = setup(2, '0028', 'PRUEBA10');
+  try {
+    await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    await test.advance();
+    await expect(test.advance()).rejects.toMatchObject({ code: 'MARKETING_CHECKOUT_MIGRATION_REQUIRED' });
+    expect(test.createOrder).not.toHaveBeenCalled();
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM orders').get()?.total).toBe(0);
+    expect(test.db.database.prepare('SELECT count(*) AS total FROM marketing_redemptions').get()?.total).toBe(0);
+  } finally { test.db.close(); }
+});
+
+it('descarta la cotización promocional vencida si falló el almacenamiento antes de crear la orden', async () => {
+  const test = setup(2, '0029', 'PRUEBA10');
+  try {
+    await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    await test.advance();
+    vi.spyOn(test.db, 'batch').mockRejectedValueOnce(new Error('Falla transitoria antes de persistir el borrador.'));
+    await expect(test.advance()).rejects.toThrow('Falla transitoria');
+    const failed = await test.db.prepare('SELECT direct_checkout_progress_json AS progress FROM checkout_intents').first<{ progress: string }>();
+    expect(parseDirectProgress(failed?.progress ?? '{}')).toMatchObject({ marketingQuote: { totalMinor: 630000 } });
+    expect(test.db.database.prepare('SELECT COUNT(*) AS count FROM orders').get()?.count).toBe(0);
+    expect(test.db.database.prepare('SELECT COUNT(*) AS count FROM marketing_redemptions').get()?.count).toBe(0);
+    test.setClock(Date.parse(date) + 901000);
+    await test.advance();
+    const refreshed = await test.db.prepare('SELECT direct_checkout_progress_json AS progress FROM checkout_intents').first<{ progress: string }>();
+    const live = parseDirectProgress(refreshed?.progress ?? '{}');
+    expect(live.marketingQuote).toBeUndefined();
+    expect(live.lines).toMatchObject([{ unitPriceMinor: 350000, stockBefore: { priceMinor: 350000 } }]);
+    expect(test.readItem).toHaveBeenCalledTimes(2);
+    await test.steps(5);
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true)).toMatchObject({ totalMinor: 630000,
+      checkoutAvailable: true, pricing: { discountMinor: 70000 } });
+    expect(test.createOrder).toHaveBeenCalledTimes(1);
+    expect(test.db.database.prepare('SELECT COUNT(*) AS count FROM orders').get()?.count).toBe(1);
+    expect(test.db.database.prepare('SELECT COUNT(*) AS count FROM marketing_redemptions').get()?.count).toBe(1);
+  } finally { test.db.close(); }
+});
+
+it.each(['revoked', 'expired'])('una campaña %s entre cotización y escritura cierra la intención sin reservar Dux ni cupo', async change => {
+  const test = setup(2, '0029', 'PRUEBA10');
+  try {
+    const campaign = await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    await test.advance();
+    const originalBatch = test.db.batch.bind(test.db);
+    vi.spyOn(test.db, 'batch').mockImplementationOnce(statements => {
+      if (change === 'revoked') test.db.database.prepare('UPDATE marketing_campaigns SET enabled = 0 WHERE id = ?').run(campaign.id);
+      else test.db.database.prepare('UPDATE marketing_campaigns SET ends_at = ? WHERE id = ?').run(date, campaign.id);
+      return originalBatch(statements);
+    });
+    await expect(test.advance()).rejects.toMatchObject({ code: 'MARKETING_CAMPAIGN_UNAVAILABLE' });
+    await test.steps(2);
+    expect(test.createOrder).not.toHaveBeenCalled();
+    expect(await test.db.prepare('SELECT direct_checkout_state FROM checkout_intents').first()).toEqual({ direct_checkout_state: 'failed' });
+    for (const table of ['orders', 'order_items', 'marketing_redemptions', 'dux_order_links', 'dux_order_operations', 'payments']) {
+      expect(test.db.database.prepare(`SELECT count(*) AS total FROM ${table}`).get()?.total).toBe(0);
+    }
+  } finally { test.db.close(); }
+});
+
+it('un descuento exige sus guards antes de continuar Dux o crear y recuperar Mercado Pago', async () => {
+  const test = setup(2, '0029', 'PRUEBA10');
+  const provider = paymentGateway();
+  try {
+    await writeMarketingCampaign(test.db, campaignInput('PRUEBA10'), undefined, new Date(date));
+    await test.steps(6);
+    test.db.database.exec('DROP TRIGGER dux_automatic_marketing_order_item_guard');
+    expect(await getWebRequestByToken(test.db, token, true, Date.now(), true)).toMatchObject({ checkoutAvailable: false });
+    await expect(createOrRecoverAssistedPreference(test.db, token, paymentDependencies, provider))
+      .rejects.toMatchObject({ code: 'MARKETING_CHECKOUT_MIGRATION_REQUIRED' });
+    expect(provider.create).not.toHaveBeenCalled();
+    expect(provider.recover).not.toHaveBeenCalled();
+  } finally { test.db.close(); }
+});
 const paymentDependencies = { accessToken:'TEST-'+'1'.repeat(20),mode:'sandbox' as const,siteUrl:new URL('https://example.test'),allowAutomatic:true };
 
 it('Mercado Pago exige reserva confirmada, respeta el cierre del flag y reutiliza una sola preferencia', async () => {

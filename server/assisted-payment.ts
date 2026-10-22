@@ -18,6 +18,8 @@ import {
 import { sha256Hex } from './crypto';
 import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import type { CommerceMode, D1Database } from './platform';
+import { parseMarketingQuote } from '../src/commerce/marketing-contracts';
+import { requireMarketingCheckoutSchema } from './marketing-checkout-schema';
 
 export type AssistedPaymentDependencies = Readonly<{
   accessToken: string;
@@ -99,6 +101,7 @@ export async function createOrRecoverAssistedPreference(
   assertAssistedReservation(access);
   const order = await getOrderById(database, access.id);
   if (order === null) throw notFound();
+  if (access.verification_method === 'automatic_api') await assertMarketingPaymentEvidence(database, order.id, order.total_minor);
   if (order.status === 'approved' || order.status === 'refunded') {
     throw new HttpError(409, 'ORDER_ALREADY_FINALIZED', 'Este pedido ya tiene un estado financiero final.');
   }
@@ -173,6 +176,27 @@ export async function createOrRecoverAssistedPreference(
     }
     throw error;
   }
+}
+
+async function assertMarketingPaymentEvidence(database: D1Database, orderId: string, totalMinor: number): Promise<void> {
+  const operation = await database.prepare(`SELECT json_extract(request_json, '$.quote.marketingQuote') AS quote_json
+    FROM dux_order_operations WHERE order_id = ? AND idempotency_key = 'automatic-reserve:' || ?`)
+    .bind(orderId, orderId).first<{ quote_json: string | null }>();
+  if (operation?.quote_json === null || operation?.quote_json === undefined) return;
+  await requireMarketingCheckoutSchema(database);
+  const redemption = await database.prepare('SELECT quote_json FROM marketing_redemptions WHERE order_id = ?')
+    .bind(orderId).first<{ quote_json: string }>();
+  if (redemption === null) throw invalidProjection();
+  try {
+    const quote = parseMarketingQuote(JSON.parse(redemption.quote_json));
+    if (JSON.stringify(JSON.parse(operation.quote_json)) !== JSON.stringify(quote) ||
+        quote.discountMinor <= 0 || quote.campaignSnapshot === undefined || quote.totalMinor !== totalMinor) throw invalidProjection();
+    const items = await database.prepare(`SELECT product_id, sku, quantity, unit_price_minor FROM order_items WHERE order_id = ?`)
+      .bind(orderId).all<{ product_id: string; sku: string; quantity: number; unit_price_minor: number }>();
+    if (items.results?.length !== quote.lines.length || quote.lines.some(line =>
+      items.results?.filter(item => item.product_id === line.productId && item.sku === line.code &&
+        item.quantity === line.quantity && item.unit_price_minor === line.unitPriceMinor).length !== 1)) throw invalidProjection();
+  } catch { throw invalidProjection(); }
 }
 
 async function readAssistedAccess(database: D1Database, tokenHash: string): Promise<AssistedAccessRow | null> {

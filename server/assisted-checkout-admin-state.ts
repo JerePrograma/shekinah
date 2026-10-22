@@ -6,6 +6,8 @@ import type { D1Database, Env } from './platform';
 import { requireDirectCheckoutSchema } from './direct-checkout-schema';
 import { parseDirectProgress } from './direct-checkout-progress';
 import type { DirectReservationReview } from '../src/commerce/web-order-contracts';
+import type { WebRequestPricing } from '../src/commerce/web-order-contracts';
+import { readMarketingPricing } from './web-order-requests';
 
 export type AssistedCheckoutAdminPrepared = Readonly<{
   orderId: string;
@@ -20,6 +22,7 @@ export type AssistedCheckoutAdminPrepared = Readonly<{
   reservationStatus: 'confirmed' | 'released' | 'finalized' | 'requires_review';
   paymentStatus: 'none' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
   paymentRequiresReview: boolean;
+  pricing?: WebRequestPricing;
 }>;
 
 export type AssistedCheckoutAdminState =
@@ -76,6 +79,7 @@ export async function readAssistedCheckoutAdminState(
   if (prepared.verification_method === 'automatic_api') await requireDirectCheckoutSchema(database);
   const payment = await getOrderPaymentState(database, prepared.order_id);
   const reservationStatus = reservationStatusFor(prepared);
+  const pricing = await readMarketingPricing(database, prepared.order_id, prepared.total_minor);
   return Object.freeze({
     state: 'prepared',
     prepared: Object.freeze({
@@ -88,6 +92,7 @@ export async function readAssistedCheckoutAdminState(
       productsTotalMinor: prepared.products_total_minor,
       shippingMinor: prepared.shipping_minor,
       totalMinor: prepared.total_minor,
+      ...(pricing === undefined ? {} : { pricing }),
       reservationStatus,
       paymentStatus: payment.status,
       paymentRequiresReview: payment.requiresReview ||

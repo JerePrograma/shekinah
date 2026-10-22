@@ -12,6 +12,7 @@ import {
   siteContent,
 } from './content/site-content';
 import { shouldShowPublicMaintenance } from './maintenance';
+import { Announcements, PublicMarketingProvider } from './marketing/Announcements';
 import { refreshRuntimeCatalog, useRuntimeCatalogStatus } from './data/runtime-catalog';
 import { CartPage } from './pages/CartPage';
 import type { ProductInteractionState } from './admin/ProductManager';
@@ -56,7 +57,7 @@ export function App() {
       return true;
     }
     const confirmed = window.confirm(
-      'Salir de Administración\n\nHay cambios de producto sin guardar. Si salís ahora, se perderán.',
+      'Salir de Administración\n\nHay cambios sin guardar en Administración. Si salís ahora, se perderán.',
     );
     setNavigationFeedback(confirmed ? '' : 'Los cambios siguen sin guardar. Permanecés en Administración.');
     return confirmed;
@@ -137,7 +138,7 @@ export function App() {
         : route.path;
 
   return (
-    <>
+    <PublicMarketingProvider enabled={route.id !== 'admin'}>
       <a className="skip-link" href="#main-content">Saltar al contenido</a>
       {route.id === 'admin' ? null : <header className="site-header">
         <div className="container header-inner">
@@ -187,6 +188,7 @@ export function App() {
           </nav>
         </div>
       </header>}
+      {route.id === 'admin' ? null : <Announcements placement="announcement" navigate={navigate} />}
       {navigationFeedback === '' ? null : (
         <p className="container navigation-feedback" role="alert">{navigationFeedback}</p>
       )}
@@ -222,7 +224,7 @@ export function App() {
           <p className="copyright">© {currentYear} {siteContent.brand.name}.</p>
         </div>
       </footer>}
-    </>
+    </PublicMarketingProvider>
   );
 }
 
