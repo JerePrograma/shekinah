@@ -15,6 +15,7 @@ const PAGE_BYTES = 1_900_000;
 const MAX_PHASE_ATTEMPTS = 3;
 const MIN_RETRY_DELAY_MS = 6_000;
 const MAX_RETRY_WAIT_PER_STEP_MS = 24_000;
+const TRANSIENT_ITEMS_FORMAT_ERROR_FINGERPRINT = '35e6b45751d1cf72286fb7027ceed4e38e3937d620a13e871c347d96e99246a6';
 // Estimated logical rows, not Cloudflare's index-inclusive D1 billing. The daily
 // guard retains its existing margin for indexes and other application writes.
 const COLLECTION_WRITE_RESERVATION = 120;
@@ -414,9 +415,15 @@ function phaseEndpoint(phase: Phase): DuxReadEndpoint {
 }
 function transientRetryDelay(operation: Operation, error: HttpError): number | null {
   if (!(error instanceof DuxApiError) || operation.phase === 'publish' || operation.phase_attempts >= MAX_PHASE_ATTEMPTS || operation.attempts >= 45) return null;
-  if (!['DUX_TIMEOUT', 'DUX_UNAVAILABLE', 'DUX_RATE_LIMITED'].includes(error.code)) return null;
+  // This exact item-validation shape was observed between successful identical
+  // GETs. No other validation error may inherit transient recovery.
+  const transientItemsFormatError = operation.phase === 'items' && error.code === 'DUX_PROVIDER_REJECTED' &&
+    error.providerStatus === 400 && error.endpoint === '/v2/items' &&
+    error.providerError?.reasonCode === 'ERROR_VALIDACION' && error.providerError.invalidFields.length === 0 &&
+    error.providerError.fingerprint === TRANSIENT_ITEMS_FORMAT_ERROR_FINGERPRINT;
+  if (!transientItemsFormatError && !['DUX_TIMEOUT', 'DUX_UNAVAILABLE', 'DUX_RATE_LIMITED'].includes(error.code)) return null;
   const status = error.providerStatus;
-  if (status !== null && status !== 429 && status < 500 && (status < 200 || status >= 300)) return null;
+  if (!transientItemsFormatError && status !== null && status !== 429 && status < 500 && (status < 200 || status >= 300)) return null;
   // A provider delay beyond the client's bounded allowance is terminal: do not
   // replace a longer Retry-After with a shorter, unsupported interval.
   if ((status === 429 || (status !== null && status >= 500)) && error.retryAfterMs === null) return null;

@@ -9,6 +9,10 @@ parámetro concreto sin evidencia del proveedor.
 
 La corrección incorpora 0030 aditiva, HTTP y motivo seguro persistentes,
 recuperación acotada de lecturas transitorias y explicación en administración.
+El diagnóstico del primer turno Cloudflare identificó la huella exacta del rechazo
+intermitente «Formato desconocido.», ya acreditado entre respuestas 200 históricas.
+Sólo esa lectura 400 de productos admite recuperación acotada del mismo paso;
+las demás validaciones requieren revisión y no se publican resultados parciales.
 El candidato reemplaza el reloj GitHub irregular por un relay Cloudflare actualizado
 cada diez minutos, sin dos relojes activos. Pruebas, migraciones, deployment y
 cuatro ciclos automáticos se acreditan por separado en

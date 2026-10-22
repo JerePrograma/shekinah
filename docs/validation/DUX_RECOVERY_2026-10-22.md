@@ -251,6 +251,103 @@ Archivos complementarios: `server/dux-cron.ts` y prueba,
 `src/admin/ProductManager.test.tsx`, contrato Dux y este registro.
 No requiere otra migración ni cambia el cron, destino, flags, credenciales o cuota.
 
+## Publicación complementaria y observación automática
+
+Commit funcional `d46cac50b7314d8a1c2b60ef94aac1c759daada0`, nueve archivos,
+publicado normalmente a `main` y con hash remoto coincidente. Diff completo,
+checks de whitespace y árbol limpio verificados antes de subir el Worker.
+La versión `2c20fd7d-4db8-4195-8ba7-1e686b536445` se cargó con Wrangler 4.131.0,
+tag `dux-recovery-d46cac5`, mensaje del SHA completo y vars conservadas:
+10,52 KiB / gzip 3,19 KiB y startup 4 ms.
+
+Tras el verify y build locales completos se activó esa versión al 100%, mientras
+CI y Pages seguían en validación. El cambio del relay usa la API ya publicada
+en `fbbe8a8`; no requiere un cambio de protocolo ni otra migración. El deployment
+`20c403ef-7aa2-4562-8265-137eb449c73c` quedó activo a las `19:00:23.976691Z`.
+Se usó version deploy: el cron conserva creación y modificación
+`18:11:20.211214Z`, sin reiniciar propagación ni habilitar el reloj GitHub.
+API confirmó versión y porcentaje, único cron, secreto por nombre/tipo y
+observabilidad activa. La captura filtrada del relay quedó adjunta antes del turno
+de las `19:02Z`. Pendiente de acreditar aquí: CI, Pages y cuatro ciclos reales.
+
+La [CI #570](https://github.com/JerePrograma/shekinah/actions/runs/39836082188)
+aprobó el SHA `d46cac5`, job `120024674350`, de `18:58:57Z` a `19:03:10Z`:
+verify completo, parser, 27/27 mocks y artefacto `12451117056`,
+`shekinah-dist-d46cac50b7314d8a1c2b60ef94aac1c759daada0`, 52.301.168 bytes.
+Pages `be1d3464-4e94-47ed-bd71-eaa2f60043f1` quedó canónico/latest, success,
+sobre el mismo SHA; ambas evidencias se consultaron independientemente del Worker.
+
+### Primer rechazo diagnosticado y excepción estricta
+
+El turno Cloudflare de `19:02:30.510Z` alcanzó Pages y Dux. Run
+`dux_sync_80124552-3630-4547-8a42-9f4cc3e0730f`, actor
+`scheduler:cloudflare-cron`, inició `19:02:31.715Z` y falló `19:04:27.546Z`,
+offset 800 de 899, intento 20. Diagnóstico persistido: HTTP 400, `/v2/items`,
+`ERROR_VALIDACION`, campos `[]`, huella
+`35e6b45751d1cf72286fb7027ceed4e38e3937d620a13e871c347d96e99246a6`.
+El cierre normal marcó el viejo run GH con `DUX_SYNC_DEADLINE_EXCEEDED`;
+no hubo edición manual de estados ni publicación parcial. Presupuesto 2.818.
+
+El tail del relay registró 502 sin error JSON reconocido, una recuperación de
+la misma identidad y cierre `DUX_RELAY_GATEWAY` a las 21 llamadas; D1 confirmó
+que no se volvió a consultar Dux después del rechazo terminal. No se atribuye
+sin prueba el contenido de esa respuesta intermedia a una capa particular.
+
+La huella se comparó fuera de red con la normalización exacta
+`{codigo:'ERROR_VALIDACION', mensaje:'Formato desconocido.', detalle:[]}`:
+SHA-256 idéntico. Este mensaje ya estaba documentado el 21 de septiembre en
+[la lectura directa](DIRECT_CHECKOUT_PRODUCTION_2026-09-21.md), con una secuencia
+200 / 400 / 200 y parámetros idénticos. No se reconstruyó ni publicó un cuerpo
+con datos privados; el diagnóstico almacenado sigue siendo cerrado.
+
+La documentación oficial de items mantiene habilitado, offset y límite 50 como
+consulta válida; no documenta una corrección para ese mensaje. La causa interna
+del rechazo Dux no está demostrada. La evidencia de intermitencia permite una
+excepción de recuperación sólo para esa combinación exacta en GET de productos,
+sin campos inválidos, conservando los límites ya verificados. No se cambia el
+cliente global, la consulta, las credenciales, el plan ni las operaciones de pedidos.
+Los demás 400 siguen terminales; tres rechazos consecutivos tampoco publican.
+La aceptación de cuatro ciclos sanos comienza nuevamente tras ese rollout.
+
+Las 60 pruebas focales del coordinador aprobaron con un worker (18,91 segundos):
+recuperación y publicación del mismo offset/UUID, espera mínima, cinco variantes
+terminales, campos inválidos aun con huella exacta y agotamiento de tres claims.
+Lint focal y diff aprobados. Otra revisión independiente no encontró bloqueos;
+la copia administrativa ya distingue progreso, éxito recuperado y rechazo final
+por estado, por lo que no se modificó el panel (33/33 pruebas focales aprobadas).
+
+El turno anterior a esta última publicación, `19:12:32.382Z`, sí completó:
+run `dux_sync_112e5449-3999-437b-81e5-4b2494e1b44f`, 21 lecturas, 899 productos,
+publicación `19:14:39.445Z`, cierre `19:14:41.225Z`, sin errores Dux. Intervalo
+600,667 segundos desde el inicio anterior. Presupuesto 3.094, incremento 276:
+la base de 136 deja aparte deltas de inventario, que mantienen su prepago.
+El stock tenía 127,063 segundos al publicar. El viejo snapshot llegó a 3.540,169
+segundos antes de ese reemplazo debido a los fallos anteriores; no se presenta
+ese intervalo como cumplimiento del objetivo de 900 segundos.
+
+Smoke de sólo lectura a las `19:15:37.338Z`: TLS verificado del origen técnico,
+GET catálogo 200, 675 productos / 13 categorías, POST quote sin cupón 200 y precio
+igual al Dux publicado, descuento cero; GET campañas 200 y vacías. Versión
+`d87a5ca548ff9924e293722c141e4f8563b0f398fd7b7db686212142363d51b4`.
+La comprobación HTTPS canónica completa se despachó por separado con verify_only,
+sin habilitar otro reloj ni refrescar Dux.
+
+La [verificación #364](https://github.com/JerePrograma/shekinah/actions/runs/39838559098)
+terminó success sobre `d46cac5`, job `120033279518` de `19:16:11Z` a `19:19:17Z`;
+Refresh Dux quedó skipped y el gate se comprobó false antes y después.
+HTTPS canónico, 675/675 fichas y rutas, 13 categorías, 641 precios utilizables,
+34 placeholders y cero inválidos/ausentes, sin reintentos. El JSON final de
+`19:19:15.109Z` confirmó la versión `d87a5ca5…51b4` anterior y digest comercial
+`4b468bd4c92b6a5847d0ce5241a6061b4a9d19fb2a542d9f2d5ae9839de92fd3`
+estable durante toda la comprobación.
+
+La corrección estricta aprobó el verify local completo: 131 suites / 1.289 pruebas,
+14 skips históricos, 55 E2E, lint, tipos y todos los verificadores. La repetición
+`build:pages` con un worker se inició después, sobre las mismas fuentes congeladas;
+su resultado se acreditará por separado. No cambiaron dependencias, secretos,
+binarios, migraciones ni configuración externa. Archivos de esta etapa: coordinador
+y prueba, README, CURRENT_STATE, CONTINUATION, contrato resumible y este registro.
+
 La herramienta local de tail Wrangler abortó en Windows; la observación se hizo
 mediante la API oficial y WebSocket, filtrando en memoria exclusivamente los
 campos cerrados de `dux_api_transport_failure`. No se volcó el evento HTTP completo.

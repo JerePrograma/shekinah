@@ -12,8 +12,15 @@ Timeout, transporte, 429 y 5xx admiten hasta tres intentos de la misma fase o
 página, en POST separados y con una lectura oficial por paso. Se conserva el
 tope global de 45 y el prepago de lecturas adicionales; cada claim cuenta incluso
 si se pierde su respuesta. La espera persistida respeta Retry-After hasta el
-límite de 30 segundos; un plazo mayor es terminal y no se acorta. 400, acceso,
-redirecciones y esquema inválido no se repiten automáticamente. Un cambio de día
+límite de 30 segundos; un plazo mayor es terminal y no se acorta. Acceso,
+redirecciones, esquema inválido y las validaciones 400 normales son terminales.
+La única excepción 400 es el GET `/v2/items` con `DUX_PROVIDER_REJECTED`, motivo
+`ERROR_VALIDACION`, sin campos inválidos y huella exacta
+`35e6b45751d1cf72286fb7027ceed4e38e3937d620a13e871c347d96e99246a6`:
+coincide con «Formato desconocido.», observado entre respuestas 200 de la misma
+consulta. Usa los mismos tres claims por página, espera de seis segundos, UUID,
+45 intentos y presupuesto; no habilita otras validaciones ni escrituras Dux.
+Un cambio de día
 UTC cierra la operación antes de consultar o publicar con presupuesto del día anterior.
 
 El reloj candidato es Cloudflare cada diez minutos; GitHub queda sólo manual.

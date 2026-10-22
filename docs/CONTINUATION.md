@@ -6,7 +6,9 @@ Consultar [el registro](validation/DUX_RECOVERY_2026-10-22.md) antes de operar:
 0030 requiere Preview antes de Production. El nuevo relay es un Worker separado
 de Pages; publicar Pages no lo actualiza. La transición debe cerrar y comprobar
 GitHub antes de activar Cloudflare, registrar versión y cron, y observar cuatro
-ciclos automáticos. Un 400 sigue siendo terminal aunque haya ciclos exitosos.
+ciclos automáticos. Los 400 siguen siendo terminales salvo la huella exacta del
+GET de productos «Formato desconocido.» documentada en el contrato; no ampliar
+esa excepción a otras validaciones ni a operaciones de escritura Dux.
 Conservar diagnóstico seguro, UUID, presupuesto, compuerta, catálogo anterior y
 vigencia de 900 segundos. No volver a iniciar todo el ciclo tras un corte de red.
 
