@@ -348,6 +348,117 @@ su resultado se acreditará por separado. No cambiaron dependencias, secretos,
 binarios, migraciones ni configuración externa. Archivos de esta etapa: coordinador
 y prueba, README, CURRENT_STATE, CONTINUATION, contrato resumible y este registro.
 
+Se separó explícitamente la aceptación del reloj de la excepción del backend:
+el Worker `2c20fd7d` y su cron no cambiaron desde las `19:00Z`. La secuencia de
+cuatro ciclos sanos del mismo reloj empieza en `19:12` / `19:22` (Pages `d46cac5`)
+y continúa con los siguientes turnos sobre `636391a`. No se atribuyen los dos
+baselines a un backend que todavía no estaba desplegado. La recuperación estricta
+tiene pruebas y evidencia de runtime propias, si ocurre el rechazo; no se fuerza
+una falla real para probarla ni se modifica la antigüedad exigida.
+
+El run `dux_sync_67e943b0-a838-485e-9b83-0c950f9f81d9` inició `19:22:32.033Z`,
+publicó 899 productos a las `19:24:40.017Z` y cerró `19:24:42.726Z`, 21 GET,
+sin diagnóstico proveedor; coste 136, presupuesto 3.230. Intervalo 599,651 s;
+antigüedad del stock anterior al reemplazo 727,635 s y del nuevo 127,984 s.
+El tail del relay confirmó outcome `ok`, 22 solicitudes y cierre
+`19:24:42.975Z`; no hay evidencia de un fallo por CPU. Una captura anterior
+silenciosa no se interpreta como ausencia de ejecución.
+
+Commit del backend `636391abb604acdba995e6a24f941294d5047584`, siete archivos,
+push normal y hash remoto coincidente, árbol limpio. Pages
+`d1f88b84-d4e5-456f-b170-c1b7ac620de4` canónico/latest success confirmado a las
+`19:26:00Z`. No se volvió a subir el Worker, cuyo código no cambió en esta etapa;
+su artefacto sigue vinculado a `d46cac5`. La comprobación completa local del nuevo
+backend ya estaba aprobada; la repetición de build y CI seguían en curso.
+
+La repetición local `build:pages` terminó aprobada a las `19:29Z`, 131 suites /
+1.289 pruebas y 14 skips (Vitest 370,99 s), además de lint, tipos, build y todos
+los verificadores. La [CI #571](https://github.com/JerePrograma/shekinah/actions/runs/39839426290)
+aprobó el mismo SHA `636391a`, job `120036212177`, `19:22:01Z–19:28:08Z`:
+1.289 pruebas / 14 skips, 55 E2E, parser y 27/27 mocks, sin fallos.
+Artefacto `12453320351`,
+`shekinah-dist-636391abb604acdba995e6a24f941294d5047584`, 52.301.168 bytes.
+
+La [verificación canónica final #365](https://github.com/JerePrograma/shekinah/actions/runs/39841463892)
+aprobó sobre `636391a`, job `120043294827`, `19:35:49Z–19:42:11Z`.
+El verificador corrió `19:36:00Z–19:42:07Z`, sin reintentos, fallos ni cambio de
+snapshot. Refresh Dux quedó skipped y el gate false antes/después. A las
+`19:42:07.691Z` confirmó HTTPS, 675/675 fichas y rutas, 13 categorías,
+641 precios utilizables, 34 placeholders y cero inválidos; versión
+`08a496d9a6554c514729f0480987d2fe429209efccf510a38aaa2ad72b949e74` y digest
+comercial `4b468bd4c92b6a5847d0ce5241a6061b4a9d19fb2a542d9f2d5ae9839de92fd3`.
+La duración mayor que #364 se conserva como observación, sin inventar una causa.
+
+## Aceptación del reloj y recuperación real: verificadas
+
+Los cuatro turnos consecutivos corresponden al mismo Worker `2c20fd7d` y al
+mismo cron, con Pages separado por versión. Los inicios/publicaciones y presupuesto
+se observaron en D1; el tail confirmó outcome ok de los últimos tres turnos.
+
+| Turno UTC | Backend Pages | Run | Inicio | Publicación | GET | Stock anterior al reemplazo | Presupuesto del día |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| 19:12 | d46cac5 | 112e5449-3999-437b-81e5-4b2494e1b44f | 19:12:32.382 | 19:14:39.445 | 21 | 3.540,169 s, incidencia previa | 3.094 |
+| 19:22 | d46cac5 | 67e943b0-a838-485e-9b83-0c950f9f81d9 | 19:22:32.033 | 19:24:40.017 | 21 | 727,635 s | 3.230 |
+| 19:32 | 636391a | a1372266-8653-4348-9d83-7dabba457f1c | 19:32:31.819 | 19:34:38.841 | 21 | 726,808 s | 3.380 |
+| 19:42 | 636391a | bb9743d4-94fc-4472-a3ee-92480fb98ed7 | 19:42:31.822 | 19:44:51.352 | 23 | 739,533 s | 3.637 |
+
+Los UUID de la tabla llevan prefijo `dux_sync_`. Intervalos entre inicios sanos:
+599,651 / 599,786 / 600,003 segundos. Máxima antigüedad **entre ciclos sanos**:
+739,533 s, por debajo de 900. El primer turno reemplazó stock previamente vencido;
+esa incidencia no se cuenta como cumplimiento ni desaparece por la muestra posterior.
+La cadencia observada no garantiza disponibilidad continua de Dux o Cloudflare.
+
+El último run encontró el 400 exacto y avanzó después de él; conservó
+`provider_status=400`, `/v2/items`, `ERROR_VALIDACION`, campos vacíos y la huella
+verificada. Cerró completo a las `19:44:53.031Z`, sin error operativo, con 23 GET
+frente a los 21 normales. Último error proveedor `19:44:15.991Z`.
+El relay confirmó el mismo run, 24 POST, 899 productos, outcome `ok` y cierre
+`19:44:53.234Z`. El stock nuevo tenía 139,530 segundos al publicarse. Se conservan
+los dos intentos extra y su prepago; coste del ciclo 257. No se atribuye toda esa
+diferencia a retries: los deltas Dux también conservan su reserva independiente.
+
+El smoke final de `19:45:28.998Z`, con TLS técnico verificado, confirmó catálogo
+200, 675 productos / 13 categorías y quote sin cupón 200: precio base Dux,
+descuento cero, campañas públicas vacías. El verificador de contrato público
+confirmó 641 precios utilizables, 34 placeholders y cero inválidos, versión
+`ca4b4baeb48ef50e73beedd898846532e1971d740b399cf23d18d9458b4020f1`.
+Su digest comercial coincide exactamente con #365 y #364; la publicación cambió
+sin alterar el universo comercial verificado.
+
+La auditoría final de ambas bases a las `19:45:27.063Z` conservó **todos** los
+conteos agregados de `18:53:43.216Z`, las 30 migraciones exactas y las nueve columnas
+0030, sin errores de FK. Production mantiene 12 órdenes / 2 pagos / 29 líneas y
+231 bajas manuales; Preview 14 / 1 / 14. Ninguna base tiene campañas o redenciones.
+No se crearon pedidos, reservas, preferencias ni pagos en esta intervención.
+
+La causa interna de «Formato desconocido.» en Dux sigue sin acreditación; lo
+verificado es su carácter intermitente, su identificación exacta y la recuperación
+real del GET dentro del mismo ciclo. No se amplía esa excepción a otros rechazos
+ni a escrituras. El incidente del reloj queda corregido y acreditado con la muestra
+anterior; los rechazos generales del proveedor siguen cerrando de forma segura.
+
+### Clasificación final de controles
+
+| Control | Clasificación | Evidencia |
+| --- | --- | --- |
+| Dependencias y Chromium | verificado | npm ci e instalación de navegador, versiones Node/npm indicadas |
+| Verify y build:pages finales | verificado | 1.289 pruebas, 14 skips históricos, 55 E2E y verificadores aprobados |
+| Migrador y procedimiento PowerShell | verificado | Parser y 27/27 mocks en CI #571 |
+| CI y Pages funcionales | verificado | SHA 636391a y artefacto/deployment separados arriba |
+| Migraciones e integridad | verificado | Ambas bases, 30 exactas, nueve columnas y FK cero |
+| Cadencia automática | verificado | Cuatro ciclos del Worker 2c20 y antigüedad entre sanos <900 s |
+| Recuperación 400 exacta | verificado | Pruebas focales y run bb9743 con rechazo real y publicación completa |
+| HTTPS, catálogo y cotización | verificado | #365, smoke final y digest comercial coincidente |
+| Conservación comercial | verificado | Conteos agregados iniciales/finales idénticos |
+| Otros 400 y escrituras Dux | revisado por código | Excepción limitada al coordinador GET, sin cambios de pedidos |
+| Causa interna del mensaje Dux | no disponible | El proveedor no documenta una causa demostrada para ese mensaje |
+| Intentos previos fallidos | fallido | Historial de timeouts, transporte y rechazos conservado, no borrado |
+
+El cierre siguiente sólo actualiza estos seis documentos de operación y evidencia;
+no cambia código funcional, dependencias, migraciones, secretos ni configuración.
+Diff completo revisado, verify:automation y whitespace aprobados. Los commits se
+publican con push normal sobre main, con SHA remoto comprobado, sin force-push.
+
 La herramienta local de tail Wrangler abortó en Windows; la observación se hizo
 mediante la API oficial y WebSocket, filtrando en memoria exclusivamente los
 campos cerrados de `dux_api_transport_failure`. No se volcó el evento HTTP completo.

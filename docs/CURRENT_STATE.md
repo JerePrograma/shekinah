@@ -13,11 +13,18 @@ El diagnóstico del primer turno Cloudflare identificó la huella exacta del rec
 intermitente «Formato desconocido.», ya acreditado entre respuestas 200 históricas.
 Sólo esa lectura 400 de productos admite recuperación acotada del mismo paso;
 las demás validaciones requieren revisión y no se publican resultados parciales.
-El candidato reemplaza el reloj GitHub irregular por un relay Cloudflare actualizado
+Cloudflare reemplaza el reloj GitHub irregular con el relay actualizado
 cada diez minutos, sin dos relojes activos. Pruebas, migraciones, deployment y
 cuatro ciclos automáticos se acreditan por separado en
 [el registro de esta intervención](validation/DUX_RECOVERY_2026-10-22.md).
 No modifica existencias, pedidos, pagos, nombres manuales ni flags comerciales.
+El reloj acreditó cuatro ciclos sanos consecutivos de las 19:12/22/32/42 UTC,
+899 productos por ciclo. El último, sobre `636391a`, recuperó dos lecturas extra
+tras el rechazo conocido y publicó completo a las 19:44:51.352 UTC. La máxima
+antigüedad entre publicaciones sanas fue 739,533 s, por debajo de 900; esto no
+borra el incumplimiento anterior ni promete disponibilidad continua del proveedor.
+CI #571 y Pages del backend están aprobados; HTTPS y 675/675 fichas se verificaron
+en #365. La cotización posterior al último ciclo respondió 200, sin descuento.
 
 ## Marketing del e-commerce — 2026-10-22
 

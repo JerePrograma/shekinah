@@ -2,13 +2,18 @@
 
 ## Cambio de reloj — 2026-10-22
 
-El candidato actual sustituye el cron GitHub irregular por Cloudflare cada diez
+El reloj vigente sustituye el cron GitHub irregular por Cloudflare cada diez
 minutos, con relay resumible publicado por separado. Mantiene un solo reloj,
 vigencia de 900 segundos y presupuesto existente. Su aceptación, cuatro ciclos
 automáticos y límites reales se registran en
 [DUX_RECOVERY_2026-10-22](validation/DUX_RECOVERY_2026-10-22.md).
 Las desactivaciones e incidentes anteriores que siguen son históricos; no acreditan
-el estado del candidato ni autorizan activar ambos relojes.
+el estado vigente ni autorizan activar ambos relojes.
+La muestra de cuatro ciclos de las 19:12/22/32/42 UTC completó 899 productos en
+cada uno, con antigüedad máxima entre ciclos sanos de 739,533 s. El último
+recuperó el rechazo de formato acotado y publicó completo; el incumplimiento
+anterior a la muestra se conserva separado. No se certifica una disponibilidad
+continua ni se amplía el objetivo de 900 segundos.
 
 Contrato autorizado el 2026-09-08. Este documento describe el código; las ejecuciones y publicaciones remotas se acreditan por separado. Los registros anteriores de `docs/validation/` se conservan como historia.
 

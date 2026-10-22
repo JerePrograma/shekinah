@@ -23,7 +23,7 @@ consulta. Usa los mismos tres claims por página, espera de seis segundos, UUID,
 Un cambio de día
 UTC cierra la operación antes de consultar o publicar con presupuesto del día anterior.
 
-El reloj candidato es Cloudflare cada diez minutos; GitHub queda sólo manual.
+El reloj vigente es Cloudflare cada diez minutos; GitHub queda sólo manual.
 El relay se despliega separado de Pages, conserva UUID en recuperación de transporte
 y limita 50 solicitudes totales. La transición cierra GitHub antes de activar
 Cloudflare. La aceptación exige cuatro ciclos automáticos consecutivos, intervalos,

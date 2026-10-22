@@ -5,8 +5,9 @@
 La actualización conserva el HTTP original y un diagnóstico acotado del proveedor.
 Recupera cortes, 429 y 5xx dentro del mismo ciclo, y el rechazo intermitente exacto
 «Formato desconocido.» de lectura de productos. Los demás 400 requieren revisión.
-0030 es aditiva. El reloj candidato Cloudflare cada diez minutos y su aceptación
-remota se acreditan en el [registro](docs/validation/DUX_RECOVERY_2026-10-22.md).
+0030 es aditiva y está verificada en ambas bases. Cloudflare mantiene el único
+reloj automático cada diez minutos; la evidencia de cadencia y recuperación
+se acredita en el [registro](docs/validation/DUX_RECOVERY_2026-10-22.md).
 Consultar el [contrato](docs/DUX_RESUMABLE_SYNC.md) antes de operar o cambiar relojes.
 
 ## Marketing del e-commerce — 2026-10-22
