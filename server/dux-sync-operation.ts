@@ -1,4 +1,5 @@
-import { DUX_MAX_ITEMS_PER_SYNC, DUX_SYNC_DEADLINE_MS, parseDuxWarehousePage, type DuxFetch } from './dux-api';
+import { DUX_MAX_ITEMS_PER_SYNC, DUX_SYNC_DEADLINE_MS, DuxApiError, parseDuxWarehousePage, safeDuxQueryFields,
+  type DuxFetch, type DuxReadEndpoint, type DuxProviderReasonCode, type DuxQueryField } from './dux-api';
 import { persistDuxCatalogSnapshotWhenEnabled } from './dux-catalog-control';
 import { isDuxInventoryBootstrapPending, readDuxInventoryConfig, syncDuxInventory, type DuxSyncSummary } from './dux-inventory';
 import { createDuxInventoryReader } from './dux-inventory-reader';
@@ -11,6 +12,9 @@ import type { D1Database, Env } from './platform';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
 const LEASE_MS = 60_000;
 const PAGE_BYTES = 1_900_000;
+const MAX_PHASE_ATTEMPTS = 3;
+const MIN_RETRY_DELAY_MS = 6_000;
+const MAX_RETRY_WAIT_PER_STEP_MS = 24_000;
 // Estimated logical rows, not Cloudflare's index-inclusive D1 billing. The daily
 // guard retains its existing margin for indexes and other application writes.
 const COLLECTION_WRITE_RESERVATION = 120;
@@ -25,6 +29,11 @@ type Operation = Readonly<{
   collected_bytes: number; attempts: number;
   lease_token: string | null; lease_until_ms: number; result_json: string | null;
   error_code: string | null; error_status: number | null; started_at: string;
+  provider_status: number | null; provider_endpoint: DuxReadEndpoint | null;
+  provider_error_code: string | null; provider_error_at: string | null;
+  phase_attempts: number; retry_not_before_ms: number;
+  provider_reason_code: DuxProviderReasonCode | null; provider_invalid_fields_json: string;
+  provider_error_fingerprint: string | null;
 }>;
 
 /** An absent body retains the historical local/rollout caller contract. */
@@ -52,8 +61,8 @@ export async function advanceDuxSyncOperation(
     const existing = await readOperation(database, requestId);
     operation = existing ?? await startOperation(database, env, actor, requestId, kind);
   } catch (error: unknown) {
-    if (error instanceof Error && /no such table: dux_sync_operation/u.test(error.message)) {
-      throw new HttpError(503, 'DUX_SYNC_MIGRATION_REQUIRED', 'Falta aplicar la migración 0026_dux_resumable_sync.sql.');
+    if (error instanceof Error && /no such (?:table: dux_sync_operation|column: (?:provider_|phase_attempts|retry_not_before))/u.test(error.message)) {
+      throw new HttpError(503, 'DUX_SYNC_MIGRATION_REQUIRED', 'Falta aplicar las migraciones Dux 0026 y 0030.');
     }
     throw error;
   }
@@ -72,19 +81,31 @@ export async function advanceDuxSyncOperation(
     await failOperation(database, operation, error);
     return currentResponse(database, requestId);
   }
+  if (operation.retry_not_before_ms > Date.now()) {
+    await new Promise(resolve => setTimeout(resolve, Math.min(operation.retry_not_before_ms - Date.now(), MAX_RETRY_WAIT_PER_STEP_MS)));
+  }
   if (Date.now() - Date.parse(operation.started_at) >= DUX_SYNC_DEADLINE_MS) {
     const error = new HttpError(504, 'DUX_SYNC_DEADLINE_EXCEEDED', 'La actualización excedió su plazo seguro. El catálogo anterior se conserva.');
     await failOperation(database, operation, error);
     throw error;
   }
+  // Daily write reservations belong to the UTC date on which collection began.
+  // Never extend collection/publication into an unreserved accounting day.
+  if (new Date().toISOString().slice(0, 10) !== operation.started_at.slice(0, 10)) {
+    const error = new HttpError(503, 'DUX_SYNC_BUDGET_DAY_EXPIRED', 'La actualización cambió de día de presupuesto. El catálogo anterior se conserva.');
+    await failOperation(database, operation, error);
+    return currentResponse(database, requestId);
+  }
   const lease = crypto.randomUUID();
   const claimed = await database.prepare(`UPDATE dux_sync_operations SET lease_token = ?2, lease_until_ms = ?3,
-    attempts = attempts + CASE WHEN phase = 'publish' THEN 0 ELSE 1 END
+    attempts = attempts + CASE WHEN phase = 'publish' THEN 0 ELSE 1 END,
+    phase_attempts = phase_attempts + CASE WHEN phase = 'publish' THEN 0 ELSE 1 END
     WHERE request_id = ?1 AND status = 'running' AND lease_until_ms <= ?4
-    AND (phase = 'publish' OR attempts < 45) RETURNING *`)
+    AND retry_not_before_ms <= ?4 AND (phase = 'publish' OR (attempts < 45 AND phase_attempts < 3)) RETURNING *`)
     .bind(requestId, lease, Date.now() + LEASE_MS, Date.now()).first<Operation>();
   if (claimed === null) return currentResponse(database, requestId);
   operation = claimed;
+  let observedProviderStatus: number | null = null;
   try {
     if (operation.phase === 'publish') {
       // Charge each publication lease, including recovery after a lost receipt.
@@ -101,6 +122,7 @@ export async function advanceDuxSyncOperation(
     let captured: string | null = null;
     const capture: DuxFetch = async (input, init) => {
       const response = await fetchImplementation(input, init);
+      observedProviderStatus = response.status;
       if (!response.ok) return response;
       captured = await boundedText(response);
       const headers = new Headers(response.headers);
@@ -113,7 +135,14 @@ export async function advanceDuxSyncOperation(
     const gate = createDuxRequestGate(database);
     const reader = createDuxInventoryReader(env, capture, {
       ...(warehouses === undefined ? {} : { warehouses }),
-      client: { minRequestIntervalMs: 0, maxGetAttempts: 1, beforeRequest: gate },
+      client: { minRequestIntervalMs: 0, maxGetAttempts: 1,
+        syncDeadlineMs: Math.max(1, DUX_SYNC_DEADLINE_MS - (Date.now() - Date.parse(operation.started_at))),
+        beforeRequest: async () => {
+          await gate();
+          if (new Date().toISOString().slice(0, 10) !== operation.started_at.slice(0, 10)) {
+            throw new HttpError(503, 'DUX_SYNC_BUDGET_DAY_EXPIRED', 'La actualización cambió de día de presupuesto. El catálogo anterior se conserva.');
+          }
+        } },
     });
     let phase: Phase;
     let offset = operation.item_offset;
@@ -156,14 +185,23 @@ export async function advanceDuxSyncOperation(
         ON CONFLICT(request_id, page_key) DO UPDATE SET payload_json = excluded.payload_json`)
         .bind(requestId, pageKey(operation), captured, lease),
       database.prepare(`UPDATE dux_sync_operations SET phase = ?3, item_offset = ?4, total = ?5, collected_bytes = ?7,
-        lease_token = NULL, lease_until_ms = 0, updated_at = ?6 WHERE request_id = ?1 AND lease_token = ?2 AND status = 'running'`)
+        lease_token = NULL, lease_until_ms = 0, phase_attempts = 0, retry_not_before_ms = 0, error_code = NULL, error_status = NULL,
+        updated_at = ?6 WHERE request_id = ?1 AND lease_token = ?2 AND status = 'running'`)
         .bind(requestId, lease, phase, offset, total, new Date().toISOString(), collectedBytes),
     ]);
     if (staged[1]?.meta.changes !== 1) return currentResponse(database, requestId);
     return progressResponse({ ...operation, phase, item_offset: offset, total });
   } catch (error: unknown) {
-    const safe = error instanceof HttpError ? error
+    const safe = error instanceof DuxApiError ? new DuxApiError(error.status, error.code, error.message,
+      error.providerStatus ?? observedProviderStatus, { endpoint: error.endpoint ?? phaseEndpoint(operation.phase),
+        retryAfterMs: error.retryAfterMs, providerError: error.providerError })
+      : error instanceof HttpError ? error
       : new HttpError(503, 'DUX_SYNC_STEP_UNAVAILABLE', 'No se pudo confirmar el resultado de la actualización. Consultá su estado antes de reintentar.');
+    const retryDelay = transientRetryDelay(operation, safe);
+    if (retryDelay !== null) {
+      await deferOperationRetry(database, operation, safe as DuxApiError, retryDelay);
+      return currentResponse(database, requestId);
+    }
     await failOperation(database, operation, safe);
     throw safe;
   }
@@ -272,10 +310,23 @@ function restoreSummary(row: Record<string, unknown>, operation: Operation): Dux
 async function failOperation(database: D1Database, operation: Operation, error: HttpError): Promise<boolean> {
   const result = await database.batch([
     database.prepare(`UPDATE dux_sync_operations SET status = 'failed', error_code = ?2, error_status = ?3,
-      lease_token = NULL, lease_until_ms = 0, updated_at = ?4 WHERE request_id = ?1 AND status = 'running'
+      lease_token = NULL, lease_until_ms = 0, retry_not_before_ms = 0,
+      provider_status = CASE WHEN ?9 THEN ?10 ELSE provider_status END,
+      provider_endpoint = CASE WHEN ?9 THEN ?11 ELSE provider_endpoint END,
+      provider_error_code = CASE WHEN ?9 THEN ?2 ELSE provider_error_code END,
+      provider_error_at = CASE WHEN ?9 THEN ?4 ELSE provider_error_at END,
+      provider_reason_code = CASE WHEN ?9 THEN ?12 ELSE provider_reason_code END,
+      provider_invalid_fields_json = CASE WHEN ?9 THEN ?13 ELSE provider_invalid_fields_json END,
+      provider_error_fingerprint = CASE WHEN ?9 THEN ?14 ELSE provider_error_fingerprint END,
+      updated_at = ?4 WHERE request_id = ?1 AND status = 'running'
       AND lease_token IS ?5 AND phase = ?6 AND item_offset = ?7 AND attempts = ?8`)
       .bind(operation.request_id, error.code, error.status, new Date().toISOString(), operation.lease_token,
-        operation.phase, operation.item_offset, operation.attempts),
+        operation.phase, operation.item_offset, operation.attempts, error instanceof DuxApiError ? 1 : 0,
+        error instanceof DuxApiError ? error.providerStatus : null,
+        error instanceof DuxApiError ? error.endpoint : null,
+        error instanceof DuxApiError ? error.providerError?.reasonCode ?? null : null,
+        JSON.stringify(error instanceof DuxApiError ? error.providerError?.invalidFields ?? [] : []),
+        error instanceof DuxApiError ? error.providerError?.fingerprint ?? null : null),
     database.prepare(`DELETE FROM dux_sync_operation_pages WHERE request_id = ?1 AND EXISTS
       (SELECT 1 FROM dux_sync_operations WHERE request_id = ?1 AND status = 'failed')`).bind(operation.request_id),
   ]);
@@ -290,7 +341,7 @@ async function reserveOperationWriteBudget(database: D1Database, startedAt: stri
   if (budget === null) throw new HttpError(503, 'DUX_D1_WRITE_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto diario seguro de escrituras de inventario.');
 }
 function readOperation(database: D1Database, requestId: string): Promise<Operation | null> {
-  return database.prepare('SELECT * FROM dux_sync_operations WHERE request_id = ?1').bind(requestId).first<Operation>();
+  return database.prepare('SELECT *, provider_status, provider_endpoint, provider_error_code, provider_error_at, phase_attempts, retry_not_before_ms, provider_reason_code, provider_invalid_fields_json, provider_error_fingerprint FROM dux_sync_operations WHERE request_id = ?1').bind(requestId).first<Operation>();
 }
 async function readPage(database: D1Database, requestId: string, key: string): Promise<string> {
   const row = await database.prepare('SELECT payload_json FROM dux_sync_operation_pages WHERE request_id = ?1 AND page_key = ?2')
@@ -311,6 +362,11 @@ async function currentResponse(database: D1Database, requestId: string): Promise
   const operation = await readOperation(database, requestId);
   if (operation === null) throw new HttpError(503, 'DUX_SYNC_RESULT_INVALID', 'No se pudo comprobar la actualización.');
   if (operation.status === 'failed') throw operationError(operation);
+  if (operation.status === 'running' && operation.phase !== 'publish' && operation.phase_attempts >= MAX_PHASE_ATTEMPTS && operation.lease_until_ms <= Date.now()) {
+    const error = new HttpError(503, 'DUX_PHASE_ATTEMPTS_EXHAUSTED', 'La consulta Dux agotó sus intentos seguros. El catálogo anterior se conserva.');
+    if (await failOperation(database, operation, error)) throw error;
+    return currentResponse(database, requestId);
+  }
   if (operation.status === 'running' && operation.phase !== 'publish' && operation.attempts >= 45 && operation.lease_until_ms <= Date.now()) {
     const error = new HttpError(503, 'DUX_SUBREQUEST_BUDGET_EXHAUSTED', 'Dux excedió el presupuesto seguro de solicitudes.');
     if (await failOperation(database, operation, error)) throw error;
@@ -321,6 +377,8 @@ async function currentResponse(database: D1Database, requestId: string): Promise
 export async function latestDuxSyncOperation(database: D1Database): Promise<Readonly<{
   id: string; kind: string; status: string; processed: number; failed: number;
   errorCode: string | null; startedAt: string; completedAt: string | null;
+  providerStatus: number | null; providerEndpoint: DuxReadEndpoint | null; providerErrorCode: string | null; providerErrorAt: string | null;
+  providerReasonCode: DuxProviderReasonCode | null; providerInvalidFields: readonly DuxQueryField[]; providerErrorFingerprint: string | null;
 }> | null> {
   let row: (Operation & { updated_at: string }) | null;
   try {
@@ -330,14 +388,52 @@ export async function latestDuxSyncOperation(database: D1Database): Promise<Read
     if (error instanceof Error && error.message.includes('no such table: dux_sync_operations')) return null;
     throw error;
   }
-  if (row === null || row.status === 'completed') return null;
+  if (row === null) return null;
   const expired = row.status === 'running' && Date.now() - Date.parse(row.started_at) >= DUX_SYNC_DEADLINE_MS && row.lease_until_ms <= Date.now();
-  return { id: row.run_id, kind: row.kind, status: expired ? 'failed' : row.status, processed: row.item_offset,
+  return { id: row.run_id, kind: row.kind, status: expired ? 'failed' : row.status === 'completed' ? 'succeeded' : row.status, processed: row.item_offset,
     failed: row.status === 'failed' || expired ? 1 : 0, errorCode: expired ? 'DUX_SYNC_DEADLINE_EXCEEDED' : row.error_code,
-    startedAt: row.started_at, completedAt: row.status === 'running' ? null : row.updated_at };
+    startedAt: row.started_at, completedAt: row.status === 'running' ? null : row.updated_at,
+    providerStatus: row.provider_status ?? null, providerEndpoint: row.provider_endpoint ?? null,
+    providerErrorCode: row.provider_error_code ?? null, providerErrorAt: row.provider_error_at ?? null,
+    providerReasonCode: row.provider_reason_code ?? null,
+    providerInvalidFields: safeDuxQueryFields(JSON.parse(row.provider_invalid_fields_json ?? '[]') as unknown),
+    providerErrorFingerprint: row.provider_error_fingerprint ?? null };
 }
 function operationError(operation: Operation): HttpError {
-  return new HttpError(operation.error_status ?? 503, operation.error_code ?? 'DUX_SYNC_STEP_UNAVAILABLE', 'No se confirmó la actualización. Consultá el estado antes de volver a actualizar.');
+  return new DuxApiError(operation.error_status ?? 503, operation.error_code ?? 'DUX_SYNC_STEP_UNAVAILABLE',
+    'No se confirmó la actualización. Consultá el estado antes de volver a actualizar.', operation.provider_status,
+    { ...(operation.provider_endpoint === null ? {} : { endpoint: operation.provider_endpoint }),
+      ...(operation.provider_reason_code === null || operation.provider_error_fingerprint === null ? {} : { providerError: {
+        reasonCode: operation.provider_reason_code, fingerprint: operation.provider_error_fingerprint,
+        invalidFields: safeDuxQueryFields(JSON.parse(operation.provider_invalid_fields_json) as unknown),
+      } }) });
+}
+function phaseEndpoint(phase: Phase): DuxReadEndpoint {
+  return phase === 'companies' ? '/v2/empresas' : phase === 'branches' ? '/v2/sucursales'
+    : phase === 'warehouses' ? '/v2/depositos' : '/v2/items';
+}
+function transientRetryDelay(operation: Operation, error: HttpError): number | null {
+  if (!(error instanceof DuxApiError) || operation.phase === 'publish' || operation.phase_attempts >= MAX_PHASE_ATTEMPTS || operation.attempts >= 45) return null;
+  if (!['DUX_TIMEOUT', 'DUX_UNAVAILABLE', 'DUX_RATE_LIMITED'].includes(error.code)) return null;
+  const status = error.providerStatus;
+  if (status !== null && status !== 429 && status < 500 && (status < 200 || status >= 300)) return null;
+  // A provider delay beyond the client's bounded allowance is terminal: do not
+  // replace a longer Retry-After with a shorter, unsupported interval.
+  if ((status === 429 || (status !== null && status >= 500)) && error.retryAfterMs === null) return null;
+  const delay = Math.max(MIN_RETRY_DELAY_MS, error.retryAfterMs ?? MIN_RETRY_DELAY_MS);
+  return delay <= 30_000 && Date.now() + delay - Date.parse(operation.started_at) < DUX_SYNC_DEADLINE_MS ? delay : null;
+}
+async function deferOperationRetry(database: D1Database, operation: Operation, error: DuxApiError, delay: number): Promise<void> {
+  // The next and all later read ordinals prepay EXTRA_ATTEMPT_WRITE_RESERVATION
+  // before contacting Dux; this checkpoint replaces the normal page checkpoint.
+  await database.prepare(`UPDATE dux_sync_operations SET lease_token = NULL, lease_until_ms = 0,
+    retry_not_before_ms = ?9, error_code = ?2, error_status = ?3,
+    provider_status = ?10, provider_endpoint = ?11, provider_error_code = ?2, provider_error_at = ?4, updated_at = ?4
+    , provider_reason_code = ?12, provider_invalid_fields_json = ?13, provider_error_fingerprint = ?14
+    WHERE request_id = ?1 AND status = 'running' AND lease_token IS ?5 AND phase = ?6 AND item_offset = ?7 AND attempts = ?8`)
+    .bind(operation.request_id, error.code, error.status, new Date().toISOString(), operation.lease_token,
+      operation.phase, operation.item_offset, operation.attempts, Date.now() + delay, error.providerStatus, error.endpoint,
+      error.providerError?.reasonCode ?? null, JSON.stringify(error.providerError?.invalidFields ?? []), error.providerError?.fingerprint ?? null).run();
 }
 function invalidRequest(): HttpError { return new HttpError(400, 'DUX_SYNC_REQUEST_INVALID', 'La identidad de actualización no es válida.'); }
 function tenantInvalid(): HttpError { return new HttpError(503, 'DUX_TENANT_INVALID', 'Dux no confirmó la empresa, sucursal o depósitos configurados.'); }

@@ -12,6 +12,7 @@ import {
 } from './dux-api';
 import type {
   DuxApiClientOptions,
+  DuxApiError,
   DuxFetch,
 } from './dux-api';
 
@@ -676,6 +677,26 @@ describe('Dux API v2', () => {
       }
     });
 
+    it('clasifica errores sin exponer texto y correlaciona el mismo motivo sin ids de solicitud o valores variables', async () => {
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const failures: unknown[] = [];
+      for (const index of [1, 2]) {
+        const client = testClient(() => Promise.resolve(Response.json({ error: { codigo: 'private-unknown-provider-code',
+          mensaje: 'private-error-message', id_solicitud: `private-request-${index}`, detalle: [
+            { campo: 'limit', problema: 'private-validation-reason', valor: `private-value-${index}` },
+            { campo: 'private-unrecognized-field', problema: 'private-other-reason' },
+          ] } }, { status: 400 })), { maxGetAttempts: 1 });
+        try { await client.listItemsPage(); } catch (error: unknown) { failures.push(error); }
+      }
+      expect(failures).toHaveLength(2);
+      for (const error of failures) expect(error).toMatchObject({ providerStatus: 400, endpoint: '/v2/items',
+        providerError: { reasonCode: 'UNKNOWN', invalidFields: ['limit'], fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown } });
+      expect((failures[0] as DuxApiError).providerError?.fingerprint).toBe((failures[1] as DuxApiError).providerError?.fingerprint);
+      expect(JSON.stringify(failures)).not.toContain('private-');
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('private-');
+      warning.mockRestore();
+    });
+
     it('conserva status y fase cuando falla la lectura del cuerpo', async () => {
       const bodyErrorSentinel = 'body-stream-sentinel-never-log';
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -693,7 +714,8 @@ describe('Dux API v2', () => {
         await expect(client.listEmpresas()).rejects.toMatchObject({
           status: 503,
           code: 'DUX_UNAVAILABLE',
-          providerStatus: null,
+          providerStatus: 502,
+          endpoint: '/v2/empresas',
         });
         expect(warning).toHaveBeenCalledExactlyOnceWith(
           'dux_api_transport_failure',
@@ -731,7 +753,8 @@ describe('Dux API v2', () => {
         await expect(client.listEmpresas()).rejects.toMatchObject({
           status: 503,
           code: 'DUX_UNAVAILABLE',
-          providerStatus: null,
+          providerStatus: 418,
+          endpoint: '/v2/empresas',
         });
         expect(warning).toHaveBeenCalledExactlyOnceWith(
           'dux_api_transport_failure',

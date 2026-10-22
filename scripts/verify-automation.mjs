@@ -153,14 +153,14 @@ const reconciliationWorkflow = read(join(root, '.github', 'workflows', 'dux-reco
 for (const fragment of [
   'name: Dux inventory reconciliation', 'workflow_dispatch:',
   'contents: read', 'cancel-in-progress: false', 'timeout-minutes: 20',
-  "if: ${{ vars.DUX_RECONCILIATION_ENABLED == 'true' }}",
+  "if: ${{ inputs.verify_only || vars.DUX_RECONCILIATION_ENABLED == 'true' }}",
   'name: cloudflare-pages-production', 'deployment: false', 'persist-credentials: false',
   'node-version-file: .node-version',
   'SHEKINAH_RECONCILE_URL: https://shekinah.ar/api/internal/dux/reconcile',
   'SHEKINAH_RECONCILE_SECRET: ${{ secrets.DUX_SCHEDULER_SECRET }}',
   'run: node scripts/run-dux-reconcile.mjs',
   'verify_only:', 'type: boolean', 'default: false',
-  "if: ${{ github.event_name != 'workflow_dispatch' || !inputs.verify_only }}",
+  "if: ${{ !inputs.verify_only }}",
   "if: ${{ github.event_name == 'workflow_dispatch' }}",
   'run: node scripts/verify-dux-public-catalog.mjs --all-details',
 ]) {
@@ -182,10 +182,16 @@ for (const action of reconciliationActions) {
 }
 
 const duxRunner = read(join(root, 'scripts', 'run-dux-reconcile.mjs'));
-if (!reconciliationWorkflow.includes("cron: '2-57/5 * * * *'")) fail('Dux requiere una única programación GitHub cada cinco minutos.');
+const duxEvents = /^on:\s*\n([\s\S]*?)(?=^\S)/mu.exec(reconciliationWorkflow)?.[1] ?? '';
+const duxEventNames = [...duxEvents.matchAll(/^ {2}([A-Za-z_]+):/gmu)].map(match => match[1]);
+if (JSON.stringify(duxEventNames) !== JSON.stringify(['workflow_dispatch']) || /^\s*(?:schedule|cron):/mu.test(reconciliationWorkflow)) {
+  fail('GitHub Dux debe admitir sólo despachos manuales; Cloudflare conserva el único reloj automático.');
+}
 const cronConfig = JSON.parse(read(join(root, 'config', 'dux-cron.jsonc')));
-if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify([]) || cronConfig.workers_dev !== false) {
-  fail('El relay Cloudflare debe permanecer sin cron y sin una ruta HTTP pública para evitar superposición.');
+if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify(['2-52/10 * * * *']) ||
+    cronConfig.name !== 'shekinah-dux-scheduler' || cronConfig.main !== '../server/dux-cron.ts' ||
+    cronConfig.workers_dev !== false || cronConfig.preview_urls !== false) {
+  fail('Cloudflare Dux requiere un único cron cada diez minutos, sin rutas HTTP públicas ni preview.');
 }
 const cronWorker = read(join(root, 'server', 'dux-cron.ts'));
 if (!cronWorker.includes("https://shekinah.ar/api/internal/dux/reconcile") || !cronWorker.includes("redirect: 'error'") || /mercadolibre|MERCADO_LIBRE/u.test(cronWorker)) {

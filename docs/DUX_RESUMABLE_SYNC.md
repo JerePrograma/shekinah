@@ -1,5 +1,29 @@
 # Sincronización Dux recuperable — 2026-10-21
 
+## Recuperación y diagnóstico — 2026-10-22
+
+La migración aditiva 0030 conserva HTTP original, endpoint de lectura, código de
+motivo en lista cerrada, campos de query conocidos y huella SHA-256 del error
+acotado. Nunca almacena mensajes, cuerpos, valores, headers o credenciales.
+El historial de fallos anteriores permanece intacto, sin completar datos que
+no fueron observados. Un fallo recuperado conserva diagnóstico aun al completar.
+
+Timeout, transporte, 429 y 5xx admiten hasta tres intentos de la misma fase o
+página, en POST separados y con una lectura oficial por paso. Se conserva el
+tope global de 45 y el prepago de lecturas adicionales; cada claim cuenta incluso
+si se pierde su respuesta. La espera persistida respeta Retry-After hasta el
+límite de 30 segundos; un plazo mayor es terminal y no se acorta. 400, acceso,
+redirecciones y esquema inválido no se repiten automáticamente. Un cambio de día
+UTC cierra la operación antes de consultar o publicar con presupuesto del día anterior.
+
+El reloj candidato es Cloudflare cada diez minutos; GitHub queda sólo manual.
+El relay se despliega separado de Pages, conserva UUID en recuperación de transporte
+y limita 50 solicitudes totales. La transición cierra GitHub antes de activar
+Cloudflare. La aceptación exige cuatro ciclos automáticos consecutivos, intervalos,
+antigüedad, versión y presupuesto reales. Consultar
+[diagnóstico y rollout](validation/DUX_RECOVERY_2026-10-22.md); este contrato
+actualiza el cierre terminal de todo fallo GET y la cadencia histórica descritos abajo.
+
 ## Incidencia y alcance
 
 La compilación CI estaba aprobada en `1fdd855`; el workflow de reconciliación

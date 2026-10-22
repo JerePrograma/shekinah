@@ -1,5 +1,20 @@
 # Estado actual
 
+## Diagnóstico y recuperación Dux — 2026-10-22
+
+La observación productiva del ciclo #361 confirmó HTTP 400 en `/v2/items`;
+el 502 mostrado por Shekinah traduce ese rechazo. El ciclo #360 había publicado
+899 productos correctamente. No atribuir el rechazo a rate limit, acceso o un
+parámetro concreto sin evidencia del proveedor.
+
+La corrección incorpora 0030 aditiva, HTTP y motivo seguro persistentes,
+recuperación acotada de lecturas transitorias y explicación en administración.
+El candidato reemplaza el reloj GitHub irregular por un relay Cloudflare actualizado
+cada diez minutos, sin dos relojes activos. Pruebas, migraciones, deployment y
+cuatro ciclos automáticos se acreditan por separado en
+[el registro de esta intervención](validation/DUX_RECOVERY_2026-10-22.md).
+No modifica existencias, pedidos, pagos, nombres manuales ni flags comerciales.
+
 ## Marketing del e-commerce — 2026-10-22
 
 El [módulo de campañas](ECOMMERCE_MARKETING.md) agrega administración de cupones

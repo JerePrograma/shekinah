@@ -245,6 +245,9 @@ export function DuxPanel({
                 Terminada el {formatDate(latestRunDate(status.latestRun) ?? '')}
               </span>}
             </div>
+            {providerIssueText(status.latestRun) === null ? null : <p className="admin-context-note">
+              {providerIssueText(status.latestRun)}
+            </p>}
             <details className="admin-disclosure">
               <summary>Ver detalles de Dux</summary>
               <dl className="admin-summary-grid">
@@ -272,6 +275,9 @@ export function DuxPanel({
               <summary>Información para soporte: conexión con Dux</summary>
               <dl className="admin-summary-grid">
                 <Metric label="Estado de sincronización" value={textValue(status.latestRun?.status, 'Sin ejecutar')} />
+                <Metric label="Respuesta original de Dux" value={providerHttpStatus(status.latestRun)} />
+                <Metric label="Consulta observada" value={providerEndpointLabel(status.latestRun)} />
+                <Metric label="Motivo informado por Dux" value={providerReasonLabel(status.latestRun)} />
                 <Metric label="Vinculados" value={status.counts.mappedCount} />
                 <Metric label="Sin vincular a Dux" value={status.counts.unmappedCount} />
                 <Metric label="Vínculos ambiguos" value={status.counts.ambiguousCount} />
@@ -519,6 +525,45 @@ function latestRunDate(latestRun: Readonly<Record<string, unknown>> | null): str
   if (latestRun === null) return null;
   const value = latestRun.completedAt ?? latestRun.completed_at;
   return isValidDateString(value) ? value : null;
+}
+
+function providerIssueText(latestRun: Readonly<Record<string, unknown>> | null): string | null {
+  if (latestRun === null || typeof latestRun.providerErrorCode !== 'string') return null;
+  if (latestRun.status === 'succeeded') return 'La actualización se completó después de recuperar una consulta interrumpida.';
+  if (latestRun.status === 'running') return 'La actualización continúa tras una consulta interrumpida. Conserva el avance del mismo ciclo.';
+  if (latestRun.status !== 'failed') return null;
+  const status = latestRun.providerStatus;
+  if (status === 400) return 'Dux rechazó la consulta. El catálogo anterior se conserva; el motivo requiere revisión.';
+  if (status === 401 || status === 403) return 'Dux no autorizó la consulta. Revisá el acceso con soporte; el catálogo anterior se conserva.';
+  return 'No se pudo completar la consulta a Dux. El catálogo anterior se conserva; revisá el diagnóstico con soporte.';
+}
+
+function providerHttpStatus(latestRun: Readonly<Record<string, unknown>> | null): string {
+  const status = latestRun?.providerStatus;
+  return typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599
+    ? `HTTP ${status}` : 'Sin respuesta HTTP registrada';
+}
+
+function providerEndpointLabel(latestRun: Readonly<Record<string, unknown>> | null): string {
+  switch (latestRun?.providerEndpoint) {
+    case '/v2/empresas': return 'Empresas';
+    case '/v2/sucursales': return 'Sucursales';
+    case '/v2/depositos': return 'Depósitos';
+    case '/v2/items': return 'Productos';
+    default: return 'Sin diagnóstico registrado';
+  }
+}
+
+function providerReasonLabel(latestRun: Readonly<Record<string, unknown>> | null): string {
+  switch (latestRun?.providerReasonCode) {
+    case 'VALIDACION': case 'ERROR_VALIDACION': case 'SOLICITUD_INVALIDA': return 'Validación de la consulta';
+    case 'LIMITE_PETICIONES_EXCEDIDO': return 'Límite de consultas';
+    case 'AUTENTICACION_REQUERIDA': case 'NO_AUTORIZADO': return 'Autenticación requerida';
+    case 'PROHIBIDO': return 'Acceso denegado';
+    case 'NO_ENCONTRADO': return 'Recurso no encontrado';
+    case 'ERROR_INTERNO': return 'Error interno del proveedor';
+    default: return 'Sin motivo identificado';
+  }
 }
 
 async function readJson(response: Response): Promise<unknown> {

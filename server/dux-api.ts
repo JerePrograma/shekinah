@@ -1,4 +1,5 @@
 import { HttpError } from './http';
+import { sha256Hex } from './crypto';
 
 export const DUX_API_BASE_URL = 'https://erp.duxsoftware.com.ar/WSERP/rest/services';
 export const DUX_INVENTORY_SEMANTICS_NOT_AVAILABLE = 'not_available_from_v2_items';
@@ -21,11 +22,24 @@ const MAX_ITEM_PAGES = 20;
 export const DUX_MAX_ITEMS_PER_SYNC = ITEM_PAGE_LIMIT * MAX_ITEM_PAGES;
 const MAX_RESPONSE_BYTES = 2_000_000;
 
-type DuxReadEndpoint =
+export type DuxReadEndpoint =
   | '/v2/empresas'
   | '/v2/sucursales'
   | '/v2/depositos'
   | '/v2/items';
+
+const PROVIDER_REASON_CODES = ['VALIDACION', 'ERROR_VALIDACION', 'SOLICITUD_INVALIDA', 'LIMITE_PETICIONES_EXCEDIDO',
+  'AUTENTICACION_REQUERIDA', 'NO_AUTORIZADO', 'PROHIBIDO', 'NO_ENCONTRADO', 'ERROR_INTERNO', 'UNKNOWN'] as const;
+const DUX_QUERY_FIELDS = ['id_empresa', 'cod_item', 'codigo_marca', 'id_lista_precio', 'id_deposito', 'id_rubro',
+  'id_sub_rubro', 'id_proveedor', 'habilitado', 'fecha_ult_actualizacion', 'tipo_item', 'offset', 'limit'] as const;
+export type DuxProviderReasonCode = typeof PROVIDER_REASON_CODES[number];
+export type DuxQueryField = typeof DUX_QUERY_FIELDS[number];
+export type DuxProviderErrorDiagnostic = Readonly<{
+  reasonCode: DuxProviderReasonCode; invalidFields: readonly DuxQueryField[]; fingerprint: string;
+}>;
+export function safeDuxQueryFields(value: unknown): readonly DuxQueryField[] {
+  return Object.freeze(DUX_QUERY_FIELDS.filter(field => Array.isArray(value) && value.includes(field)));
+}
 
 type DuxTransportFailurePhase = 'fetch_headers' | 'read_body' | 'classify_response';
 
@@ -166,16 +180,23 @@ export type DuxApiClientOptions = Readonly<{
 
 export class DuxApiError extends HttpError {
   readonly providerStatus: number | null;
+  readonly endpoint: DuxReadEndpoint | null;
+  readonly retryAfterMs: number | null;
+  readonly providerError: DuxProviderErrorDiagnostic | null;
 
   constructor(
     status: number,
     code: string,
     message: string,
     providerStatus: number | null = null,
+    details: Readonly<{ endpoint?: DuxReadEndpoint; retryAfterMs?: number | null; providerError?: DuxProviderErrorDiagnostic | null }> = {},
   ) {
     super(status, code, message);
     this.name = 'DuxApiError';
     this.providerStatus = providerStatus;
+    this.endpoint = details.endpoint ?? null;
+    this.retryAfterMs = details.retryAfterMs ?? null;
+    this.providerError = details.providerError ?? null;
   }
 }
 
@@ -373,6 +394,7 @@ export class DuxApiClient {
       let phase: DuxTransportFailurePhase = 'fetch_headers';
       let providerStatus: number | null = null;
       let headersReceived = false;
+      let retryAfterMs: number | null = null;
       try {
         const headers = new Headers({
           accept: 'application/json',
@@ -388,6 +410,9 @@ export class DuxApiClient {
         this.assertBeforeDeadline();
         providerStatus = response.status;
         headersReceived = true;
+        if (response.status === 429 || response.status >= 500) {
+          retryAfterMs = retryDelayMilliseconds(response.headers, null, attempt, this.clock(), this.maxRetryDelayMs);
+        }
         if (isRedirectStatus(response.status)) {
           phase = 'classify_response';
           cancelProviderBody(response);
@@ -401,7 +426,7 @@ export class DuxApiClient {
             errorClass: 'redirect_rejected',
             headersReceived,
           });
-          throw statusError(response.status);
+          throw statusError(response.status, endpoint);
         }
         phase = 'read_body';
         const parsed = await readProviderJson(response);
@@ -412,20 +437,17 @@ export class DuxApiClient {
           return parsed.value;
         }
         const retryable = response.status === 429 || response.status >= 500;
+        retryAfterMs = retryable
+          ? retryDelayMilliseconds(response.headers, parsed.valid ? parsed.value : null, attempt, this.clock(), this.maxRetryDelayMs)
+          : null;
         if (retryable && attempt + 1 < this.maxGetAttempts) {
-          const retryDelay = retryDelayMilliseconds(
-            response.headers,
-            parsed.valid ? parsed.value : null,
-            attempt,
-            this.clock(),
-            this.maxRetryDelayMs,
-          );
-          if (retryDelay !== null) {
-            await this.waitWithinDeadline(retryDelay);
+          if (retryAfterMs !== null) {
+            await this.waitWithinDeadline(retryAfterMs);
             continue;
           }
         }
-        const providerError = statusError(response.status);
+        const providerError = statusError(response.status, endpoint, retryAfterMs,
+          parsed.valid ? await describeProviderError(parsed.value) : null);
         if (
           (providerError.code === 'DUX_UNAVAILABLE' || providerError.code === 'DUX_PROVIDER_REJECTED') &&
           providerError.providerStatus !== null
@@ -468,6 +490,8 @@ export class DuxApiClient {
           aborted
             ? 'Dux no respondió dentro del tiempo esperado.'
             : 'Dux no está disponible temporalmente.',
+          providerStatus,
+          { endpoint, retryAfterMs },
         );
       } finally {
         clearTimeout(timeout);
@@ -1014,13 +1038,15 @@ function defaultRetryDelay(attempt: number, maximum: number): number {
   return Math.min(250 * (2 ** attempt), maximum);
 }
 
-function statusError(providerStatus: number): DuxApiError {
+function statusError(providerStatus: number, endpoint: DuxReadEndpoint, retryAfterMs: number | null = null,
+  providerError: DuxProviderErrorDiagnostic | null = null): DuxApiError {
   if (providerStatus === 401) {
     return new DuxApiError(
       503,
       'DUX_AUTH_FAILED',
       'Dux rechazó la credencial configurada.',
       providerStatus,
+      { endpoint, retryAfterMs, providerError },
     );
   }
   if (providerStatus === 403) {
@@ -1029,6 +1055,7 @@ function statusError(providerStatus: number): DuxApiError {
       'DUX_ACCESS_FORBIDDEN',
       'Dux no autorizó la API para la cuenta o el plan configurado.',
       providerStatus,
+      { endpoint, retryAfterMs, providerError },
     );
   }
   if (providerStatus === 429) {
@@ -1037,6 +1064,7 @@ function statusError(providerStatus: number): DuxApiError {
       'DUX_RATE_LIMITED',
       'Dux limitó temporalmente las consultas.',
       providerStatus,
+      { endpoint, retryAfterMs, providerError },
     );
   }
   if (providerStatus >= 500) {
@@ -1045,6 +1073,7 @@ function statusError(providerStatus: number): DuxApiError {
       'DUX_UNAVAILABLE',
       'Dux no está disponible temporalmente.',
       providerStatus,
+      { endpoint, retryAfterMs, providerError },
     );
   }
   return new DuxApiError(
@@ -1052,7 +1081,25 @@ function statusError(providerStatus: number): DuxApiError {
     'DUX_PROVIDER_REJECTED',
     'Dux rechazó la consulta.',
     providerStatus,
+    { endpoint, retryAfterMs, providerError },
   );
+}
+
+async function describeProviderError(value: unknown): Promise<DuxProviderErrorDiagnostic> {
+  const error = isRecord(value) && isRecord(value.error) ? value.error : isRecord(value) ? value : {};
+  const code = typeof error.codigo === 'string' ? error.codigo : '';
+  const reasonCode = PROVIDER_REASON_CODES.find(candidate => candidate === code) ?? 'UNKNOWN';
+  const detail = Array.isArray(error.detalle) ? error.detalle.slice(0, 50).filter(isRecord) : [];
+  const invalidFields = DUX_QUERY_FIELDS.filter(field => detail.some(entry => entry.campo === field));
+  // Correlate the error shape without persisting its text or reported values.
+  // Volatile request ids and detail.valor are deliberately excluded from the
+  // digest; this is a bounded fingerprint, not a claim about the error's cause.
+  const fingerprint = await sha256Hex(JSON.stringify({
+    codigo: code.slice(0, 128), mensaje: typeof error.mensaje === 'string' ? error.mensaje.slice(0, 4096) : null,
+    detalle: detail.map(entry => ({ campo: typeof entry.campo === 'string' ? entry.campo.slice(0, 128) : null,
+      problema: typeof entry.problema === 'string' ? entry.problema.slice(0, 4096) : null })),
+  }));
+  return Object.freeze({ reasonCode, invalidFields: Object.freeze(invalidFields), fingerprint });
 }
 
 function invalidProviderResponse(): DuxApiError {

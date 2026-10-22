@@ -1,5 +1,15 @@
 # Inventario Dux: depósitos y antigüedad
 
+## Cambio de reloj — 2026-10-22
+
+El candidato actual sustituye el cron GitHub irregular por Cloudflare cada diez
+minutos, con relay resumible publicado por separado. Mantiene un solo reloj,
+vigencia de 900 segundos y presupuesto existente. Su aceptación, cuatro ciclos
+automáticos y límites reales se registran en
+[DUX_RECOVERY_2026-10-22](validation/DUX_RECOVERY_2026-10-22.md).
+Las desactivaciones e incidentes anteriores que siguen son históricos; no acreditan
+el estado del candidato ni autorizan activar ambos relojes.
+
 Contrato autorizado el 2026-09-08. Este documento describe el código; las ejecuciones y publicaciones remotas se acreditan por separado. Los registros anteriores de `docs/validation/` se conservan como historia.
 
 Dux sigue siendo la única autoridad de productos, nombres, SKU, categorías, precios y existencias. El retiro irreversible operativo de `0018` continúa vigente: ninguna fotografía editorial crea productos manuales. Compras, pagos, pedidos nuevos y reservas permanecen cerrados.

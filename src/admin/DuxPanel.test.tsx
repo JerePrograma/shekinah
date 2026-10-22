@@ -51,6 +51,37 @@ describe('panel administrativo Dux', () => {
     });
   });
 
+  it('explica el rechazo y muestra el HTTP original únicamente en soporte', async () => {
+    const status = enabledStatus();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(() => Promise.resolve(json({ ...status,
+      latestRun: { ...status.latestRun, status: 'failed', providerStatus: 400,
+        providerEndpoint: '/v2/items', providerErrorCode: 'DUX_PROVIDER_REJECTED', providerReasonCode: 'ERROR_VALIDACION' },
+    }))));
+    render(<DuxPanel />);
+    expect(await screen.findByText('Dux rechazó la consulta. El catálogo anterior se conserva; el motivo requiere revisión.')).toBeVisible();
+    expect(metric('Respuesta original de Dux')).toHaveTextContent('HTTP 400');
+    expect(metric('Respuesta original de Dux')).not.toBeVisible();
+    fireEvent.click(screen.getByText('Información para soporte: conexión con Dux'));
+    expect(metric('Respuesta original de Dux')).toBeVisible();
+    expect(metric('Consulta observada')).toHaveTextContent('Productos');
+    expect(metric('Motivo informado por Dux')).toHaveTextContent('Validación de la consulta');
+    expect(screen.queryByText('HTTP 502')).not.toBeInTheDocument();
+  });
+
+  it('conserva el éxito cuando recupera una consulta y no refleja diagnósticos arbitrarios', async () => {
+    const status = enabledStatus();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(() => Promise.resolve(json({ ...status,
+      latestRun: { ...status.latestRun, providerStatus: 'untrusted response',
+        providerEndpoint: 'untrusted endpoint', providerErrorCode: 'DUX_UNAVAILABLE' },
+    }))));
+    render(<DuxPanel />);
+    expect(await screen.findByText('La actualización se completó después de recuperar una consulta interrumpida.')).toBeVisible();
+    expect(screen.getByText('Última actualización: Completada')).toBeVisible();
+    expect(metric('Respuesta original de Dux')).toHaveTextContent('Sin respuesta HTTP registrada');
+    expect(metric('Consulta observada')).toHaveTextContent('Sin diagnóstico registrado');
+    expect(screen.queryByText(/untrusted/)).not.toBeInTheDocument();
+  });
+
   it('sincroniza una sola vez, informa el resumen y actualiza los productos', async () => {
     let statusRequests = 0;
     let resolveSync: ((response: Response) => void) | undefined;

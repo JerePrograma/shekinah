@@ -216,7 +216,7 @@ describe('sincronización Dux recuperable', () => {
     const reached = new Promise<void>(resolve => { entered = resolve; });
     const waiting = new Promise<void>(resolve => { release = resolve; });
     const staleCaller: D1Database = {
-      prepare: query => query === 'SELECT * FROM dux_sync_operations WHERE request_id = ?1'
+      prepare: query => query.startsWith('SELECT *, provider_status,')
         ? delayedFirst(db.prepare(query), async () => { entered(); await waiting; }, true) : db.prepare(query),
       batch: statements => db.batch(statements), exec: query => db.exec(query),
     };
@@ -244,6 +244,9 @@ describe('sincronización Dux recuperable', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const expectedCode = failure === 'expiry' ? 'DUX_SYNC_DEADLINE_EXCEEDED' : failure === 'total' ? 'DUX_RESPONSE_INVALID' : 'DUX_UNAVAILABLE';
+    if (failure === 'provider') {
+      for (let attempt = 0; attempt < 2; attempt += 1) expect((await step(db, env, nextId, provider)).status).toBe(202);
+    }
     await expect(step(db, env, nextId, provider)).rejects.toMatchObject({ code: expectedCode });
     expect(await readDuxCatalogSnapshot(db)).toEqual(before);
     expect(db.database.prepare("SELECT COUNT(*) AS count FROM dux_sync_operation_pages WHERE request_id = ?").get(nextId)).toEqual({ count: 0 });
@@ -357,13 +360,195 @@ describe('sincronización Dux recuperable', () => {
   });
 
   it('rechaza la falta de 0026 sin consultar al proveedor', async () => {
-    const previousSchema = readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name) && !name.startsWith('0026_'))
+    const previousSchema = readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name) && !name.startsWith('0026_') && !name.startsWith('0030_'))
       .sort().map(name => readFileSync(resolve('migrations', name), 'utf8')).join('\n');
     const db = new SqliteD1(previousSchema);
     databases.push(db);
     const provider = vi.fn(providerFixture(1));
     await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ status: 503, code: 'DUX_SYNC_MIGRATION_REQUIRED' });
     expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('rechaza la falta de 0030 antes de iniciar la operación o consultar Dux', async () => {
+    const previousSchema = readdirSync(resolve('migrations')).filter(name => /^\d{4}_.*\.sql$/u.test(name) && !name.startsWith('0030_'))
+      .sort().map(name => readFileSync(resolve('migrations', name), 'utf8')).join('\n');
+    const db = new SqliteD1(previousSchema);
+    databases.push(db);
+    const provider = vi.fn(providerFixture(1));
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_MIGRATION_REQUIRED' });
+    expect(provider).not.toHaveBeenCalled();
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operations').get()).toEqual({ count: 0 });
+  });
+
+  it.each([300, 302, 400, 401, 403, 404, 422])('conserva el HTTP original %s y el endpoint sin repetir rechazos terminales ni guardar cuerpo o token', async (providerStatus) => {
+    const db = database();
+    const env = environment(db);
+    const privateBody = 'private-provider-body-must-not-persist';
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(new Response(JSON.stringify({ error: privateBody }), { status: providerStatus })));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const code = providerStatus === 401 ? 'DUX_AUTH_FAILED' : providerStatus === 403 ? 'DUX_ACCESS_FORBIDDEN' : 'DUX_PROVIDER_REJECTED';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(step(db, env, requestId, provider)).rejects.toMatchObject({ code, providerStatus, endpoint: '/v2/empresas' });
+    }
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'failed', errorCode: code, providerStatus,
+      providerEndpoint: '/v2/empresas', providerErrorCode: code, providerErrorAt: expect.any(String) as unknown });
+    const saved = JSON.stringify(db.database.prepare('SELECT * FROM dux_sync_operations').get());
+    expect(saved).not.toContain(privateBody);
+    expect(saved).not.toContain(env.DUX_API_TOKEN);
+  });
+
+  it('recupera un 503 en la misma página con otro POST, gate compartido y prepago de cada ordinal adicional', async () => {
+    const db = database();
+    const env = environment(db);
+    const fixture = providerFixture(51);
+    let failed = false;
+    const starts: number[] = [];
+    const provider = vi.fn<DuxFetch>((input, init) => {
+      starts.push(Date.now());
+      const url = inputUrl(input);
+      if (url.pathname.endsWith('/items') && url.searchParams.get('offset') === '50' && !failed) {
+        failed = true;
+        return Promise.resolve(new Response('{}', { status: 503 }));
+      }
+      return fixture(input, init);
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (let index = 0; index < 4; index += 1) await step(db, env, requestId, provider);
+    const beforeRetry = reservedWrites(db);
+    const failedPage = await step(db, env, requestId, provider);
+    expect(await failedPage.json()).toMatchObject({ status: 'running', phase: 'items', processed: 50, total: 51, retryAfterMs: 1000 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_sync_operation_pages').get()).toEqual({ count: 4 });
+    expect(db.database.prepare('SELECT COUNT(*) AS count FROM dux_catalog_snapshots_v2').get()).toEqual({ count: 0 });
+    const recovered = await step(db, env, requestId, provider);
+    expect(await recovered.json()).toMatchObject({ phase: 'publish', processed: 51 });
+    expect(reservedWrites(db) - beforeRetry).toBe(5);
+    expect(provider).toHaveBeenCalledTimes(6);
+    for (let index = 1; index < starts.length; index += 1) expect(starts[index]! - starts[index - 1]!).toBeGreaterThanOrEqual(5000);
+    expect((await step(db, env, requestId, provider)).status).toBe(200);
+    expect((await readDuxCatalogSnapshot(db)).itemCount).toBe(51);
+    expect(db.database.prepare('SELECT status, provider_status, provider_endpoint, provider_error_code, phase_attempts FROM dux_sync_operations').get())
+      .toEqual({ status: 'completed', provider_status: 503, provider_endpoint: '/v2/items', provider_error_code: 'DUX_UNAVAILABLE', phase_attempts: 0 });
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'succeeded', errorCode: null, providerStatus: 503, providerErrorCode: 'DUX_UNAVAILABLE' });
+  });
+
+  it('persiste sólo clasificación y campos de consulta permitidos de un error de validación', async () => {
+    const db = database();
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(Response.json({ error: { codigo: 'ERROR_VALIDACION',
+      mensaje: 'private-provider-validation-message', id_solicitud: 'private-varying-request-id', detalle: [
+        { campo: 'offset', problema: 'private-validation-reason', valor: 'private-reported-value' },
+        { campo: 'private-unrecognized-field', problema: 'private-unrecognized-reason', valor: 'private-value' },
+      ] } }, { status: 400 })));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_PROVIDER_REJECTED', providerStatus: 400,
+      providerError: { reasonCode: 'ERROR_VALIDACION', invalidFields: ['offset'], fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown } });
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ providerStatus: 400, providerReasonCode: 'ERROR_VALIDACION',
+      providerInvalidFields: ['offset'], providerErrorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown });
+    expect(JSON.stringify(db.database.prepare('SELECT * FROM dux_sync_operations').get())).not.toContain('private-');
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('respeta Retry-After de 30 segundos y termina en el tercer intento sin exceder una lectura por paso', async () => {
+    const db = database();
+    const env = environment(db);
+    const starts: number[] = [];
+    const provider = vi.fn<DuxFetch>(() => {
+      starts.push(Date.now());
+      return Promise.resolve(new Response('{}', { status: 429, headers: { 'retry-after': '30' } }));
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (let index = 0; index < 4; index += 1) {
+      const beforeCalls = provider.mock.calls.length;
+      const beforeWrites = logicalWrites(db);
+      expect((await step(db, env, requestId, provider)).status).toBe(202);
+      expect(provider.mock.calls.length - beforeCalls).toBeLessThanOrEqual(1);
+      if (index === 1 || index === 3) expect(logicalWrites(db) - beforeWrites).toBe(0);
+    }
+    await expect(step(db, env, requestId, provider)).rejects.toMatchObject({ code: 'DUX_RATE_LIMITED', providerStatus: 429 });
+    expect(provider).toHaveBeenCalledTimes(3);
+    expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(30_000);
+    expect(starts[2]! - starts[1]!).toBeGreaterThanOrEqual(30_000);
+    expect(reservedWrites(db)).toBe(120 + 96 + 10);
+  });
+
+  it.each(['31', '300'])('no acorta un Retry-After de %s segundos ni repite antes del plazo del proveedor', async (retryAfter) => {
+    const db = database();
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(new Response('{}', { status: 429, headers: { 'retry-after': retryAfter } })));
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_RATE_LIMITED', providerStatus: 429 });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(db.database.prepare('SELECT status, retry_not_before_ms FROM dux_sync_operations').get()).toEqual({ status: 'failed', retry_not_before_ms: 0 });
+  });
+
+  it.each(['network', 'timeout', 'body'] as const)('recupera un fallo transitorio de %s conservando diagnóstico sin repetir páginas confirmadas', async (failure) => {
+    const db = database();
+    const fixture = providerFixture(1);
+    let failed = false;
+    const provider = vi.fn<DuxFetch>((input, init) => {
+      if (failed) return fixture(input, init);
+      failed = true;
+      if (failure === 'timeout') return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => { reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+      });
+      if (failure === 'body') return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) { controller.error(new TypeError('private-provider-stream-error')); },
+      }), { status: 200 }));
+      return Promise.reject(new TypeError('private-provider-network-error'));
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect((await step(db, environment(db), requestId, provider)).status).toBe(202);
+    expect(await latestDuxSyncOperation(db)).toMatchObject({ status: 'running', providerStatus: failure === 'body' ? 200 : null,
+      providerEndpoint: '/v2/empresas', providerErrorCode: failure === 'timeout' ? 'DUX_TIMEOUT' : 'DUX_UNAVAILABLE' });
+    await complete(db, environment(db), requestId, provider);
+    expect(provider).toHaveBeenCalledTimes(5);
+    const saved = JSON.stringify(db.database.prepare('SELECT * FROM dux_sync_operations').get());
+    expect(saved).not.toContain('private-provider');
+  });
+
+  it('no recupera JSON o esquema inválido con una nueva llamada oficial', async () => {
+    const db = database();
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(Response.json({ datos: 'invalid' })));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_RESPONSE_INVALID' });
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_RESPONSE_INVALID' });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('cierra un retry al cruzar medianoche UTC sin leer Dux ni cargar el nuevo día al presupuesto anterior', async () => {
+    const db = database();
+    vi.setSystemTime(new Date('2026-10-21T23:59:58.000Z'));
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(new Response('{}', { status: 503 })));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect((await step(db, environment(db), requestId, provider)).status).toBe(202);
+    const before = reservedWrites(db, '2026-10-21');
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_BUDGET_DAY_EXPIRED' });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(reservedWrites(db, '2026-10-21')).toBe(before);
+    expect(db.database.prepare("SELECT COUNT(*) AS count FROM dux_d1_write_budget WHERE utc_date = '2026-10-22'").get()).toEqual({ count: 0 });
+  });
+
+  it('no inicia una lectura después de que la espera del retry alcanza el deadline global', async () => {
+    const db = database();
+    const provider = vi.fn<DuxFetch>(() => Promise.resolve(new Response('{}', { status: 503 })));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await step(db, environment(db), requestId, provider);
+    db.database.prepare('UPDATE dux_sync_operations SET retry_not_before_ms = ? WHERE request_id = ?')
+      .run(Date.now() + DUX_SYNC_DEADLINE_MS, requestId);
+    await vi.advanceTimersByTimeAsync(DUX_SYNC_DEADLINE_MS - 1000);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_SYNC_DEADLINE_EXCEEDED' });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('cuenta leases interrumpidos en el límite de tres intentos de una misma fase', async () => {
+    const db = database();
+    const provider = vi.fn(providerFixture(1));
+    await step(db, environment(db), requestId, provider);
+    // Simulate runtime termination after the third claimed branch read, before
+    // it can checkpoint success or failure. No fourth provider read is allowed.
+    db.database.prepare('UPDATE dux_sync_operations SET phase_attempts = 3, attempts = 4, lease_token = ?, lease_until_ms = 0 WHERE request_id = ?')
+      .run('33333333-3333-4333-8333-333333333333', requestId);
+    await expect(step(db, environment(db), requestId, provider)).rejects.toMatchObject({ code: 'DUX_PHASE_ATTEMPTS_EXHAUSTED' });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(db.database.prepare('SELECT status FROM dux_sync_operations').get()).toEqual({ status: 'failed' });
   });
 
   it('impide usar una identidad de otro actor, empresa, sucursal o depósito sin consultar Dux', async () => {
