@@ -9,7 +9,10 @@ inmutable y un cupo por orden. La recuperación no recotiza pedidos preparados.
 Las migraciones aditivas 0028 y 0029 se aplicaron y verificaron primero en Preview
 y después en Production, con campañas/cupos vacíos y conteos anteriores conservados.
 La [validación](validation/ECOMMERCE_MARKETING_2026-10-22.md) acredita 1.208 pruebas
-unitarias, 55 E2E y build final; CI y deployment se comprueban sobre el commit publicado.
+unitarias, 55 E2E, build final, CI #567 y Pages aprobados sobre el commit funcional
+`377be0a`. La comprobación externa de sólo lectura #358 verificó HTTPS y 674 fichas.
+La cotización productiva rechazó el snapshot obsoleto con `CATALOG_STALE`; se
+despachó #359 para renovarlo sin crear pedidos ni modificar existencias Dux.
 No crea promociones reales ni
 modifica flags, mantenimiento, inventario o pagos existentes. El código y las
 pruebas locales no acreditan por sí solos migración o aceptación remota del precio

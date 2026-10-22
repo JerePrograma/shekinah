@@ -26,7 +26,7 @@ pedidos históricos. Se conservan los overrides editoriales y las bajas web.
 | `npm run build:pages` final | Verificado: 131 suites, 1.208 pruebas aprobadas, 14 omitidas existentes; build y verificadores aprobados |
 | Caso adicional tras verify | Verificado dentro del build final: cotización promocional vencida tras fallo de almacenamiento vuelve a leer base Dux sin duplicar orden/reserva/cupo |
 | Cadena completa 0001–0029 sobre SQLite limpio | Verificado: cero violaciones FK, cero campañas, guards creados |
-| `git diff --check` | Verificado antes de preparar archivos |
+| `git diff --check` y `git diff --cached --check` | Verificados antes del commit funcional |
 | Revisión monetaria/SQL/HTTP independiente | Revisado por código y pruebas de integración |
 | QA visual | Verificado en 1440, 390 y 320 px; capturas locales fuera de Git |
 
@@ -117,10 +117,48 @@ Interfaz y recorridos:
 
 ## Publicación y límites
 
-El hash del commit que contiene este informe no puede incluirse en sí mismo.
-El cierre de la conversación acredita por separado el commit creado, push,
-SHA final de `origin/main`, CI, artefacto, deployment Pages y smoke del mismo SHA.
-No se afirma publicación sólo por haber aplicado migraciones o compilado.
+El commit funcional es `377be0a40681d23901708b4dd84a6f1d29e97288`,
+`feat: incorporar cupones, promociones y anuncios administrables`, publicado por
+push ordinario y cotejado con `origin/main`. Modificó 53 archivos, sin binarios,
+dependencias nuevas ni artefactos temporales; el árbol quedó limpio.
+
+- [CI #567](https://github.com/JerePrograma/shekinah/actions/runs/39819391910):
+  `success`, job Verify aprobado, 1.208 pruebas, 14 omitidas existentes,
+  55 E2E y 27/27 mocks del procedimiento Dux.
+- Artefacto `shekinah-dist-377be0a40681d23901708b4dd84a6f1d29e97288`,
+  ID `12444735389`, 52.300.483 bytes, subido y no expirado al comprobarlo.
+- Pages Production `6ea314f4-1aca-4571-adb8-b5e3e307360e`, rama `main`,
+  [check del SHA funcional aprobado](https://dash.cloudflare.com/?to=/de1ec344dec57f522c0d70dc8616f4a5/pages/view/shekinah/6ea314f4-1aca-4571-adb8-b5e3e307360e).
+- [Verificación externa #358](https://github.com/JerePrograma/shekinah/actions/runs/39819774865):
+  `success`, modo `verify_only=true`, sin ejecutar el paso de reconciliación.
+  Confirmó HTTPS canónico, catálogo y 674/674 fichas a las
+  `2026-10-22T17:12:26.511Z`, con 13 categorías y la misma versión/digest al
+  comenzar y terminar.
+
+La comprobación desde esta PC encontró `PartialChain` en PowerShell y
+`UNABLE_TO_VERIFY_LEAF_SIGNATURE` en Node para el dominio canónico, también
+con CA de sistema. No se deshabilitó la verificación TLS. GitHub verificó el
+HTTPS canónico desde Linux; el dominio técnico de la misma producción respondió
+con TLS validado desde Node local.
+
+Smoke técnico sobre `https://shekinah-7dl.pages.dev`: GET marketing `200`,
+cero anuncios/promociones; GET admin marketing `401`; catálogo `200`, fuente
+Dux, 674 productos/13 categorías. POST de cotización sin cupón devolvió
+`409 CATALOG_STALE`, conservando el rechazo de precios obsoletos; no creó
+orden, reserva ni preferencia. El snapshot venía de una reconciliación anterior;
+el scheduler #357 había fallado y su cadencia irregular sigue siendo una incidencia.
+
+Se despachó una única actualización controlada mediante el workflow existente,
+[reconciliación #359](https://github.com/JerePrograma/shekinah/actions/runs/39820387693),
+para renovar la copia de consulta Dux y repetir la cotización. Esa operación
+lee la API oficial y actualiza el snapshot, sin modificar existencias ni crear
+pedidos en Dux. Su resultado y los controles posteriores se comprueban por
+separado; no se presentan como aprobados al registrar el despacho.
+
+Este cierre documental es posterior al commit funcional. Su propio hash y el
+SHA final de `origin/main` se acreditan en el cierre de la conversación, junto
+con CI/Pages de ese último commit. No se afirma publicación por una migración
+o una compilación solamente.
 
 Antes de activar una campaña real falta acreditar externamente un pedido Dux
 con precio unitario promocional y su correlación con Checkout Pro. Las pruebas
