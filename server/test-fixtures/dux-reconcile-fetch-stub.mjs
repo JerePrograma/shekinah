@@ -1,15 +1,18 @@
 const scenario = process.env.DUX_RUNNER_TEST_SCENARIO;
 let calls = 0;
 const requestIds = new Set();
+const delays = [];
 process.on('exit', () => {
   console.log(`DUX_RUNNER_TEST_REQUESTS=${calls}`);
   console.log(`DUX_RUNNER_TEST_IDENTITIES=${requestIds.size}`);
+  console.log(`DUX_RUNNER_TEST_DELAYS=${JSON.stringify(delays)}`);
 });
 
 const nativeSetTimeout = globalThis.setTimeout;
-globalThis.setTimeout = (callback, milliseconds, ...arguments_) => (
-  nativeSetTimeout(callback, Math.min(Number(milliseconds), 1), ...arguments_)
-);
+globalThis.setTimeout = (callback, milliseconds, ...arguments_) => {
+  delays.push(Number(milliseconds));
+  return nativeSetTimeout(callback, Math.min(Number(milliseconds), 1), ...arguments_);
+};
 
 globalThis.fetch = async (_input, init) => {
   calls += 1;
@@ -17,6 +20,14 @@ globalThis.fetch = async (_input, init) => {
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(body.requestId) ||
     init.headers['content-type'] !== 'application/json') throw new Error('Solicitud de continuación inválida.');
   requestIds.add(body.requestId);
+  if (scenario?.startsWith('internal_error_')) {
+    if (calls === 1 || scenario === 'internal_error_persistent') return jsonResponse(500, 'INTERNAL_ERROR');
+    if (scenario === 'internal_error_progress_completed' && calls === 2) {
+      return Response.json({ status: 'running', requestId: body.requestId, runId: 'dux_sync_runner_fixture',
+        phase: 'items', processed: 2, total: 3, retryAfterMs: 1000 }, { status: 202 });
+    }
+    return Response.json(catalogResult('catalog_published'));
+  }
   if (scenario?.startsWith('progress_')) {
     if (scenario === 'progress_transport_resume' && calls === 2) throw new DOMException('timeout', 'TimeoutError');
     if (scenario === 'progress_deadline') {

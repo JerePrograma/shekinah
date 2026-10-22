@@ -24,6 +24,12 @@ antigüedad, versión y presupuesto reales. Consultar
 [diagnóstico y rollout](validation/DUX_RECOVERY_2026-10-22.md); este contrato
 actualiza el cierre terminal de todo fallo GET y la cadencia histórica descritos abajo.
 
+El relay usa `redirect:manual` y rechaza todo 300–399 sin inspeccionar Location
+ni consumir el cuerpo. La prueba en el runtime remoto acreditó que el modo error
+fallaba antes de headers, mientras el modo manual llegaba al destino canónico.
+El diagnóstico de transporte también usa clases cerradas, sin registrar excepciones
+crudas. La corrección y sus ciclos reales se acreditan en el mismo registro.
+
 ## Incidencia y alcance
 
 La compilación CI estaba aprobada en `1fdd855`; el workflow de reconciliación

@@ -86,6 +86,45 @@ describe('runner programado de reconciliación Dux', () => {
     expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
   });
 
+  it.each([
+    ['internal_error_completed', 2, [2000]],
+    ['internal_error_progress_completed', 3, [2000, 1000]],
+  ] as const)('recupera %s con el mismo UUID y espera dos segundos antes de repetir el paso', (scenario, requests, delays) => {
+    const result = runScenario(scenario);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`DUX_RUNNER_TEST_REQUESTS=${requests}`);
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+    expect(result.stdout).toContain(`DUX_RUNNER_TEST_DELAYS=${JSON.stringify(delays)}`);
+    expect(result.stdout).toContain('Catálogo Dux confirmado: run=dux_sync_runner_fixture');
+    expect(result.stderr).toContain('dux_reconcile_request_retry');
+    expect(result.stderr).toContain('"errorCode":"INTERNAL_ERROR"');
+    expectPrivateDataAbsent(result);
+  });
+
+  it('un INTERNAL_ERROR persistente termina después de dos llamadas sin afirmar publicación', () => {
+    const result = runScenario('internal_error_persistent');
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=2');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+    expect(result.stdout).toContain('DUX_RUNNER_TEST_DELAYS=[2000]');
+    expect(result.stderr).toContain('respondió 500 (INTERNAL_ERROR)');
+    expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+    expect(result.stdout).not.toContain('Reconciliación Dux completada');
+  });
+
+  it.each([[500, 'DUX_UNAVAILABLE'], [500, 'DUX_RESPONSE_INVALID'], [503, 'INTERNAL_ERROR'],
+    [400, 'INTERNAL_ERROR'], [401, 'SCHEDULER_UNAUTHORIZED']] as const)(
+    'la recuperación no amplía el retry al HTTP %s con código %s', (status, code) => {
+      const result = runRequestFailure(`return Response.json({ error: { code: '${code}', message: privateValue } }, { status: ${status} });`);
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain('DUX_RUNNER_TEST_REQUESTS=1');
+      expect(result.stdout).toContain('DUX_RUNNER_TEST_IDENTITIES=1');
+      expect(result.stdout).not.toContain('Catálogo Dux confirmado');
+      expect(requestDiagnostics(result)).toEqual([]);
+      expectPrivateDataAbsent(result);
+    },
+  );
+
   it.each(['progress_completed', 'progress_transport_resume', 'gateway_then_completed'])(
     'continúa %s con una sola identidad hasta confirmar el catálogo', (scenario) => {
       const result = runScenario(scenario);

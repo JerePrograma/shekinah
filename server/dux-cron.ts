@@ -8,7 +8,12 @@ const DEADLINE_MS = 7 * 60 * 1_000;
 
 type Progress = Readonly<{ runId: string; phase: string; processed: number; total: number | null }>;
 type RequestState = { requests: number };
-class RelayError extends Error {}
+type RelayTransportErrorClass = 'host_not_accessible_1021' | 'cloudflare_ip_1024' | 'same_zone_1042'
+  | 'redirect_rejected' | 'tls_error' | 'timeout' | 'network_connection_lost' | 'network_error'
+  | 'type_error' | 'dom_exception' | 'http_status' | 'unknown';
+class RelayError extends Error {
+  constructor(code: string, readonly errorClass: RelayTransportErrorClass | null = null) { super(code); }
+}
 class RetryableRelayError extends RelayError {}
 
 /** A small Cron Trigger relay. Pages retains the D1 lock and all Dux read guards. */
@@ -44,8 +49,9 @@ export default {
       throw new RelayError('DUX_RELAY_STEP_LIMIT');
     } catch (error: unknown) {
       const code = error instanceof RelayError ? error.message : 'DUX_RELAY_UNAVAILABLE';
-      console.error('dux_cron_failed', { scheduledAt, startedAt, requestId, requests: state.requests, code });
-      throw new RelayError(code);
+      const errorClass = error instanceof RelayError ? error.errorClass : classifyRelayTransportError(error);
+      console.error('dux_cron_failed', { scheduledAt, startedAt, requestId, requests: state.requests, code, errorClass });
+      throw new RelayError(code, errorClass);
     }
   },
 };
@@ -60,13 +66,19 @@ async function requestStep(secret: string, scheduledAt: string, requestId: strin
       let response: Response;
       try {
         response = await fetch(endpoint, {
-          method: 'POST', redirect: 'error', signal: AbortSignal.timeout(Math.min(90_000, Math.ceil(remaining))),
+          method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(Math.min(90_000, Math.ceil(remaining))),
           headers: { authorization: `Bearer ${secret}`, 'x-shekinah-scheduled-at': scheduledAt,
             'content-type': 'application/json' },
           body: JSON.stringify({ requestId }),
         });
-      } catch { throw new RetryableRelayError('DUX_RELAY_TRANSPORT'); }
+      } catch (error: unknown) { throw new RetryableRelayError('DUX_RELAY_TRANSPORT', classifyRelayTransportError(error)); }
       httpStatus = response.status;
+      if (response.status >= 300 && response.status <= 399) {
+        // Never read Location or the payload, and never forward authentication
+        // through a redirect. Cancellation cannot change this terminal result.
+        try { await response.body?.cancel(); } catch { /* The redirect is already rejected. */ }
+        throw new RelayError('DUX_RELAY_REDIRECT_REJECTED', 'redirect_rejected');
+      }
       if (response.status >= 400 && response.status < 500) {
         // Once a terminal client status is known, a broken response body must
         // not turn that rejection into another authenticated POST.
@@ -76,20 +88,22 @@ async function requestStep(secret: string, scheduledAt: string, requestId: strin
       const result = await readPayload(response);
       remainingTime(deadline);
       if (!response.ok) {
-        // A structured server error is terminal, including provider rejection,
-        // cooldown, protected overlap and exhausted budgets. Only an unclassified
-        // gateway failure may recover the same operation after lost transport.
+        // Provider rejection, cooldown, overlap and exhausted budgets are terminal.
+        // A generic 500 has an uncertain checkpoint, so it may recover the same
+        // UUID just like a lost gateway response; it never starts another cycle.
         if (record(result) && record(result.error) && typeof result.error.code === 'string') {
-          throw new RelayError('DUX_RELAY_PUBLICATION_UNCONFIRMED');
+          if (response.status !== 500 || result.error.code !== 'INTERNAL_ERROR') {
+            throw new RelayError('DUX_RELAY_PUBLICATION_UNCONFIRMED');
+          }
         }
-        if (response.status >= 500) throw new RetryableRelayError('DUX_RELAY_GATEWAY');
+        if (response.status >= 500) throw new RetryableRelayError('DUX_RELAY_GATEWAY', 'http_status');
         throw new RelayError('DUX_RELAY_PUBLICATION_UNCONFIRMED');
       }
       return { response, result };
     } catch (error: unknown) {
       if (!(error instanceof RetryableRelayError)) throw error;
-      if (attempt === MAX_STEP_ATTEMPTS) throw new RelayError(error.message);
-      console.warn('dux_cron_retry', { scheduledAt, attempt, requests: state.requests, httpStatus, code: error.message });
+      if (attempt === MAX_STEP_ATTEMPTS) throw new RelayError(error.message, error.errorClass);
+      console.warn('dux_cron_retry', { scheduledAt, attempt, requests: state.requests, httpStatus, code: error.message, errorClass: error.errorClass });
       await pause(2_000, deadline);
     }
   }
@@ -116,14 +130,48 @@ async function readPayload(response: Response): Promise<unknown> {
       text += decoder.decode();
     } catch (error: unknown) {
       if (error instanceof RelayError) throw error;
-      throw new RetryableRelayError('DUX_RELAY_TRANSPORT');
+      throw new RetryableRelayError('DUX_RELAY_TRANSPORT', classifyRelayTransportError(error));
     }
   }
   try { return JSON.parse(text) as unknown; }
   catch {
-    if (response.status >= 500) throw new RetryableRelayError('DUX_RELAY_GATEWAY');
+    if (response.status >= 500) throw new RetryableRelayError('DUX_RELAY_GATEWAY', 'http_status');
     throw new RelayError('DUX_RELAY_RESPONSE_INVALID');
   }
+}
+
+/** Inspect only in memory; callers emit this closed classification, never the descriptor. */
+function classifyRelayTransportError(error: unknown): RelayTransportErrorClass {
+  const names: string[] = [];
+  const fragments: string[] = [];
+  const visited = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && record(current) && !visited.has(current); depth += 1) {
+    visited.add(current);
+    const name = safeErrorField(current, 'name');
+    if (typeof name === 'string') names.push(name.slice(0, 128).toLowerCase());
+    for (const field of ['message', 'code']) {
+      const value = safeErrorField(current, field);
+      if (typeof value === 'string') fragments.push(value.slice(0, 4096).toLowerCase());
+    }
+    current = safeErrorField(current, 'cause');
+  }
+  const text = fragments.join('\n');
+  if (/\b1021\b/u.test(text)) return 'host_not_accessible_1021';
+  if (/\b1024\b/u.test(text)) return 'cloudflare_ip_1024';
+  if (/\b1042\b/u.test(text)) return 'same_zone_1042';
+  if (text.includes('redirect')) return 'redirect_rejected';
+  if (/\b(?:tls|ssl|certificate|unable_to_verify_leaf_signature|self_signed_cert_in_chain|depth_zero_self_signed_cert|cert_has_expired|err_tls[\w_]*)\b/u.test(text)) return 'tls_error';
+  if (names.includes('timeouterror') || names.includes('aborterror') || /\b(?:timeout|timed out|etimedout|und_err_connect_timeout)\b/u.test(text)) return 'timeout';
+  if (text.includes('network connection lost')) return 'network_connection_lost';
+  if (names.includes('networkerror') || /\b(?:network|econnreset|econnrefused|enotfound|eai_again|enetunreach|ehostunreach|err_network)\b/u.test(text)) return 'network_error';
+  if (names.includes('typeerror')) return 'type_error';
+  if (names.includes('domexception')) return 'dom_exception';
+  return 'unknown';
+}
+
+function safeErrorField(value: Readonly<Record<string, unknown>>, field: string): unknown {
+  try { return value[field]; } catch { return undefined; }
 }
 
 function remainingTime(deadline: number): number {

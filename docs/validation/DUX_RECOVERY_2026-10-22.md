@@ -91,10 +91,165 @@ Ambas listas de migraciones mostraron únicamente 0030 pendiente. Estos bookmark
 no acreditan que haya sido aplicada. Se verificó el binding `DUX_CRON_SECRET`
 de tipo secreto en el Worker y su nombre configurado en Pages, sin extraer valores.
 
-Pendientes de registrar tras su ejecución: pruebas completas, SHA funcional,
-CI/artefacto y Pages exactos, bookmarks y 0030 Preview antes de Production,
-desactivación verificada del reloj GitHub, versión y cron Cloudflare, cuatro
-ciclos automáticos, catálogo público y conservación de pedidos/pagos/overrides.
+## Publicación y migraciones verificadas
+
+Commit funcional `fbbe8a8ddfd57a5212da99ac92c73d95458dd156`, publicado con
+`git push origin main` y hash remoto coincidente. Árbol limpio tras el push;
+`git diff --check` y `git diff --cached --check` aprobados.
+
+- [CI #569](https://github.com/JerePrograma/shekinah/actions/runs/39828084646):
+  `success`, job Verify `119996613181`. Artefacto `12448156282`,
+  `shekinah-dist-fbbe8a8ddfd57a5212da99ac92c73d95458dd156`, 52.301.168 bytes.
+- Pages Production `b3465be3-62a3-4a6e-8855-a8829c77a582`: `success`,
+  mismo SHA funcional confirmado por API autenticada.
+- 0030 aplicada mediante el migrador oficial Wrangler primero en Preview y
+  después en Production. Ambas verifican historial 0001–0030, nueve columnas
+  nuevas, claves foráneas sin errores y exactamente los conteos previos.
+  Production confirmó cero sincronizaciones activas antes de encender el reloj.
+- `DUX_RECONCILIATION_ENABLED=false` verificado en GitHub antes de publicar el
+  relay, sin variable de entorno que lo sustituya y sin jobs Dux activos o en cola.
+  El nuevo workflow sólo admite despacho manual; `verify_only` no necesita abrir
+  ese gate y no ejecuta la lectura oficial.
+- Worker publicado desde el árbol funcional limpio con tag `dux-recovery-fbbe8a8`
+  y mensaje del SHA completo; versión `677dbc3c-7acc-4d89-83a6-f90dc6c92cd5`,
+  deployment `599c4d6a-f6c3-405c-b81e-74e046e9d330`, `100%` desde
+  `2026-10-22T18:11:14.382552Z`, startup 1 ms. Se conservaron vars y el secreto.
+  Bundle dry-run SHA-256
+  `b6921a1c8d9572708fb42a38d0062a4d5d7f7c66a2d0a1e3b3474d83317407f9`.
+- API Cloudflare confirmó un único cron `2-52/10 * * * *`, creado a las
+  `18:11:20.211214Z`, sin ruta pública del relay. Los relojes no se superpusieron.
+
+La lectura de las `18:11:55.808Z` todavía mostraba el snapshot anterior, con
+stock leído a las `17:21:17.726Z`; configurar el reloj no lo convirtió en vigente.
+Pendiente de registrar: cuatro ciclos automáticos, catálogo público y diagnóstico
+del siguiente rechazo 400 si vuelve a ocurrir.
+
+## Lectura controlada posterior al rollout
+
+Se abrió temporalmente el gate del workflow **manual**, ya sin evento schedule,
+para despachar [#362](https://github.com/JerePrograma/shekinah/actions/runs/39829722187)
+sobre el SHA funcional. Una vez iniciado el job se volvió a cerrar y verificar
+`false` a las `18:16Z`; Cloudflare conserva el único reloj automático.
+No se repitió el ciclo con otra identidad ni se habilitó el antiguo cron GitHub.
+
+La operación `dux_sync_ba2a5071-0aed-40e3-812c-8af7f3ae3ddc`, actor
+`scheduler:github-actions`, inició `18:15:39.276Z`, completó 21 lecturas y publicó
+899 productos a las `18:17:42.706Z`, sin fallidos ni diagnóstico de proveedor.
+Versión de catálogo `3d9ea1a0fde512774dc8dbe929d8e374b85d7300dbc07fea6f8e3b3831714716`.
+No cuenta como evidencia de cadencia automática.
+
+El GET de la URL técnica Pages validó TLS, HTTP 200, 675 productos publicados y
+13 categorías. El POST de cotización `/api/marketing`, sólo lectura y sin cupón,
+respondió 200, descuento cero y subtotal igual al precio Dux publicado. La
+comprobación inicial leyó equivocadamente `price` como número y no envió el POST;
+se corrigió a la forma documentada `price.amount`. No se creó pedido, reserva ni pago.
+El navegador canónico abrió el acceso administrativo sin sesión; no se ingresaron
+credenciales ni se acreditó por ello una comprobación administrativa autenticada.
+
+La ejecución #362 terminó `success`. La comprobación externa confirmó HTTPS
+canónico y las 675/675 fichas a las `18:22:29.418Z`, 641 precios usables y 34
+placeholders, sin precios inválidos y con el mismo digest comercial al finalizar.
+
+## Primer evento Cloudflare: fallo de transporte verificado
+
+El cron sí ejecutó el turno de las `18:22:30.510Z` e inició a las
+`18:22:31.973Z`, request `9367d401-04a0-4da8-b6a5-36e080a97917`. El relay
+falló dos fetch a Shekinah antes de headers (`DUX_RELAY_TRANSPORT`), sin crear
+operación D1 ni consultar Dux. El log y GraphQL coinciden: versión `677dbc3c`,
+`scriptThrewException`, una invocación / un error, cero subrequests contabilizados,
+CPU P50/P99 1.543 µs (1,543 ms) y wall 1.992.688 µs (1,993 s). CPU no explica
+ese fallo. No se marca el reloj como aceptado ni ese turno como sincronización.
+
+`workersInvocationsScheduled` todavía estaba vacío mientras el dataset adaptive
+ya registraba el evento: el retraso de métricas no acredita ausencia de ejecución.
+Se investiga el transporte mediante previews efímeros sin bindings ni secretos,
+con GET al endpoint propio (405 esperado), sin consultas Dux ni mutaciones de datos.
+No se atribuye 1042, TLS o redirect a partir del código genérico sin otra evidencia.
+
+La prueba remota efímera con Wrangler 4.131.0 y la fecha de compatibilidad
+`2026-09-08` aisló la causa a las `18:28:32.632Z`. Hizo ocho GET sin credenciales:
+
+| Flag `strictly_public` | Destino | `redirect:error` | `redirect:manual` |
+| --- | --- | --- | --- |
+| No | Canónico | Excepción inmediata, 0 ms | 405, 179 ms |
+| No | Técnico | Excepción inmediata, 0 ms | 405, 96 ms |
+| Sí | Canónico | Excepción inmediata, 0 ms | 405, 495 ms |
+| Sí | Técnico | Excepción inmediata, 0 ms | 405, 85 ms |
+
+405 es la respuesta correcta para GET a este endpoint POST. La única variable
+que permite llegar a Shekinah es el modo manual; cambiar host o agregar el flag
+no corrige el modo error. No se agrega el flag, no se cambia el destino ni TLS.
+Los dos previews quedaron cerrados y sus puertos 8788/8789 sin escucha.
+El antecedente del 1 de septiembre ya acreditaba esa interacción con Dux;
+el relay separado todavía conservaba el modo incompatible.
+
+La corrección complementaria usa `redirect:manual`, rechaza todos los 300–399
+antes de leer cuerpo o Location, sin retry y con cancelación best-effort. Añade
+clasificación cerrada de excepciones de transporte, sin mensajes crudos. Las 47
+pruebas focales del relay, lint, tipos y dry-run 4.131.0 aprobaron; bundle
+10,43 KiB / gzip 3,15 KiB. Validación completa y publicación complementarias pendientes.
+
+Los archivos efímeros se conservaron fuera del árbol de fuentes en
+`C:\Users\Jerem\AppData\Local\Temp\shekinah-dux-recovery-20261022`, tras verificar
+los paths. El primer verify complementario encontró archivos generados del probe
+y dry-run al recorrer `.wrangler`; no era un error de fuentes del producto.
+Se retiraron esos artefactos del recorrido sin relajar ESLint ni cambiar sus reglas.
+
+## Recuperación de un checkpoint incierto
+
+Se despachó otra lectura manual
+[#363](https://github.com/JerePrograma/shekinah/actions/runs/39831798062), siempre
+sobre `fbbe8a8`, para mantener una lectura controlada durante el ajuste del relay.
+El gate se cerró y verificó nuevamente después del inicio. La operación
+`dux_sync_b444618f-3d04-450f-a22d-9f5dc2862bcb` inició `18:29:23.291Z` y confirmó
+200 productos a las `18:30:00.003Z`, con siete intentos y sin lease ni error
+persistido. El siguiente POST respondió `500 INTERNAL_ERROR` a las `18:30:01Z` y
+el runner se detuvo. El snapshot publicado anterior se conservó.
+
+Ese estado es compatible con un fallo antes del siguiente claim; no demuestra
+la causa interna ni un rechazo Dux. La API histórica de observabilidad respondió
+403 / Cloudflare 10000 con el OAuth disponible; se detuvo la consulta sin cambiar
+permisos ni exponer logs. No se atribuye sin prueba a D1 o al proveedor.
+
+La corrección complementaria permite exclusivamente `500 + INTERNAL_ERROR`
+como checkpoint incierto: como máximo dos POST del mismo paso y UUID, dentro del
+plazo y topes previos. Los errores `DUX_*`, 400, acceso, esquema y presupuestos
+siguen siendo terminales. Un error persistente no confirma éxito ni crea otro ciclo.
+
+El nuevo relay suma 49 pruebas y el runner 52, ambos aprobados de forma focal.
+En el verify completo complementario volvió a fallar una prueba preexistente de
+paginación: el click ocurrió antes de estabilizar el render inicial y observó
+50 filas en vez de 6. Se corrigió sólo la espera del test (`act`, control habilitado
+y resultado de paginación), sin cambiar el producto, timeout o aserciones finales.
+Las 31 pruebas de ProductManager aprobaron. La validación completa final usa
+cuatro workers locales; CI conserva su configuración ordinaria.
+
+El verify complementario completo aprobó 131 suites, 1.281 pruebas, 14 skips
+históricos y 55 E2E, además de lint, tipos y verificadores. El siguiente
+`build:pages` con cuatro workers agotó los 10 segundos de otra prueba existente,
+«difiere la actualización del catálogo mientras se confirma una baja en otra
+página»: 1.280 pruebas aprobadas y una fallida. No se cambió esa prueba ni el
+producto. La máquina informó 1.418 MiB libres de 16.003 MiB y CPU 79%; es
+compatible con presión de recursos, sin demostrar por sí solo la causa del timeout.
+Se repite el build con un worker, manteniendo aserciones y plazos.
+La repetición terminó aprobada: 131 suites, 1.281 pruebas y los 14 skips
+históricos, en 295,62 segundos de Vitest; también aprobaron todos los demás
+controles de `build:pages`. Sin más cambios de fuentes entre los dos intentos.
+Una segunda revisión independiente del diff no encontró bloqueos concretos.
+
+La lectura de cierre previa al rollout complementario, a las `18:53:43.216Z`,
+confirmó las 30 migraciones exactas y las nueve columnas diagnósticas en ambas
+bases, sin errores de FK. Production conserva 12 órdenes, 2 preferencias, 2 pagos,
+29 líneas, 7 fulfillments, 2 solicitudes web, 2 vínculos y 2 operaciones Dux,
+231 bajas manuales y cero nombres manuales. Preview conserva 14 órdenes,
+14 preferencias, 1 pago, 14 líneas y 14 fulfillments, sin solicitudes ni vínculos
+u operaciones Dux. Ambas conservan cero campañas y redenciones.
+
+Archivos complementarios: `server/dux-cron.ts` y prueba,
+`scripts/run-dux-reconcile.mjs`, `server/dux-reconcile-runner.test.ts`,
+`server/test-fixtures/dux-reconcile-fetch-stub.mjs`, `scripts/verify-automation.mjs`,
+`src/admin/ProductManager.test.tsx`, contrato Dux y este registro.
+No requiere otra migración ni cambia el cron, destino, flags, credenciales o cuota.
 
 La herramienta local de tail Wrangler abortó en Windows; la observación se hizo
 mediante la API oficial y WebSocket, filtrando en memoria exclusivamente los

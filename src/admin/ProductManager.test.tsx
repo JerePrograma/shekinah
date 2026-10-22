@@ -156,14 +156,15 @@ it('pagina de a 50 después del filtro y orden global, encuentra productos de ot
       name: `Producto ${suffix}`, sku: `PAGE-${suffix}` };
   });
   const api = installCatalogApi(products);
-  render(<ProductManager />);
+  await act(async () => { render(<ProductManager />); await Promise.resolve(); });
   await screen.findByRole('heading', { name: 'Producto 000' });
   expect(screen.getAllByRole('article')).toHaveLength(50);
   expect(screen.getByText('56 productos encontrados')).toBeVisible();
   expect(screen.getByText('Página 1 de 2')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
-  expect(screen.getAllByRole('article')).toHaveLength(6);
+  await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(6));
   expect(screen.getByRole('heading', { name: 'Producto 055' })).toBeVisible();
   expect(screen.getByText('Página 2 de 2')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();

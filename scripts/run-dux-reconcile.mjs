@@ -104,13 +104,24 @@ async function requestStep(url, schedulerSecret, startedAt, state) {
       if (!response.ok) {
         const code = errorCode(payload) ?? `HTTP_${response.status}`;
         const message = `La reconciliación Dux respondió ${response.status} (${code}).`;
-        if (errorCode(payload) !== null || response.status < 500) {
+        // An unclassified application failure may occur before claiming the
+        // next read or after its checkpoint committed. Recover the same UUID;
+        // provider/auth/schema errors remain terminal, even when they use 5xx.
+        const recoverInternalError = response.status === 500 && code === 'INTERNAL_ERROR';
+        if (!recoverInternalError && (errorCode(payload) !== null || response.status < 500)) {
           throw new NonRetryableReconciliationError(message);
         }
         const error = new ReconciliationResponseError(message);
-        if (attempt === 2) throw error;
+        if (attempt === 2) {
+          if (recoverInternalError) throw new NonRetryableReconciliationError(message);
+          throw error;
+        }
         lastError = error;
-        await boundedDelay(retryDelayMs(response), startedAt);
+        if (recoverInternalError) {
+          console.warn('dux_reconcile_request_retry', JSON.stringify({ version: 1,
+            attempt, request: state.requests, httpStatus: 500, errorCode: 'INTERNAL_ERROR' }));
+        }
+        await boundedDelay(recoverInternalError ? 2_000 : retryDelayMs(response), startedAt);
         continue;
       }
       if (response.status === 202) return parseProgress(payload, state.progress);

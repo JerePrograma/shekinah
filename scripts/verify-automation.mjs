@@ -194,8 +194,10 @@ if (JSON.stringify(cronConfig.triggers?.crons) !== JSON.stringify(['2-52/10 * * 
   fail('Cloudflare Dux requiere un único cron cada diez minutos, sin rutas HTTP públicas ni preview.');
 }
 const cronWorker = read(join(root, 'server', 'dux-cron.ts'));
-if (!cronWorker.includes("https://shekinah.ar/api/internal/dux/reconcile") || !cronWorker.includes("redirect: 'error'") || /mercadolibre|MERCADO_LIBRE/u.test(cronWorker)) {
-  fail('El relay Dux sólo puede invocar la reconciliación Dux autorizada.');
+if (!cronWorker.includes("https://shekinah.ar/api/internal/dux/reconcile") || !cronWorker.includes("redirect: 'manual'") ||
+    !cronWorker.includes('response.status >= 300 && response.status <= 399') ||
+    !cronWorker.includes('DUX_RELAY_REDIRECT_REJECTED') || /mercadolibre|MERCADO_LIBRE/u.test(cronWorker)) {
+  fail('El relay Dux sólo puede invocar el destino autorizado en modo manual y rechazar redirecciones.');
 }
 for (const fragment of [
   "const expectedPath = '/api/internal/dux/reconcile'",

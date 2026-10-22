@@ -47,7 +47,7 @@ it('invoca una sola lectura Dux autenticada y acredita la publicación del mismo
   vi.stubGlobal('fetch',fetchMock);
   await cron.scheduled({scheduledTime:Date.parse('2026-09-08T12:00:00Z'),cron:'*/5 * * * *'},{DUX_CRON_SECRET:'x'.repeat(32)});
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock).toHaveBeenCalledWith('https://shekinah.ar/api/internal/dux/reconcile',expect.objectContaining({method:'POST',redirect:'error'}));
+  expect(fetchMock).toHaveBeenCalledWith('https://shekinah.ar/api/internal/dux/reconcile',expect.objectContaining({method:'POST',redirect:'manual'}));
 });
 
 it.each([409,429,500])('un error HTTP %s no dispara otra lectura ni simula éxito', async (status) => {
@@ -55,6 +55,26 @@ it.each([409,429,500])('un error HTTP %s no dispara otra lectura ni simula éxit
   vi.stubGlobal('fetch',fetchMock);
   await expect(cron.scheduled({scheduledTime:Date.now(),cron:'*/5 * * * *'},{DUX_CRON_SECRET:'x'.repeat(32)})).rejects.toThrow('UNCONFIRMED');
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it.each([300, 302, 307, 399])('rechaza HTTP %s sin leer Location o cuerpo ni repetir el POST autenticado', async status => {
+  const privateLocation = `https://private.example/redirect?secret=${environment.DUX_CRON_SECRET}`;
+  const readLocation = vi.fn(() => privateLocation);
+  const readBody = vi.fn(() => { throw new Error('private-redirect-body-sentinel'); });
+  const cancelBody = vi.fn(() => Promise.reject(new Error('private-redirect-cancel-sentinel')));
+  const response = { status, headers: { get: readLocation }, body: { getReader: readBody, cancel: cancelBody } } as unknown as Response;
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+  vi.stubGlobal('fetch', fetchMock);
+  await expect(cron.scheduled(schedule, environment)).rejects.toMatchObject({ message: 'DUX_RELAY_REDIRECT_REJECTED', errorClass: 'redirect_rejected' });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith('https://shekinah.ar/api/internal/dux/reconcile', expect.objectContaining({ method: 'POST', redirect: 'manual' }));
+  expect(readLocation).not.toHaveBeenCalled();
+  expect(readBody).not.toHaveBeenCalled();
+  expect(cancelBody).toHaveBeenCalledTimes(1);
+  expect(console.warn).not.toHaveBeenCalled();
+  expect(console.error).toHaveBeenCalledWith('dux_cron_failed', expect.objectContaining({ code: 'DUX_RELAY_REDIRECT_REJECTED', errorClass: 'redirect_rejected' }));
+  const logs = JSON.stringify([...vi.mocked(console.log).mock.calls, ...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.error).mock.calls]);
+  for (const privateValue of ['private.example', environment.DUX_CRON_SECRET, 'private-redirect']) expect(logs).not.toContain(privateValue);
 });
 
 it('no acepta un cuerpo ilimitado ni un inventario sin catálogo publicado', async () => {
@@ -100,7 +120,7 @@ it.each(['fetch', 'body', 'gateway'] as const)('recupera pérdida de transporte 
   expect(fetchMock).toHaveBeenCalledTimes(2);
   expect(new Set(identities(fetchMock)).size).toBe(1);
   for (const [, init] of fetchMock.mock.calls) {
-    expect(init).toMatchObject({ method: 'POST', redirect: 'error', headers: {
+    expect(init).toMatchObject({ method: 'POST', redirect: 'manual', headers: {
       authorization: `Bearer ${environment.DUX_CRON_SECRET}`, 'x-shekinah-scheduled-at': '2026-10-22T15:02:00.000Z', 'content-type': 'application/json',
     } });
   }
@@ -126,6 +146,61 @@ it('agota sólo dos intentos de transporte por paso, sin imprimir datos privados
   await vi.runAllTimersAsync(); await result;
   expect(fetchMock).toHaveBeenCalledTimes(2); expect(new Set(identities(fetchMock)).size).toBe(1);
   expect(JSON.stringify([...vi.mocked(console.log).mock.calls, ...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.error).mock.calls])).not.toContain('token-privado');
+});
+
+it.each([
+  ['host_not_accessible_1021', (privateText: string) => new TypeError(`Error 1021: ${privateText}`)],
+  ['cloudflare_ip_1024', (privateText: string) => new TypeError(`Error 1024: ${privateText}`)],
+  ['same_zone_1042', (privateText: string) => new TypeError(`Error 1042: ${privateText}`)],
+  ['same_zone_1042', (privateText: string) => new TypeError(privateText, { cause: new Error('Error 1042') })],
+  ['redirect_rejected', (privateText: string) => new TypeError(`redirect rejected: ${privateText}`)],
+  ['tls_error', (privateText: string) => new TypeError(`TLS handshake failed: ${privateText}`)],
+  ['tls_error', (privateText: string) => new TypeError(privateText, { cause: Object.assign(new Error(privateText), { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }) })],
+  ['timeout', (privateText: string) => new DOMException(privateText, 'TimeoutError')],
+  ['timeout', (privateText: string) => new DOMException(privateText, 'AbortError')],
+  ['network_connection_lost', (privateText: string) => new TypeError(`Network connection lost: ${privateText}`)],
+  ['network_error', (privateText: string) => new TypeError(privateText, { cause: Object.assign(new Error(privateText), { code: 'ECONNRESET' }) })],
+  ['type_error', (privateText: string) => new TypeError(privateText)],
+  ['dom_exception', (privateText: string) => ({ name: 'DOMException', message: privateText })],
+  ['unknown', (privateText: string) => new Error(privateText)],
+  ['unknown', (privateText: string) => privateText],
+] as const)('clasifica %s antes de HTTP y conserva sólo la clase en el reintento y fallo final', async (errorClass, createError) => {
+  vi.useFakeTimers();
+  const privateText = `private-sentinel-${environment.DUX_CRON_SECRET}-https://private.example/path?token=private-header`;
+  const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(createError(privateText));
+  vi.stubGlobal('fetch', fetchMock);
+  const result = expect(cron.scheduled(schedule, environment)).rejects.toMatchObject({ message: 'DUX_RELAY_TRANSPORT', errorClass });
+  await vi.runAllTimersAsync(); await result;
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(console.warn).toHaveBeenCalledExactlyOnceWith('dux_cron_retry', {
+    scheduledAt: '2026-10-22T15:02:00.000Z', attempt: 1, requests: 1, httpStatus: null, code: 'DUX_RELAY_TRANSPORT', errorClass,
+  });
+  expect(console.error).toHaveBeenCalledExactlyOnceWith('dux_cron_failed', expect.objectContaining({ requests: 2, code: 'DUX_RELAY_TRANSPORT', errorClass }));
+  const logs = JSON.stringify([...vi.mocked(console.log).mock.calls, ...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.error).mock.calls]);
+  for (const privateValue of ['private-sentinel', environment.DUX_CRON_SECRET, 'private.example', 'private-header', 'https://']) expect(logs).not.toContain(privateValue);
+});
+
+it('clasifica un cuerpo interrumpido y mantiene la causa cerrada aunque la repetición publique correctamente', async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(() => Promise.resolve(new Response(new ReadableStream({
+    start(controller) { controller.error(new TypeError('Network connection lost: private-body-sentinel')); },
+  })))).mockImplementation(() => Promise.resolve(publication()));
+  vi.stubGlobal('fetch', fetchMock);
+  const result = expect(cron.scheduled(schedule, environment)).resolves.toBeUndefined();
+  await vi.runAllTimersAsync(); await result;
+  expect(console.warn).toHaveBeenCalledWith('dux_cron_retry', expect.objectContaining({ httpStatus: 200, errorClass: 'network_connection_lost' }));
+  expect(console.error).not.toHaveBeenCalled();
+  expect(JSON.stringify([...vi.mocked(console.log).mock.calls, ...vi.mocked(console.warn).mock.calls])).not.toContain('private-body-sentinel');
+});
+
+it('limita causas cíclicas y tolera getters rotos sin imprimir descriptores de error', async () => {
+  vi.useFakeTimers();
+  const error = { name: 'TypeError', get message(): string { throw new Error('private-getter-sentinel'); }, cause: {} };
+  error.cause = error;
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(error));
+  const result = expect(cron.scheduled(schedule, environment)).rejects.toMatchObject({ message: 'DUX_RELAY_TRANSPORT', errorClass: 'type_error' });
+  await vi.runAllTimersAsync(); await result;
+  expect(JSON.stringify([...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.error).mock.calls])).not.toContain('private-getter-sentinel');
 });
 
 it.each([['DUX_PROVIDER_REJECTED', 502], ['DUX_D1_WRITE_BUDGET_EXHAUSTED', 503], ['DUX_SYNC_IN_PROGRESS', 409], ['DUX_SYNC_COOLDOWN', 429]] as const)(
@@ -174,6 +249,31 @@ it('el límite de 50 llamadas incluye progreso y reintentos de transporte', asyn
   const result = expect(cron.scheduled(schedule, environment)).rejects.toThrow('DUX_RELAY_STEP_LIMIT');
   await vi.runAllTimersAsync(); await result;
   expect(fetchMock).toHaveBeenCalledTimes(50); expect(new Set(identities(fetchMock)).size).toBe(1);
+  expect(console.log).not.toHaveBeenCalledWith('dux_cron_published', expect.anything());
+});
+
+it('recupera un 500 genérico después de progreso con el mismo UUID y confirma la publicación', async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce((_input, init) => Promise.resolve(progressResponse(init ?? {})))
+    .mockResolvedValueOnce(Response.json({ error: { code: 'INTERNAL_ERROR', message: 'private-error-must-not-log' } }, { status: 500 }))
+    .mockImplementation(() => Promise.resolve(publication()));
+  vi.stubGlobal('fetch', fetchMock);
+  const result = expect(cron.scheduled(schedule, environment)).resolves.toBeUndefined();
+  await vi.runAllTimersAsync(); await result;
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(new Set(identities(fetchMock)).size).toBe(1);
+  expect(console.log).toHaveBeenCalledWith('dux_cron_published', expect.objectContaining({ requests: 3 }));
+  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('private-error');
+});
+
+it('detiene dos 500 genéricos consecutivos sin inventar una publicación ni otra identidad', async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(Response.json({ error: { code: 'INTERNAL_ERROR' } }, { status: 500 })));
+  vi.stubGlobal('fetch', fetchMock);
+  const result = expect(cron.scheduled(schedule, environment)).rejects.toThrow('DUX_RELAY_GATEWAY');
+  await vi.runAllTimersAsync(); await result;
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(new Set(identities(fetchMock)).size).toBe(1);
   expect(console.log).not.toHaveBeenCalledWith('dux_cron_published', expect.anything());
 });
 
